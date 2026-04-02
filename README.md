@@ -45,6 +45,7 @@ python live_stt.py
 | `--threshold FLOAT` | auto-calibrate | RMS silence threshold; if omitted, 1 second of ambient noise is recorded to set it automatically |
 | `--workers INT` | `5` | Number of concurrent API worker threads |
 | `--max-chunk FLOAT` | `5.0` | Maximum seconds of audio before force-sending to the API |
+| `-o`, `--output FILE` | none | Append transcriptions (JA + EN) to a text file |
 
 ### Examples
 
@@ -57,6 +58,9 @@ live-stt --threshold 0.01
 
 # Fewer workers, longer chunks
 live-stt --workers 2 --max-chunk 10
+
+# Save transcriptions to a file
+live-stt -o transcript.txt
 ```
 
 ## How It Works

@@ -61,7 +61,7 @@ def audio_to_wav_bytes(audio_data, sample_rate):
     return buf.getvalue()
 
 
-def transcription_worker(client, model_name, work_queue, print_lock, context):
+def transcription_worker(client, model_name, work_queue, print_lock, context, output_file):
     """Background thread: sends audio to Gemini with rolling context."""
     while True:
         job = work_queue.get()
@@ -114,6 +114,11 @@ def transcription_worker(client, model_name, work_queue, print_lock, context):
                     for line in full.splitlines():
                         print(f"  {line}")
                     print("-" * 60)
+                    if output_file:
+                        for line in full.splitlines():
+                            output_file.write(line + "\n")
+                        output_file.write("\n")
+                        output_file.flush()
         except Exception as e:
             with print_lock:
                 sys.stdout.write("\r" + " " * 70 + "\r")
@@ -157,6 +162,13 @@ def main():
         default=MAX_CHUNK_DURATION,
         help=f"Max seconds before force-sending (default: {MAX_CHUNK_DURATION}).",
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help="Write transcriptions to this text file.",
+    )
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -185,10 +197,14 @@ def main():
     # Shared rolling context for continuity between chunks
     context = {"history": [], "lock": threading.Lock()}
 
+    output_file = open(args.output, "a", encoding="utf-8") if args.output else None
+    if output_file:
+        print(f"Writing transcriptions to: {args.output}")
+
     for _ in range(args.workers):
         t = threading.Thread(
             target=transcription_worker,
-            args=(client, args.model, transcribe_queue, print_lock, context),
+            args=(client, args.model, transcribe_queue, print_lock, context, output_file),
             daemon=True,
         )
         t.start()
@@ -276,6 +292,8 @@ def main():
                         speech_blocks = 0
 
     except KeyboardInterrupt:
+        if output_file:
+            output_file.close()
         print("\nStopped.")
 
 
