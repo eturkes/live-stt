@@ -27,7 +27,7 @@ METER_WIDTH = 40
 NUM_WORKERS = 5
 CONTEXT_SIZE = 3  # number of previous transcriptions to include as context
 
-PROMPT = (
+PROMPT_TRANSLATE = (
     "You are a Japanese speech transcription and translation assistant.\n"
     "Listen to this audio clip of spoken Japanese.\n"
     "Transcribe EXACTLY what is said in Japanese (use kanji/hiragana/katakana as appropriate).\n"
@@ -36,6 +36,15 @@ PROMPT = (
     "Reply ONLY in this format:\n"
     "JA: <exact Japanese transcription>\n"
     "EN: <natural English translation>"
+)
+
+PROMPT_TRANSCRIBE = (
+    "You are a Japanese speech transcription assistant.\n"
+    "Listen to this audio clip of spoken Japanese.\n"
+    "Transcribe EXACTLY what is said in Japanese (use kanji/hiragana/katakana as appropriate).\n"
+    "If the audio is unclear or silent, reply with: [inaudible]\n"
+    "Reply ONLY in this format:\n"
+    "JA: <exact Japanese transcription>"
 )
 
 
@@ -61,8 +70,10 @@ def audio_to_wav_bytes(audio_data, sample_rate):
     return buf.getvalue()
 
 
-def transcription_worker(client, model_name, work_queue, print_lock, context, output_file):
+def transcription_worker(client, model_name, work_queue, print_lock, context, output_file, translate):
     """Background thread: sends audio to Gemini with rolling context."""
+    base_prompt = PROMPT_TRANSLATE if translate else PROMPT_TRANSCRIBE
+    continuation = "Now transcribe and translate the new audio clip above." if translate else "Now transcribe the new audio clip above."
     while True:
         job = work_queue.get()
         if job is None:
@@ -77,12 +88,12 @@ def transcription_worker(client, model_name, work_queue, print_lock, context, ou
             if prev:
                 ctx = "\n".join(prev)
                 full_prompt = (
-                    f"{PROMPT}\n\n"
+                    f"{base_prompt}\n\n"
                     f"For continuity, here is what was said previously:\n{ctx}\n\n"
-                    f"Now transcribe and translate the new audio clip above."
+                    f"{continuation}"
                 )
             else:
-                full_prompt = PROMPT
+                full_prompt = base_prompt
 
             parts = []
             for chunk in client.models.generate_content_stream(
@@ -163,6 +174,11 @@ def main():
         help=f"Max seconds before force-sending (default: {MAX_CHUNK_DURATION}).",
     )
     parser.add_argument(
+        "--no-translate",
+        action="store_true",
+        help="Transcribe only (no English translation).",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         type=str,
@@ -201,10 +217,12 @@ def main():
     if output_file:
         print(f"Writing transcriptions to: {args.output}")
 
+    translate = not args.no_translate
+
     for _ in range(args.workers):
         t = threading.Thread(
             target=transcription_worker,
-            args=(client, args.model, transcribe_queue, print_lock, context, output_file),
+            args=(client, args.model, transcribe_queue, print_lock, context, output_file, translate),
             daemon=True,
         )
         t.start()

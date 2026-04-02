@@ -45,7 +45,8 @@ python live_stt.py
 | `--threshold FLOAT` | auto-calibrate | RMS silence threshold; if omitted, 1 second of ambient noise is recorded to set it automatically |
 | `--workers INT` | `5` | Number of concurrent API worker threads |
 | `--max-chunk FLOAT` | `5.0` | Maximum seconds of audio before force-sending to the API |
-| `-o`, `--output FILE` | none | Append transcriptions (JA + EN) to a text file |
+| `--no-translate` | off | Transcribe only (no English translation) |
+| `-o`, `--output FILE` | none | Append transcriptions to a text file |
 
 ### Examples
 
@@ -59,8 +60,11 @@ live-stt --threshold 0.01
 # Fewer workers, longer chunks
 live-stt --workers 2 --max-chunk 10
 
+# Transcribe only (no English translation)
+live-stt --no-translate
+
 # Save transcriptions to a file
-live-stt -o transcript.txt
+live-stt --no-translate -o transcript.txt
 ```
 
 ## How It Works
@@ -135,7 +139,7 @@ GEMINI_API_KEY="your-key" python list_live_models.py
 
 ## Development Notes
 
-- The prompt in `PROMPT` can be edited to support other source languages by changing the transcription instructions.
+- The prompts `PROMPT_TRANSLATE` and `PROMPT_TRANSCRIBE` can be edited to support other source languages by changing the transcription instructions.
 - The calibration step (`calibrate_threshold`) is defined but the main loop currently uses it only when `--threshold` is not provided and falls back to `0.0`—meaning all audio is treated as speech unless a manual threshold is set. To enable auto-calibration, call `calibrate_threshold(native_rate)` before the main loop (the function exists and works).
 - Worker threads are daemonized and shut down automatically on `Ctrl+C`.
 - The transcription queue has a bounded size of `workers * 2`. When full, new chunks are silently dropped to avoid unbounded memory growth.
