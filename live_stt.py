@@ -136,8 +136,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        default="gemini-3-flash-preview",
-        help="Gemini model name (default: gemini-3-flash-preview).",
+        default="gemini-3.1-flash-live-preview",
+        help="Gemini model name (default: gemini-3.1-flash-live-preview).",
     )
     parser.add_argument(
         "--threshold",
