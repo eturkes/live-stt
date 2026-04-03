@@ -19,9 +19,8 @@ Captures microphone audio, detects speech using RMS-based voice activity detecti
 The project uses [uv](https://docs.astral.sh/uv/) for environment management.
 
 ```sh
-# Create venv and install dependencies
-uv venv
-uv pip install -e .
+# Install dependencies (creates .venv automatically)
+uv sync
 
 # Set your API key
 export GEMINI_API_KEY="your-key-here"
@@ -109,6 +108,7 @@ live-stt/
 ├── live_stt.py          # Main application
 ├── list_live_models.py  # Utility: list Gemini models supporting the Live API
 ├── pyproject.toml       # Project metadata and dependencies
+├── uv.lock              # Locked dependency versions
 └── .venv/               # Virtual environment (not committed)
 ```
 
