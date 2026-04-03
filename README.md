@@ -29,7 +29,7 @@ echo 'GEMINI_API_KEY=your-key-here' > .env
 ## Usage
 
 ```sh
-# Run with defaults (gemini-3.1-flash-live-preview, auto-calibrated threshold)
+# Run with defaults (gemini-3-flash-preview, auto-calibrated threshold)
 live-stt
 
 # Or run directly
@@ -40,7 +40,7 @@ python live_stt.py
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--model MODEL` | `gemini-3.1-flash-live-preview` | Gemini model to use for transcription |
+| `--model MODEL` | `gemini-3-flash-preview` | Gemini model to use for transcription |
 | `--threshold FLOAT` | auto-calibrate | RMS silence threshold; if omitted, 1 second of ambient noise is recorded to set it automatically |
 | `--workers INT` | `5` | Number of concurrent API worker threads |
 | `--max-chunk FLOAT` | `5.0` | Maximum seconds of audio before force-sending to the API |
