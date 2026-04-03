@@ -22,8 +22,8 @@ The project uses [uv](https://docs.astral.sh/uv/) for environment management.
 # Install dependencies (creates .venv automatically)
 uv sync
 
-# Set your API key
-export GEMINI_API_KEY="your-key-here"
+# Set your API key (loaded automatically from .env)
+echo 'GEMINI_API_KEY=your-key-here' > .env
 ```
 
 ## Usage
@@ -134,7 +134,7 @@ Defined at the top of `live_stt.py` and tunable for different environments:
 Lists Gemini models that support the bidirectional streaming API (`bidiGenerateContent`):
 
 ```sh
-GEMINI_API_KEY="your-key" python list_live_models.py
+python list_live_models.py
 ```
 
 ## Development Notes

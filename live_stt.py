@@ -15,7 +15,10 @@ import threading
 
 import numpy as np
 import sounddevice as sd
+from dotenv import load_dotenv
 from google import genai
+
+load_dotenv()
 
 SEND_RATE = 16000  # downsample to 16kHz before sending
 BLOCK_DURATION = 0.1  # seconds per audio block
