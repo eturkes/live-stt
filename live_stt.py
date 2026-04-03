@@ -253,6 +253,7 @@ def main():
             channels=1,
             dtype="float32",
             blocksize=block_size,
+            latency="high",
             callback=audio_callback,
         ):
             audio_buffer = []
