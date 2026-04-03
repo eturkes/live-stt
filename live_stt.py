@@ -203,7 +203,7 @@ def main():
     block_size = int(native_rate * BLOCK_DURATION)
     print(f"Mic: {native_rate} Hz (sending at {SEND_RATE} Hz)")
 
-    threshold = args.threshold if args.threshold is not None else 0.0
+    threshold = args.threshold if args.threshold is not None else calibrate_threshold(native_rate)
 
     audio_queue = queue.Queue()
     transcribe_queue = queue.Queue(maxsize=args.workers * 2)

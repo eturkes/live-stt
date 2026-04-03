@@ -140,6 +140,6 @@ python list_live_models.py
 ## Development Notes
 
 - The prompts `PROMPT_TRANSLATE` and `PROMPT_TRANSCRIBE` can be edited to support other source languages by changing the transcription instructions.
-- The calibration step (`calibrate_threshold`) is defined but the main loop currently uses it only when `--threshold` is not provided and falls back to `0.0`—meaning all audio is treated as speech unless a manual threshold is set. To enable auto-calibration, call `calibrate_threshold(native_rate)` before the main loop (the function exists and works).
+- When `--threshold` is not provided, the program auto-calibrates by recording 1 second of ambient noise and setting the threshold above it.
 - Worker threads are daemonized and shut down automatically on `Ctrl+C`.
 - The transcription queue has a bounded size of `workers * 2`. When full, new chunks are silently dropped to avoid unbounded memory growth.
