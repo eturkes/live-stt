@@ -1,8 +1,19 @@
 [project]
 name = "live-stt"
 version = "0.1.0"
-description = "Live Japanese speech-to-text with English translation"
+description = "Live Japanese speech-to-text with English translation using Gemini"
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    { name = "Emir Turkes", email = "emir.turkes@eturkes.com" },
+]
+keywords = ["speech-to-text", "transcription", "japanese", "gemini", "translation"]
+classifiers = [
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "google-genai>=1.0.0",
     "sounddevice>=0.4.6",
@@ -12,3 +23,36 @@ dependencies = [
 
 [project.scripts]
 live-stt = "live_stt:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["live_stt.py"]
+
+[tool.hatch.build.targets.sdist]
+include = ["live_stt.py", "list_live_models.py", "README.md", "PLAN.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
