@@ -1,6 +1,6 @@
 # Reusable Prompt for Continued Development
 
-Paste the block below into a fresh Claude Code session (or any coding agent) when resuming work on `live-stt`. Replace `<TASK_ID>` with an item from `PLAN.md` (e.g. `T1.1`), or describe an ad-hoc task in the "Task" line.
+Paste the block below into a fresh Claude Code session (or any coding agent) when resuming work on `live-stt`.
 
 ---
 
@@ -24,19 +24,15 @@ You are continuing development on **live-stt**, a real-time Japanese speech-to-t
 
 ## How to work
 
-1. **Read `PLAN.md`** to understand priorities and what's out of scope.
-2. **Confirm the task** with the user if ambiguous. For plan items, restate acceptance criteria before starting.
-3. **Make the smallest change that satisfies the task.** Reference specific `live_stt.py:<line>` anchors in your edits.
-4. **Run what you can.** `uv run python -c "import live_stt"` at minimum to catch syntax/import errors. `uv run pytest` if tests exist.
-5. **Update `README.md`** only if user-visible CLI or behavior changed. Update `PLAN.md` if the task is done (mark completed) or scope shifted.
-6. **Report back concisely.** What changed, what you verified, what the user needs to smoke-test (especially anything that touches the live audio path — you cannot run a mic).
-7. **Do not commit unless asked.** When asked, use a single focused commit; follow the existing co-author style from `git log`.
+1. **Read `PLAN.md`** and pick the next uncompleted task in priority order. Restate the task and its acceptance criteria before starting.
+2. **Make the smallest change that satisfies the task.** Reference specific `live_stt.py:<line>` anchors in your edits.
+3. **Run what you can.** `uv run python -c "import live_stt"` at minimum to catch syntax/import errors. `uv run pytest` if tests exist.
+4. **Update `README.md`** only if user-visible CLI or behavior changed. Update `PLAN.md` if the task is done (mark completed) or scope shifted.
+5. **Report back concisely.** What changed, what you verified, what the user needs to smoke-test (especially anything that touches the live audio path — you cannot run a mic).
+6. **Do not commit unless asked.** When asked, use a single focused commit; follow the existing co-author style from `git log`.
 
 ## Known constraints you cannot verify from the agent
 
 - Microphone capture, device enumeration, and real-time latency. Always flag these for user smoke-testing.
 - Gemini API behavior under rate limits — mock or skip in tests.
 
-## Task
-
-`<describe the task here, or reference a PLAN.md ID like "Execute T1.1 and T1.4 as a single PR per the suggestion in PLAN.md">`
