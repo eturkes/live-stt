@@ -1,56 +1,49 @@
 #!/usr/bin/env python3
-"""Live Japanese speech-to-text with English translation.
+"""Live Japanese speech-to-text with English translation via the Gemini Live API.
 
-Listens to your microphone, transcribes Japanese speech using Gemini,
-and displays the Japanese transcription with an English translation.
+Opens a persistent bidirectional streaming session, pipes microphone audio to Gemini
+as raw PCM16, and prints the model's JA/EN transcription of what it says back.
 """
 
-import io
-import os
-import sys
-import wave
-import queue
 import argparse
-import threading
+import asyncio
+import os
+import signal
+import sys
 
 import numpy as np
 import sounddevice as sd
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 load_dotenv()
 
-SEND_RATE = 16000  # downsample to 16kHz before sending
-BLOCK_DURATION = 0.1  # seconds per audio block
-MAX_CHUNK_DURATION = 5.0  # send chunk after this many seconds
-OVERLAP_DURATION = 1.0  # overlap between force-cut chunks (seconds)
+SEND_RATE = 16000
+BLOCK_DURATION = 0.1
 METER_WIDTH = 40
-NUM_WORKERS = 5
-CONTEXT_SIZE = 3  # number of previous transcriptions to include as context
+METER_INTERVAL = 0.1
+AUDIO_QUEUE_MAX = 100  # ~10s of 100ms blocks
 
-PROMPT_TRANSLATE = (
-    "You are a Japanese speech transcription and translation assistant.\n"
-    "Listen to this audio clip of spoken Japanese.\n"
-    "Transcribe EXACTLY what is said in Japanese (use kanji/hiragana/katakana as appropriate).\n"
-    "Then provide a natural English translation.\n"
-    "If the audio is unclear or silent, reply with: [inaudible]\n"
-    "Reply ONLY in this format:\n"
-    "JA: <exact Japanese transcription>\n"
-    "EN: <natural English translation>"
+SYSTEM_INSTRUCTION_TRANSLATE = (
+    "You are a live Japanese interpreter. You will hear continuous Japanese speech.\n"
+    "For every distinct utterance, respond by speaking exactly two lines and nothing else:\n"
+    "JA: <verbatim Japanese transcription using appropriate kanji/hiragana/katakana>\n"
+    "EN: <natural English translation>\n"
+    "If audio is unclear or silent, respond with a single line: [inaudible]\n"
+    "Never add commentary, greetings, or any other text."
 )
 
-PROMPT_TRANSCRIBE = (
-    "You are a Japanese speech transcription assistant.\n"
-    "Listen to this audio clip of spoken Japanese.\n"
-    "Transcribe EXACTLY what is said in Japanese (use kanji/hiragana/katakana as appropriate).\n"
-    "If the audio is unclear or silent, reply with: [inaudible]\n"
-    "Reply ONLY in this format:\n"
-    "JA: <exact Japanese transcription>"
+SYSTEM_INSTRUCTION_TRANSCRIBE = (
+    "You are a live Japanese transcriber. You will hear continuous Japanese speech.\n"
+    "For every distinct utterance, respond by speaking exactly one line and nothing else:\n"
+    "JA: <verbatim Japanese transcription using appropriate kanji/hiragana/katakana>\n"
+    "If audio is unclear or silent, respond with a single line: [inaudible]\n"
+    "Never add commentary, greetings, or any other text."
 )
 
 
 def resample(audio, orig_rate, target_rate):
-    """Resample audio using linear interpolation."""
     if orig_rate == target_rate:
         return audio
     ratio = target_rate / orig_rate
@@ -59,102 +52,195 @@ def resample(audio, orig_rate, target_rate):
     return np.interp(indices, np.arange(len(audio)), audio).astype(np.float32)
 
 
-def audio_to_wav_bytes(audio_data, sample_rate):
-    """Convert float32 numpy audio to WAV bytes for the API."""
-    pcm = (audio_data * 32767).astype(np.int16)
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm.tobytes())
-    return buf.getvalue()
+def pcm16_bytes(audio_f32):
+    return (np.clip(audio_f32, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
 
 
-def transcription_worker(client, model_name, work_queue, print_lock, context, output_file, translate):
-    """Background thread: sends audio to Gemini with rolling context."""
-    base_prompt = PROMPT_TRANSLATE if translate else PROMPT_TRANSCRIBE
-    continuation = "Now transcribe and translate the new audio clip above." if translate else "Now transcribe the new audio clip above."
+class State:
+    def __init__(self):
+        self.latest_rms = 0.0
+        self.dropped = 0
+        self.stopping = False
+        self.connected = False
+
+
+async def sender(session, audio_q, state):
     while True:
-        audio_data = work_queue.get()
-        if audio_data is None:
+        chunk = await audio_q.get()
+        if chunk is None:
             break
         try:
-            wav_bytes = audio_to_wav_bytes(audio_data, SEND_RATE)
-
-            # Build prompt with prior context
-            with context["lock"]:
-                prev = list(context["history"])
-            if prev:
-                ctx = "\n".join(prev)
-                full_prompt = (
-                    f"{base_prompt}\n\n"
-                    f"For continuity, here is what was said previously:\n{ctx}\n\n"
-                    f"{continuation}"
-                )
-            else:
-                full_prompt = base_prompt
-
-            parts = []
-            for chunk in client.models.generate_content_stream(
-                model=model_name,
-                contents=[
-                    {"inline_data": {"mime_type": "audio/wav", "data": wav_bytes}},
-                    full_prompt,
-                ],
-            ):
-                if chunk.text:
-                    parts.append(chunk.text)
-            full = "".join(parts).strip()
-
-            if full and "[inaudible]" not in full:
-                # Extract JA line for context history
-                ja_line = ""
-                for line in full.splitlines():
-                    if line.startswith("JA:"):
-                        ja_line = line
-                        break
-                if ja_line:
-                    with context["lock"]:
-                        context["history"].append(ja_line)
-                        if len(context["history"]) > CONTEXT_SIZE:
-                            context["history"].pop(0)
-
-                with print_lock:
-                    sys.stdout.write("\r" + " " * 70 + "\r")
-                    for line in full.splitlines():
-                        print(f"  {line}")
-                    print("-" * 60)
-                    if output_file:
-                        for line in full.splitlines():
-                            output_file.write(line + "\n")
-                        output_file.write("\n")
-                        output_file.flush()
+            await session.send_realtime_input(
+                audio=types.Blob(data=chunk, mime_type=f"audio/pcm;rate={SEND_RATE}")
+            )
         except Exception as e:
-            with print_lock:
-                sys.stdout.write("\r" + " " * 70 + "\r")
-                print(f"  [error: {e}]")
-                print("-" * 60)
+            if not state.stopping:
+                sys.stderr.write(f"\n  [send error: {e}]\n")
+            break
+
+
+async def receiver(session, state, print_lock, output_file, expect_en):
+    """Consume server messages, emit JA/EN blocks on turn boundaries."""
+    buf = ""
+    async for response in session.receive():
+        if response.server_content is None:
+            continue
+        sc = response.server_content
+        if sc.output_transcription and sc.output_transcription.text:
+            buf += sc.output_transcription.text
+        if sc.turn_complete or sc.generation_complete:
+            text = buf.strip()
+            buf = ""
+            if not text or "[inaudible]" in text.lower():
+                continue
+            emit_block(text, print_lock, output_file, expect_en)
+
+
+def emit_block(text, print_lock, output_file, expect_en):
+    """Extract JA: and EN: lines from model's spoken output, display + persist."""
+    ja_line = ""
+    en_line = ""
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("JA:") and not ja_line:
+            ja_line = s
+        elif s.startswith("EN:") and not en_line:
+            en_line = s
+    if not ja_line:
+        ja_line = "JA: " + text.replace("\n", " ").strip()
+    lines = [ja_line]
+    if expect_en and en_line:
+        lines.append(en_line)
+    with print_lock:
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        for line in lines:
+            print(f"  {line}")
+        print("-" * 60)
+        if output_file:
+            for line in lines:
+                output_file.write(line + "\n")
+            output_file.write("\n")
+            output_file.flush()
+
+
+async def meter(state, print_lock, transcribe_q):
+    while not state.stopping:
+        level = min(int(state.latest_rms / 0.05 * METER_WIDTH), METER_WIDTH)
+        bar = "#" * level + " " * (METER_WIDTH - level)
+        qsize = transcribe_q.qsize()
+        pending = f" q={qsize}" if qsize > 0 else ""
+        dropped = f" drop={state.dropped}" if state.dropped else ""
+        status = "LIVE" if state.connected else "..."
+        with print_lock:
+            sys.stdout.write(f"\r  [{bar}] {state.latest_rms:.4f} * {status}{pending}{dropped}")
+            sys.stdout.flush()
+        await asyncio.sleep(METER_INTERVAL)
+
+
+async def run_session(args, api_key):
+    client = genai.Client(api_key=api_key)
+
+    dev_info = sd.query_devices(kind="input")
+    native_rate = int(dev_info["default_samplerate"])
+    block_size = int(native_rate * BLOCK_DURATION)
+    print(f"Mic: {native_rate} Hz (streaming at {SEND_RATE} Hz to Live API)")
+
+    expect_en = not args.no_translate
+    sys_inst = SYSTEM_INSTRUCTION_TRANSLATE if expect_en else SYSTEM_INSTRUCTION_TRANSCRIBE
+
+    config = types.LiveConnectConfig(
+        response_modalities=["AUDIO"],
+        output_audio_transcription=types.AudioTranscriptionConfig(),
+        system_instruction=types.Content(parts=[types.Part(text=sys_inst)]),
+    )
+
+    state = State()
+    loop = asyncio.get_running_loop()
+    audio_q: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
+    print_lock = asyncio.Lock()
+
+    output_file = open(args.output, "a", encoding="utf-8") if args.output else None
+    if output_file:
+        print(f"Writing transcriptions to: {args.output}")
+
+    def audio_callback(indata, frames, time_info, status):
+        if status:
+            sys.stderr.write(f"\n  audio: {status}\n")
+        mono = indata[:, 0] if indata.ndim > 1 else indata
+        state.latest_rms = float(np.sqrt(np.mean(mono**2)))
+        down = resample(mono, native_rate, SEND_RATE)
+        pcm = pcm16_bytes(down)
+
+        def _put():
+            try:
+                audio_q.put_nowait(pcm)
+            except asyncio.QueueFull:
+                state.dropped += 1
+
+        loop.call_soon_threadsafe(_put)
+
+    print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
+    print("-" * 60)
+
+    stream = sd.InputStream(
+        samplerate=native_rate,
+        channels=1,
+        dtype="float32",
+        blocksize=block_size,
+        latency="high",
+        callback=audio_callback,
+    )
+
+    try:
+        async with client.aio.live.connect(model=args.model, config=config) as session:
+            state.connected = True
+            stream.start()
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(sender(session, audio_q, state))
+                tg.create_task(
+                    receiver(session, state, print_lock, output_file, expect_en)
+                )
+                tg.create_task(meter(state, print_lock, audio_q))
+                await _wait_for_stop(state)
+                await audio_q.put(None)
+                try:
+                    await session.send_realtime_input(audio_stream_end=True)
+                except Exception:
+                    pass
+    finally:
+        state.connected = False
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+        if output_file:
+            output_file.close()
+        sys.stdout.write("\n")
+
+
+async def _wait_for_stop(state):
+    loop = asyncio.get_running_loop()
+    stop = asyncio.Event()
+
+    def _handle():
+        state.stopping = True
+        stop.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _handle)
+        except NotImplementedError:
+            pass
+    await stop.wait()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        default="gemini-3-flash-preview",
-        help="Gemini model name (default: gemini-3-flash-preview).",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=NUM_WORKERS,
-        help=f"Concurrent API workers (default: {NUM_WORKERS}).",
-    )
-    parser.add_argument(
-        "--max-chunk",
-        type=float,
-        default=MAX_CHUNK_DURATION,
-        help=f"Max seconds before force-sending (default: {MAX_CHUNK_DURATION}).",
+        default="gemini-3.1-flash-live-preview",
+        help="Gemini Live model (default: gemini-3.1-flash-live-preview).",
     )
     parser.add_argument(
         "--no-translate",
@@ -166,7 +252,7 @@ def main():
         "--output",
         type=str,
         default=None,
-        help="Write transcriptions to this text file.",
+        help="Append transcriptions to a text file.",
     )
     args = parser.parse_args()
 
@@ -175,95 +261,13 @@ def main():
         print("Error: Set the GEMINI_API_KEY environment variable.", file=sys.stderr)
         sys.exit(1)
 
-    client = genai.Client(api_key=api_key)
-    print(f"Model: {args.model} | Workers: {args.workers} | Max chunk: {args.max_chunk}s\n")
-
-    dev_info = sd.query_devices(kind="input")
-    native_rate = int(dev_info["default_samplerate"])
-    block_size = int(native_rate * BLOCK_DURATION)
-    print(f"Mic: {native_rate} Hz (sending at {SEND_RATE} Hz)")
-
-    audio_queue = queue.Queue()
-    transcribe_queue = queue.Queue(maxsize=args.workers * 2)
-    print_lock = threading.Lock()
-    max_chunk_blocks = int(args.max_chunk / BLOCK_DURATION)
-    overlap_blocks = int(OVERLAP_DURATION / BLOCK_DURATION)
-
-    # Shared rolling context for continuity between chunks
-    context = {"history": [], "lock": threading.Lock()}
-
-    output_file = open(args.output, "a", encoding="utf-8") if args.output else None
-    if output_file:
-        print(f"Writing transcriptions to: {args.output}")
-
-    translate = not args.no_translate
-
-    for _ in range(args.workers):
-        t = threading.Thread(
-            target=transcription_worker,
-            args=(client, args.model, transcribe_queue, print_lock, context, output_file, translate),
-            daemon=True,
-        )
-        t.start()
-
-    def audio_callback(indata, frames, time, status):
-        if status:
-            print(f"  audio: {status}", file=sys.stderr)
-        audio_queue.put(indata.copy())
-
-    print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
-    print("-" * 60)
-
-    def send_chunk(buf):
-        audio_data = np.concatenate(buf).flatten()
-        audio_16k = resample(audio_data, native_rate, SEND_RATE)
-        try:
-            transcribe_queue.put_nowait(audio_16k)
-        except queue.Full:
-            pass
+    print(f"Model: {args.model} (Live API)")
 
     try:
-        with sd.InputStream(
-            samplerate=native_rate,
-            channels=1,
-            dtype="float32",
-            blocksize=block_size,
-            latency="high",
-            callback=audio_callback,
-        ):
-            audio_buffer = []
-            block_count = 0
-
-            while True:
-                block = audio_queue.get()
-                rms = np.sqrt(np.mean(block**2))
-
-                # Level meter
-                level = min(int(rms / 0.05 * METER_WIDTH), METER_WIDTH)
-                bar = "#" * level + " " * (METER_WIDTH - level)
-                qsize = transcribe_queue.qsize()
-                pending = f" q={qsize}" if qsize > 0 else ""
-                with print_lock:
-                    sys.stdout.write(
-                        f"\r  [{bar}] {rms:.4f} * REC{pending}"
-                    )
-                    sys.stdout.flush()
-
-                audio_buffer.append(block)
-                block_count += 1
-
-                if block_count >= max_chunk_blocks:
-                    send_chunk(audio_buffer)
-                    if len(audio_buffer) > overlap_blocks:
-                        audio_buffer = audio_buffer[-overlap_blocks:]
-                    else:
-                        audio_buffer.clear()
-                    block_count = overlap_blocks
-
+        asyncio.run(run_session(args, api_key))
     except KeyboardInterrupt:
-        if output_file:
-            output_file.close()
-        print("\nStopped.")
+        pass
+    print("Stopped.")
 
 
 if __name__ == "__main__":

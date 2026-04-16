@@ -1,12 +1,12 @@
 # live-stt
 
-Real-time Japanese speech-to-text transcription with English translation, powered by the Gemini API.
+Real-time Japanese speech-to-text transcription with English translation, powered by the Gemini Live API.
 
-Captures microphone audio in fixed-length chunks and sends them to Gemini for transcription (and optionally translation). Displays Japanese transcriptions alongside English translations as you speak.
+Streams microphone audio over a persistent bidirectional WebSocket session to Gemini and prints the Japanese transcription alongside the English translation as you speak.
 
 ## Requirements
 
-- Python >= 3.10 (developed on 3.14)
+- Python >= 3.11 (developed on 3.14)
 - A working microphone
 - System audio libraries for `sounddevice` (PortAudio)
   - Debian/Ubuntu: `sudo apt install libportaudio2`
@@ -40,20 +40,15 @@ python live_stt.py
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--model MODEL` | `gemini-3-flash-preview` | Gemini model to use for transcription |
-| `--workers INT` | `5` | Number of concurrent API worker threads |
-| `--max-chunk FLOAT` | `5.0` | Seconds of audio per chunk sent to the API |
+| `--model MODEL` | `gemini-3.1-flash-live-preview` | Gemini Live model (must support `bidiGenerateContent`) |
 | `--no-translate` | off | Transcribe only (no English translation) |
 | `-o`, `--output FILE` | none | Append transcriptions to a text file |
 
 ### Examples
 
 ```sh
-# Use a specific model
-live-stt --model gemini-2.0-flash
-
-# Fewer workers, longer chunks
-live-stt --workers 2 --max-chunk 10
+# Transcribe + translate with the default Live model
+live-stt
 
 # Transcribe only (no English translation)
 live-stt --no-translate
@@ -66,27 +61,34 @@ live-stt --no-translate -o transcript.txt
 
 ### Audio Pipeline
 
-1. **Capture** - `sounddevice` records from the default input device at its native sample rate.
-2. **Chunk** - Audio is buffered in 100ms blocks until `--max-chunk` seconds are collected.
-3. **Resample** - Buffered audio is downsampled to 16 kHz via linear interpolation before sending.
-4. **Overlap** - The last 1 second of each chunk is retained as the start of the next, preserving context across boundaries.
-5. **Transcribe** - WAV-encoded audio is sent to the Gemini API with a prompt requesting `JA:` / `EN:` formatted output.
+1. **Capture** - `sounddevice` records from the default input device at its native sample rate, in 100 ms blocks.
+2. **Resample** - Each block is downsampled to 16 kHz via linear interpolation and converted to 16-bit PCM.
+3. **Stream** - PCM bytes are pushed onto an asyncio queue and sent to Gemini over a single persistent Live API session via `send_realtime_input`.
+4. **Transcribe** - A system instruction configures the model as a live interpreter. Gemini's native voice-activity detection decides turn boundaries; `output_audio_transcription` returns text for each utterance.
+5. **Display** - Complete JA / EN blocks are printed on `turn_complete`.
 
-### Concurrency
+### Session Model
 
-A pool of `--workers` background threads consumes from a bounded work queue. Each worker builds a prompt that includes up to 3 previous Japanese transcription lines as rolling context for continuity.
+A single `client.aio.live.connect(...)` context owns the session. Three asyncio tasks run inside a `TaskGroup`:
+
+- **sender** – drains the audio queue and forwards PCM chunks to Gemini.
+- **receiver** – consumes `LiveServerMessage` events, accumulates output-transcription deltas, emits each turn as a block.
+- **meter** – refreshes the terminal level meter every 100 ms.
+
+Native-audio Live models return the `AUDIO` modality; we read `output_audio_transcription.text` and discard the audio bytes. Session context (conversation history) is maintained server-side, so no rolling-context buffer is needed on the client.
 
 ### Display
 
 A live audio level meter is rendered in the terminal:
 
 ```
-  [#########                               ] 0.0082 * REC q=1
+  [#########                               ] 0.0082 * LIVE q=1
 ```
 
 - `#` bars show current RMS level
-- `* REC` indicates audio is being captured
-- `q=N` shows pending items in the transcription queue
+- `* LIVE` indicates the session is connected
+- `q=N` shows pending audio chunks in the send queue
+- `drop=N` appears if chunks were dropped (queue saturation)
 
 Completed transcriptions print above the meter:
 
@@ -113,12 +115,10 @@ Defined at the top of `live_stt.py` and tunable for different environments:
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `SEND_RATE` | 16000 | Target sample rate sent to the API |
+| `SEND_RATE` | 16000 | Target sample rate streamed to the Live API |
 | `BLOCK_DURATION` | 0.1s | Size of each audio capture block |
-| `MAX_CHUNK_DURATION` | 5.0s | Seconds of audio per chunk sent to the API |
-| `OVERLAP_DURATION` | 1.0s | Overlap retained between consecutive chunks |
-| `NUM_WORKERS` | 5 | Default concurrent API threads |
-| `CONTEXT_SIZE` | 3 | Rolling context window (previous transcriptions) |
+| `METER_INTERVAL` | 0.1s | Level-meter refresh rate |
+| `AUDIO_QUEUE_MAX` | 100 | Max buffered 100 ms blocks before dropping (≈10 s) |
 
 ## Utilities
 
@@ -132,6 +132,7 @@ python list_live_models.py
 
 ## Development Notes
 
-- The prompts `PROMPT_TRANSLATE` and `PROMPT_TRANSCRIBE` can be edited to support other source languages by changing the transcription instructions.
-- Worker threads are daemonized and shut down automatically on `Ctrl+C`.
-- The transcription queue has a bounded size of `workers * 2`. When full, new chunks are silently dropped to avoid unbounded memory growth.
+- The system instructions `SYSTEM_INSTRUCTION_TRANSLATE` / `SYSTEM_INSTRUCTION_TRANSCRIBE` can be edited to support other source languages.
+- `Ctrl+C` triggers a signal handler that flushes the audio queue, sends `audio_stream_end=True`, and closes the Live session via the `async with` exit.
+- Audio-only Live sessions cap at 15 minutes. On expiry, the process disconnects; a future improvement is to reconnect via `SessionResumptionConfig`.
+- Gemini's native-audio Live models only emit the `AUDIO` response modality. Text arrives via `output_audio_transcription`, but audio-output tokens are still billed (~$0.018/min at list price).
