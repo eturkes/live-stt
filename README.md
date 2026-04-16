@@ -2,7 +2,7 @@
 
 Real-time Japanese speech-to-text transcription with English translation, powered by the Gemini API.
 
-Captures microphone audio, detects speech using RMS-based voice activity detection, and sends audio chunks to Gemini for transcription and translation. Displays Japanese transcriptions alongside English translations as you speak.
+Captures microphone audio in fixed-length chunks and sends them to Gemini for transcription (and optionally translation). Displays Japanese transcriptions alongside English translations as you speak.
 
 ## Requirements
 
@@ -29,7 +29,7 @@ echo 'GEMINI_API_KEY=your-key-here' > .env
 ## Usage
 
 ```sh
-# Run with defaults (gemini-3-flash-preview, auto-calibrated threshold)
+# Run with defaults
 live-stt
 
 # Or run directly
@@ -41,9 +41,8 @@ python live_stt.py
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--model MODEL` | `gemini-3-flash-preview` | Gemini model to use for transcription |
-| `--threshold FLOAT` | auto-calibrate | RMS silence threshold; if omitted, 1 second of ambient noise is recorded to set it automatically |
 | `--workers INT` | `5` | Number of concurrent API worker threads |
-| `--max-chunk FLOAT` | `5.0` | Maximum seconds of audio before force-sending to the API |
+| `--max-chunk FLOAT` | `5.0` | Seconds of audio per chunk sent to the API |
 | `--no-translate` | off | Transcribe only (no English translation) |
 | `-o`, `--output FILE` | none | Append transcriptions to a text file |
 
@@ -52,9 +51,6 @@ python live_stt.py
 ```sh
 # Use a specific model
 live-stt --model gemini-2.0-flash
-
-# Manual silence threshold (skip calibration)
-live-stt --threshold 0.01
 
 # Fewer workers, longer chunks
 live-stt --workers 2 --max-chunk 10
@@ -71,9 +67,9 @@ live-stt --no-translate -o transcript.txt
 ### Audio Pipeline
 
 1. **Capture** - `sounddevice` records from the default input device at its native sample rate.
-2. **VAD** - Each 100ms block is measured by RMS amplitude against a silence threshold. Speech onset starts buffering; silence lasting >= 0.8s triggers a send.
+2. **Chunk** - Audio is buffered in 100ms blocks until `--max-chunk` seconds are collected.
 3. **Resample** - Buffered audio is downsampled to 16 kHz via linear interpolation before sending.
-4. **Force-cut** - Continuous speech exceeding `--max-chunk` seconds is force-sent with a 1-second overlap to preserve context across boundaries.
+4. **Overlap** - The last 1 second of each chunk is retained as the start of the next, preserving context across boundaries.
 5. **Transcribe** - WAV-encoded audio is sent to the Gemini API with a prompt requesting `JA:` / `EN:` formatted output.
 
 ### Concurrency
@@ -85,12 +81,11 @@ A pool of `--workers` background threads consumes from a bounded work queue. Eac
 A live audio level meter is rendered in the terminal:
 
 ```
-  [#########|                               ] 0.0082 * REC q=1
+  [#########                               ] 0.0082 * REC q=1
 ```
 
 - `#` bars show current RMS level
-- `|` marks the silence threshold
-- `* REC` indicates speech is being recorded
+- `* REC` indicates audio is being captured
 - `q=N` shows pending items in the transcription queue
 
 Completed transcriptions print above the meter:
@@ -120,10 +115,8 @@ Defined at the top of `live_stt.py` and tunable for different environments:
 |----------|-------|---------|
 | `SEND_RATE` | 16000 | Target sample rate sent to the API |
 | `BLOCK_DURATION` | 0.1s | Size of each audio capture block |
-| `SILENCE_DURATION` | 0.8s | Silence needed to trigger a send |
-| `MIN_SPEECH_DURATION` | 0.3s | Minimum speech length to bother transcribing |
-| `MAX_CHUNK_DURATION` | 5.0s | Force-send ceiling for continuous speech |
-| `OVERLAP_DURATION` | 1.0s | Overlap retained between force-cut chunks |
+| `MAX_CHUNK_DURATION` | 5.0s | Seconds of audio per chunk sent to the API |
+| `OVERLAP_DURATION` | 1.0s | Overlap retained between consecutive chunks |
 | `NUM_WORKERS` | 5 | Default concurrent API threads |
 | `CONTEXT_SIZE` | 3 | Rolling context window (previous transcriptions) |
 
@@ -140,6 +133,5 @@ python list_live_models.py
 ## Development Notes
 
 - The prompts `PROMPT_TRANSLATE` and `PROMPT_TRANSCRIBE` can be edited to support other source languages by changing the transcription instructions.
-- When `--threshold` is not provided, the program auto-calibrates by recording 1 second of ambient noise and setting the threshold above it.
 - Worker threads are daemonized and shut down automatically on `Ctrl+C`.
 - The transcription queue has a bounded size of `workers * 2`. When full, new chunks are silently dropped to avoid unbounded memory growth.

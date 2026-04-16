@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """List all Gemini models that support the Live API (bidiGenerateContent)."""
-import os, sys
+import os
+import sys
+
 from dotenv import load_dotenv
 from google import genai
 

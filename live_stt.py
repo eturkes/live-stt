@@ -22,9 +22,7 @@ load_dotenv()
 
 SEND_RATE = 16000  # downsample to 16kHz before sending
 BLOCK_DURATION = 0.1  # seconds per audio block
-SILENCE_DURATION = 0.8  # seconds of silence to trigger transcription
-MIN_SPEECH_DURATION = 0.3  # minimum speech length to transcribe
-MAX_CHUNK_DURATION = 5.0  # force-send after this many seconds
+MAX_CHUNK_DURATION = 5.0  # send chunk after this many seconds
 OVERLAP_DURATION = 1.0  # overlap between force-cut chunks (seconds)
 METER_WIDTH = 40
 NUM_WORKERS = 5
@@ -78,10 +76,9 @@ def transcription_worker(client, model_name, work_queue, print_lock, context, ou
     base_prompt = PROMPT_TRANSLATE if translate else PROMPT_TRANSCRIBE
     continuation = "Now transcribe and translate the new audio clip above." if translate else "Now transcribe the new audio clip above."
     while True:
-        job = work_queue.get()
-        if job is None:
+        audio_data = work_queue.get()
+        if audio_data is None:
             break
-        _, audio_data = job
         try:
             wav_bytes = audio_to_wav_bytes(audio_data, SEND_RATE)
 
@@ -140,29 +137,12 @@ def transcription_worker(client, model_name, work_queue, print_lock, context, ou
                 print("-" * 60)
 
 
-def calibrate_threshold(native_rate):
-    """Record 1 second of ambient noise and set threshold above it."""
-    print("Calibrating... stay quiet for 1 second.")
-    cal = sd.rec(int(native_rate * 1), samplerate=native_rate, channels=1, dtype="float32")
-    sd.wait()
-    ambient = np.sqrt(np.mean(cal**2))
-    threshold = max(ambient * 3, 0.003)
-    print(f"Ambient noise: {ambient:.4f} | Threshold: {threshold:.4f}")
-    return threshold
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
         default="gemini-3-flash-preview",
         help="Gemini model name (default: gemini-3-flash-preview).",
-    )
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=None,
-        help="RMS silence threshold (default: auto-calibrate).",
     )
     parser.add_argument(
         "--workers",
@@ -203,13 +183,9 @@ def main():
     block_size = int(native_rate * BLOCK_DURATION)
     print(f"Mic: {native_rate} Hz (sending at {SEND_RATE} Hz)")
 
-    threshold = args.threshold if args.threshold is not None else calibrate_threshold(native_rate)
-
     audio_queue = queue.Queue()
     transcribe_queue = queue.Queue(maxsize=args.workers * 2)
     print_lock = threading.Lock()
-    silence_blocks_needed = int(SILENCE_DURATION / BLOCK_DURATION)
-    min_speech_blocks = int(MIN_SPEECH_DURATION / BLOCK_DURATION)
     max_chunk_blocks = int(args.max_chunk / BLOCK_DURATION)
     overlap_blocks = int(OVERLAP_DURATION / BLOCK_DURATION)
 
@@ -238,15 +214,11 @@ def main():
     print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
     print("-" * 60)
 
-    seq_counter = 0
-
     def send_chunk(buf):
-        nonlocal seq_counter
         audio_data = np.concatenate(buf).flatten()
         audio_16k = resample(audio_data, native_rate, SEND_RATE)
         try:
-            transcribe_queue.put_nowait((seq_counter, audio_16k))
-            seq_counter += 1
+            transcribe_queue.put_nowait(audio_16k)
         except queue.Full:
             pass
 
@@ -260,9 +232,7 @@ def main():
             callback=audio_callback,
         ):
             audio_buffer = []
-            silence_blocks = 0
-            speech_detected = False
-            speech_blocks = 0
+            block_count = 0
 
             while True:
                 block = audio_queue.get()
@@ -270,48 +240,25 @@ def main():
 
                 # Level meter
                 level = min(int(rms / 0.05 * METER_WIDTH), METER_WIDTH)
-                thresh_pos = min(int(threshold / 0.05 * METER_WIDTH), METER_WIDTH)
                 bar = "#" * level + " " * (METER_WIDTH - level)
-                bar_list = list(bar)
-                if thresh_pos < METER_WIDTH:
-                    bar_list[thresh_pos] = "|"
-                indicator = "* REC" if speech_detected else "     "
                 qsize = transcribe_queue.qsize()
                 pending = f" q={qsize}" if qsize > 0 else ""
                 with print_lock:
                     sys.stdout.write(
-                        f"\r  [{''.join(bar_list)}] {rms:.4f} {indicator}{pending}"
+                        f"\r  [{bar}] {rms:.4f} * REC{pending}"
                     )
                     sys.stdout.flush()
 
-                if rms > threshold:
-                    audio_buffer.append(block)
-                    silence_blocks = 0
-                    speech_detected = True
-                    speech_blocks += 1
+                audio_buffer.append(block)
+                block_count += 1
 
-                    # Force-send if chunk is too long, keep overlap
-                    if speech_blocks >= max_chunk_blocks:
-                        if len(audio_buffer) >= min_speech_blocks:
-                            send_chunk(audio_buffer)
-                        # Keep last N blocks as overlap for next chunk
-                        if len(audio_buffer) > overlap_blocks:
-                            audio_buffer = audio_buffer[-overlap_blocks:]
-                        else:
-                            audio_buffer.clear()
-                        speech_blocks = overlap_blocks
-
-                elif speech_detected:
-                    audio_buffer.append(block)
-                    silence_blocks += 1
-
-                    if silence_blocks >= silence_blocks_needed:
-                        if len(audio_buffer) >= min_speech_blocks:
-                            send_chunk(audio_buffer)
+                if block_count >= max_chunk_blocks:
+                    send_chunk(audio_buffer)
+                    if len(audio_buffer) > overlap_blocks:
+                        audio_buffer = audio_buffer[-overlap_blocks:]
+                    else:
                         audio_buffer.clear()
-                        silence_blocks = 0
-                        speech_detected = False
-                        speech_blocks = 0
+                    block_count = overlap_blocks
 
     except KeyboardInterrupt:
         if output_file:
