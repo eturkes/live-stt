@@ -1,55 +1,28 @@
 # Development Plan: live-stt
 
-Single-file Python tool (`live_stt.py`, ~270 lines). The trajectory — especially commit `3930a8e` which stripped VAD and calibration — favors simplicity. This plan respects that: no new abstractions, frameworks, or enterprise-y patterns. Items are sized for one focused pass each.
+Single-file Python tool (`live_stt.py`). The trajectory favors simplicity: no new abstractions, frameworks, or enterprise-y patterns. Items are sized for one focused pass each.
 
-## Tier 1 — Quick wins
+## Shipped
 
-### T1.1 — Retry on API errors with backoff
-Worker at `live_stt.py:133` silently drops chunks on exception. Wrap `generate_content_stream` in a retry loop (3 attempts, 1s/2s/4s backoff). Preserves continuity when Gemini throttles or returns transient 5xx.
+- **T1.1 — Exponential reconnect backoff.** Outer reconnect loop now doubles on each failure (1s → 30s cap) and resets to the minimum once a session stays up for `RECONNECT_RESET_AFTER_S`. The original framing targeted the pre-Live-API REST worker and was moot after T3.1; this is the equivalent resilience guarantee for the persistent session.
+- **T1.2 — Timestamped output file.** Each block written via `-o` is prefixed with an ISO-8601 local timestamp. Terminal display unchanged.
+- **T1.3 — Audio device selection.** `--list-devices` prints `sd.query_devices()` output and exits; `--device N` selects the input by index and is threaded through `sd.query_devices()` and `sd.InputStream`.
+- **T1.4 — Graceful shutdown.** Receiver flushes its partial-turn buffer on stop via a `finally`, so a mid-utterance Ctrl+C still persists what the model already transcribed. Output file close and stream close remain in the outer `finally`.
+- **T2.1 — Tests for pure functions.** `tests/test_audio.py` covers `resample()` (identity, halving, upsampling, endpoint handling), `pcm16_bytes()` (round-trip, clipping, length), and `emit_block()` parsing (JA-only, JA+EN, fallback on unlabeled text, timestamp prefix). Run with `uv run pytest`.
+- **T3.1 — Gemini Live API.** Full rewrite onto `client.aio.live.connect` with `send_realtime_input`. Removed the REST chunking/overlap machinery.
+- **T3.2 — Long-session memory.** Outer reconnect loop + `SessionResumptionConfig(transparent=True)` + `ContextWindowCompressionConfig(sliding_window=SlidingWindow())` + fix for python-genai#1224. Sessions run indefinitely with preserved context across reconnects (2h resumption handle TTL). Deferred sub-tasks: client-side transcript replay (Approach B, needs disk persistence) and entity-dict glossary injection (Approach C, 18% cost overhead for insurance against drift modes we haven't observed).
 
-**Acceptance:** Transient API errors no longer drop audio; permanent errors still surface via the existing error print path after retries are exhausted.
-
-### T1.2 — Timestamped output file
-`live_stt.py:128-132` writes bare JA/EN lines. Prepend ISO-8601 timestamp to each block so the file is useful as a post-session log.
-
-**Acceptance:** Output file has `[2026-04-16T14:22:07]` (or similar) prefix per block. Terminal display unchanged.
-
-### T1.3 — Audio device selection
-Add `--device` flag; pass to `sd.InputStream` at `live_stt.py:226`. Include `--list-devices` mode that prints `sd.query_devices()` and exits.
-
-**Acceptance:** `live-stt --list-devices` prints a numbered list; `live-stt --device 3` uses that device.
-
-### T1.4 — Graceful shutdown
-On Ctrl+C (`live_stt.py:263`), push sentinel `None` per worker and `join()` with a bounded timeout so in-flight transcriptions finish. Move `output_file.close()` into a `finally` so crashes also flush.
-
-**Acceptance:** In-flight API requests complete before the process exits; output file always closes cleanly.
-
-## Tier 2 — Quality / correctness
-
-### T2.1 — Tests for pure functions
-`resample()` and `audio_to_wav_bytes()` are pure and trivially testable. Add `tests/test_audio.py`, wire `pytest` into a dependency group in `pyproject.toml`.
-
-**Acceptance:** `uv run pytest` passes. At minimum: resample identity (same rate in/out), resample halving (32k→16k length), WAV round-trip (bytes parse back to same samples).
+## Open
 
 ### T2.2 — Parameterize source language
-README line 135 already flags this. Add `--language` (default `japanese`) and template it into both prompts. Decide whether to keep literal `JA:` label or generalize.
+Add `--language` (default `japanese`) and template it into both system prompts. Decide whether to keep the literal `JA:` label or generalize to a dynamic prefix (`KO:`, `ZH:`, …).
 
 **Acceptance:** `live-stt --language korean` produces Korean transcription with matching output label.
 
 ### T2.3 — Structured logging for errors
-Replace `print(f"  [error: {e}]")` at `live_stt.py:136` with `logging` to stderr — lets users pipe `-o` output cleanly.
+Replace the ad-hoc `sys.stderr.write(...)` calls (send/recv/session errors) with `logging` to stderr so users can pipe `-o` output cleanly while still seeing diagnostics.
 
 **Acceptance:** Stdout/stderr cleanly separable; existing console UX unchanged when run in a terminal.
-
-## Tier 3 — Bigger bets (decide before starting)
-
-### T3.1 — Gemini Live API (bidirectional streaming)
-`list_live_models.py` hints this was anticipated. Likely cuts latency 2–5× and removes the chunking/overlap machinery entirely. Substantial rewrite (REST worker pool → single persistent session), different error surface, possibly different pricing. Run a timeboxed 4-hour spike before committing.
-
-### T3.2 — Long-session memory
-**Partially done.** The original premise (client-side `CONTEXT_SIZE=3` ring drift) was obsoleted by the T3.1 rewrite — the Live API holds conversation state server-side. What remained was the 15-minute audio-only session cap. Spike investigation (see `spike/t3_2/REPORT.md`) landed the baseline fix: outer reconnect loop + `SessionResumptionConfig(transparent=True)` + `ContextWindowCompressionConfig(sliding_window=SlidingWindow())` + fix for python-genai#1224 in the receiver. Sessions now run indefinitely with preserved context across reconnects (2h resumption handle TTL).
-
-**Deferred**: client-side transcript replay (Approach B) and entity-dict glossary injection (Approach C) were prototyped and benchmarked but not shipped. B requires disk-persistence of transcripts to be useful; C adds 18% API cost overhead for insurance against a drift mode we haven't observed in practice. Revisit either if the user reports name/topic drift on real multi-hour sessions or wants cross-restart history.
 
 ## Out of scope (explicit)
 
@@ -57,10 +30,5 @@ Config files, multi-mic mixing, VAD reintroduction, speaker diarization, web UI,
 
 ## Decisions needed before executing
 
-1. **Live API or not?** T3.1 reshapes the project. If going there, T1.1 and overlap code become moot — do the spike first.
-2. **Language scope.** If only Japanese, skip T2.2. Otherwise do it before hardcoding more JA-isms.
-3. **Test discipline.** T2.1 only pays off if tests actually run — add `uv run pytest` to a pre-commit hook or accept it's aspirational.
-
-## Suggested first PR
-
-Bundle **T1.1 + T1.4** — shared worker code path, both prevent lost transcriptions, both small. One PR, shippable in an afternoon.
+1. **Language scope.** If only Japanese, skip T2.2. Otherwise do it before hardcoding more JA-isms.
+2. **Test discipline.** T2.1 tests only pay off if they actually run — wire `uv run pytest` into a pre-commit hook or accept it's aspirational.

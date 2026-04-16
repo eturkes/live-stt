@@ -42,7 +42,9 @@ python live_stt.py
 |------|---------|-------------|
 | `--model MODEL` | `gemini-3.1-flash-live-preview` | Gemini Live model (must support `bidiGenerateContent`) |
 | `--no-translate` | off | Transcribe only (no English translation) |
-| `-o`, `--output FILE` | none | Append transcriptions to a text file |
+| `-o`, `--output FILE` | none | Append transcriptions to a text file (each block prefixed with an ISO-8601 timestamp) |
+| `--device N` | system default | Input device index (see `--list-devices`) |
+| `--list-devices` | off | Print audio devices and exit |
 
 ### Examples
 
@@ -55,6 +57,10 @@ live-stt --no-translate
 
 # Save transcriptions to a file
 live-stt --no-translate -o transcript.txt
+
+# List audio devices, then use device #3
+live-stt --list-devices
+live-stt --device 3
 ```
 
 ## How It Works
@@ -113,10 +119,20 @@ Completed transcriptions print above the meter:
 live-stt/
 ├── live_stt.py          # Main application
 ├── list_live_models.py  # Utility: list Gemini models supporting the Live API
+├── tests/               # Pytest suite for pure functions
 ├── pyproject.toml       # Project metadata and dependencies
 ├── uv.lock              # Locked dependency versions
 └── .venv/               # Virtual environment (not committed)
 ```
+
+### Testing
+
+```sh
+uv run pytest
+```
+
+Tests cover the pure audio helpers (`resample`, `pcm16_bytes`) and the JA/EN
+parsing in `emit_block`. No network or mic required.
 
 ## Key Constants
 
@@ -128,7 +144,9 @@ Defined at the top of `live_stt.py` and tunable for different environments:
 | `BLOCK_DURATION` | 0.1s | Size of each audio capture block |
 | `METER_INTERVAL` | 0.1s | Level-meter refresh rate |
 | `AUDIO_QUEUE_MAX` | 100 | Max buffered 100 ms blocks before dropping (≈10 s) |
-| `RECONNECT_BACKOFF_S` | 1.0s | Delay between reconnect attempts after a session closes |
+| `RECONNECT_BACKOFF_MIN_S` | 1.0s | Initial delay between reconnect attempts (doubles on each failure) |
+| `RECONNECT_BACKOFF_MAX_S` | 30.0s | Cap on reconnect delay |
+| `RECONNECT_RESET_AFTER_S` | 10.0s | A session alive at least this long resets backoff to the minimum |
 
 ## Utilities
 

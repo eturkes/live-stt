@@ -10,6 +10,7 @@ import asyncio
 import os
 import signal
 import sys
+from datetime import datetime
 
 import numpy as np
 import sounddevice as sd
@@ -24,7 +25,9 @@ BLOCK_DURATION = 0.1
 METER_WIDTH = 40
 METER_INTERVAL = 0.1
 AUDIO_QUEUE_MAX = 100  # ~10s of 100ms blocks
-RECONNECT_BACKOFF_S = 1.0
+RECONNECT_BACKOFF_MIN_S = 1.0
+RECONNECT_BACKOFF_MAX_S = 30.0
+RECONNECT_RESET_AFTER_S = 10.0  # Session stable for this long resets backoff
 
 SYSTEM_INSTRUCTION_TRANSLATE = (
     "You are a live Japanese interpreter. You will hear continuous Japanese speech.\n"
@@ -103,37 +106,49 @@ async def receiver(session, state, output_file, expect_en):
     should_reconnect so the outer run_session loop opens a new session.
     """
     buf = ""
-    while not state.stopping and not state.should_reconnect:
-        try:
-            async for response in session.receive():
-                if response.go_away is not None:
-                    state.should_reconnect = True
-                    sys.stderr.write(
-                        f"\n  [go_away, reconnecting "
-                        f"(time_left={response.go_away.time_left})]\n"
-                    )
-                    return
-                if response.session_resumption_update is not None:
-                    u = response.session_resumption_update
-                    if u.resumable and u.new_handle:
-                        state.handle = u.new_handle
-                if response.server_content is None:
-                    continue
-                sc = response.server_content
-                if sc.output_transcription and sc.output_transcription.text:
-                    buf += sc.output_transcription.text
-                if sc.turn_complete or sc.generation_complete:
-                    text = buf.strip()
-                    buf = ""
-                    if not text or "[inaudible]" in text.lower():
+    try:
+        while not state.stopping and not state.should_reconnect:
+            try:
+                async for response in session.receive():
+                    if response.go_away is not None:
+                        state.should_reconnect = True
+                        sys.stderr.write(
+                            f"\n  [go_away, reconnecting "
+                            f"(time_left={response.go_away.time_left})]\n"
+                        )
+                        return
+                    if response.session_resumption_update is not None:
+                        u = response.session_resumption_update
+                        if u.resumable and u.new_handle:
+                            state.handle = u.new_handle
+                    if response.server_content is None:
                         continue
-                    emit_block(text, output_file, expect_en)
-        except Exception as e:
-            if state.stopping:
+                    sc = response.server_content
+                    if sc.output_transcription and sc.output_transcription.text:
+                        buf += sc.output_transcription.text
+                    if sc.turn_complete or sc.generation_complete:
+                        text = buf.strip()
+                        buf = ""
+                        if not text or "[inaudible]" in text.lower():
+                            continue
+                        emit_block(text, output_file, expect_en)
+            except Exception as e:
+                if state.stopping:
+                    return
+                sys.stderr.write(f"\n  [recv error: {e}]\n")
+                state.should_reconnect = True
                 return
-            sys.stderr.write(f"\n  [recv error: {e}]\n")
-            state.should_reconnect = True
-            return
+    finally:
+        # Flush any in-flight partial turn on shutdown so a mid-utterance Ctrl+C
+        # still persists what the model already transcribed. Skip on reconnect:
+        # the resumed session may re-emit the same turn.
+        if state.stopping:
+            tail = buf.strip()
+            if tail and "[inaudible]" not in tail.lower():
+                try:
+                    emit_block(tail, output_file, expect_en)
+                except Exception:
+                    pass
 
 
 def emit_block(text, output_file, expect_en):
@@ -156,6 +171,8 @@ def emit_block(text, output_file, expect_en):
         print(f"  {line}")
     print("-" * 60)
     if output_file:
+        ts = datetime.now().astimezone().isoformat(timespec="seconds")
+        output_file.write(f"[{ts}]\n")
         for line in lines:
             output_file.write(line + "\n")
         output_file.write("\n")
@@ -181,10 +198,14 @@ async def meter(state, transcribe_q):
 async def run_session(args, api_key):
     client = genai.Client(api_key=api_key)
 
-    dev_info = sd.query_devices(kind="input")
+    dev_info = sd.query_devices(args.device, kind="input")
     native_rate = int(dev_info["default_samplerate"])
     block_size = int(native_rate * BLOCK_DURATION)
-    print(f"Mic: {native_rate} Hz (streaming at {SEND_RATE} Hz to Live API)")
+    if args.device is not None:
+        dev_label = f"#{args.device} {dev_info['name']}"
+    else:
+        dev_label = dev_info["name"]
+    print(f"Mic: {dev_label} @ {native_rate} Hz (streaming at {SEND_RATE} Hz to Live API)")
 
     expect_en = not args.no_translate
     sys_inst = SYSTEM_INSTRUCTION_TRANSLATE if expect_en else SYSTEM_INSTRUCTION_TRANSCRIBE
@@ -219,6 +240,7 @@ async def run_session(args, api_key):
     print("-" * 60)
 
     stream = sd.InputStream(
+        device=args.device,
         samplerate=native_rate,
         channels=1,
         dtype="float32",
@@ -232,14 +254,17 @@ async def run_session(args, api_key):
 
     try:
         stream.start()
+        backoff = RECONNECT_BACKOFF_MIN_S
         while not state.stopping:
             state.should_reconnect = False
             config = build_config(sys_inst, state.handle)
+            connected_at = None
             try:
                 async with client.aio.live.connect(
                     model=args.model, config=config
                 ) as session:
                     state.connected = True
+                    connected_at = loop.time()
                     async with asyncio.TaskGroup() as tg:
                         tg.create_task(sender(session, audio_q, state))
                         tg.create_task(
@@ -261,7 +286,10 @@ async def run_session(args, api_key):
             if state.stopping:
                 break
             state.reconnect_count += 1
-            await asyncio.sleep(RECONNECT_BACKOFF_S)
+            if connected_at is not None and (loop.time() - connected_at) >= RECONNECT_RESET_AFTER_S:
+                backoff = RECONNECT_BACKOFF_MIN_S
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, RECONNECT_BACKOFF_MAX_S)
     finally:
         state.stopping = True
         meter_task.cancel()
@@ -316,7 +344,22 @@ def main():
         default=None,
         help="Append transcriptions to a text file.",
     )
+    parser.add_argument(
+        "--device",
+        type=int,
+        default=None,
+        help="Input device index (see --list-devices). Default: system default.",
+    )
+    parser.add_argument(
+        "--list-devices",
+        action="store_true",
+        help="List audio devices and exit.",
+    )
     args = parser.parse_args()
+
+    if args.list_devices:
+        print(sd.query_devices())
+        return
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
