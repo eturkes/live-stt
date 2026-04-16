@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Live Japanese speech-to-text with English translation using Gemini"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0 WITH LLVM-exception"
+license-files = ["LICENSE"]
 authors = [
     { name = "Emir Turkes", email = "emir.turkes@eturkes.com" },
 ]
