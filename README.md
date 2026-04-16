@@ -69,13 +69,21 @@ live-stt --no-translate -o transcript.txt
 
 ### Session Model
 
-A single `client.aio.live.connect(...)` context owns the session. Three asyncio tasks run inside a `TaskGroup`:
+`run_session` runs an outer reconnect loop around `client.aio.live.connect(...)`. Each connection owns a per-session `TaskGroup` with two tasks:
 
 - **sender** – drains the audio queue and forwards PCM chunks to Gemini.
-- **receiver** – consumes `LiveServerMessage` events, accumulates output-transcription deltas, emits each turn as a block.
-- **meter** – refreshes the terminal level meter every 100 ms.
+- **receiver** – consumes `LiveServerMessage` events, accumulates output-transcription deltas, emits each turn as a block, and handles `go_away` / session-resumption updates.
 
-Native-audio Live models return the `AUDIO` modality; we read `output_audio_transcription.text` and discard the audio bytes. Session context (conversation history) is maintained server-side, so no rolling-context buffer is needed on the client.
+One long-lived **meter** task sits outside the TaskGroup and refreshes the terminal level meter every 100 ms across reconnects.
+
+The config passed to every `connect()` enables:
+
+- `SessionResumptionConfig(transparent=True)` — the server issues a resumption handle (`new_handle`) as state accumulates. The client stores it and passes it back on the next connect, so conversation context carries across reconnects. Handles are valid for ~2 hours.
+- `ContextWindowCompressionConfig(sliding_window=SlidingWindow())` — lifts the 15-minute audio-only session cap. The server truncates oldest user turns when the context window fills; the system instruction is exempt.
+
+On `go_away` (sent ~60 s before the server will disconnect) or an unexpected close, the receiver flips `state.should_reconnect` and the outer loop reconnects with the stored handle. Audio keeps flowing into the bounded send-queue during the reconnect gap — up to ~10 s of buffered speech survives the swap.
+
+Native-audio Live models return the `AUDIO` modality; we read `output_audio_transcription.text` and discard the audio bytes. The in-session conversation history is maintained server-side; across reconnects, it's preserved by the resumption handle.
 
 ### Display
 
@@ -86,7 +94,8 @@ A live audio level meter is rendered in the terminal:
 ```
 
 - `#` bars show current RMS level
-- `* LIVE` indicates the session is connected
+- `* LIVE` indicates the session is connected; `* RECONNECT` during the reconnect gap
+- `rc=N` shows cumulative reconnect count (appears once non-zero)
 - `q=N` shows pending audio chunks in the send queue
 - `drop=N` appears if chunks were dropped (queue saturation)
 
@@ -119,6 +128,7 @@ Defined at the top of `live_stt.py` and tunable for different environments:
 | `BLOCK_DURATION` | 0.1s | Size of each audio capture block |
 | `METER_INTERVAL` | 0.1s | Level-meter refresh rate |
 | `AUDIO_QUEUE_MAX` | 100 | Max buffered 100 ms blocks before dropping (≈10 s) |
+| `RECONNECT_BACKOFF_S` | 1.0s | Delay between reconnect attempts after a session closes |
 
 ## Utilities
 
@@ -133,6 +143,7 @@ python list_live_models.py
 ## Development Notes
 
 - The system instructions `SYSTEM_INSTRUCTION_TRANSLATE` / `SYSTEM_INSTRUCTION_TRANSCRIBE` can be edited to support other source languages.
-- `Ctrl+C` triggers a signal handler that flushes the audio queue, sends `audio_stream_end=True`, and closes the Live session via the `async with` exit.
-- Audio-only Live sessions cap at 15 minutes. On expiry, the process disconnects; a future improvement is to reconnect via `SessionResumptionConfig`.
+- `Ctrl+C` triggers a signal handler that flips `state.stopping`, drains the audio queue, sends `audio_stream_end=True`, and exits the reconnect loop cleanly.
+- Audio-only Live sessions cap at 15 minutes of wall-clock per connection, and the underlying WebSocket times out at ~10 minutes. The reconnect loop + `SessionResumptionConfig` + `ContextWindowCompressionConfig` together lift both limits — sessions can run indefinitely while preserving conversation context across reconnects.
+- Resumption handles are valid for ~2 hours. After that, a reconnect starts fresh (conversation history lost) but transcription continues.
 - Gemini's native-audio Live models only emit the `AUDIO` response modality. Text arrives via `output_audio_transcription`, but audio-output tokens are still billed (~$0.018/min at list price).

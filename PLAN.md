@@ -47,7 +47,9 @@ Replace `print(f"  [error: {e}]")` at `live_stt.py:136` with `logging` to stderr
 `list_live_models.py` hints this was anticipated. Likely cuts latency 2–5× and removes the chunking/overlap machinery entirely. Substantial rewrite (REST worker pool → single persistent session), different error surface, possibly different pricing. Run a timeboxed 4-hour spike before committing.
 
 ### T3.2 — Long-session memory
-`CONTEXT_SIZE=3` causes topic/name drift past ~10 minutes. Could summarize older history into a single rolling "so far" line. Only worth it if long sessions matter in practice.
+**Partially done.** The original premise (client-side `CONTEXT_SIZE=3` ring drift) was obsoleted by the T3.1 rewrite — the Live API holds conversation state server-side. What remained was the 15-minute audio-only session cap. Spike investigation (see `spike/t3_2/REPORT.md`) landed the baseline fix: outer reconnect loop + `SessionResumptionConfig(transparent=True)` + `ContextWindowCompressionConfig(sliding_window=SlidingWindow())` + fix for python-genai#1224 in the receiver. Sessions now run indefinitely with preserved context across reconnects (2h resumption handle TTL).
+
+**Deferred**: client-side transcript replay (Approach B) and entity-dict glossary injection (Approach C) were prototyped and benchmarked but not shipped. B requires disk-persistence of transcripts to be useful; C adds 18% API cost overhead for insurance against a drift mode we haven't observed in practice. Revisit either if the user reports name/topic drift on real multi-hour sessions or wants cross-restart history.
 
 ## Out of scope (explicit)
 

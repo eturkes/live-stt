@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Live Japanese speech-to-text with English translation via the Gemini Live API.
+"""Prototype B — baseline + client-side transcript replay on cold reconnects.
 
-Opens a persistent bidirectional streaming session, pipes microphone audio to Gemini
-as raw PCM16, and prints the model's JA/EN transcription of what it says back.
+Deltas vs. prototype A:
+- State carries a shared `recent_blocks` deque (maxlen=20) of {"ja","en"} dicts.
+- emit_block appends to it after printing.
+- run_session detects cold connects (state.handle is None) and, if the deque
+  is non-empty, issues one send_client_content seed before the TaskGroup starts
+  sender/receiver so the seed precedes any realtime audio.
+- State carries seed_events + seed_bytes_sent instrumentation.
 """
 
 import argparse
 import asyncio
+import collections
 import os
 import signal
 import sys
@@ -23,8 +29,10 @@ SEND_RATE = 16000
 BLOCK_DURATION = 0.1
 METER_WIDTH = 40
 METER_INTERVAL = 0.1
-AUDIO_QUEUE_MAX = 100  # ~10s of 100ms blocks
+AUDIO_QUEUE_MAX = 100
 RECONNECT_BACKOFF_S = 1.0
+RECENT_BLOCKS_MAX = 20
+SEED_INTRO = "Continuing from prior session. Recent dialogue below for context."
 
 SYSTEM_INSTRUCTION_TRANSLATE = (
     "You are a live Japanese interpreter. You will hear continuous Japanese speech.\n"
@@ -66,6 +74,12 @@ class State:
         self.handle: str | None = None
         self.should_reconnect = False
         self.reconnect_count = 0
+        # Shared across reconnects for the process lifetime.
+        self.recent_blocks: collections.deque = collections.deque(maxlen=RECENT_BLOCKS_MAX)
+        # Benchmark instrumentation (ignored in prod).
+        self.transcripts_emitted = 0
+        self.seed_events = 0
+        self.seed_bytes_sent = 0
 
 
 def build_config(sys_inst: str, handle: str | None) -> types.LiveConnectConfig:
@@ -78,6 +92,19 @@ def build_config(sys_inst: str, handle: str | None) -> types.LiveConnectConfig:
             sliding_window=types.SlidingWindow(),
         ),
     )
+
+
+def build_seed_turns(recent_blocks, expect_en):
+    turns = [
+        types.Content(role="user", parts=[types.Part(text=SEED_INTRO)]),
+    ]
+    for block in recent_blocks:
+        ja_text = block.get("ja", "") or ""
+        en_text = block.get("en", "") or ""
+        turns.append(types.Content(role="user", parts=[types.Part(text=ja_text)]))
+        model_text = en_text if expect_en else ""
+        turns.append(types.Content(role="model", parts=[types.Part(text=model_text)]))
+    return turns
 
 
 async def sender(session, audio_q, state):
@@ -95,13 +122,7 @@ async def sender(session, audio_q, state):
             break
 
 
-async def receiver(session, state, output_file, expect_en):
-    """Consume server messages, emit JA/EN blocks on turn boundaries.
-
-    The outer while defeats python-genai#1224, where session.receive() exits
-    its async iterator on turn_complete. go_away and unexpected closes set
-    should_reconnect so the outer run_session loop opens a new session.
-    """
+async def receiver(session, state, print_lock, output_file, expect_en):
     buf = ""
     while not state.stopping and not state.should_reconnect:
         try:
@@ -109,8 +130,7 @@ async def receiver(session, state, output_file, expect_en):
                 if response.go_away is not None:
                     state.should_reconnect = True
                     sys.stderr.write(
-                        f"\n  [go_away, reconnecting "
-                        f"(time_left={response.go_away.time_left})]\n"
+                        f"\n  [go_away, reconnecting (time_left={response.go_away.time_left})]\n"
                     )
                     return
                 if response.session_resumption_update is not None:
@@ -127,7 +147,7 @@ async def receiver(session, state, output_file, expect_en):
                     buf = ""
                     if not text or "[inaudible]" in text.lower():
                         continue
-                    emit_block(text, output_file, expect_en)
+                    emit_block(text, print_lock, output_file, expect_en, state)
         except Exception as e:
             if state.stopping:
                 return
@@ -136,8 +156,7 @@ async def receiver(session, state, output_file, expect_en):
             return
 
 
-def emit_block(text, output_file, expect_en):
-    """Extract JA: and EN: lines from model's spoken output, display + persist."""
+def emit_block(text, print_lock, output_file, expect_en, state):
     ja_line = ""
     en_line = ""
     for line in text.splitlines():
@@ -151,6 +170,7 @@ def emit_block(text, output_file, expect_en):
     lines = [ja_line]
     if expect_en and en_line:
         lines.append(en_line)
+    state.transcripts_emitted += 1
     sys.stdout.write("\r" + " " * 80 + "\r")
     for line in lines:
         print(f"  {line}")
@@ -160,13 +180,18 @@ def emit_block(text, output_file, expect_en):
             output_file.write(line + "\n")
         output_file.write("\n")
         output_file.flush()
+    # Append to the shared ring after printing so a failure here never breaks display.
+    try:
+        state.recent_blocks.append({"ja": ja_line, "en": en_line})
+    except Exception:
+        pass
 
 
-async def meter(state, transcribe_q):
+async def meter(state, print_lock, audio_q):
     while not state.stopping:
         level = min(int(state.latest_rms / 0.05 * METER_WIDTH), METER_WIDTH)
         bar = "#" * level + " " * (METER_WIDTH - level)
-        qsize = transcribe_q.qsize()
+        qsize = audio_q.qsize()
         pending = f" q={qsize}" if qsize > 0 else ""
         dropped = f" drop={state.dropped}" if state.dropped else ""
         status = "LIVE" if state.connected else "RECONNECT"
@@ -178,13 +203,30 @@ async def meter(state, transcribe_q):
         await asyncio.sleep(METER_INTERVAL)
 
 
-async def run_session(args, api_key):
-    client = genai.Client(api_key=api_key)
+async def _wait_for_stop_or_reconnect(state):
+    while not state.stopping and not state.should_reconnect:
+        await asyncio.sleep(0.05)
 
-    dev_info = sd.query_devices(kind="input")
-    native_rate = int(dev_info["default_samplerate"])
-    block_size = int(native_rate * BLOCK_DURATION)
-    print(f"Mic: {native_rate} Hz (streaming at {SEND_RATE} Hz to Live API)")
+
+async def _install_signal_handlers(state):
+    loop = asyncio.get_running_loop()
+
+    def _handle():
+        state.stopping = True
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _handle)
+        except NotImplementedError:
+            pass
+
+
+async def run_session(args, api_key, client_factory=None, stream_factory=None):
+    """Run a live session loop. Factories allow test injection."""
+    if client_factory is None:
+        client = genai.Client(api_key=api_key)
+    else:
+        client = client_factory(api_key)
 
     expect_en = not args.no_translate
     sys_inst = SYSTEM_INSTRUCTION_TRANSLATE if expect_en else SYSTEM_INSTRUCTION_TRANSCRIBE
@@ -192,59 +234,75 @@ async def run_session(args, api_key):
     state = State()
     loop = asyncio.get_running_loop()
     audio_q: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
+    print_lock = asyncio.Lock()
 
     output_file = open(args.output, "a", encoding="utf-8") if args.output else None
     if output_file:
         print(f"Writing transcriptions to: {args.output}")
 
-    def audio_callback(indata, frames, time_info, status):
-        if status:
-            sys.stderr.write(f"\n  audio: {status}\n")
-        mono = indata[:, 0] if indata.ndim > 1 else indata
-        state.latest_rms = float(np.sqrt(np.mean(mono**2)))
-        down = resample(mono, native_rate, SEND_RATE)
-        pcm = pcm16_bytes(down)
+    if stream_factory is None:
+        dev_info = sd.query_devices(kind="input")
+        native_rate = int(dev_info["default_samplerate"])
+        block_size = int(native_rate * BLOCK_DURATION)
+        print(f"Mic: {native_rate} Hz (streaming at {SEND_RATE} Hz to Live API)")
 
-        def _put():
-            try:
-                audio_q.put_nowait(pcm)
-            except asyncio.QueueFull:
-                state.dropped += 1
+        def audio_callback(indata, frames, time_info, status):
+            if status:
+                sys.stderr.write(f"\n  audio: {status}\n")
+            mono = indata[:, 0] if indata.ndim > 1 else indata
+            state.latest_rms = float(np.sqrt(np.mean(mono**2)))
+            down = resample(mono, native_rate, SEND_RATE)
+            pcm = pcm16_bytes(down)
 
-        loop.call_soon_threadsafe(_put)
+            def _put():
+                try:
+                    audio_q.put_nowait(pcm)
+                except asyncio.QueueFull:
+                    state.dropped += 1
 
-    _install_signal_handlers(state)
+            loop.call_soon_threadsafe(_put)
+
+        stream = sd.InputStream(
+            samplerate=native_rate,
+            channels=1,
+            dtype="float32",
+            blocksize=block_size,
+            latency="high",
+            callback=audio_callback,
+        )
+    else:
+        stream = stream_factory(state, audio_q, loop)
+
+    await _install_signal_handlers(state)
 
     print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
     print("-" * 60)
-
-    stream = sd.InputStream(
-        samplerate=native_rate,
-        channels=1,
-        dtype="float32",
-        blocksize=block_size,
-        latency="high",
-        callback=audio_callback,
-    )
-
-    # Meter lives outside the per-session TaskGroup so it survives reconnects.
-    meter_task = asyncio.create_task(meter(state, audio_q))
 
     try:
         stream.start()
         while not state.stopping:
             state.should_reconnect = False
+            cold = state.handle is None
             config = build_config(sys_inst, state.handle)
             try:
                 async with client.aio.live.connect(
                     model=args.model, config=config
                 ) as session:
                     state.connected = True
+                    # Seed BEFORE starting the TaskGroup so no realtime audio races it.
+                    if cold and len(state.recent_blocks) > 0:
+                        turns = build_seed_turns(list(state.recent_blocks), expect_en)
+                        await session.send_client_content(turns=turns, turn_complete=False)
+                        state.seed_events += 1
+                        state.seed_bytes_sent += sum(
+                            len(t.parts[0].text.encode("utf-8")) for t in turns
+                        )
                     async with asyncio.TaskGroup() as tg:
                         tg.create_task(sender(session, audio_q, state))
                         tg.create_task(
-                            receiver(session, state, output_file, expect_en)
+                            receiver(session, state, print_lock, output_file, expect_en)
                         )
+                        tg.create_task(meter(state, print_lock, audio_q))
                         await _wait_for_stop_or_reconnect(state)
                         try:
                             await session.send_realtime_input(audio_stream_end=True)
@@ -263,12 +321,6 @@ async def run_session(args, api_key):
             state.reconnect_count += 1
             await asyncio.sleep(RECONNECT_BACKOFF_S)
     finally:
-        state.stopping = True
-        meter_task.cancel()
-        try:
-            await meter_task
-        except (asyncio.CancelledError, Exception):
-            pass
         try:
             stream.stop()
             stream.close()
@@ -277,45 +329,14 @@ async def run_session(args, api_key):
         if output_file:
             output_file.close()
         sys.stdout.write("\n")
-
-
-def _install_signal_handlers(state):
-    loop = asyncio.get_running_loop()
-
-    def _handle():
-        state.stopping = True
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, _handle)
-        except NotImplementedError:
-            pass
-
-
-async def _wait_for_stop_or_reconnect(state):
-    while not state.stopping and not state.should_reconnect:
-        await asyncio.sleep(0.05)
+    return state
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--model",
-        default="gemini-3.1-flash-live-preview",
-        help="Gemini Live model (default: gemini-3.1-flash-live-preview).",
-    )
-    parser.add_argument(
-        "--no-translate",
-        action="store_true",
-        help="Transcribe only (no English translation).",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default=None,
-        help="Append transcriptions to a text file.",
-    )
+    parser.add_argument("--model", default="gemini-3.1-flash-live-preview")
+    parser.add_argument("--no-translate", action="store_true")
+    parser.add_argument("-o", "--output", type=str, default=None)
     args = parser.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -323,8 +344,7 @@ def main():
         print("Error: Set the GEMINI_API_KEY environment variable.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Model: {args.model} (Live API)")
-
+    print(f"Model: {args.model} (Live API, prototype B)")
     try:
         asyncio.run(run_session(args, api_key))
     except KeyboardInterrupt:
