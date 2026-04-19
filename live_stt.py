@@ -76,7 +76,7 @@ def build_config(sys_inst: str, handle: str | None) -> types.LiveConnectConfig:
         response_modalities=["AUDIO"],
         output_audio_transcription=types.AudioTranscriptionConfig(),
         system_instruction=types.Content(parts=[types.Part(text=sys_inst)]),
-        session_resumption=types.SessionResumptionConfig(handle=handle, transparent=True),
+        session_resumption=types.SessionResumptionConfig(handle=handle),
         context_window_compression=types.ContextWindowCompressionConfig(
             sliding_window=types.SlidingWindow(),
         ),
