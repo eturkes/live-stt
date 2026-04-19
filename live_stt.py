@@ -21,10 +21,9 @@ from google.genai import types
 load_dotenv()
 
 SEND_RATE = 16000
-BLOCK_DURATION = 0.1
 METER_WIDTH = 40
 METER_INTERVAL = 0.1
-AUDIO_QUEUE_MAX = 100  # ~10s of 100ms blocks
+AUDIO_QUEUE_MAX = 100
 RECONNECT_BACKOFF_MIN_S = 1.0
 RECONNECT_BACKOFF_MAX_S = 30.0
 RECONNECT_RESET_AFTER_S = 10.0  # Session stable for this long resets backoff
@@ -200,7 +199,6 @@ async def run_session(args, api_key):
 
     dev_info = sd.query_devices(args.device, kind="input")
     native_rate = int(dev_info["default_samplerate"])
-    block_size = int(native_rate * BLOCK_DURATION)
     if args.device is not None:
         dev_label = f"#{args.device} {dev_info['name']}"
     else:
@@ -244,7 +242,7 @@ async def run_session(args, api_key):
         samplerate=native_rate,
         channels=1,
         dtype="float32",
-        blocksize=block_size,
+        blocksize=0,
         latency="high",
         callback=audio_callback,
     )

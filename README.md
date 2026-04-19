@@ -67,7 +67,7 @@ live-stt --device 3
 
 ### Audio Pipeline
 
-1. **Capture** - `sounddevice` records from the default input device at its native sample rate, in 100 ms blocks.
+1. **Capture** - `sounddevice` records from the default input device at its native sample rate, with PortAudio choosing the block size to match the host audio backend.
 2. **Resample** - Each block is downsampled to 16 kHz via linear interpolation and converted to 16-bit PCM.
 3. **Stream** - PCM bytes are pushed onto an asyncio queue and sent to Gemini over a single persistent Live API session via `send_realtime_input`.
 4. **Transcribe** - A system instruction configures the model as a live interpreter. Gemini's native voice-activity detection decides turn boundaries; `output_audio_transcription` returns text for each utterance.
@@ -141,9 +141,8 @@ Defined at the top of `live_stt.py` and tunable for different environments:
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `SEND_RATE` | 16000 | Target sample rate streamed to the Live API |
-| `BLOCK_DURATION` | 0.1s | Size of each audio capture block |
 | `METER_INTERVAL` | 0.1s | Level-meter refresh rate |
-| `AUDIO_QUEUE_MAX` | 100 | Max buffered 100 ms blocks before dropping (≈10 s) |
+| `AUDIO_QUEUE_MAX` | 100 | Max buffered audio blocks before dropping |
 | `RECONNECT_BACKOFF_MIN_S` | 1.0s | Initial delay between reconnect attempts (doubles on each failure) |
 | `RECONNECT_BACKOFF_MAX_S` | 30.0s | Cap on reconnect delay |
 | `RECONNECT_RESET_AFTER_S` | 10.0s | A session alive at least this long resets backoff to the minimum |
