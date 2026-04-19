@@ -84,7 +84,7 @@ One long-lived **meter** task sits outside the TaskGroup and refreshes the termi
 
 The config passed to every `connect()` enables:
 
-- `SessionResumptionConfig(transparent=True)` — the server issues a resumption handle (`new_handle`) as state accumulates. The client stores it and passes it back on the next connect, so conversation context carries across reconnects. Handles are valid for ~2 hours.
+- `SessionResumptionConfig(handle=handle)` — the server issues a resumption handle (`new_handle`) as state accumulates. The client stores it and passes it back on the next connect, so conversation context carries across reconnects. Handles are valid for ~2 hours.
 - `ContextWindowCompressionConfig(sliding_window=SlidingWindow())` — lifts the 15-minute audio-only session cap. The server truncates oldest user turns when the context window fills; the system instruction is exempt.
 
 On `go_away` (sent ~60 s before the server will disconnect) or an unexpected close, the receiver flips `state.should_reconnect` and the outer loop reconnects with the stored handle. Audio keeps flowing into the bounded send-queue during the reconnect gap — up to ~10 s of buffered speech survives the swap.
