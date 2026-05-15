@@ -1,0 +1,68 @@
+# Project Orientation — `live-stt`
+
+Single-file Python tool. Streams microphone audio to the Gemini Live API and prints JA/EN transcripts of Japanese speech in real time.
+
+## File map
+
+| Path | Role |
+|---|---|
+| `live_stt.py` | Main app (~520 lines). Audio capture in `audio_callback`; transcription via `run_session` → `sender` / `receiver`. |
+| `list_live_models.py` | Utility: enumerate Gemini models that support `bidiGenerateContent`. |
+| `tests/test_audio.py` | Pure-function tests for `resample()`, `pcm16_bytes()`, `emit_block()`. Run with `uv run pytest`. |
+| `pyproject.toml` | `uv`-managed deps. Entry point: `live-stt`. Python ≥ 3.11 (for `TaskGroup`). |
+| `.env` | Holds `GEMINI_API_KEY`. Loaded via `python-dotenv`. Gitignored. |
+| `README.md` | User-facing docs (GitHub-visible). Update only on user-visible behavior changes. |
+| `PLAN.md` | Roadmap with task IDs (T1.x, T2.x, T3.x). Source of truth for what to do next. |
+| `SPIKE_REPORT.md` | T3.1 spike: REST → Gemini Live migration. Latency/cost data, decision record. Historical. |
+| `SPIKE_REPORT_BACKENDS.md` | Backends spike: comparison of 5 streaming STT providers. Awaiting API keys to finalize. |
+| `spike/backends/` | Prototypes, research notes, bench harness from the backends spike. |
+| `CLAUDE.md` | Meta-instructions for the agent. **Requires user approval to modify.** |
+| `.agent/` | This memory system. |
+
+## Smoke-test constraints (agent cannot verify)
+
+The agent must flag these for the user every time they're touched:
+
+- **Microphone capture** — `sd.InputStream` boundary crossing, `loop.call_soon_threadsafe`, `audio_callback` timing.
+- **Device enumeration / selection** — `--device N`, `--list-devices`.
+- **Real-time latency under live mic** — TTFT, sustained sessions > 2 min.
+- **Gemini rate-limit behavior** — mock or skip in tests.
+- **Ctrl+C / signal handling** in a real terminal.
+
+## How to work (per-task loop)
+
+1. **Read** `CLAUDE.md` → `.agent/orientation.md` (this file) → `.agent/journal.md` (last 2-3 entries) → `.agent/lessons.md` → `PLAN.md`.
+2. **Pick** the next open task in priority order (T1 → T2 → T3, numerical within). Restate its acceptance criteria.
+3. **Plan** in a scratch file under `.agent/scratch/YYYY-MM-DD_<task-id>.md` if the task is non-trivial.
+4. **Edit** the smallest change that satisfies the acceptance criteria. Reference `live_stt.py:<line>` anchors in edits.
+5. **Verify** what you can: `uv run python -c "import live_stt"` (syntax/imports), `uv run pytest` (pure fns). For audio/network paths, state explicitly that you couldn't smoke-test and list what the user needs to verify.
+6. **Update** `PLAN.md` (mark shipped, or revise open). Update `README.md` only if user-visible CLI/behavior changed.
+7. **Log** to `.agent/journal.md` at end of session. Promote any generalizable lesson to `.agent/lessons.md`.
+8. **Commit** only when the user asks. Single focused commit; co-author line per `git log` style.
+
+## Style conventions for `live_stt.py`
+
+- Single file. Constants at the top. No frameworks, no DI, no config systems.
+- Comments explain *why*, not *what*. Most existing comments document optimizations (cache reuse, ufunc choice, allocation avoidance). Preserve them.
+- Avoid adding abstractions speculatively. The author actively prefers less code over more.
+- No backwards-compat shims; this is 0.1.0 with one user.
+- Function-local imports avoided; module-level imports preferred for readability.
+
+## Build/test commands
+
+```sh
+uv sync                              # install deps
+uv run live-stt                      # run with defaults
+uv run live-stt --list-devices       # enumerate audio devices
+uv run pytest                        # run pure-function tests
+uv run python -c "import live_stt"   # cheap import smoke-check
+uv run python list_live_models.py    # list Gemini Live-capable models
+```
+
+## Known caveats
+
+- Live API audio-only sessions cap at 15 min wall-clock per connection; underlying WS times out at ~10 min. Mitigated by reconnect loop + `SessionResumptionConfig` + `ContextWindowCompressionConfig` in `build_config()`.
+- Session resumption handles valid for ~2 h. After expiry, reconnect starts fresh (conversation history lost).
+- Native-audio Live models bill audio-output tokens even when discarded (~$0.018/min at list price).
+- `python-genai#1224`: `session.receive()` exits its async iterator on `turn_complete`. Worked around via the outer `while not state.stopping` loop in `receiver()` — see `live_stt.py:222-232`.
+- `python-genai#1859`: scrambled transcripts on >20 s continuous speech. Not reproduced in spike but watched.
