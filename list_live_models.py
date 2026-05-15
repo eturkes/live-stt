@@ -16,6 +16,10 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 print("Models supporting bidiGenerateContent:\n")
 for m in client.models.list():
-    methods = getattr(m, "supported_actions", None) or getattr(m, "supported_generation_methods", None) or []
+    methods = (
+        getattr(m, "supported_actions", None)
+        or getattr(m, "supported_generation_methods", None)
+        or []
+    )
     if "bidiGenerateContent" in str(methods):
         print(f"  {m.name}")
