@@ -6,6 +6,38 @@ Append-only by convention. Pruning happens periodically — old entries move to 
 
 ---
 
+## 2026-05-18 — T-CLEANUP-001 residue, T2.2 deferred, pytest pre-commit hook (T-HOOK-001)
+
+**Trigger:** Bootstrap loaded; user selected `T-CLEANUP-001 first`, declared the tool Japanese-only (defer T2.2), and approved wiring `uv run pytest` into a pre-commit hook.
+
+**Changes:**
+- Removed empty `spike/t3_2/` directory (last residue from `ae2f706`). `spike/` now only contains `backends/`.
+- `PLAN.md`:
+  - T-CLEANUP-001 → Shipped (one-line note pointing at gitignore commit `0b5a6b0` + the rmdir today).
+  - T-HOOK-001 → Shipped (new ID for the pre-commit hook work).
+  - T2.2 → moved to a new "Deferred" section with rationale + "revisit if" trigger.
+  - Pending-decisions table emptied (all 3 questions resolved).
+- `.githooks/pre-commit`: 5-line `sh` script, `set -e; exec uv run pytest -q`. Executable bit set. Smoke-checked directly — 23 tests pass in 0.91s.
+- Repo local config: `core.hooksPath` → `.githooks` (per-clone, not committed; each new clone reruns the one-liner).
+- `README.md`: renamed "Tests" subsection to "Development", documented the one-time `core.hooksPath` step, added `.githooks/` to the project-structure tree, rewrote the T2.2 mention to reflect the Japanese-only design intent.
+- `.agent/orientation.md`: added `.githooks/pre-commit` to file map; added the one-time setup line to build/test commands with a one-liner explaining it's not auto-applied by `uv sync`.
+- `.agent/decisions.md`: new entry **D-007** documenting why we chose a project-local shell hook over the `pre-commit` framework.
+
+**Findings / lessons:**
+- No new generalizable lesson worth promoting. The D-007 rationale (avoid frameworks when one shell line suffices) is already captured by `L-005` ("avoid abstractions") and CLAUDE.md #3 ("opt for installation/configuration local to the scope of the project") — promoting it would duplicate.
+- Re-read of L-001 before touching `README.md` paid off: kept the `live_stt.py` Notes line at the bottom of README short and factual rather than rewriting the code's existing rationale comments.
+
+**Did not verify (user smoke-test needed):**
+- None for the runtime path — this session touched only docs, scaffolding, and a git hook. No audio/network code changed.
+- The hook itself executes correctly (proven by direct invocation), but the first real `git commit` after this session is the proper end-to-end test. If pytest somehow fails in the commit context (e.g., env vars stripped by some shell), the user will see it as an aborted commit and we'll fix it.
+
+**Open follow-ups:**
+- T2.3 is now the lowest-numbered open task. Acceptance is straightforward; can be done in a single session without user input.
+- T-BACKENDS-001 still blocked on API keys (`DEEPGRAM_API_KEY`, `OPENAI_API_KEY`).
+- Consider whether the hook should also run `ruff check .` once we have evidence it stays green. Not adding today because the user asked specifically for `pytest`.
+
+---
+
 ## 2026-05-16 — Adopt new `CLAUDE.md`, scaffold `.agent/` memory system
 
 **Trigger:** User added a new `CLAUDE.md` at repo root and asked the project to be updated to use it.

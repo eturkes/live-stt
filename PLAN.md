@@ -17,25 +17,12 @@ Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE`.
 | T2.1 | Tests for pure functions | `tests/test_audio.py`: `resample()` (identity/halving/upsampling/endpoint), `pcm16_bytes()` (round-trip/clipping/length), `emit_block()` (JA-only/JA+EN/fallback/timestamp). Run: `uv run pytest`. |
 | T3.1 | Gemini Live API rewrite | Replaced REST chunking pipeline with `client.aio.live.connect` + `send_realtime_input`. Decision record: `SPIKE_REPORT.md`. ADR: `.agent/decisions.md` D-001. |
 | T3.2 | Long-session memory | Outer reconnect loop + `SessionResumptionConfig(handle=handle)` + `ContextWindowCompressionConfig(sliding_window=SlidingWindow())`. Fix for `python-genai#1224` (see `.agent/lessons.md` L-002). Sessions run indefinitely with preserved context across reconnects (2 h handle TTL). ADR: D-003. Deferred sub-tasks: client-side transcript replay (needs disk persistence), entity-dict glossary injection (~18% cost overhead, insurance against unobserved drift). |
+| T-CLEANUP-001 | Spike artifact audit | `spike/backends/cache/` and `spike/backends/results.json` gitignored in commit `0b5a6b0`. Empty `spike/t3_2/` directory removed 2026-05-18. |
+| T-HOOK-001 | `uv run pytest` pre-commit hook | `.githooks/pre-commit` runs `uv run pytest -q` and aborts commit on failure. One-time setup: `git config --local core.hooksPath .githooks`. Resolves PLAN pending decision #2. |
 
 ---
 
 ## Open
-
-### T2.2 — Parameterize source language
-
-**Acceptance:** `live-stt --language korean` produces Korean transcription with matching output label (e.g. `KO:` instead of `JA:`).
-
-**Approach:**
-- Add `--language LANG` (default `japanese`).
-- Template the language name into `SYSTEM_INSTRUCTION_TRANSLATE` and `SYSTEM_INSTRUCTION_TRANSCRIBE`.
-- Decide: keep literal `JA:` label or generalize to dynamic prefix (`KO:`, `ZH:`, …). Recommendation: dynamic prefix — strips one source of model drift (model is more likely to emit a prefix that matches the source language than to translate the label).
-- Update `emit_block()` parser to use the dynamic prefix instead of hardcoded `JA:`.
-- Tests: extend `test_emit_block_*` to cover the dynamic prefix.
-
-**Blockers:** None. Decision needed: should the prefix be a 2-letter ISO code (`KO:`) or full name (`Korean:`)? Default to 2-letter ISO if the user has no preference.
-
----
 
 ### T2.3 — Structured logging for errors
 
@@ -50,17 +37,6 @@ Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE`.
 
 ---
 
-### T-CLEANUP-001 — Audit untracked spike artifacts
-
-**Acceptance:** `git status` clean of confusing untracked files. Bench artifacts gitignored if appropriate.
-
-**Approach:**
-- `spike/backends/cache/` — TTS-clip cache, regenerable. Gitignore.
-- `spike/backends/results.json` — bench output, regenerable from `spike/backends/bench.py`. Gitignore unless we want a check-in baseline (decide).
-- Empty `spike/t3_2/` directory — was supposedly removed in commit `ae2f706` but still on disk. `rmdir` it.
-
----
-
 ### T-BACKENDS-001 — Finish backends spike (blocked on API keys)
 
 **Status:** BLOCKED.
@@ -70,6 +46,16 @@ Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE`.
 **Acceptance:** `spike/backends/bench.py` produces measured rows for Deepgram and OpenAI Realtime. Decision recorded in a new ADR.
 
 **Blocked on:** User adding `DEEPGRAM_API_KEY` and `OPENAI_API_KEY` to `.env`.
+
+---
+
+## Deferred
+
+### T2.2 — Parameterize source language
+
+**Status:** DEFERRED 2026-05-18 — user confirmed tool is Japanese-only by design. `SYSTEM_INSTRUCTION_TRANSLATE`/`TRANSCRIBE` and the `JA:` prefix in `emit_block()` stay hardcoded.
+
+**Revisit if:** Use-case expands to other source languages. The original approach (add `--language` flag, template into system instructions, dynamic 2-letter ISO prefix in `emit_block()`, extend `test_emit_block_*`) remains valid; it just doesn't pay rent today.
 
 ---
 
@@ -90,8 +76,4 @@ Listed so future agents don't redebate them:
 
 ## Decisions still needed from user
 
-| # | Question | Default if no answer |
-|---|---|---|
-| 1 | Language scope: only Japanese (skip T2.2) or general (do T2.2 before more JA-isms accrete)? | Do T2.2 — generalize is cheap now, expensive later. |
-| 2 | T2.1 test discipline: wire `uv run pytest` into a pre-commit hook, or accept tests as aspirational? | Pre-commit hook — tests only pay off if they actually run. |
-| 3 | T2.2 prefix style: 2-letter ISO (`KO:`) or full name (`Korean:`)? | 2-letter ISO. |
+_None pending._ (Last resolved 2026-05-18: language scope = Japanese-only; pre-commit hook = yes; prefix style = N/A.)

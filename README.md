@@ -104,6 +104,7 @@ live-stt/
 ├── live_stt.py              # main app
 ├── list_live_models.py      # list Gemini Live-capable models
 ├── tests/                   # pytest suite for pure functions
+├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry points, ruff/pytest config
 ├── uv.lock                  # locked deps
 ├── PLAN.md                  # roadmap
@@ -114,13 +115,16 @@ live-stt/
 └── .agent/                  # agent memory/notetaking
 ```
 
-### Tests
+### Development
 
 ```sh
-uv run pytest
+uv run pytest                                 # run pure-function tests
+git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 ```
 
-Covers pure audio helpers (`resample`, `pcm16_bytes`) and the JA/EN parsing in `emit_block`. No network or mic required.
+Tests cover pure audio helpers (`resample`, `pcm16_bytes`) and the JA/EN parsing in `emit_block`. No network or mic required.
+
+The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync` — run it once after cloning.
 
 ## Key constants
 
@@ -143,7 +147,7 @@ python list_live_models.py    # list models supporting bidiGenerateContent
 
 ## Notes
 
-- `SYSTEM_INSTRUCTION_TRANSLATE` / `SYSTEM_INSTRUCTION_TRANSCRIBE` are editable; templating in a `--language` flag is tracked as `PLAN.md` T2.2.
+- `SYSTEM_INSTRUCTION_TRANSLATE` / `SYSTEM_INSTRUCTION_TRANSCRIBE` are editable. The tool is Japanese-only by design; a `--language` flag was considered and deferred (see `PLAN.md` § Deferred).
 - `Ctrl+C` flips `state.stopping`, drains the queue, sends `audio_stream_end=True`, exits the reconnect loop cleanly.
 - Audio-only Live sessions cap at 15 min wall-clock per connection; WS times out at ~10 min. Reconnect + `SessionResumptionConfig` + `ContextWindowCompressionConfig` together lift both — sessions run indefinitely with context preserved.
 - Resumption handles valid ~2 h. After expiry, reconnect starts fresh (history lost) but transcription continues.

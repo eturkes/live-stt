@@ -81,3 +81,26 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Rationale:** See `lessons.md` L-001. The code's optimization comments encode irreplaceable rationale; denser naming saves tokens at the cost of call-site readability. No specific failure mode is prevented by the proposed edits.
 
 **Revisit if:** Specific agent-confusion incidents arise. Then target the confusing line, not the whole file.
+
+---
+
+## D-007 — Pre-commit hook via `.githooks/` + `core.hooksPath`, not the `pre-commit` framework
+
+**Date:** 2026-05-18.
+
+**Decision:** Pytest runs on every `git commit` via a project-local shell script at `.githooks/pre-commit`. Each clone opts in once with `git config --local core.hooksPath .githooks`. No `pre-commit` (Python framework) dep.
+
+**Rationale:**
+- The hook is one line of logic (`exec uv run pytest -q`). The `pre-commit` framework adds a config schema, a virtualenv-per-hook caching layer, and a network bootstrap — all of which buy nothing at this scope.
+- Project-local script is committed → reproducible across clones. The `core.hooksPath` step is the only manual piece, called out in `README.md` and `.agent/orientation.md`.
+- Keeps the dep tree shallow (CLAUDE.md #3: prefer project-scoped install/config). The dev group already has `pytest` and `ruff`; adding `pre-commit` would be a third tool.
+- Bypassable with `git commit --no-verify` for genuine emergencies; both `CLAUDE.md` and the hook's own comment discourage it.
+
+**Alternatives considered:**
+- `pre-commit` framework — rejected (overkill, see above).
+- Native `.git/hooks/pre-commit` only — rejected (not committed, not reproducible).
+- Wrap the `core.hooksPath` config into `uv sync` somehow — rejected (no clean uv extension point; explicit one-time step is fine).
+
+**Revisit if:** Hook grows beyond one or two commands, or we want hook chaining / language-specific hooks. Then `pre-commit` framework starts paying for itself.
+
+**Side effect on PLAN.md:** Decision #2 ("test discipline: hook or aspirational?") resolved → hook. Removed from pending decisions table.

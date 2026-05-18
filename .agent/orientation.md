@@ -10,6 +10,7 @@ Single-file Python tool. Streams microphone audio to the Gemini Live API and pri
 | `list_live_models.py` | Utility: enumerate Gemini models that support `bidiGenerateContent`. |
 | `tests/test_audio.py` | Pure-function tests for `resample()`, `pcm16_bytes()`, `emit_block()`. Run with `uv run pytest`. |
 | `pyproject.toml` | `uv`-managed deps. Entry point: `live-stt`. Python ≥ 3.11 (for `TaskGroup`). |
+| `.githooks/pre-commit` | Project-local git hook: runs `uv run pytest -q` and aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
 | `.env` | Holds `GEMINI_API_KEY`. Loaded via `python-dotenv`. Gitignored. |
 | `README.md` | User-facing docs (GitHub-visible). Update only on user-visible behavior changes. |
 | `PLAN.md` | Roadmap with task IDs (T1.x, T2.x, T3.x). Source of truth for what to do next. |
@@ -51,13 +52,16 @@ The agent must flag these for the user every time they're touched:
 ## Build/test commands
 
 ```sh
-uv sync                              # install deps
-uv run live-stt                      # run with defaults
-uv run live-stt --list-devices       # enumerate audio devices
-uv run pytest                        # run pure-function tests
-uv run python -c "import live_stt"   # cheap import smoke-check
-uv run python list_live_models.py    # list Gemini Live-capable models
+uv sync                                          # install deps
+git config --local core.hooksPath .githooks      # one-time: enable pre-commit hook
+uv run live-stt                                  # run with defaults
+uv run live-stt --list-devices                   # enumerate audio devices
+uv run pytest                                    # run pure-function tests
+uv run python -c "import live_stt"               # cheap import smoke-check
+uv run python list_live_models.py                # list Gemini Live-capable models
 ```
+
+The pre-commit hook runs `uv run pytest -q` on every `git commit`. A fresh clone needs the `core.hooksPath` step once; `uv sync` does not configure it.
 
 ## Known caveats
 
