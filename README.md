@@ -75,6 +75,10 @@ On `go_away` (sent ~60 s pre-disconnect) or an unexpected close, the receiver fl
 
 Native-audio Live models return the `AUDIO` modality; we read `output_audio_transcription.text` and discard the audio bytes. Audio-output tokens are billed regardless (~$0.018/min at list price).
 
+### Diagnostics
+
+Runtime diagnostics (send/recv errors, server `go_away`, session exceptions, audio underrun/overrun) go to stderr via Python `logging`. On a terminal, each message clears the level-meter line in place and the meter re-paints on the next tick. With stderr redirected (`live-stt 2> errors.log`), the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
+
 ### Display
 
 Live audio level meter:

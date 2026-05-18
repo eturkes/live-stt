@@ -53,3 +53,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** The codebase trajectory is consistent: less code wins. Each abstraction added cost more in agent confusion than it saved in flexibility, for a single-user personal tool.
 
 **Rule:** Default to inlining. Do not add config systems, DI, plugin interfaces, or class hierarchies unless the task explicitly requires them. Three similar lines beat a premature abstraction.
+
+---
+
+## L-006 — TTY-aware `logging.Formatter` when stderr coexists with a live stdout UI
+
+**Context:** T2.3 (2026-05-18). The level meter on stdout repaints continuously via `\r\x1b[2K`. Event messages (errors, `go_away`, audio status) needed to interrupt the meter without leaving the previous meter frame frozen above, AND stay free of ANSI when redirected to a log file (`2> errors.log`).
+
+**Finding:** Inlining `_LINE_CLEAR + msg` at every log call site couples every site to terminal cursor protocol, hurts readability, and forks the format for TTY vs non-TTY. Putting the prefix in a custom `logging.Formatter` keeps each call site format-agnostic (`logger.error("[send error: %s]", e)`) and centralizes the TTY check (`sys.stderr.isatty()` once at handler-construction time). When stderr is redirected, the formatter omits the prefix → log file gets clean `[timestamp] LEVEL msg` lines.
+
+**Rule:** When a single output stream must coexist with a continuously-redrawn UI element on a sibling stream, encode the cursor protocol in the `Formatter`, not at the call sites. Gate ANSI emission on `isatty()` evaluated once. Call sites stay narrow: just the level and the message. This is the rare case where adding a small class (one subclass, ~10 lines) beats inlining (per L-005) because the alternative is to leak cursor concerns into every log site forever.

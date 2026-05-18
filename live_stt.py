@@ -7,6 +7,7 @@ as raw PCM16, and prints the model's JA/EN transcription of what it says back.
 
 import argparse
 import asyncio
+import logging
 import math
 import os
 import signal
@@ -36,6 +37,32 @@ _METER_BARS = tuple("#" * i + " " * (METER_WIDTH - i) for i in range(METER_WIDTH
 _METER_SCALE = METER_WIDTH / METER_FULL_SCALE_RMS
 # ANSI: carriage-return + erase-line. Replaces the 80-space repaint in emit_block.
 _LINE_CLEAR = "\r\x1b[2K"
+
+logger = logging.getLogger("live_stt")
+
+
+class _StderrFormatter(logging.Formatter):
+    # Prepend _LINE_CLEAR only when stderr is a TTY so log records erase the live
+    # level meter (stdout) in place. When stderr is redirected to a file, the prefix
+    # is omitted so the log stays free of ANSI escapes.
+    def __init__(self):
+        super().__init__(fmt="[%(asctime)s] %(levelname)s %(message)s")
+        self._tty = sys.stderr.isatty()
+
+    def format(self, record):
+        msg = super().format(record)
+        return _LINE_CLEAR + msg if self._tty else msg
+
+
+def _configure_logging():
+    if logger.handlers:
+        return
+    logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(_StderrFormatter())
+    logger.addHandler(handler)
+    logger.propagate = False
+
 
 SYSTEM_INSTRUCTION_TRANSLATE = (
     "You are a live Japanese interpreter. You will hear continuous Japanese speech.\n"
@@ -212,7 +239,7 @@ async def sender(session, audio_q, state):
             await send(audio=blob_construct(data=data, mime_type=mime))
         except Exception as e:
             if not state.stopping and not state.should_reconnect:
-                sys.stderr.write(f"\n  [send error: {e}]\n")
+                logger.error("[send error: %s]", e)
             break
         if sentinel:
             break
@@ -233,9 +260,9 @@ async def receiver(session, state, output_file, expect_en):
                 async for response in session.receive():
                     if response.go_away is not None:
                         state.request_reconnect()
-                        sys.stderr.write(
-                            f"\n  [go_away, reconnecting "
-                            f"(time_left={response.go_away.time_left})]\n"
+                        logger.info(
+                            "[go_away, reconnecting (time_left=%s)]",
+                            response.go_away.time_left,
                         )
                         return
                     if response.session_resumption_update is not None:
@@ -257,7 +284,7 @@ async def receiver(session, state, output_file, expect_en):
             except Exception as e:
                 if state.stopping:
                     return
-                sys.stderr.write(f"\n  [recv error: {e}]\n")
+                logger.error("[recv error: %s]", e)
                 state.request_reconnect()
                 return
     finally:
@@ -351,7 +378,7 @@ async def run_session(args, api_key):
 
     def audio_callback(indata, frames, time_info, status):
         if status:
-            sys.stderr.write(f"\n  audio: {status}\n")
+            logger.warning("audio: %s", status)
         # sounddevice always passes a 2-D (frames, channels) array for InputStream;
         # frames is the same as len(mono), so use it directly.
         mono = indata[:, 0]
@@ -415,7 +442,7 @@ async def run_session(args, api_key):
                             pass
             except* Exception as eg:
                 for e in eg.exceptions:
-                    sys.stderr.write(f"\n  [session error: {type(e).__name__}: {e}]\n")
+                    logger.error("[session error: %s: %s]", type(e).__name__, e)
             state.connected = False
             if state.stopping:
                 break
@@ -464,6 +491,7 @@ async def _wait_for_stop_or_reconnect(state):
 
 
 def main():
+    _configure_logging()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",

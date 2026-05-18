@@ -19,23 +19,11 @@ Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE`.
 | T3.2 | Long-session memory | Outer reconnect loop + `SessionResumptionConfig(handle=handle)` + `ContextWindowCompressionConfig(sliding_window=SlidingWindow())`. Fix for `python-genai#1224` (see `.agent/lessons.md` L-002). Sessions run indefinitely with preserved context across reconnects (2 h handle TTL). ADR: D-003. Deferred sub-tasks: client-side transcript replay (needs disk persistence), entity-dict glossary injection (~18% cost overhead, insurance against unobserved drift). |
 | T-CLEANUP-001 | Spike artifact audit | `spike/backends/cache/` and `spike/backends/results.json` gitignored in commit `0b5a6b0`. Empty `spike/t3_2/` directory removed 2026-05-18. |
 | T-HOOK-001 | `uv run pytest` pre-commit hook | `.githooks/pre-commit` runs `uv run pytest -q` and aborts commit on failure. One-time setup: `git config --local core.hooksPath .githooks`. Resolves PLAN pending decision #2. |
+| T2.3 | Structured logging for errors | 5 runtime `sys.stderr.write` sites → `logger` at INFO (go_away) / WARNING (audio status) / ERROR (send/recv/session). Custom `_StderrFormatter` prepends `_LINE_CLEAR` only when `sys.stderr.isatty()` so terminal coexists with the level meter and redirected stderr stays free of ANSI. Format: `[%(asctime)s] %(levelname)s %(message)s`. The GEMINI_API_KEY preflight `print` stays — outside PLAN scope. |
 
 ---
 
 ## Open
-
-### T2.3 — Structured logging for errors
-
-**Acceptance:** Stdout/stderr cleanly separable when running with `-o`. Existing terminal UX unchanged. `live-stt > /dev/null 2> errors.log` shows only diagnostics in `errors.log`.
-
-**Approach:**
-- Replace `sys.stderr.write(...)` calls (send error, recv error, session error, `go_away`, audio status) with `logging` to stderr.
-- Configure a stderr handler with format `[%(asctime)s] %(levelname)s %(message)s`.
-- Keep the level meter on stdout; it must still overwrite cleanly with the existing `\r\x1b[2K` clear sequence.
-
-**Blockers:** None.
-
----
 
 ### T-BACKENDS-001 — Finish backends spike (blocked on API keys)
 
