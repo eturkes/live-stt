@@ -22,7 +22,7 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 **Finding:** Without an outer `while`, the receiver coroutine returns silently after the first turn, leaving the session idle but connected. Reconnect doesn't fire because nothing has errored.
 
-**Rule:** Always wrap `session.receive()` in `while not state.stopping and not state.should_reconnect:` so the iterator is re-entered after each `turn_complete`. See `live_stt.py:222-262`. If/when upstream fixes the bug, the outer loop becomes a no-op — safe to keep.
+**Rule:** Always wrap `session.receive()` in `while not state.stopping and not state.should_reconnect:` so the iterator is re-entered after each `turn_complete`. See `live_stt.py:248-300` (outer while at line 258). If/when upstream fixes the bug, the outer loop becomes a no-op — safe to keep.
 
 ---
 

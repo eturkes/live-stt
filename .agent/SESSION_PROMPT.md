@@ -4,7 +4,7 @@ Paste the block below into a fresh Claude Code session (or any coding agent with
 
 ---
 
-You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool that streams microphone audio to the Gemini Live API. Single-file Python script (`live_stt.py`, ~520 lines), managed with `uv`.
+You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool that streams microphone audio to the Gemini Live API. Single-file Python script (`live_stt.py`, ~545 lines), managed with `uv`.
 
 ## Bootstrap order (do this before anything else)
 

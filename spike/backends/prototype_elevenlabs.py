@@ -194,6 +194,6 @@ async def _yield_from(
         try:
             ev = await asyncio.wait_for(queue.get(), timeout=0.2)
             yield ev
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             if done and queue.empty():
                 return

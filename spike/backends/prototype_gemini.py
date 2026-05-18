@@ -22,8 +22,7 @@ from collections.abc import AsyncIterator
 
 from google import genai
 from google.genai import types
-
-from harness import Block, Err, Event, Info, SEND_RATE
+from harness import SEND_RATE, Block, Err, Event, Info
 
 DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 GRACE_S = 3.0   # how long to wait for server to finalize turns after audio_stream_end
@@ -150,7 +149,7 @@ async def stream(
                     if ev is None:
                         break
                     yield ev
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     if shutdown.is_set() and queue.empty():
                         break
         finally:

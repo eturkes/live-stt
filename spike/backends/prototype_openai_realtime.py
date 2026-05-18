@@ -23,8 +23,7 @@ import time
 from collections.abc import AsyncIterator
 
 import numpy as np
-
-from harness import Block, Err, Event, Info, SEND_RATE
+from harness import SEND_RATE, Block, Err, Event, Info
 
 DEFAULT_MODEL = "gpt-realtime-mini"
 TRANSCRIBE_MODEL = "gpt-4o-transcribe"
@@ -181,7 +180,9 @@ async def stream(
                     state["en"] = getattr(ev, "text", "") or state["en"]
                 elif et == "response.done":
                     if translate:
-                        await _emit_turn(queue, state["ja"], state["en"], state["t_first"], now, translate)
+                        await _emit_turn(
+                            queue, state["ja"], state["en"], state["t_first"], now, translate
+                        )
                         reset()
                     else:
                         state["en"] = ""
@@ -248,6 +249,6 @@ async def _yield_from(queue: asyncio.Queue, *tasks):
         try:
             ev = await asyncio.wait_for(queue.get(), timeout=0.2)
             yield ev
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             if done and queue.empty():
                 return

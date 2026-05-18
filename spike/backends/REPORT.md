@@ -99,7 +99,7 @@ ElevenLabs and Azure are tier-2: only worth running if Deepgram and OpenAI both 
 ## Post-spike follow-ups (distinct from `live_stt.py` changes)
 
 - **Entity retention across backends.** The `paused` clip's 最初の文 → 採寸分 miss shows Gemini can phonetically hallucinate on short utterances. Worth including a **named-entity torture-test clip** in `scenarios.py` for each backend to measure drift before committing.
-- **Real-mic smoke test.** The harness feeds canned WAVs; the prototypes never touch `sd.InputStream`. Before flipping `live_stt.py` to a non-Gemini backend, the user must smoke-test the mic path (described in `AGENT_PROMPT.md` as out-of-scope for the agent).
+- **Real-mic smoke test.** The harness feeds canned WAVs; the prototypes never touch `sd.InputStream`. Before flipping `live_stt.py` to a non-Gemini backend, the user must smoke-test the mic path (described in `.agent/orientation.md` § "Smoke-test constraints" as out-of-scope for the agent).
 - **Streaming cascade.** `translate.py` is one HTTP call per JA turn. For a Deepgram/ElevenLabs migration, the cascade can be made streaming (OpenAI Chat Completions streaming, Gemini streaming) to shave the cascade latency from the bench report — post-decision optimization.
 - **`--backend` flag in `live_stt.py`.** Explicitly out of scope for this spike (DESIGN.md). If the user adopts a non-Gemini primary, the flag is follow-up work.
 

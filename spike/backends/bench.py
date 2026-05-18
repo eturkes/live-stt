@@ -28,10 +28,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv  # noqa: E402
-
 from harness import BenchResult, run_bench, summarize  # noqa: E402
 from scenarios import CLIPS, ensure_all, load_clip  # noqa: E402
-
 
 # Load .env from project root (two levels up from this file).
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
@@ -54,7 +52,8 @@ BACKENDS = [
     ("openai",     "prototype_openai_realtime",  "OPENAI_API_KEY",     {}),
     ("deepgram",   "prototype_deepgram",         "DEEPGRAM_API_KEY",   {}),
     ("elevenlabs", "prototype_elevenlabs",       "ELEVENLABS_API_KEY", {}),
-    ("azure",      "prototype_azure",            "AZURE_SPEECH_KEY",   {"region_env": "AZURE_SPEECH_REGION"}),
+    ("azure",      "prototype_azure",            "AZURE_SPEECH_KEY",
+     {"region_env": "AZURE_SPEECH_REGION"}),
 ]
 
 

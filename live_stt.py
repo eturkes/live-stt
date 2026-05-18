@@ -436,6 +436,9 @@ async def run_session(args, api_key):
                             await session.send_realtime_input(audio_stream_end=True)
                         except Exception:
                             pass
+                        # Best-effort stop sentinel for the sender. If the queue is
+                        # saturated, the drop is recoverable: the sender's next
+                        # send_realtime_input call breaks out on the closed session.
                         try:
                             audio_q.put_nowait(None)
                         except asyncio.QueueFull:

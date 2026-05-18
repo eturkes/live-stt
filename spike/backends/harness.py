@@ -238,7 +238,7 @@ async def run_bench(
 
     try:
         await asyncio.wait_for(consume(), timeout=overall_timeout_s)
-    except (TimeoutError, asyncio.TimeoutError):
+    except TimeoutError:
         result.errors.append(f"runner: timed out after {overall_timeout_s}s")
 
     result.audio_end_s = audio_end_holder.get("t")

@@ -22,7 +22,7 @@ import os
 import time
 from collections.abc import AsyncIterator
 
-from harness import Block, Err, Event, Info, SEND_RATE
+from harness import SEND_RATE, Block, Err, Event, Info
 
 try:
     import azure.cognitiveservices.speech as speechsdk  # type: ignore
@@ -74,7 +74,7 @@ async def stream(
     audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
 
     # ---- Recognizer: translation vs. plain STT ----
-    recognizer: "speechsdk.Recognizer"
+    recognizer: speechsdk.Recognizer
     if translate:
         trans_cfg = speechsdk.translation.SpeechTranslationConfig(
             subscription=api_key, region=region
@@ -184,7 +184,7 @@ async def stream(
             timeout = 0.2
             try:
                 item = await asyncio.wait_for(queue.get(), timeout=timeout)
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 item = None
 
             if item is DONE:

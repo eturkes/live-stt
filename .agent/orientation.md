@@ -6,7 +6,7 @@ Single-file Python tool. Streams microphone audio to the Gemini Live API and pri
 
 | Path | Role |
 |---|---|
-| `live_stt.py` | Main app (~520 lines). Audio capture in `audio_callback`; transcription via `run_session` → `sender` / `receiver`. |
+| `live_stt.py` | Main app (~545 lines). Audio capture in `audio_callback`; transcription via `run_session` → `sender` / `receiver`. |
 | `list_live_models.py` | Utility: enumerate Gemini models that support `bidiGenerateContent`. |
 | `tests/test_audio.py` | Pure-function tests for `resample()`, `pcm16_bytes()`, `emit_block()`. Run with `uv run pytest`. |
 | `pyproject.toml` | `uv`-managed deps. Entry point: `live-stt`. Python ≥ 3.11 (for `TaskGroup`). |
@@ -68,5 +68,5 @@ The pre-commit hook runs `uv run pytest -q` on every `git commit`. A fresh clone
 - Live API audio-only sessions cap at 15 min wall-clock per connection; underlying WS times out at ~10 min. Mitigated by reconnect loop + `SessionResumptionConfig` + `ContextWindowCompressionConfig` in `build_config()`.
 - Session resumption handles valid for ~2 h. After expiry, reconnect starts fresh (conversation history lost).
 - Native-audio Live models bill audio-output tokens even when discarded (~$0.018/min at list price).
-- `python-genai#1224`: `session.receive()` exits its async iterator on `turn_complete`. Worked around via the outer `while not state.stopping` loop in `receiver()` — see `live_stt.py:222-232`.
+- `python-genai#1224`: `session.receive()` exits its async iterator on `turn_complete`. Worked around via the outer `while not state.stopping` loop in `receiver()` — see `live_stt.py:248-300` (outer while at line 258).
 - `python-genai#1859`: scrambled transcripts on >20 s continuous speech. Not reproduced in spike but watched.

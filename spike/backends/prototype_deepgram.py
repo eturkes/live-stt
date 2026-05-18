@@ -17,7 +17,7 @@ import time
 from collections.abc import AsyncIterator
 from urllib.parse import urlencode
 
-from harness import Block, Err, Event, Info, SEND_RATE
+from harness import SEND_RATE, Block, Err, Event, Info
 
 DEFAULT_MODEL = "nova-3"
 DG_URL = "wss://api.deepgram.com/v1/listen"
@@ -86,7 +86,7 @@ async def stream(
                     )
                 except StopAsyncIteration:
                     break
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     if audio_sent.is_set():
                         await ws.send(json.dumps({"type": "KeepAlive"}))
                     continue
@@ -209,6 +209,6 @@ async def _yield_from(queue: asyncio.Queue, *tasks):
         try:
             ev = await asyncio.wait_for(queue.get(), timeout=0.2)
             yield ev
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             if done and queue.empty():
                 return
