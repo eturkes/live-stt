@@ -45,18 +45,18 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 ## D-004 — `.agent/` directory shape for memory system
 
 **Date:** 2026-05-16.
-**Trigger:** `CLAUDE.md` #8 mandates a memory/notetaking/scratchpad system; user opted for `.agent/` with structured files.
+**Trigger:** CLAUDE.md (memory-system rule) mandates a memory/notetaking/scratchpad system; user opted for `.agent/` with structured files.
 
 **Decision:** Six top-level files (`README.md`, `SESSION_PROMPT.md`, `orientation.md`, `journal.md`, `lessons.md`, `decisions.md`) + two subdirs (`scratch/`, `archive/`). All committed (per user choice).
 
 **Rationale:**
 - Separation lets fresh agents load only what's relevant: `orientation.md` for facts, `lessons.md` for "what not to do," `decisions.md` for "why it's this way," `journal.md` for recent history.
-- Committing everything means a fresh remote clone reproduces the agent's full context — critical given CLAUDE.md #7 ("decomposed into steps with an unlimited number of fresh agent sessions").
+- Committing everything means a fresh remote clone reproduces the agent's full context — critical given CLAUDE.md (long-time-horizon rule: "decomposed into steps with an unlimited number of fresh agent sessions").
 - Scratch committed too: makes per-task reasoning visible in git history; cost is some clutter, which we mitigate by descriptive filenames + periodic pruning.
 
 **Alternatives considered:**
 - Single `NOTES.md`: rejected — flat append-only file makes targeted retrieval harder, conflates ephemeral and durable content.
-- Hybrid (lessons grow into CLAUDE.md): rejected — CLAUDE.md is user-controlled and short-context; volume scales better in `.agent/`.
+- Hybrid (lessons grow into CLAUDE.md): rejected — CLAUDE.md is short-context meta-instructions; volume scales better in `.agent/`.
 
 ---
 
@@ -93,7 +93,7 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Rationale:**
 - The hook is one line of logic (`exec uv run pytest -q`). The `pre-commit` framework adds a config schema, a virtualenv-per-hook caching layer, and a network bootstrap — all of which buy nothing at this scope.
 - Project-local script is committed → reproducible across clones. The `core.hooksPath` step is the only manual piece, called out in `README.md` and `.agent/orientation.md`.
-- Keeps the dep tree shallow (CLAUDE.md #3: prefer project-scoped install/config). The dev group already has `pytest` and `ruff`; adding `pre-commit` would be a third tool.
+- Keeps the dep tree shallow (CLAUDE.md local-installation rule: prefer project-scoped install/config). The dev group already has `pytest` and `ruff`; adding `pre-commit` would be a third tool.
 - Bypassable with `git commit --no-verify` for genuine emergencies; both `CLAUDE.md` and the hook's own comment discourage it.
 
 **Alternatives considered:**

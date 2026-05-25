@@ -10,7 +10,7 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 **Context:** `live_stt.py` carries dense rationale comments explaining each numpy optimization (cache-reuse, ufunc choice over `np.clip`, allocation avoidance, integer-decim fast path). When asked to "make code more LLM-friendly," instinct is to densify naming and strip comments.
 
-**Finding:** Those comments are exactly what `CLAUDE.md` rule #15 endorses ("unconventional patterns or be poorly documented by human standards if you prefer it that way" — both directions). They explain *why* a non-obvious line exists. Stripping them would force every future agent to re-derive the optimization rationale from benchmarks. Denser naming (`r` for `resample`, `pcm` for `pcm16_bytes`) saves ~30 tokens at the cost of every future call-site read.
+**Finding:** Those comments are exactly what CLAUDE.md (use-practices rule) endorses ("unconventional patterns or be poorly documented by human standards if you prefer it that way" — both directions). They explain *why* a non-obvious line exists. Stripping them would force every future agent to re-derive the optimization rationale from benchmarks. Denser naming (`r` for `resample`, `pcm` for `pcm16_bytes`) saves ~30 tokens at the cost of every future call-site read.
 
 **Rule:** When auditing code for "LLM-readability," the test is: *would removing this make a future agent more or less likely to reason correctly about the code?* If a comment encodes a non-obvious invariant or optimization rationale, **keep it**. If naming is already domain-aligned (`resample`, `sender`, `receiver`), **keep it**. Only edit if you can name a specific failure mode the edit prevents.
 
@@ -38,7 +38,7 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 ## L-004 — Mic and Gemini-rate-limit paths are agent-unverifiable
 
-**Context:** The agent runs in a sandbox without a real microphone or sustained API budget. CLAUDE.md #3 says to ask the user about ambiguities.
+**Context:** The agent runs in a sandbox without a real microphone or sustained API budget. CLAUDE.md (ask-questions rule) says to ask the user about ambiguities.
 
 **Finding:** Any change that touches `sd.InputStream`, `audio_callback`, real-time latency, or sustained-session behavior must be flagged for user smoke-test. Unit tests cover pure functions (`resample`, `pcm16_bytes`, `emit_block`) but not the live path.
 

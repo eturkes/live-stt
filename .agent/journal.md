@@ -6,6 +6,41 @@ Append-only by convention. Pruning happens periodically — old entries move to 
 
 ---
 
+## 2026-05-25 — CLAUDE.md update: sync .agent/ memory system
+
+**Trigger:** User updated CLAUDE.md with expanded/reordered rules. Agent session to propagate changes through `.agent/` files and fix drift.
+
+**Key CLAUDE.md changes absorbed:**
+- CLAUDE.md edit permission: restriction removed → agent may rewrite at any time.
+- Directory constraint added: development must stay within launch directory and children.
+- Memory system: added explicit "keep up-to-date to avoid drift" mandate.
+- Reusable prompt: merged into long-time-horizon rule; must write to file and inform user on updates.
+- Commit policy: "only when user asks" → "at end-of-turn closing cohesive work; defer if mid-iteration."
+- Security: added periodic audit scheduling and software update verification.
+- Two new rules: test-suite philosophy (permissible if meaningful feedback loop) and overengineering guardrails (KISS, UNIX, periodic refactors).
+- Objectivity: expanded with reasoning methodology (deductive, first principles, scientific/Socratic method, benchmarking).
+- ChatGPT added alongside Gemini for non-conversational tasks.
+
+**Changes made:**
+- `orientation.md`: updated CLAUDE.md file-map entry (removed approval constraint); updated commit step in how-to-work loop.
+- `SESSION_PROMPT.md`: rewrote CLAUDE.md modification and commit policy lines.
+- `README.md`: switched rule-reference convention from positional (#N) to descriptive (topic-based).
+- `decisions.md`: updated 3 positional references (D-004 ×2, D-007 ×1) to descriptive; fixed D-004 alternatives wording.
+- `lessons.md`: updated 2 positional references (L-001, L-004) to descriptive.
+- `scratch/2026-05-16_code-audit.md`: updated 1 positional reference to descriptive.
+- Journal entries left as-is (historical, append-only convention).
+
+**Rationale for reference convention change:** CLAUDE.md bullets are unnumbered and the user reorders them across updates. Positional references (#8, #15, etc.) were already off by the time the `.agent/` system was one session old. Descriptive references (e.g. "CLAUDE.md memory-system rule") are stable across reorderings and self-documenting.
+
+**Verified:**
+- All `grep -rn 'CLAUDE\.md #[0-9]' .agent/` matches are now in journal.md (historical, untouched) only.
+- No remaining "user approval" constraints outside journal.md.
+
+**Did not verify (user smoke-test needed):**
+- None. Only documentation/memory-system files touched. No runtime behavior changed.
+
+---
+
 ## 2026-05-18 — Proactive audit: doc-drift, spike lint, latent risks
 
 **Trigger:** No actionable PLAN tasks remained after T2.3 (only blocked T-BACKENDS-001). User opted for a proactive audit. Punch list produced; user approved P1 (all four), P2 (clean the spike), and two P3 items.

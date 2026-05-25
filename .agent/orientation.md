@@ -17,7 +17,7 @@ Single-file Python tool. Streams microphone audio to the Gemini Live API and pri
 | `SPIKE_REPORT.md` | T3.1 spike: REST → Gemini Live migration. Latency/cost data, decision record. Historical. |
 | `SPIKE_REPORT_BACKENDS.md` | Backends spike: comparison of 5 streaming STT providers. Awaiting API keys to finalize. |
 | `spike/backends/` | Prototypes, research notes, bench harness from the backends spike. |
-| `CLAUDE.md` | Meta-instructions for the agent. **Requires user approval to modify.** |
+| `CLAUDE.md` | Meta-instructions for the agent. Agent may rewrite at any time. |
 | `.agent/` | This memory system. |
 
 ## Smoke-test constraints (agent cannot verify)
@@ -39,7 +39,7 @@ The agent must flag these for the user every time they're touched:
 5. **Verify** what you can: `uv run python -c "import live_stt"` (syntax/imports), `uv run pytest` (pure fns). For audio/network paths, state explicitly that you couldn't smoke-test and list what the user needs to verify.
 6. **Update** `PLAN.md` (mark shipped, or revise open). Update `README.md` only if user-visible CLI/behavior changed.
 7. **Log** to `.agent/journal.md` at end of session. Promote any generalizable lesson to `.agent/lessons.md`.
-8. **Commit** only when the user asks. Single focused commit; co-author line per `git log` style.
+8. **Commit** at end-of-turn when closing cohesive work; defer if mid-iteration awaiting user input. Single focused commit; message optimized for LLM parsing; co-author line per `git log` style.
 
 ## Style conventions for `live_stt.py`
 

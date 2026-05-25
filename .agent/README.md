@@ -20,9 +20,9 @@ Persistent context for agent sessions. Read on every fresh session before touchi
 - Append to `journal.md` at end of each session — one section per session, prefixed with ISO date.
 - When you discover a generalizable error pattern, promote it from `scratch/` into `lessons.md`.
 - When you make a non-obvious design choice, log it in `decisions.md` with a short rationale.
-- Do **not** duplicate `CLAUDE.md`. Reference its rules by number (e.g. "per CLAUDE.md #8") instead.
+- Do **not** duplicate `CLAUDE.md`. Reference its rules by topic (e.g. "per CLAUDE.md memory-system rule") instead.
 - Scratch notes are committed (per user choice) — name them descriptively so they remain useful in retrospect.
 
 ## Pruning
 
-Per `CLAUDE.md` #11: context window is 200K. Prune redundant/obsolete content here from time to time. When pruning, move content to `archive/` rather than deleting outright unless the content is purely noise.
+Per CLAUDE.md (200K-context rule): Prune redundant/obsolete content here from time to time. When pruning, move content to `archive/` rather than deleting outright unless the content is purely noise.

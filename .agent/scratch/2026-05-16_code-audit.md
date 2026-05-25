@@ -26,7 +26,7 @@ Code already optimized along multiple axes:
 
 ### Candidate edits considered and rejected
 
-1. **Denser variable names** (`r` for `resample`, `pcm` for `pcm16_bytes`, `s` for `session`). Rejected: saves ~30 tokens of file size at the cost of every call-site read. CLAUDE.md #15 endorses unconventional patterns *only when they prevent a failure mode* — none identified.
+1. **Denser variable names** (`r` for `resample`, `pcm` for `pcm16_bytes`, `s` for `session`). Rejected: saves ~30 tokens of file size at the cost of every call-site read. CLAUDE.md (use-practices rule) endorses unconventional patterns *only when they prevent a failure mode* — none identified.
 2. **Strip optimization comments.** Rejected: those comments are the *highest-value* comments in the file — they encode irreproducible benchmark findings. A future agent without them would re-derive them or, worse, "simplify" `audio[::decim]` back to `np.interp`.
 3. **Inline `build_config()` / `_install_signal_handlers()` / `_wait_for_stop_or_reconnect()`.** Rejected: each isolates a noisy concern (pydantic config, OS-specific signal handling quirks, two-event wait) from the main flow. Inlining would crowd `run_session()` without reducing total LoC.
 4. **Replace `sys.stderr.write` with `logging`.** Out of scope here — this is already tracked as PLAN.md T2.3.

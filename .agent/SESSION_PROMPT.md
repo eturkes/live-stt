@@ -23,8 +23,8 @@ Read in this order, then summarize back to the user what the next priority task 
 - Append to `.agent/journal.md` at session end. Promote any new generalizable lesson into `.agent/lessons.md`. Log non-obvious choices in `.agent/decisions.md`.
 - Use `.agent/scratch/YYYY-MM-DD_<task-id>.md` for non-trivial in-task planning. Commit these (per project policy).
 - Edit `live_stt.py` minimally. Comments in that file encode optimization rationale — preserve them.
-- Do **not** modify `CLAUDE.md` without explicit user approval (per CLAUDE.md #1).
-- Do **not** commit unless the user asks. When asked, single focused commit, co-author line per `git log` style.
+- You may rewrite `CLAUDE.md` at any time if content becomes obsolete or better phrasing is found.
+- Commit at end-of-turn when closing cohesive work; defer if mid-iteration awaiting user input. Single focused commit, message optimized for LLM parsing, co-author line per `git log` style.
 
 ## Smoke-test constraints
 
