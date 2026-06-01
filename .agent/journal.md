@@ -6,6 +6,28 @@ Append-only by convention. Pruning happens periodically — old entries move to 
 
 ---
 
+## 2026-06-01 — Reverse course: re-vendor `compaction.sh` in-repo
+
+**Trigger:** User reversed the immediately-prior decision — "I decided to keep a copy of `compaction.sh` in-repo" — and edited CLAUDE.md's compaction line back from `$HOME/.claude/compaction.sh` to "the supplied `compaction.sh`" (threshold unchanged at 80%).
+
+**State on arrival:** the user had already placed the file. Repo `compaction.sh` was untracked (`??`), a regular file (not a symlink), `-rwxr-xr-x`, and **byte-identical** to the canonical `$HOME/.claude/compaction.sh` — i.e. the evolved dual-mode + 80/60% color version, NOT the old `>=90%` manual-only fork I deleted in `504d282`. So no content copy was needed; just re-track it.
+
+**Actions:**
+- `git add compaction.sh` — tracked again, carrying the CURRENT canonical content. (A `git restore` of the deleted blob would have wrongly reintroduced the stale `>=90%` script — avoided.)
+- `orientation.md`: re-added the file-map row + `sh compaction.sh` build/test line, now flagging the file as a vendored snapshot of the shared tool and noting the statusline branch.
+- `lessons.md`: marked **L-007 SUPERSEDED by L-008**; added **L-008** — a single reversible user preference is not an `always` rule; record current state + cite CLAUDE.md, and ask before reversing a user-set arrangement.
+- The 80% threshold and "supplied `compaction.sh`" wording stay CLAUDE.md-resident → not duplicated into `.agent/` (value bar).
+
+**Verified:**
+- `sh compaction.sh` from repo root (manual mode) → `31% 63K/200K`, exit 0.
+- `uv run pytest -q` → 23 passed (no app code touched; pre-commit hook clear).
+
+**Did not verify (user smoke-test):** the statusline branch (stdin-JSON path + ANSI colors) — fires from Claude Code's status line, not exercisable inside the agent. No audio/network/runtime code changed.
+
+**Note for future agents:** repo `compaction.sh` and `$HOME/.claude/compaction.sh` can drift; re-sync the repo copy from the shared tool when it changes (L-008).
+
+---
+
 ## 2026-06-01 — `compaction.sh` promoted to `$HOME/.claude/`; threshold 90%→80%
 
 **Trigger:** User updated CLAUDE.md (uncommitted `M`) and flagged two changes: `compaction.sh` "now lives in `$HOME/.claude/`", and the compaction threshold dropped 90% → 80%. Asked to do any resulting work.
