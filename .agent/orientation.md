@@ -18,6 +18,7 @@ Single-file Python tool. Streams microphone audio to the Gemini Live API and pri
 | `SPIKE_REPORT_BACKENDS.md` | Backends spike: comparison of 5 streaming STT providers. Awaiting API keys to finalize. |
 | `spike/backends/` | Prototypes, research notes, bench harness from the backends spike. |
 | `CLAUDE.md` | Meta-instructions for the agent. Agent may rewrite at any time. |
+| `compaction.sh` | Context-usage gauge. `sh compaction.sh` prints `PCT USED/WINDOW` (e.g. `12% 24K/200K`) from the live session JSONL; needs `jq`. Backs the CLAUDE.md context-window/compaction rule. |
 | `.agent/` | This memory system. |
 
 ## Smoke-test constraints (agent cannot verify)
@@ -59,6 +60,7 @@ uv run live-stt --list-devices                   # enumerate audio devices
 uv run pytest                                    # run pure-function tests
 uv run python -c "import live_stt"               # cheap import smoke-check
 uv run python list_live_models.py                # list Gemini Live-capable models
+sh compaction.sh                                 # context-usage gauge: PCT USED/WINDOW (needs jq)
 ```
 
 The pre-commit hook runs `uv run pytest -q` on every `git commit`. A fresh clone needs the `core.hooksPath` step once; `uv sync` does not configure it.

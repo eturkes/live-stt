@@ -6,6 +6,32 @@ Append-only by convention. Pruning happens periodically — old entries move to 
 
 ---
 
+## 2026-06-01 — Incorporate `compaction.sh` context-gauge workflow
+
+**Trigger:** User updated CLAUDE.md (uncommitted `M`) referencing a new untracked `compaction.sh`, and asked to incorporate the workflow into the codebase.
+
+**CLAUDE.md changes (diff vs `16a2777`):** 3 edits — (1) "I have limited you" → "I usually limit you to 200K" (softening); (2) NEW context-window rule: at ≥90% usage, bring work to a clean state, defer new tasks, await the user's manual compaction command + continue directive; "Monitor your context usage often using the supplied `compaction.sh`"; (3) NEW subagent rate-limiting rule: parallel dispatch can fail without recovery → use sequential chunking, verify all agents ran to completion.
+
+**`compaction.sh` (user-supplied, read-only):** POSIX `sh` + `jq` gauge. Reads the latest main-thread assistant `usage` from the session JSONL under `~/.claude/projects`; prints `PCT USED/WINDOW` (e.g. `12% 24K/200K`), or `? ?/200K` before the first turn / right after `/compact`. Window = 200K unless the 1M beta is live (`CLAUDE_CODE_DISABLE_1M_CONTEXT` gate); `CLAUDE_CONTEXT_WINDOW` overrides; denominator safety-net caps the percent at 100. Skips sidechain/synthetic/ai-title turns.
+
+**Propagation decision (same value-bar logic as the 2026-06-01 PortAudio-session entry below):** Both NEW *rules* are meta-instructions that live in CLAUDE.md and are read every session → NOT copied into `.agent/` (per the "do not duplicate CLAUDE.md" convention + value bar). The rate-limiting rule has no current point-of-use (no subagent dispatch in any documented loop), so it earns no `.agent/` note yet. Only the script *facts/operations* earned a place:
+- `orientation.md` file map: added a `compaction.sh` row (a fresh agent must know what the root-level script is; references — does not restate — the CLAUDE.md rule).
+- `orientation.md` build/test commands: added `sh compaction.sh` with the `jq` dep (operational entry point; CLAUDE.md names the script but not its invocation).
+
+Treated as CLAUDE.md-propagation maintenance (like the 2026-05-25 / 2026-06-01 syncs), not a feature: no PLAN ID, no ADR, no scratch file. The script is user-authored and working → left its contents untouched (incorporate, not rewrite).
+
+**Verified:**
+- `sh compaction.sh` and `./compaction.sh` → `10% 19K/200K` (exec bit `-rwxr-xr-x` already set; `jq` at `/usr/bin/jq`). The `200K` confirms the 1M beta is disabled here, matching the CLAUDE.md 200K line.
+- `uv run python -c "import live_stt"` → import OK (no code touched; confirms the PortAudio fix from the sibling entry still holds and the pre-commit hook won't block).
+- `uv run pytest -q` → 23 passed.
+
+**Did not verify (user smoke-test needed):**
+- None. Docs + a committed read-only shell script; no audio/network/runtime code changed. The gauge's `? ?/200K` (post-`/compact`) and 1M-beta branches were read-checked, not exercised — not worth a live run.
+
+**Findings / lessons:** No new `lessons.md` entry. This is a clean re-application of the existing value-bar precedent (CLAUDE.md rules stay in CLAUDE.md; only point-of-use facts propagate) — promoting it would duplicate the convention already in `.agent/README.md` and the prior journal entry.
+
+---
+
 ## 2026-06-01 — CLAUDE.md update: propagate edits, fix PortAudio regression
 
 **Trigger:** User updated CLAUDE.md (uncommitted `M`) and asked for any work needed in response.
