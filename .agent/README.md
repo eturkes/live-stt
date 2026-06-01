@@ -21,6 +21,7 @@ Persistent context for agent sessions. Read on every fresh session before touchi
 - When you discover a generalizable error pattern, promote it from `scratch/` into `lessons.md`.
 - When you make a non-obvious design choice, log it in `decisions.md` with a short rationale.
 - Do **not** duplicate `CLAUDE.md`. Reference its rules by topic (e.g. "per CLAUDE.md memory-system rule") instead.
+- Every entry must earn its place: capture only what a future agent cannot already get from the codebase, Git history, project docs, or `CLAUDE.md`. Favor durable facts — invariants, rationale, gotchas — over drift-prone detail like exact package versions. Per CLAUDE.md memory-system rule.
 - Scratch notes are committed (per user choice) — name them descriptively so they remain useful in retrospect.
 
 ## Pruning

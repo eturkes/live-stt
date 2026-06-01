@@ -6,6 +6,35 @@ Append-only by convention. Pruning happens periodically — old entries move to 
 
 ---
 
+## 2026-06-01 — CLAUDE.md update: propagate edits, fix PortAudio regression
+
+**Trigger:** User updated CLAUDE.md (uncommitted `M`) and asked for any work needed in response.
+
+**CLAUDE.md changes (diff vs `c1300fa`):** sandbox now names the Distrobox/openSUSE host + endorses LSP/REPL tooling; "plugins" added to the self-modify list; NEW home-dir-cleanliness/maintenance rule; NEW prose-style line (dry/direct/concise; assume technical proficiency); memory-system rule restated as a per-entry **value bar** (value beyond docs/codebase/git history; no superfluous info like package versions); overengineering bullet reframed positively (modularity/tight-scope/dedup); NEW rule endorsing TDD + multi-agent councils/teams + subagents-on-most-advanced-model; NEW agent-oriented-languages pointer.
+
+**Propagation decision:** Most new rules are meta-instructions that live in CLAUDE.md and are read every session — per the memory system's own "do not duplicate CLAUDE.md" convention and the new value bar, they are NOT copied into `.agent/`. Only two edits earned their place:
+- `.agent/README.md` Conventions: added the per-entry value test (operationalizes the strengthened memory-system rule at the point of writing).
+- `.agent/orientation.md` Build/test: documented that the runtime needs system `libportaudio2` (sounddevice dlopens PortAudio; `uv sync` does not provide it).
+
+**Environment fix (triggered by the new cleanliness/maintenance mandate):**
+- Recon found the import smoke-check broken: `OSError: PortAudio library not found`. System `libportaudio2` was absent from the container, so `uv run python -c "import live_stt"`, `uv run pytest`, AND the pre-commit hook all failed — commits were blocked.
+- Installed `libportaudio2` via apt (pulled libopus0, libsamplerate0, libjack-jackd2-0). Import + 23 tests now pass.
+- Hygiene per new rule: `sudo apt-get clean`; `uv cache prune` (removed 14 unused files). The `.venv` "dangling" symlinks `find -xtype l` reported were a false positive — uv's multi-hop python links resolve to a real 3.14.5 interpreter.
+
+**Verified:**
+- `uv run python -c "import live_stt"` → import OK.
+- `uv run pytest -q` → 23 passed.
+
+**Did not verify (user smoke-test needed):**
+- No audio code changed, but PortAudio was just (re)installed in this container. The next real `uv run live-stt --device <N>` against a mic is the end-to-end confirmation that capture works here (PortAudio present ≠ a working capture device inside Distrobox).
+
+**Flagged for user (out of project scope — not touched):**
+- `~/.cache/R` (352M) and `~/.cache/pnpm` (37M) are other toolchains' caches; prune at will. Sibling `~/` project dirs (`lobotomized-claude-code`, `tweakcc-*`) left alone.
+
+**Findings / lessons:** No new `lessons.md` entry — the PortAudio gotcha lives as a single orientation setup note (avoids duplication per the value bar). Skipped reframing negatively-titled lessons (L-001, L-005): pink-elephant matters for imperatives the agent must follow, and those lesson bodies are already positively phrased where it counts; a title-only reframe would be value-free churn the new bar discourages.
+
+---
+
 ## 2026-05-25 — CLAUDE.md update: sync .agent/ memory system
 
 **Trigger:** User updated CLAUDE.md with expanded/reordered rules. Agent session to propagate changes through `.agent/` files and fix drift.

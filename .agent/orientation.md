@@ -63,6 +63,8 @@ uv run python list_live_models.py                # list Gemini Live-capable mode
 
 The pre-commit hook runs `uv run pytest -q` on every `git commit`. A fresh clone needs the `core.hooksPath` step once; `uv sync` does not configure it.
 
+`sounddevice` dlopens system PortAudio at import, so a host/container lacking it fails the import smoke-check (and therefore pytest and the hook) with `OSError: PortAudio library not found`. Install once on Debian: `sudo apt-get install libportaudio2`. `uv sync` does not provide it.
+
 ## Known caveats
 
 - Live API audio-only sessions cap at 15 min wall-clock per connection; underlying WS times out at ~10 min. Mitigated by reconnect loop + `SessionResumptionConfig` + `ContextWindowCompressionConfig` in `build_config()`.
