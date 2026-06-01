@@ -63,3 +63,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** Inlining `_LINE_CLEAR + msg` at every log call site couples every site to terminal cursor protocol, hurts readability, and forks the format for TTY vs non-TTY. Putting the prefix in a custom `logging.Formatter` keeps each call site format-agnostic (`logger.error("[send error: %s]", e)`) and centralizes the TTY check (`sys.stderr.isatty()` once at handler-construction time). When stderr is redirected, the formatter omits the prefix → log file gets clean `[timestamp] LEVEL msg` lines.
 
 **Rule:** When a single output stream must coexist with a continuously-redrawn UI element on a sibling stream, encode the cursor protocol in the `Formatter`, not at the call sites. Gate ANSI emission on `isatty()` evaluated once. Call sites stay narrow: just the level and the message. This is the rare case where adding a small class (one subclass, ~10 lines) beats inlining (per L-005) because the alternative is to leak cursor concerns into every log site forever.
+
+---
+
+## L-007 — Externally-owned tools named by absolute path stay un-mirrored
+
+**Context:** CLAUDE.md referenced a context-gauge script. An earlier session (2026-06-01) committed a copy into the repo root and documented it in `orientation.md`. The user then moved the canonical script to `$HOME/.claude/compaction.sh` (a symlink into a shared `pro/agents/claude/` toolbox used across projects) and repointed CLAUDE.md at that absolute path.
+
+**Finding:** The shared script kept evolving (gained a statusline mode + 80/60% color thresholds), so the committed repo copy silently became a stale fork still carrying the old `>=90%` rule. The mirror added nothing CLAUDE.md didn't already state, and guaranteed drift.
+
+**Rule:** When CLAUDE.md or the user names a tool/config by an absolute path outside the repo — especially under `$HOME/.claude/` or a shared `agents/` dir — treat that path as the single source of truth. Always `git rm` any pre-existing repo-local copy and keep its invocation out of `.agent/` docs; reference the absolute path and let CLAUDE.md own the description. This reverses the prior session's choice to vendor `compaction.sh` into the repo.

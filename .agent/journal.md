@@ -6,6 +6,28 @@ Append-only by convention. Pruning happens periodically — old entries move to 
 
 ---
 
+## 2026-06-01 — `compaction.sh` promoted to `$HOME/.claude/`; threshold 90%→80%
+
+**Trigger:** User updated CLAUDE.md (uncommitted `M`) and flagged two changes: `compaction.sh` "now lives in `$HOME/.claude/`", and the compaction threshold dropped 90% → 80%. Asked to do any resulting work.
+
+**CLAUDE.md diff (vs `db4e3ca`):** one line — the context-window rule now reads "As you cross **80%** usage…" (was 90%) and "Monitor … using **`$HOME/.claude/compaction.sh`**" (was "the supplied `compaction.sh`").
+
+**Key discovery — divergent fork:** the repo-root `compaction.sh` (committed in `db4e3ca`) and `$HOME/.claude/compaction.sh` are NOT the same script. The latter is a symlink → `…/pro/agents/claude/compaction.sh`, a shared cross-project agent toolbox. The shared version has evolved: dual-mode (manual transcript-read AND statusline stdin-JSON) and colors output red at ≥80% / yellow at ≥60% — already matching the new 80% rule. The repo copy was the OLD manual-only version, still carrying `WRAP UP at >=90%` in its header comment. Keeping it = a stale fork that drifts further every time the user edits the shared tool.
+
+**Actions:**
+- `git rm compaction.sh` — repo copy redundant; canonical tool lives in the shared agent dir named by CLAUDE.md.
+- `orientation.md`: removed the `compaction.sh` file-map row (no longer a repo file) and the `sh compaction.sh` build/test line. **This reverses the prior entry's additions** (see "Incorporate `compaction.sh`" below). Rationale: the tool is now externally owned and fully specified by CLAUDE.md (path + purpose); mirroring it in project docs only re-creates the drift just cleaned up.
+- Both the 80% threshold and the `$HOME/.claude/` path are CLAUDE.md-resident meta-instructions → NOT copied into `.agent/` (value bar; read every session anyway).
+- New lesson **L-007** (externally-owned artifacts named by absolute path stay un-mirrored; `git rm` any pre-existing repo copy).
+
+**Verified:**
+- `sh "$HOME/.claude/compaction.sh"` → `11% 23K/200K`, exit 0; symlink resolves to `…/pro/agents/claude/compaction.sh`.
+- `uv run pytest -q` → 23 passed (no app code touched; confirms the pre-commit hook still passes after the `git rm`).
+
+**Did not verify (user smoke-test):** the shared gauge's statusline branch (stdin-JSON path + ANSI color codes) — read-checked only; it fires from Claude Code's status line, not exercisable from inside the agent. No audio/network/runtime code changed.
+
+---
+
 ## 2026-06-01 — Incorporate `compaction.sh` context-gauge workflow
 
 **Trigger:** User updated CLAUDE.md (uncommitted `M`) referencing a new untracked `compaction.sh`, and asked to incorporate the workflow into the codebase.
