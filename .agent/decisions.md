@@ -47,7 +47,7 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Date:** 2026-05-16.
 **Trigger:** CLAUDE.md (memory-system rule) mandates a memory/notetaking/scratchpad system; user opted for `.agent/` with structured files.
 
-**Decision:** Six top-level files (`README.md`, `SESSION_PROMPT.md`, `orientation.md`, `journal.md`, `lessons.md`, `decisions.md`) + two subdirs (`scratch/`, `archive/`). All committed (per user choice).
+**Decision:** Six top-level files (`README.md`, `SESSION_PROMPT.md`, `orientation.md`, `journal.md`, `lessons.md`, `decisions.md`) + one subdir (`scratch/`). All committed (per user choice). *(2026-06-04: dropped the `archive/` subdir — git history is the archive; see `journal.md` cap policy.)*
 
 **Rationale:**
 - Separation lets fresh agents load only what's relevant: `orientation.md` for facts, `lessons.md` for "what not to do," `decisions.md` for "why it's this way," `journal.md` for recent history.
@@ -68,7 +68,7 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 
 **Rationale:** They are historical decision records (the "why" behind D-001, D-003). Moving them into `.agent/archive/` would scatter context and disrupt git blame trails. Root-level visibility is appropriate for foundational evidence.
 
-**Revisit if:** More spike reports accumulate (>4) — then move to `spike/reports/` or `.agent/archive/spike-reports/`.
+**Revisit if:** More spike reports accumulate (>4) — then move to `spike/reports/`.
 
 ---
 

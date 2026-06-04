@@ -33,13 +33,13 @@ The agent must flag these for the user every time they're touched:
 
 ## How to work (per-task loop)
 
-1. **Read** `CLAUDE.md` → `.agent/orientation.md` (this file) → `.agent/journal.md` (last 2-3 entries) → `.agent/lessons.md` → `PLAN.md`.
+1. **Read** `CLAUDE.md` → `.agent/orientation.md` (this file) → `.agent/journal.md` (kept ≤4 entries) → `.agent/lessons.md` → `PLAN.md`.
 2. **Pick** the next open task in priority order (T1 → T2 → T3, numerical within). Restate its acceptance criteria.
 3. **Plan** in a scratch file under `.agent/scratch/YYYY-MM-DD_<task-id>.md` if the task is non-trivial.
 4. **Edit** the smallest change that satisfies the acceptance criteria. Reference `live_stt.py:<line>` anchors in edits.
 5. **Verify** what you can: `uv run python -c "import live_stt"` (syntax/imports), `uv run pytest` (pure fns). For audio/network paths, state explicitly that you couldn't smoke-test and list what the user needs to verify.
 6. **Update** `PLAN.md` (mark shipped, or revise open). Update `README.md` only if user-visible CLI/behavior changed.
-7. **Log** to `.agent/journal.md` at end of session. Promote any generalizable lesson to `.agent/lessons.md`.
+7. **Log** to `.agent/journal.md` at end of session, then prune it to the **≤4 most-recent entries** (git holds the rest — see `.agent/README.md` § Pruning). Promote any generalizable lesson to `.agent/lessons.md`.
 8. **Commit** at end-of-turn when closing cohesive work; defer if mid-iteration awaiting user input. Single focused commit; message optimized for LLM parsing; co-author line per `git log` style.
 
 ## Style conventions for `live_stt.py`

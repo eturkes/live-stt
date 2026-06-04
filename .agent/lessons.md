@@ -68,13 +68,7 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 ## L-007 — Externally-owned tools named by absolute path stay un-mirrored
 
-**STATUS: SUPERSEDED by L-008.** The user reversed this the very next turn — chose to vendor `compaction.sh` in-repo and repointed CLAUDE.md back to "the supplied `compaction.sh`". The deletion of the stale fork was fine; the error was generalizing one reversible placement choice into an `always git rm` rule. Kept for trajectory.
-
-**Context:** CLAUDE.md referenced a context-gauge script. An earlier session (2026-06-01) committed a copy into the repo root and documented it in `orientation.md`. The user then moved the canonical script to `$HOME/.claude/compaction.sh` (a symlink into a shared `pro/agents/claude/` toolbox used across projects) and repointed CLAUDE.md at that absolute path.
-
-**Finding:** The shared script kept evolving (gained a statusline mode + 80/60% color thresholds), so the committed repo copy silently became a stale fork still carrying the old `>=90%` rule. The mirror added nothing CLAUDE.md didn't already state, and guaranteed drift.
-
-**Rule:** When CLAUDE.md or the user names a tool/config by an absolute path outside the repo — especially under `$HOME/.claude/` or a shared `agents/` dir — treat that path as the single source of truth. Always `git rm` any pre-existing repo-local copy and keep its invocation out of `.agent/` docs; reference the absolute path and let CLAUDE.md own the description. This reverses the prior session's choice to vendor `compaction.sh` into the repo.
+**STATUS: SUPERSEDED by L-008.** Void rule, kept for trajectory: it over-reached by generalizing one reversible `compaction.sh` placement choice into an `always git rm the repo copy` law that the very next turn contradicted. Current state and the corrected lesson are in **L-008**. Full original text: git history.
 
 ---
 
@@ -85,3 +79,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** L-007 over-reached. It promoted one reversible placement choice into a firm `always git rm` rule that the next turn contradicted, and that would have led a future agent to wrongly delete the now-wanted repo copy. The deletion of the stale fork was correct; turning it into an engineering law was the error.
 
 **Rule:** When the user makes a placement/config/preference choice, record it as *current state* and cite the authority (CLAUDE.md) — not as an `always`/`never` law. Reserve firm lessons for facts with a derivable technical cause (API quirks, build constraints, measured behavior). Ask before reversing any user-set arrangement. **Current state:** `compaction.sh` is vendored in-repo per CLAUDE.md ("the supplied `compaction.sh`"); the repo file is a byte-snapshot of the shared `$HOME/.claude/compaction.sh` (dual-mode: manual transcript-read + statusline stdin-JSON). Re-sync the repo copy if the shared tool changes; keep both unless the user says otherwise.
+
+---
+
+## L-009 — Moving the project dir breaks venv console scripts, not `python`
+
+**Context:** 2026-06-04. `uv run pytest` failed with `Failed to spawn: pytest / No such file or directory`, yet `uv run python -m pytest` passed 23. The pre-commit hook (`uv run pytest -q`) was blocked.
+
+**Finding:** The project dir had been moved (`~/Documents/pro/live-stt` → `~/Projects/live-stt`). `uv`/`pip` bake an **absolute-path shebang** into every `.venv/bin/` console script (`pytest`, `ruff`, `live-stt`, …) at install time, so a move/rename invalidates all of them (`cannot execute: required file not found`). `.venv/bin/python` survives because it is a **symlink** to the uv-cached interpreter *outside* the project — which is why `python -m <mod>` keeps working and masks the real cause.
+
+**Rule:** When `uv run <script>` fails to spawn but `uv run python -m <module>` works, suspect a moved/renamed project dir with stale console-script shebangs. Fix by regenerating the venv: `rm -rf .venv && uv sync` (a plain `uv sync` will not rewrite existing shebangs). A fresh clone is immune — it builds the venv at its real path; only an in-place move triggers this.

@@ -12,7 +12,7 @@ Read in this order, then summarize back to the user what the next priority task 
 
 1. **`CLAUDE.md`** — meta-instructions and constraints. Treat as authoritative.
 2. **`.agent/orientation.md`** — file map, smoke-test constraints, style guide, how-to-work loop.
-3. **`.agent/journal.md`** — last 2–3 dated entries for recent history.
+3. **`.agent/journal.md`** — all entries (kept ≤4) for recent history.
 4. **`.agent/lessons.md`** — generalizable rules from past mistakes. Skim all; reread any that pattern-match the task you're about to do.
 5. **`.agent/decisions.md`** — settled architectural choices. Avoid re-litigating these without new evidence.
 6. **`PLAN.md`** — open tasks in priority order (T1 → T2 → T3). Pick the lowest-numbered open task and restate its acceptance criteria before starting.
@@ -20,7 +20,7 @@ Read in this order, then summarize back to the user what the next priority task 
 ## Working agreement
 
 - Follow `.agent/orientation.md` § "How to work" for the per-task loop.
-- Append to `.agent/journal.md` at session end. Promote any new generalizable lesson into `.agent/lessons.md`. Log non-obvious choices in `.agent/decisions.md`.
+- Append to `.agent/journal.md` at session end, then prune it to the **≤4 most-recent entries** (git holds older — see `.agent/README.md` § Pruning). Promote any new generalizable lesson into `.agent/lessons.md`. Log non-obvious choices in `.agent/decisions.md`.
 - Use `.agent/scratch/YYYY-MM-DD_<task-id>.md` for non-trivial in-task planning. Commit these (per project policy).
 - Edit `live_stt.py` minimally. Comments in that file encode optimization rationale — preserve them.
 - You may rewrite `CLAUDE.md` at any time if content becomes obsolete or better phrasing is found.
@@ -28,13 +28,7 @@ Read in this order, then summarize back to the user what the next priority task 
 
 ## Smoke-test constraints
 
-You cannot verify any of these from inside the agent — flag them for the user every time they're touched:
-
-- Microphone capture (`sd.InputStream`, `audio_callback`, `loop.call_soon_threadsafe`).
-- Device enumeration / selection.
-- Real-time latency under live mic (TTFT, sustained sessions > 2 min).
-- Gemini Live API rate-limit behavior.
-- `Ctrl+C` / signal handling in a real terminal.
+You cannot verify these from inside the agent — flag them for the user every time they're touched: the mic-capture, device-enumeration, live-latency, rate-limit, and Ctrl+C/signal paths. The authoritative list lives in `.agent/orientation.md` § "Smoke-test constraints (agent cannot verify)" — read it there rather than maintaining a second copy here.
 
 ## What to do right now
 
