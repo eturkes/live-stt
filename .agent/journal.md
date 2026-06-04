@@ -6,6 +6,20 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-04 — Relocation re-verify: prior fix held, nothing broken
+
+**Trigger:** User steering — "project recently relocated, fix anything that broke." Expected an L-009 recurrence (stale venv shebangs).
+
+**Finding:** Nothing broken; last session's `rm -rf .venv && uv sync` held. Project is now reached at `/run/host/home/eturkes/Projects/live-stt` (host fs mounted into the Debian/Distrobox container; container HOME=`/var/home/eturkes/debian`, interpreter from the uv cache under it). `.venv/bin/*` shebangs correctly point at this `/run/host/...` path → console scripts spawn; L-009's diagnostic (`uv run <script>` fails but `python -m` works) did **not** trigger.
+
+**Verified green:** `pytest -q` → 23 passed, `uv sync` clean (36 pkgs), `ruff check` clean, `import live_stt` / `import sounddevice 0.5.5` OK, `.env`+GEMINI_API_KEY present, `core.hooksPath=.githooks` survived the move, `live-stt --help` parses, no tracked file embeds a stale abs path.
+
+**ldconfig false-alarm → L-010:** `ldconfig -p | grep portaudio` is empty (container `ld.so.cache` unpopulated; `sudo ldconfig` doesn't repopulate) though `libportaudio.so.2` is installed at `/usr/lib/x86_64-linux-gnu/` and dlopens fine — use the Python import / `dpkg`, not `ldconfig`, to check native-lib presence here.
+
+**Did not verify (user smoke-test, L-004):** live mic capture, `--device`/`--list-devices` enumeration, real-time latency, Ctrl+C. A post-move failure, if any was observed, most likely lives in one of these agent-unverifiable paths — report the symptom.
+
+---
+
 ## 2026-06-04 — Token-efficiency overhaul of the memory system
 
 **Trigger:** User steering — "make working in this codebase more token-efficient." Measured per-session bootstrap read cost at ~14.6K tokens; `journal.md` was 43% of it (25K chars, 9 entries) and the only unbounded sink. `archive/` had never been used in 9 sessions; 5 of 9 entries were CLAUDE.md-sync / `compaction.sh` churn whose durable facts already live in `lessons.md` / `decisions.md` / `orientation.md`.

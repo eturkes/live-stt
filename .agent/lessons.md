@@ -89,3 +89,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** The project dir had been moved (`~/Documents/pro/live-stt` → `~/Projects/live-stt`). `uv`/`pip` bake an **absolute-path shebang** into every `.venv/bin/` console script (`pytest`, `ruff`, `live-stt`, …) at install time, so a move/rename invalidates all of them (`cannot execute: required file not found`). `.venv/bin/python` survives because it is a **symlink** to the uv-cached interpreter *outside* the project — which is why `python -m <mod>` keeps working and masks the real cause.
 
 **Rule:** When `uv run <script>` fails to spawn but `uv run python -m <module>` works, suspect a moved/renamed project dir with stale console-script shebangs. Fix by regenerating the venv: `rm -rf .venv && uv sync` (a plain `uv sync` will not rewrite existing shebangs). A fresh clone is immune — it builds the venv at its real path; only an in-place move triggers this.
+
+---
+
+## L-010 — Check native-lib presence by importing the binding, not `ldconfig -p`
+
+**Context:** 2026-06-04 relocation re-verify. `ldconfig -p | grep portaudio` returned nothing and briefly read as "PortAudio missing → the move broke the lib."
+
+**Finding:** False alarm. In this Distrobox container the `ld.so.cache` is empty (`ldconfig -p` → 0 entries) and even `sudo ldconfig` doesn't repopulate it, yet `libportaudio.so.2` is installed at `/usr/lib/x86_64-linux-gnu/` and `sounddevice` dlopens it fine (ctypes resolves it via the default trusted lib dirs, not the cache).
+
+**Rule:** To confirm a dlopen'd native lib is available, import its Python binding (`uv run python -c "import sounddevice"`) or query the packager (`dpkg -l libportaudio2`). Treat `ldconfig -p` as unreliable in this container — an empty/stale cache is normal there and does not mean the lib is absent.
