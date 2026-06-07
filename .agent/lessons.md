@@ -99,3 +99,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** False alarm. In this Distrobox container the `ld.so.cache` is empty (`ldconfig -p` → 0 entries) and even `sudo ldconfig` doesn't repopulate it, yet `libportaudio.so.2` is installed at `/usr/lib/x86_64-linux-gnu/` and `sounddevice` dlopens it fine (ctypes resolves it via the default trusted lib dirs, not the cache).
 
 **Rule:** To confirm a dlopen'd native lib is available, import its Python binding (`uv run python -c "import sounddevice"`) or query the packager (`dpkg -l libportaudio2`). Treat `ldconfig -p` as unreliable in this container — an empty/stale cache is normal there and does not mean the lib is absent.
+
+---
+
+## L-011 — CLAUDE.md is a shared template across `~/Projects/*`; recover missed edits from siblings
+
+**Context:** 2026-06-08. User said "I updated the CLAUDE.md" but live-stt's copy was byte-identical to HEAD and its mtime predated the claim. No stash, no reflog trace, no global `~/.claude/CLAUDE.md`.
+
+**Finding:** The user maintains near-identical CLAUDE.md copies in sibling projects (`ckc`, `rehab`, `lean-cds`, `pose-estimation`) and propagates edits project-by-project; live-stt had been missed. `diff` against the most-recently-modified siblings (sort by mtime) recovered the exact intended edit — one sentence, identical in all three updated copies. Sibling `.claude/settings.json` files also served as precedent for config shape.
+
+**Rule:** When the user reports a CLAUDE.md (or other shared-template) change that no local diff/mtime supports, diff against the sibling projects' copies under `~/Projects/` before asking. If multiple freshly-updated siblings agree byte-for-byte, apply the same edit here for template parity and report the sync explicitly.

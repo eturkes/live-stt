@@ -6,6 +6,18 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — CLAUDE.md sync (permissions.deny sentence) + `.claude/settings.json` created
+
+**Trigger:** User: "I updated the CLAUDE.md" — but live-stt's copy was byte-identical to HEAD (mtime 06-03, predating the claim; no stash/reflog trace). Forensics: sibling projects `ckc` (06-07), `lean-cds`+`rehab` (06-08) all carry one added sentence → "Maintain `permissions.deny` `Read()` rules in `.claude/settings.json`…". live-stt had been missed in the user's project-by-project propagation. Lesson → L-011.
+
+**Changes:** Synced the sentence into CLAUDE.md (byte parity with siblings). Created `.claude/settings.json` denying Read on `.git/.venv/.env*/uv.lock/LICENSE/spike cache/tool caches` (scope rationale → D-008; `ckc`-style `./`-anchored rules). Gitignored `.claude/settings.local.json`. Orientation file-map updated (+`.claude/settings.json` row, `.env` read-denied note).
+
+**Verified:** `jq` parses settings.json; pre-commit pytest on commit. **Did not verify:** deny-rule enforcement — rules load for new sessions; next session should confirm `Read(.venv/…)`/`Read(uv.lock)` are refused and Bash fallback works.
+
+**Flagged for user:** `ckc` settings also carry `env` `CLAUDE_CODE_SUBAGENT_MODEL=opus` + `CLAUDE_CODE_EFFORT_LEVEL=max` (mechanically enforces CLAUDE.md's max-model-subagents rule). Not imported — say the word and it lands here too.
+
+---
+
 ## 2026-06-04 — Relocation re-verify: prior fix held, nothing broken
 
 **Trigger:** User steering — "project recently relocated, fix anything that broke." Expected an L-009 recurrence (stale venv shebangs).
@@ -47,11 +59,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 No PLAN tasks were actionable (only blocked T-BACKENDS-001), so ran a self-audit: fixed line-anchor drift (`live_stt.py:248-300`), made `spike/` ruff-clean (15→0), gitignored `spike/backends/results.md`, documented the sentinel-on-full-queue recovery at `live_stt.py:440-442`. Finding: the `.agent/` system held up under second-look; the only durable drift was line-anchors/counts (cheap to mop up, no process change warranted). Full detail: git `fd7e3d4`.
 
 **Open:** T-BACKENDS-001 blocked on `DEEPGRAM_API_KEY` / `OPENAI_API_KEY`.
-
----
-
-## 2026-05-18 — T2.3 shipped: structured logging for errors
-
-Routed 5 runtime `sys.stderr.write` sites through a module `logger` (INFO=go_away reconnect, WARNING=audio-status from the PortAudio thread, ERROR=send/recv/session). Custom `_StderrFormatter` prepends `_LINE_CLEAR` only when `sys.stderr.isatty()`, so the stdout level meter coexists with terminal logs while redirected stderr stays ANSI-free (`2> errors.log` gets clean `[ts] LEVEL msg`). Rationale → `L-006`. GEMINI_API_KEY preflight `print` left as-is (out of scope). Full detail: git `dd1a505`.
-
-**Open (user smoke-test):** level meter clears cleanly when a real log record fires mid-session; `live-stt > /dev/null 2> errors.log` stays ANSI-clean under a live mic.

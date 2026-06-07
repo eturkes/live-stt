@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.git/**)",
+      "Read(./.venv/**)",
+      "Read(./.env*)",
+      "Read(./uv.lock)",
+      "Read(./LICENSE)",
+      "Read(./spike/backends/cache/**)",
+      "Read(**/__pycache__/**)",
+      "Read(**/.pytest_cache/**)",
+      "Read(**/.ruff_cache/**)"
+    ]
+  }
+}

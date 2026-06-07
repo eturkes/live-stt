@@ -11,7 +11,8 @@ Single-file Python tool. Streams microphone audio to the Gemini Live API and pri
 | `tests/test_audio.py` | Pure-function tests for `resample()`, `pcm16_bytes()`, `emit_block()`. Run with `uv run pytest`. |
 | `pyproject.toml` | `uv`-managed deps. Entry point: `live-stt`. Python ≥ 3.11 (for `TaskGroup`). |
 | `.githooks/pre-commit` | Project-local git hook: runs `uv run pytest -q` and aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
-| `.env` | Holds `GEMINI_API_KEY`. Loaded via `python-dotenv`. Gitignored. |
+| `.env` | Holds `GEMINI_API_KEY`. Loaded via `python-dotenv`. Gitignored. Read-denied — check presence via Bash (`grep -c '^GEMINI_API_KEY=' .env`), value stays out of context. |
+| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, tool caches. Applies to Read/Grep/Glob; Bash remains the deliberate escape hatch (e.g. L-009 shebang forensics). Rationale: D-008. |
 | `README.md` | User-facing docs (GitHub-visible). Update only on user-visible behavior changes. |
 | `PLAN.md` | Roadmap with task IDs (T1.x, T2.x, T3.x). Source of truth for what to do next. |
 | `SPIKE_REPORT.md` | T3.1 spike: REST → Gemini Live migration. Latency/cost data, decision record. Historical. |

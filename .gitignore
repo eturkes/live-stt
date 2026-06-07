@@ -19,6 +19,9 @@ spike/backends/cache/
 spike/backends/results.json
 spike/backends/results.md
 
+# Claude Code per-user overrides (project settings.json IS committed)
+.claude/settings.local.json
+
 # Environment / secrets
 .env
 .env.*

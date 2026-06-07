@@ -104,3 +104,18 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Revisit if:** Hook grows beyond one or two commands, or we want hook chaining / language-specific hooks. Then `pre-commit` framework starts paying for itself.
 
 **Side effect on PLAN.md:** Decision #2 ("test discipline: hook or aspirational?") resolved → hook. Removed from pending decisions table.
+
+---
+
+## D-008 — `.claude/settings.json` deny-list scope
+
+**Date:** 2026-06-08.
+**Trigger:** CLAUDE.md sentence (synced from sibling projects, see L-011): maintain `permissions.deny` `Read()` rules.
+
+**Decision:** Deny Read on `.git/**`, `.venv/**` (137 M), `.env*` (secret — existence checks via Bash keep the key out of transcripts), `uv.lock` (160 K ≈ ~50 K tokens; `pyproject.toml` is the dependency surface), `LICENSE`, `spike/backends/cache/**` (auto-generated bench artifacts), and `**/__pycache__/** | .pytest_cache | .ruff_cache`.
+
+**Kept readable:** `spike/` prototypes + `results.json/md` (needed when T-BACKENDS-001 unblocks), `SPIKE_REPORT*.md`, all of `.agent/` including `scratch/`.
+
+**Notes:** Deny rules gate Read/Grep/Glob; Bash `cat`/`grep` stays available as the deliberate escape hatch (L-009-style `.venv/bin` shebang forensics remain possible). `ckc`'s settings additionally carry `env` (`CLAUDE_CODE_SUBAGENT_MODEL=opus`, `CLAUDE_CODE_EFFORT_LEVEL=max`) — intentionally not imported; outside the instruction's scope, flagged to user.
+
+**Revisit if:** A denied path is needed repeatedly via Bash → narrow the rule rather than deleting the block.
