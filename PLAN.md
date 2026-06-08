@@ -41,9 +41,7 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 
 ### T4.4 — Wire Codex translation into live loop
 
-**Status:** OPEN. Blocked by T4.2 + T4.3.
-
-**Acceptance:** per-block async JA→EN with ordered display; graceful JA-only degradation on translation failure/quota exhaustion; sustained-session viability (latency + quota) demonstrated on synthetic clips.
+**Status:** SHIPPED 2026-06-08. `CodexTranslator` in `live_stt.py` (app-server JSON-RPC per D-011): sequential turns preserve EN order; numbered `JA n:`/`EN n:` lines keep interleaved pairs unambiguous; startup warm-up turn absorbs the ~3 s uncached-prompt cost (first real block JA+EN ≈1.05 s). Degradation: missing CLI/failed init → JA-only at startup; 3 consecutive turn failures → JA-only for session; backlog >50 drops oldest; `--no-translate` skips. Synthetic 9-block session: 9/9 EN ordered, ~1 s cadence, 0 failures.
 
 ### T4.5 — Cleanup
 

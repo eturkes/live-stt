@@ -6,7 +6,7 @@ import io
 
 import numpy as np
 
-from live_stt import RingBuffer, emit_block, resample
+from live_stt import RingBuffer, emit_line, resample
 
 
 def test_resample_identity():
@@ -177,40 +177,41 @@ def test_ring_slice_spanning_wrap_point():
     np.testing.assert_array_equal(r.slice(4, 12), np.arange(4, 12, dtype=np.float32))
 
 
-# --- emit_block ---
+# --- emit_line ---
 
 
-def test_emit_block_ja_only(capsys):
+def test_emit_line_ja(capsys):
     buf = io.StringIO()
-    emit_block("こんにちは", "", buf)
+    emit_line("JA", 1, "こんにちは", buf)
     captured = capsys.readouterr()
-    assert "JA: こんにちは" in captured.out
-    assert "EN:" not in captured.out
-    content = buf.getvalue()
-    assert "JA: こんにちは" in content
-    assert "EN:" not in content
+    assert "JA 1: こんにちは" in captured.out
+    assert "JA 1: こんにちは" in buf.getvalue()
 
 
-def test_emit_block_ja_and_en(capsys):
+def test_emit_line_en_shares_seq_tag(capsys):
+    # JA and EN are emitted independently; the seq number ties pairs together.
     buf = io.StringIO()
-    emit_block("こんにちは", "Hello", buf)
-    captured = capsys.readouterr()
-    assert "JA: こんにちは" in captured.out
-    assert "EN: Hello" in captured.out
+    emit_line("JA", 2, "こんにちは", buf)
+    emit_line("JA", 3, "次の文", buf)
+    emit_line("EN", 2, "Hello", buf)
     content = buf.getvalue()
-    assert "JA: こんにちは" in content
-    assert "EN: Hello" in content
+    assert "JA 2: こんにちは" in content
+    assert "JA 3: 次の文" in content
+    assert "EN 2: Hello" in content
+    # Interleaved arrival keeps one self-describing event per line.
+    assert content.index("JA 3") < content.index("EN 2")
 
 
-def test_emit_block_writes_iso8601_timestamp_prefix():
+def test_emit_line_writes_iso8601_timestamp_prefix():
     buf = io.StringIO()
-    emit_block("テスト", "", buf)
+    emit_line("JA", 1, "テスト", buf)
     first_line = buf.getvalue().split("\n", 1)[0]
-    assert first_line.startswith("[") and first_line.endswith("]")
-    assert "T" in first_line
+    assert first_line.startswith("[")
+    assert "] JA 1: テスト" in first_line
+    assert "T" in first_line.split("]", 1)[0]
 
 
-def test_emit_block_no_file_no_crash(capsys):
-    emit_block("テスト", "", None)
+def test_emit_line_no_file_no_crash(capsys):
+    emit_line("JA", 1, "テスト", None)
     captured = capsys.readouterr()
-    assert "JA: テスト" in captured.out
+    assert "JA 1: テスト" in captured.out
