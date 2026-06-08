@@ -126,6 +126,8 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 
 **Amendment 2026-06-08:** The Bash escape hatch is dead in practice — Bash commands referencing deny-listed paths were refused twice (`grep` on `.env`, `ls` on `spike/backends/cache/`). Treat deny-listed paths as fully off-limits via **every** tool; ask the user instead of probing. Runtime reads by the app itself (python-dotenv loading `.env`) are unaffected.
 
+**Amendment 2026-06-08 (b) — env-block question CLOSED:** `CLAUDE_CODE_SUBAGENT_MODEL=opus` + `CLAUDE_CODE_EFFORT_LEVEL=max` are already set **globally** (`~/.claude/settings.json` env block, container HOME; symlinked from `~/agents/claude/settings.json`) and apply to every project — per-project import is moot. ckc's project copy is a redundant no-op (identical values; project env only matters to override global). Future sessions: the max-model/max-effort rules are mechanically enforced; stop flagging this. Same session: `enabledPlugins.pyright-lsp@claude-plugins-official` added to project settings (user opted in; ckc parity). Server dep `pyright-langserver` 1.1.410 is user-level (`~/.local/bin`, pnpm tree at `~/.local/share/lsp-node`, predates this project). Plugin tools attach at session start → functional verification falls to the next session.
+
 ---
 
 ## D-009 — No-API-key architecture: local STT + Codex-subscription translation, Gemini replaced outright

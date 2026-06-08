@@ -11,5 +11,8 @@
       "Read(**/.pytest_cache/**)",
       "Read(**/.ruff_cache/**)"
     ]
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true
   }
 }

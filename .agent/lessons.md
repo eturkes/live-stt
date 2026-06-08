@@ -113,3 +113,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** The user maintains near-identical CLAUDE.md copies in sibling projects (`ckc`, `rehab`, `lean-cds`, `pose-estimation`) and propagates edits project-by-project; live-stt had been missed. `diff` against the most-recently-modified siblings (sort by mtime) recovered the exact intended edit — one sentence, identical in all three updated copies. Sibling `.claude/settings.json` files also served as precedent for config shape.
 
 **Rule:** When the user reports a CLAUDE.md (or other shared-template) change that no local diff/mtime supports, diff against the sibling projects' copies under `~/Projects/` before asking. If multiple freshly-updated siblings agree byte-for-byte, apply the same edit here for template parity and report the sync explicitly.
+
+---
+
+## L-012 — `claude plugin install` defaults to user scope and silently edits the GLOBAL settings file
+
+**Context:** 2026-06-08. Enabling pyright-lsp for live-stt only. Bare `claude plugin install pyright-lsp@claude-plugins-official` reported `(scope: user)` and wrote `enabledPlugins` into `~/.claude/settings.json` — enabling the plugin for **every** project — while leaving the project's `.claude/settings.json` untouched.
+
+**Finding:** Default `--scope` is `user` for both `install` and `uninstall`. Project-scoped enablement (ckc pattern: `enabledPlugins` in project `.claude/settings.json` + `installed_plugins.json` record carrying `projectPath`) requires explicit `-s project`. Recovery: `uninstall -s user` then `install -s project`; the uninstall left an empty `"enabledPlugins": {}` in the global file (cleaned by hand — and note the global settings.json is a **symlink** into `~/agents/claude/`; Edit must target the resolved path). Each CLI write also reorders the global file's keys. Separately: `installed_plugins.json` bakes absolute `projectPath`s, so a moved project leaves a stale record (observed: ckc's pre-move path).
+
+**Rule:** Always pass `-s project` to `claude plugin install`/`uninstall` for project-local intent, and verify afterwards which settings file actually changed (grep `enabledPlugins` in both global and project files). After a project relocation, expect plugin install records to need a re-install from the new path.

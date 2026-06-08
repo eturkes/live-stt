@@ -11,7 +11,7 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | `tests/test_audio.py` | Pure-function tests: `resample`, `RingBuffer`, `emit_line`. Run with `uv run pytest`. |
 | `pyproject.toml` | `uv`-managed deps (numpy, sounddevice, sherpa-onnx + sherpa-onnx-core). Entry point: `live-stt`. Python ≥ 3.11. |
 | `.githooks/pre-commit` | Runs `uv run pytest -q`; aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
-| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. |
+| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
 | `README.md` | User-facing docs. Update only on user-visible behavior changes. |
 | `PLAN.md` | Roadmap with task IDs. Source of truth for what to do next. |
 | `SPIKE_REPORT.md` | Historical: REST → Gemini Live migration (architecture removed at T4.5). |
