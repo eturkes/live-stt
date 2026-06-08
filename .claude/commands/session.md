@@ -1,7 +1,6 @@
-# Reusable Session Bootstrap Prompt
-
-Paste the block below into a fresh Claude Code session (or any coding agent with file access) when resuming work on `live-stt`. Append session-specific steering text below the delimiter if you want to focus the session.
-
+---
+description: Bootstrap a fresh live-stt work session (memory reads + task pick)
+argument-hint: "[TASK] — blank follows PLAN.md; a value overrides the roadmap this session"
 ---
 
 You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool. STT is fully local (silero VAD + sherpa-onnx, no API keys); translation rides a Codex subscription via a persistent `codex app-server` subprocess, degrading to JA-only when unavailable. Single-file Python script (`live_stt.py`, ~800 lines), managed with `uv`; model weights in gitignored `models/` (download cmds in `models/README.md`).
@@ -32,8 +31,7 @@ You cannot verify these from inside the agent — flag them for the user every t
 
 ## What to do right now
 
-State the task you've selected from `PLAN.md`, the acceptance criteria, and ask the user to confirm or redirect before making changes. If the user provided a specific task in their initial message, do that instead and skip `PLAN.md` selection.
+Session override task (the text typed after `/session`, may be empty): $ARGUMENTS
 
----
-
-<!-- USER STEERING (optional) — append below this line to focus the session, e.g. "work on T2.2 only" or "skip the scaffolding step, the project is already set up". -->
+- **If that override is non-empty:** treat it as this session's task, overriding the `PLAN.md` roadmap. Still complete the bootstrap reads above, then restate the task's acceptance criteria (pull them from `PLAN.md` if the override names a task ID, otherwise infer them and state your assumptions) and ask the user to confirm or redirect before changing code.
+- **If that override is empty:** follow the roadmap — select the lowest-numbered open task in `PLAN.md`, state it and its acceptance criteria, and ask the user to confirm or redirect before changing code.

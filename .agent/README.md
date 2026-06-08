@@ -2,11 +2,12 @@
 
 Persistent context for agent sessions. Read on every fresh session before touching project code.
 
+**Fresh session:** run `/session [TASK]` — the `.claude/commands/session.md` slash command (successor to the old `.agent/SESSION_PROMPT.md`). It walks the files below in order. Blank `TASK` follows the `PLAN.md` roadmap; a value (task ID or free text) overrides the roadmap for that session.
+
 ## Files
 
 | File | Role | Read when |
 |---|---|---|
-| `SESSION_PROMPT.md` | Reusable bootstrap prompt for a new agent session | Starting fresh — copy/paste into the new session |
 | `orientation.md` | Project-specific facts: file map, smoke-test constraints, style guide | First read after `CLAUDE.md` |
 | `journal.md` | Chronological session log: dated entries of what each session did | Catching up on recent history |
 | `lessons.md` | Mistakes-and-fixes; generalizable rules harvested from past errors | Before attempting a task similar to a past one |

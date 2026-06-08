@@ -6,6 +6,18 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — Session bootstrap prompt → `/session [TASK]` slash command
+
+**Trigger:** User — turn the reusable `SESSION_PROMPT.md` into a native slash command; a `<TASK>` arg overrides the roadmap for that session, blank follows `PLAN.md`.
+
+**Shipped:** `.claude/commands/session.md` (`/session [TASK]`). Body = old prompt minus the human-paste preamble; the trailing "USER STEERING" HTML comment is replaced by an `$ARGUMENTS` slot in § "What to do right now" (non-empty → override + still run bootstrap reads; empty → lowest-numbered open `PLAN.md` task). `.agent/SESSION_PROMPT.md` deleted. Refs repointed: `.agent/README.md` (intro pointer added, stale table row dropped), `decisions.md` D-004 amended + **D-012** added. Historical journal mentions of `SESSION_PROMPT` left intact (accurate at their dates).
+
+**Gotcha (→ L-014):** `argument-hint: [TASK] …` is invalid YAML — a leading `[` opens a flow sequence and the trailing prose raises `ParserError`; quoted the value. Verified the frontmatter parses via `uv run --with pyyaml`.
+
+**Smoke-test (user-side, agent cannot verify):** in a fresh Claude Code session, `/session` (roadmap) and `/session <TASK>` (override) must register in the menu and expand correctly — slash-command discovery/expansion is outside agent reach.
+
+---
+
 ## 2026-06-08 — Maintenance pass: pyright venv config + Optional fixes, deps bumped, codex already latest
 
 **Trigger:** No open PLAN tasks (T4 series complete; live-mic smoke test pending on user) — user picked "maintenance pass" from session-start options.
@@ -45,18 +57,4 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Did not verify (user smoke-test, L-004):** live mic capture, `--device`/`--list-devices`, Ctrl+C mid-utterance flush + translator drain, real-time latency feel, multi-hour quota burn. Note: secondary weekly Codex window already at 54% from user's other usage.
 
 **Carried open question:** import `ckc`'s `env` settings (`CLAUDE_CODE_SUBAGENT_MODEL=opus`, `CLAUDE_CODE_EFFORT_LEVEL=max`)? Still unanswered.
-
----
-
-## 2026-06-08 — T4 pivot (no API keys) + T4.1 shipped: local STT engine selected
-
-**Trigger:** User rejected the T-BACKENDS-001 premise mid-bootstrap: "I don't want to use API keys, I want to use a Codex subscription." Locked via AskUserQuestion: local STT + Codex-subscription translation (A), Gemini replaced outright, ChatGPT Pro tier. → **D-009**; T-BACKENDS-001 superseded; T4.1–T4.5 added to PLAN.
-
-**Research (2 subagents, compressed → `.agent/scratch/2026-06-08_T4-research-notes.md`):** no native frame-sync streaming open JA model exists (June 2026) — all paths are VAD-chunked offline decode. Codex leg: persistent `codex app-server` (JSON-RPC/stdio) + `gpt-5.3-codex-spark` (Pro-only, separate rate pool); raw backend-api POST rejected (Cloudflare TLS fingerprinting).
-
-**T4.1 shipped (→ D-010):** `prototype_local.py` (sherpa-onnx offline + silero VAD, harness contract). Bench: **k2-v2** primary / parakeet A/B; TTFT ≤0.10 s vs Gemini 1.21 s; near-exact JA; $0/hr. Two T4.3-binding findings: Gemini-TTS boundary artifact (scenarios.py medium/long re-rendered per-sentence + 0.7 s silences) and silero onset clipping (`VAD_PRE_PAD_S=0.4` re-slice; production wants ring buffer). Models in gitignored `models/`.
-
-**Env quirks:** `uv add sherpa-onnx` skipped its declared dep `sherpa-onnx-core` (carries libonnxruntime) — explicit add fixed import. Deny-list now verified enforced (Read(uv.lock) refused) **including via Bash** (twice) → D-008 amended: deny paths are off-limits via every tool; ask, don't probe.
-
-**Next (T4.2, user action required):** codex CLI 0.137.0 installed (`~/.local/bin/codex`), not yet authenticated. User must run `codex login --device-auth` interactively (may need "Allow device code login" at chatgpt.com Settings→Security). Then: latency bench, Spark entitlement check, instruction-control verification, quota accounting.
 

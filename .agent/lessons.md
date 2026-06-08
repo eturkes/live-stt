@@ -133,3 +133,11 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** Claude Code runs each Bash call as `/usr/bin/bash -c 'eval <full command text>'`, so the pattern string appears verbatim in the wrapper's own cmdline. `pgrep -f`/`pkill -f` therefore match (and kill) the very shell executing them. The "phantom respawned PID" after the first kill was the next pgrep's wrapper, not the target.
 
 **Rule:** Break literal self-match with a bracket class in every `pgrep -f`/`pkill -f` pattern — `pgrep -f "pyright/index[.]js"` matches the target but not the wrapper's literal `[.]` text. Append `|| echo none` so zero matches is visible. Treat any -f match whose cmdline starts with `/usr/bin/bash -c source .../shell-snapshots/...` as your own wrapper.
+
+## L-014 — Slash-command / frontmatter YAML values starting with `[` or `{` must be quoted
+
+**Context:** 2026-06-08, authoring `.claude/commands/session.md`. `argument-hint: [TASK] — blank follows…` looked fine but is invalid YAML.
+
+**Finding:** A leading `[` (or `{`) opens a YAML *flow sequence/mapping*; trailing prose after the `]` is then unexpected and the document raises `ParserError` (confirmed: `uv run --with pyyaml` parsed the quoted form, failed the bare form). Docs examples like `argument-hint: add [id] | list` only work because they start with a plain char — the bracket sits mid-scalar. Brittle parsers may drop a malformed `description`/`argument-hint` silently, so the command can register with a missing hint and no error.
+
+**Rule:** Quote any frontmatter scalar that begins with a YAML indicator (`[ { } ] , & * ! | > % @ \` "` `#` `: `). Verify ad-hoc frontmatter with an ephemeral parser — `uv run --with pyyaml python3 -c "import yaml,sys; yaml.safe_load(open(p).read().split('---')[1])"` — rather than eyeballing it.

@@ -51,7 +51,7 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Date:** 2026-05-16.
 **Trigger:** CLAUDE.md (memory-system rule) mandates a memory/notetaking/scratchpad system; user opted for `.agent/` with structured files.
 
-**Decision:** Six top-level files (`README.md`, `SESSION_PROMPT.md`, `orientation.md`, `journal.md`, `lessons.md`, `decisions.md`) + one subdir (`scratch/`). All committed (per user choice). *(2026-06-04: dropped the `archive/` subdir — git history is the archive; see `journal.md` cap policy.)*
+**Decision:** Five top-level files (`README.md`, `orientation.md`, `journal.md`, `lessons.md`, `decisions.md`) + one subdir (`scratch/`). All committed (per user choice). *(2026-06-04: dropped the `archive/` subdir — git history is the archive; see `journal.md` cap policy.)* *(2026-06-08: `SESSION_PROMPT.md` removed — the bootstrap prompt became the `/session [TASK]` slash command at `.claude/commands/session.md`; see D-012.)*
 
 **Rationale:**
 - Separation lets fresh agents load only what's relevant: `orientation.md` for facts, `lessons.md` for "what not to do," `decisions.md` for "why it's this way," `journal.md` for recent history.
@@ -185,3 +185,19 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **T4.4 notes:** thread grows ~30 tok/turn — rotate thread every ~100 turns (one 2.7 s uncached turn) or on `modelContextWindow` pressure; cwd → any empty dir (sandbox read-only makes it inert); errors arrive as `error` notifications with `willRetry` — degrade to JA-only per D-009.
 
 **Revisit if:** Spark latency/entitlement changes on plan change; or sustained-session quota burn contradicts the ~0 % observation; or OpenAI sanctions a leaner instructions channel on subscription auth.
+
+---
+
+## D-012 — Bootstrap prompt is the `/session [TASK]` slash command
+
+**Date:** 2026-06-08. **Trigger:** user — convert the reusable session prompt to a native slash command with per-session roadmap override.
+
+**Decision:** The bootstrap prompt lives at `.claude/commands/session.md` (invoked `/session [TASK]`), not as `.agent/SESSION_PROMPT.md` (deleted, D-004 amended). Body is the former prompt verbatim minus the human-paste preamble; the trailing "USER STEERING" HTML comment is replaced by an `$ARGUMENTS` slot in § "What to do right now":
+- **`/session` (blank):** follow `PLAN.md` — lowest-numbered open task.
+- **`/session <TASK>`:** `<TASK>` (task ID or free text) overrides the roadmap for that session; bootstrap reads still run.
+
+**Rationale:** Slash commands are Claude Code's native reusable-prompt mechanism — discoverable in-session, no copy/paste, no manual comment-appending for steering. One `$ARGUMENTS` arg unifies the previous two modes (roadmap vs. hand-edited steering) into the documented `<TASK>` contract.
+
+**Refs updated:** `.agent/README.md` (pointer + table row), D-004 (file list). Historical `journal.md` mentions of `SESSION_PROMPT.md` left as-is (accurate at their dates).
+
+**Verify (user-side):** `/session` and `/session T2.2` must appear/expand correctly in a fresh session — slash-command registration is not agent-verifiable.
