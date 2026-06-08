@@ -6,6 +6,16 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — Renamed `/session` slash command → `/session-prompt`
+
+**Trigger:** User (`/session` override) — rename the bootstrap slash command `/session` → `/session-prompt`.
+
+**Shipped:** `git mv .claude/commands/session.md → session-prompt.md` (history preserved; the command name derives from its filename). Body self-mention repointed (`text typed after /session-prompt`); frontmatter untouched, re-verified parsing (L-014). Live refs repointed: `.agent/README.md` intro pointer; `decisions.md` D-004 amendment + D-012 (title/body/verify → new name, plus a rename amendment recording the original `/session` for trajectory). Per user choice: historical `journal.md` entries and L-014's dated `session.md` context left intact (accurate-at-date). Grep-verified no stale *live* ref remains — remaining old-name hits are two false positives (`send/recv/session`, `thread/session`), the journal/L-014 history, and the amendment's own rename note. (Grep gotcha: `/session\b` matches `/session-prompt` because `-` is a word boundary; used `/session(?!-prompt)`.)
+
+**Smoke-test (user-side, agent cannot verify):** in a fresh Claude Code session `/session-prompt` (roadmap) and `/session-prompt <TASK>` (override) must register in the menu and expand correctly; old `/session` should no longer appear. Slash-command discovery/expansion is outside agent reach.
+
+---
+
 ## 2026-06-08 — Session bootstrap prompt → `/session [TASK]` slash command
 
 **Trigger:** User — turn the reusable `SESSION_PROMPT.md` into a native slash command; a `<TASK>` arg overrides the roadmap for that session, blank follows `PLAN.md`.
@@ -41,20 +51,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Verify next session:** pyright LSP tools attach + give diagnostics on `live_stt.py` (plugins load at session start — unverifiable from the session that flips the flag).
 
 **Flagged for user:** (1) ckc's `installed_plugins.json` record still points at pre-move `~/Documents/pro/ckc` — ckc may need `install -s project` re-run from its new path. (2) ckc's project env block duplicates the global one; prune at will. (3) T4.3/T4.4 live-mic smoke test still pending (L-004).
-
----
-
-## 2026-06-08 — T4.2–T4.5 shipped: re-architecture complete, Gemini fully removed
-
-**Trigger:** User: "OK I authenticated Codex" — unblocked T4.2; ran the remaining T4 series to completion in one session.
-
-**T4.2 (→ D-011):** `codex app-server` JSON-RPC/stdio surface benched via `spike/backends/codex_client.py`. Binding config: Spark+`low` (`minimal` rejected), tool-features off at spawn (`web_search="disabled"` + 5 `features.*=false`) — THE latency lever, p50 3.15→**0.99 s**/turn (Gemini baseline 1.21 s); instructions via `developerInstructions` (4/4 injection-resistant; AGENTS.md-in-cwd mode REJECTED — obeyed "delete all files" as a request). Marginal ~180 uncached in + 7–60 out tok/turn; ~50 turns moved the 5 h window 0→0%. Plan reports `prolite` (user said Pro); Spark entitled regardless. Fallback: mini+`none`, p50 1.18 s.
-
-**T4.3 + T4.4:** `live_stt.py` rewritten — mic → resample → silero VAD + 60 s `RingBuffer` (absolute indexing; pre-pad 0.4 s re-slice) → executor decode → numbered `JA n:`/`EN n:` lines; `CodexTranslator` (warm-up turn absorbs ~3 s uncached cost; thread rotation @100 turns; degradation: missing CLI → JA-only at start, 3 consecutive failures → JA-only for session, backlog >50 drops oldest). RingBuffer phase bug caught by tests (oversized append ignored ring phase; fixed with phase-aligned two-segment write). 22 tests green; synthetic E2E: STT reproduces T4.1 bench exactly, 9/9 EN ordered @~1 s cadence.
-
-**T4.5:** `google-genai` + `python-dotenv` removed (25 pkgs; spike `load_dotenv` lines dropped), `list_live_models.py` + `.env` deleted, README/orientation/SESSION_PROMPT rewritten for the new architecture, D-001/D-003 superseded, L-002/L-003 historical, L-004 rescoped.
-
-**Did not verify (user smoke-test, L-004):** live mic capture, `--device`/`--list-devices`, Ctrl+C mid-utterance flush + translator drain, real-time latency feel, multi-hour quota burn. Note: secondary weekly Codex window already at 54% from user's other usage.
-
-**Carried open question:** import `ckc`'s `env` settings (`CLAUDE_CODE_SUBAGENT_MODEL=opus`, `CLAUDE_CODE_EFFORT_LEVEL=max`)? Still unanswered.
-

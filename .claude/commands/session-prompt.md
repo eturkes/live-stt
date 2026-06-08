@@ -31,7 +31,7 @@ You cannot verify these from inside the agent — flag them for the user every t
 
 ## What to do right now
 
-Session override task (the text typed after `/session`, may be empty): $ARGUMENTS
+Session override task (the text typed after `/session-prompt`, may be empty): $ARGUMENTS
 
 - **If that override is non-empty:** treat it as this session's task, overriding the `PLAN.md` roadmap. Still complete the bootstrap reads above, then restate the task's acceptance criteria (pull them from `PLAN.md` if the override names a task ID, otherwise infer them and state your assumptions) and ask the user to confirm or redirect before changing code.
 - **If that override is empty:** follow the roadmap — select the lowest-numbered open task in `PLAN.md`, state it and its acceptance criteria, and ask the user to confirm or redirect before changing code.
