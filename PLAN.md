@@ -2,7 +2,7 @@
 
 Single-file Python tool. Trajectory: simplicity over completeness. No frameworks, no config, no premature abstractions. Each task is sized for one focused pass.
 
-Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE`.
+Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE` `SUPERSEDED`.
 
 ---
 
@@ -23,17 +23,47 @@ Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE`.
 
 ---
 
-## Open
+## Open — T4 series: no-API-key re-architecture (ADR: D-009)
 
-### T-BACKENDS-001 — Finish backends spike (blocked on API keys)
+User directive 2026-06-08: zero metered API keys. New architecture: **local STT (JA) + Codex-subscription translation**. Gemini Live replaced outright. Plan detail: `.agent/scratch/2026-06-08_T4-rearch.md`.
 
-**Status:** BLOCKED.
+### T4.1 — Pick local JA STT engine via spike bench
 
-**Source:** `SPIKE_REPORT_BACKENDS.md`.
+**Status:** OPEN (research agents dispatched).
 
-**Acceptance:** `spike/backends/bench.py` produces measured rows for Deepgram and OpenAI Realtime. Decision recorded in a new ADR.
+**Acceptance:** ≥1 local engine prototyped against `spike/backends/harness.py` `stream()` protocol; `bench.py` rows on the 5 cached clips; TTFT + JA-quality compared to Gemini baseline (1.21 s mean, exact 4/5); engine choice recorded in ADR. CPU-only (8-core/30 GB).
 
-**Blocked on:** User adding `DEEPGRAM_API_KEY` and `OPENAI_API_KEY` to `.env`.
+### T4.2 — Codex CLI install + auth + translation-leg bench
+
+**Status:** OPEN (research agent dispatched).
+
+**Acceptance:** codex CLI installed; user completed OAuth (interactive — agent must prompt); per-call latency measured on short JA→EN prompts via the chosen persistent surface; instruction control verified (translation-only output, agentic loop off); quota accounting on Pro tier understood.
+
+### T4.3 — Rewrite `live_stt.py` around local STT
+
+**Status:** OPEN. Blocked by T4.1.
+
+**Acceptance:** Gemini session machinery removed; chosen engine streams mic audio with endpointing (engine-native or silero-vad); mic capture/level meter/`-o`/signal handling/`_StderrFormatter` preserved; `uv run pytest` green (pure-fn tests adapted); smoke-test items flagged per L-004.
+
+### T4.4 — Wire Codex translation into live loop
+
+**Status:** OPEN. Blocked by T4.2 + T4.3.
+
+**Acceptance:** per-block async JA→EN with ordered display; graceful JA-only degradation on translation failure/quota exhaustion; sustained-session viability (latency + quota) demonstrated on synthetic clips.
+
+### T4.5 — Cleanup
+
+**Status:** OPEN. Blocked by T4.4.
+
+**Acceptance:** `google-genai` dep + `GEMINI_API_KEY` preflight + `list_live_models.py` removed; README/orientation rewritten for new architecture; D-001/D-003 marked superseded-by-D-009; L-002/L-003 marked historical; SPIKE_REPORT*.md kept as history.
+
+---
+
+## Superseded
+
+### T-BACKENDS-001 — Finish backends spike
+
+**Status:** SUPERSEDED 2026-06-08 by the T4 series — user ruled out API keys entirely, which removes both blocked candidates (Deepgram, OpenAI Realtime metered). The spike's harness, clips, and Gemini baseline rows carry forward into T4.1. `SPIKE_REPORT_BACKENDS.md` stands as the historical record; its "populate keys" recommendation is void.
 
 ---
 
@@ -53,12 +83,13 @@ Listed so future agents don't redebate them:
 
 - Config files / YAML / TOML for tunables. Constants at the top of `live_stt.py` are the config surface.
 - Multi-mic mixing.
-- VAD reintroduction (Gemini's native VAD is sufficient).
 - Speaker diarization.
 - Web UI.
 - Auth / multi-user.
 - Metrics dashboards beyond the existing level meter.
 - Package split / multi-module layout (see `.agent/decisions.md` D-002).
+
+_Removed from this list 2026-06-08:_ "VAD reintroduction" — Gemini's native VAD is gone with D-009; local pipeline needs endpointing (engine-native preferred, silero-vad fallback). See T4.3.
 
 ---
 

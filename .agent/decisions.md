@@ -119,3 +119,29 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Notes:** Deny rules gate Read/Grep/Glob; Bash `cat`/`grep` stays available as the deliberate escape hatch (L-009-style `.venv/bin` shebang forensics remain possible). `ckc`'s settings additionally carry `env` (`CLAUDE_CODE_SUBAGENT_MODEL=opus`, `CLAUDE_CODE_EFFORT_LEVEL=max`) — intentionally not imported; outside the instruction's scope, flagged to user.
 
 **Revisit if:** A denied path is needed repeatedly via Bash → narrow the rule rather than deleting the block.
+
+**Amendment 2026-06-08:** The Bash escape hatch is dead in practice — Bash commands referencing deny-listed paths were refused twice (`grep` on `.env`, `ls` on `spike/backends/cache/`). Treat deny-listed paths as fully off-limits via **every** tool; ask the user instead of probing. Runtime reads by the app itself (python-dotenv loading `.env`) are unaffected.
+
+---
+
+## D-009 — No-API-key architecture: local STT + Codex-subscription translation, Gemini replaced outright
+
+**Date:** 2026-06-08.
+**Trigger:** User: "I don't want to use API keys, I want to use a Codex subscription." Supersedes **D-001** (Gemini Live backend) and the premise of **D-003** (its session machinery); kills T-BACKENDS-001 (was blocked on keys that will never arrive).
+
+**Decision:** Replace the Gemini Live backend entirely (user chose outright replacement over keep-until-proven, accepting a regression window) with:
+- **STT leg:** local open-source streaming JA engine, CPU-only (8-core/30 GB, no GPU). Engine chosen via spike-harness bench (T4.1).
+- **Translation leg:** Codex subscription text surface (ChatGPT Pro-tier OAuth, ~1,600 msgs/5 h). Surface chosen via research (T4.2): prefer sanctioned persistent CLI surface over the undocumented `chatgpt.com/backend-api/codex/responses` endpoint.
+
+**Rationale:**
+- Eliminates all metered cost (Gemini path was ~$1.40/hr, L-003; flat-rate plan already paid for).
+- Research findings (2026-06): Codex subscription auth is **text-only** programmatically — no clean audio path. Codex CLI `[realtime]` voice sessions exist (subscription-only, Whisper-backed) but are agentic-loop-wrapped, 60 s-clip-capped, unfit as a continuous JA transcriber — rejected as the engine ("option C").
+- Fully-local option B (local MT) rejected by user in favor of GPT-5.5-quality translation at zero marginal cost.
+
+**Consequences:**
+- Endpointing/VAD responsibility returns to the app (Gemini's native VAD is gone) — engine-native preferred, silero-vad fallback.
+- New runtime dependency on codex CLI + OAuth state (`~/.codex/auth.json`); interactive login is user-performed.
+- Translation can lag or exhaust quota → graceful JA-only degradation is a hard requirement (T4.4).
+- `google-genai`, reconnect/resumption machinery, `list_live_models.py` removed at T4.5.
+
+**Revisit if:** a subscription-auth realtime audio surface becomes programmatically sanctioned (re-evaluate one-leg architecture); or local-engine JA quality on CPU proves insufficient at T4.1 bench (fallback: revisit option B variants or larger local models before any metered API).
