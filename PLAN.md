@@ -33,9 +33,7 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 
 ### T4.2 — Codex CLI install + auth + translation-leg bench
 
-**Status:** OPEN (research agent dispatched).
-
-**Acceptance:** codex CLI installed; user completed OAuth (interactive — agent must prompt); per-call latency measured on short JA→EN prompts via the chosen persistent surface; instruction control verified (translation-only output, agentic loop off); quota accounting on Pro tier understood.
+**Status:** SHIPPED 2026-06-08 (ADR: D-011). codex 0.137.0 + user OAuth (plan=`prolite`; Spark entitled). Persistent `codex app-server` surface: **Spark+low, tool features off, `developerInstructions`** → p50 0.99 s/turn, 8/8 clean JA→EN, 4/4 injection-resistant, ~180 uncached tokens/turn marginal (quota burn ≈0 %). `codex_client.py` carries the T4.4 pattern. Fallback: mini+none (p50 1.18 s).
 
 ### T4.3 — Rewrite `live_stt.py` around local STT
 

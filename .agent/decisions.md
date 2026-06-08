@@ -161,3 +161,21 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 2. **Silero VAD onset clipping:** segments open 0.2–0.7 s late (こんにちは→はい); sherpa exposes no pad field. Fix: re-slice each segment from the fed-sample stream with `VAD_PRE_PAD_S = 0.4` lead-in (prototype_local.py). T4.3 needs a bounded ring buffer for the same.
 
 **Revisit if:** live-mic smoke tests show accuracy/latency regressions vs these synthetic results; or Reazon ships its planned native-streaming JA model (drop chunking); or proper-noun drift (foreign names) proves disruptive in practice.
+
+---
+
+## D-011 — Translation leg: codex app-server, Spark+low, developerInstructions, tool features off
+
+**Date:** 2026-06-08. **Source:** T4.2 bench, `spike/backends/codex_client.py` (carries the T4.4 pattern).
+
+**Surface:** persistent `codex app-server` subprocess, newline-delimited JSON-RPC/stdio: `initialize` → `thread/start` (one thread/session, `ephemeral:true`, `sandbox:"read-only"`, `approvalPolicy:"never"`, `personality:"none"`) → `turn/start` per block → `item/agentMessage/delta` → `turn/completed`. Usage from `thread/tokenUsage/updated`; quota from `account/rateLimits/read`.
+
+**Config (all four bind):**
+1. **Model `gpt-5.3-codex-spark` + `effort:"low"`** (Spark floor; `minimal` rejected). Fallback **`gpt-5.4-mini` + `effort:"none"`** — p50 1.18 s, also 8/8 clean.
+2. **Disable tool-injecting features at spawn** — `web_search="disabled"`, `features.{image_generation,browser_use,browser_use_external,computer_use,apps}=false`. THE latency lever: tool schemas were ~15 K tokens/turn; p50 3.15 s → **0.99 s** (ttft 0.94 s; Gemini baseline 1.21 s). Each enabled tool also 400s at low/minimal effort.
+3. **Instructions via `developerInstructions` on thread/start** (content: codex_ws/AGENTS.md text). 4/4 injection-resistant (imperatives/role-reassignment in speech → translated, not obeyed). AGENTS.md-in-cwd mode REJECTED: Spark answered "delete all files…" as a request and suggested `rm -rf`. `baseInstructions` pinned server-side (stock prompt stays, ≈18 K in).
+4. **Per-thread marginal cost ≈ 180 uncached in + 7–60 out tokens/turn** (prefix 5.1 K cached from turn 2; turn 1 ≈ 2.7 s uncached). ~50 bench turns moved primary 5 h window 0 → 0 %. Plan reports **`prolite`** (user had said Pro) — Spark entitled regardless; headroom ample.
+
+**T4.4 notes:** thread grows ~30 tok/turn — rotate thread every ~100 turns (one 2.7 s uncached turn) or on `modelContextWindow` pressure; cwd → any empty dir (sandbox read-only makes it inert); errors arrive as `error` notifications with `willRetry` — degrade to JA-only per D-009.
+
+**Revisit if:** Spark latency/entitlement changes on plan change; or sustained-session quota burn contradicts the ~0 % observation; or OpenAI sanctions a leaner instructions channel on subscription auth.
