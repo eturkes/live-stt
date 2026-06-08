@@ -6,6 +6,18 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — `compaction.sh` simplified to single-mode (verify + commit)
+
+**Trigger:** User (`/session-prompt` override) — verify the user's edit to `compaction.sh` (made it token-efficient, stripped unneeded functionality); commit if it works.
+
+**Verified (all green):** The edit drops the statusline (stdin-JSON) branch + ANSI coloring, leaving only the manual transcript-read path; the `c` color flag and the now-redundant `[ "$w" -gt 0 ]` guard (w is always set by the `case`) are gone. Exercised: normal → `23% 45K/200K`; `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (set in this env — explains the 200K window) → same; unset `CLAUDE_CODE_SESSION_ID` → falls back to newest `*.jsonl`, same; empty-usage awk branch → `? ?/1M`; `h()` 1M/1.5M/45K formatting correct; `sh -n` clean. Repo copy **byte-identical** to shared `$HOME/.claude/compaction.sh` → L-008 vendoring invariant holds (user updated both).
+
+**Memory:** L-008 "Current state" re-synced dual-mode → single-mode. orientation.md row (`prints PCT USED/WINDOW`, needs `jq`) still accurate, untouched.
+
+**Consequence to note (user-side):** if `compaction.sh` was ever wired as a Claude Code statusline command, it no longer consumes stdin JSON or emits color — it now reads the transcript (works as long as `CLAUDE_CODE_SESSION_ID` is set, or the newest transcript is the active session).
+
+---
+
 ## 2026-06-08 — Renamed `/session` slash command → `/session-prompt`
 
 **Trigger:** User (`/session` override) — rename the bootstrap slash command `/session` → `/session-prompt`.
@@ -39,15 +51,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Hygiene:** line-count fact ~750→~800 in orientation + SESSION_PROMPT (795 actual); pyright CLI line added to build/test commands; scratch pruned — `2026-05-16_code-audit.md`, `2026-05-18_T2.3.md` deleted (pre-rearchitecture, unreferenced; git archives).
 
 **Open for user (unchanged):** T4.3/T4.4 live-mic smoke test (L-004 list); ckc stale plugin record + redundant env block.
-
----
-
-## 2026-06-08 — Env-block question closed (already global); pyright-lsp enabled project-scope
-
-**Trigger:** User picked "resolve env-settings question" from session-start options, then clarified: "I thought those settings were set globally?" — correct. Global `~/.claude/settings.json` (container HOME; symlink → `~/agents/claude/settings.json`) already carries `CLAUDE_CODE_SUBAGENT_MODEL=opus` + `CLAUDE_CODE_EFFORT_LEVEL=max` (plus MAX_OUTPUT_TOKENS=128000, agent-teams flag, etc.). Two sessions of "import ckc's env block?" flagging were moot — nobody had checked the global file. CLOSED → D-008 amendment (b). ckc's project copy = redundant no-op.
-
-**pyright-lsp (user opted Enable):** `enabledPlugins.pyright-lsp@claude-plugins-official` now in project `.claude/settings.json`. First attempt used the CLI's default **user** scope and silently edited the GLOBAL settings → reverted (`uninstall -s user`, then `install -s project`; leftover empty key hand-cleaned at the symlink target) → **L-012**. Server dep already satisfied user-level: `~/.local/bin/pyright-langserver` (pyright 1.1.410, pnpm tree from ckc setup). Global file diff vs pre-session: key order only (CLI rewrites reorder).
-
-**Verify next session:** pyright LSP tools attach + give diagnostics on `live_stt.py` (plugins load at session start — unverifiable from the session that flips the flag).
-
-**Flagged for user:** (1) ckc's `installed_plugins.json` record still points at pre-move `~/Documents/pro/ckc` — ckc may need `install -s project` re-run from its new path. (2) ckc's project env block duplicates the global one; prune at will. (3) T4.3/T4.4 live-mic smoke test still pending (L-004).
