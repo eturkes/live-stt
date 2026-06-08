@@ -45,9 +45,7 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 
 ### T4.5 — Cleanup
 
-**Status:** OPEN. Blocked by T4.4.
-
-**Acceptance:** `google-genai` dep + `GEMINI_API_KEY` preflight + `list_live_models.py` removed; README/orientation rewritten for new architecture; D-001/D-003 marked superseded-by-D-009; L-002/L-003 marked historical; SPIKE_REPORT*.md kept as history.
+**Status:** SHIPPED 2026-06-08. `google-genai` + `python-dotenv` removed (25 pkgs uninstalled; spike `load_dotenv` lines dropped — export keys manually if re-running historical metered benches); `list_live_models.py` + `.env` deleted; README/orientation rewritten for local-STT+Codex architecture; D-001/D-003 superseded-by-D-009; L-002/L-003 historical, L-004 rescoped; SPIKE_REPORT*.md kept as history.
 
 ---
 

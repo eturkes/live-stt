@@ -18,6 +18,8 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 ## L-002 — `python-genai#1224` workaround
 
+**STATUS: HISTORICAL (2026-06-08).** The Gemini receiver this guarded was removed at T4.5 (D-009). Relevant only if a google-genai Live session ever returns.
+
 **Context:** `session.receive()` in `google-genai` exits its async iterator on `turn_complete`, even though the underlying WebSocket session is still alive and more turns will arrive.
 
 **Finding:** Without an outer `while`, the receiver coroutine returns silently after the first turn, leaving the session idle but connected. Reconnect doesn't fire because nothing has errored.
@@ -28,6 +30,8 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 ## L-003 — Audio-output tokens are billed even when discarded
 
+**STATUS: HISTORICAL (2026-06-08).** The metered Gemini path was removed at T4.5 (D-009); current architecture has zero marginal cost. Relevant only when evaluating audio-native API backends.
+
 **Context:** Native-audio Live models (`gemini-3.1-flash-live-preview` and family) only emit the `AUDIO` response modality. The app reads `output_audio_transcription.text` and discards the audio bytes.
 
 **Finding:** Google bills the audio-output tokens (~$0.018/min at list price, April 2026) regardless. No knob exists to opt out. This is the dominant term in cost-per-hour (~$1.40/hr at list).
@@ -36,11 +40,11 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 ---
 
-## L-004 — Mic and Gemini-rate-limit paths are agent-unverifiable
+## L-004 — Mic and real-terminal paths are agent-unverifiable
 
-**Context:** The agent runs in a sandbox without a real microphone or sustained API budget. CLAUDE.md (ask-questions rule) says to ask the user about ambiguities.
+**Context:** The agent runs in a sandbox without a real microphone or interactive terminal. CLAUDE.md (ask-questions rule) says to ask the user about ambiguities. *(2026-06-08: "Gemini rate-limit" dropped from scope with D-009; canonical list lives in `orientation.md` § Smoke-test constraints.)*
 
-**Finding:** Any change that touches `sd.InputStream`, `audio_callback`, real-time latency, or sustained-session behavior must be flagged for user smoke-test. Unit tests cover pure functions (`resample`, `pcm16_bytes`, `emit_block`) but not the live path.
+**Finding:** Any change that touches `sd.InputStream`, `audio_callback`, real-time latency, Ctrl+C handling, or multi-hour-session behavior must be flagged for user smoke-test. Unit tests cover pure functions (`resample`, `RingBuffer`, `emit_line`) and synthetic E2E covers decode/translation, but not the live mic path.
 
 **Rule:** End every session that touched the audio or session-loop code with a "**Did not verify**" list naming each unverifiable behavior the user should smoke-test. Do not claim "done" without that disclaimer.
 

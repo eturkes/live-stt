@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from dotenv import load_dotenv
 
 try:
     from google import genai
@@ -33,7 +32,8 @@ except ImportError:
 
 from harness import SEND_RATE, load_wav_16k_mono_pcm16
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
+# google-genai/.env dropped at T4.5 (D-009). Cached WAVs keep working; TTS
+# resynthesis needs `uv pip install google-genai` + GEMINI_API_KEY exported.
 
 CACHE_DIR = Path(__file__).parent / "cache"
 TTS_MODEL = "gemini-2.5-flash-preview-tts"
@@ -99,7 +99,7 @@ CLIPS: list[Clip] = [
         # Per-sentence segments: see `medium` comment.
         segments=[
             ("このプロジェクトはリアルタイムの日本語音声認識ツールです。", 0.7),
-            ("マイクから音声を取り込み、ジェミニAPIに送って、日本語の文字起こしと英語の翻訳を同時に表示します。", 0.0),
+            ("マイクから音声を取り込み、ジェミニAPIに送って、日本語の文字起こしと英語の翻訳を同時に表示します。", 0.0),  # noqa: E501
         ],
     ),
     Clip(

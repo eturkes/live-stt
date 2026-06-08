@@ -1,7 +1,7 @@
 [project]
 name = "live-stt"
 version = "0.1.0"
-description = "Live Japanese speech-to-text with English translation using Gemini"
+description = "Live Japanese speech-to-text (local sherpa-onnx) with English translation via Codex"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0 WITH LLVM-exception"
@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Emir Turkes", email = "emir.turkes@eturkes.com" },
 ]
-keywords = ["speech-to-text", "transcription", "japanese", "gemini", "translation"]
+keywords = ["speech-to-text", "transcription", "japanese", "translation", "sherpa-onnx", "codex"]
 classifiers = [
     "Environment :: Console",
     "Programming Language :: Python :: 3",
@@ -17,10 +17,8 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 dependencies = [
-    "google-genai>=1.0.0",
     "sounddevice>=0.4.6",
     "numpy>=1.24",
-    "python-dotenv>=1.0",
     "sherpa-onnx>=1.13.2",
     "sherpa-onnx-core>=1.13.2",
 ]
@@ -42,7 +40,7 @@ build-backend = "hatchling.build"
 only-include = ["live_stt.py"]
 
 [tool.hatch.build.targets.sdist]
-include = ["live_stt.py", "list_live_models.py", "README.md", "PLAN.md"]
+include = ["live_stt.py", "README.md", "PLAN.md"]
 
 [tool.ruff]
 line-length = 100

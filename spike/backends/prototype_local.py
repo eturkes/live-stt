@@ -22,7 +22,6 @@ from pathlib import Path
 
 import numpy as np
 import sherpa_onnx
-
 from harness import Block, Err, Event, Info
 
 MODELS = Path(__file__).resolve().parents[2] / "models"
@@ -133,12 +132,14 @@ async def stream(pcm_frames, *, translate, api_key, engine="k2v2", **kwargs):
                     buf = np.concatenate([buf, f32])
                     while len(buf) >= window:
                         vad.accept_waveform(buf[:window])
-                        fed.append(buf[:window]); fed_len += window
+                        fed.append(buf[:window])
+                        fed_len += window
                         buf = buf[window:]
                 else:
                     if len(buf):
                         vad.accept_waveform(buf)
-                        fed.append(buf); fed_len += len(buf)
+                        fed.append(buf)
+                        fed_len += len(buf)
                     vad.flush()
                 while not vad.empty():
                     start = int(vad.front.start)

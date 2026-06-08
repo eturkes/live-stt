@@ -27,12 +27,11 @@ from pathlib import Path
 # Make sibling modules importable when run as a script.
 sys.path.insert(0, str(Path(__file__).parent))
 
-from dotenv import load_dotenv  # noqa: E402
 from harness import BenchResult, run_bench, summarize  # noqa: E402
 from scenarios import CLIPS, ensure_all, load_clip  # noqa: E402
 
-# Load .env from project root (two levels up from this file).
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
+# python-dotenv dropped at T4.5 (D-009): export backend API keys manually if
+# re-running the historical metered benches.
 
 
 # Vendor pricing for hourly cost estimation (April 2026, list price, USD).

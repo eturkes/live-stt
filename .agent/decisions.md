@@ -6,6 +6,8 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 
 ## D-001 — Backend = Gemini Live API (`gemini-3.1-flash-live-preview`)
 
+**STATUS: SUPERSEDED by D-009 (2026-06-08).** Gemini backend removed at T4.5; kept for trajectory.
+
 **Date:** ~April 2026 (commit `57d7634`).
 **Source:** `SPIKE_REPORT.md` (T3.1 spike).
 
@@ -30,6 +32,8 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 ---
 
 ## D-003 — Persistent session + reconnect + resumption handle
+
+**STATUS: SUPERSEDED by D-009 (2026-06-08).** Its session machinery left with the Gemini backend at T4.5; kept for trajectory.
 
 **Date:** Commit `aa5a466`.
 **Source:** `PLAN.md` T3.2 shipped.

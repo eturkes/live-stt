@@ -4,7 +4,7 @@ Paste the block below into a fresh Claude Code session (or any coding agent with
 
 ---
 
-You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool that streams microphone audio to the Gemini Live API. Single-file Python script (`live_stt.py`, ~545 lines), managed with `uv`.
+You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool. STT is fully local (silero VAD + sherpa-onnx, no API keys); translation rides a Codex subscription via a persistent `codex app-server` subprocess, degrading to JA-only when unavailable. Single-file Python script (`live_stt.py`, ~750 lines), managed with `uv`; model weights in gitignored `models/` (download cmds in `models/README.md`).
 
 ## Bootstrap order (do this before anything else)
 
@@ -15,7 +15,7 @@ Read in this order, then summarize back to the user what the next priority task 
 3. **`.agent/journal.md`** — all entries (kept ≤4) for recent history.
 4. **`.agent/lessons.md`** — generalizable rules from past mistakes. Skim all; reread any that pattern-match the task you're about to do.
 5. **`.agent/decisions.md`** — settled architectural choices. Avoid re-litigating these without new evidence.
-6. **`PLAN.md`** — open tasks in priority order (T1 → T2 → T3). Pick the lowest-numbered open task and restate its acceptance criteria before starting.
+6. **`PLAN.md`** — open tasks in priority order (lowest task ID first). Pick the lowest-numbered open task and restate its acceptance criteria before starting.
 
 ## Working agreement
 
@@ -28,7 +28,7 @@ Read in this order, then summarize back to the user what the next priority task 
 
 ## Smoke-test constraints
 
-You cannot verify these from inside the agent — flag them for the user every time they're touched: the mic-capture, device-enumeration, live-latency, rate-limit, and Ctrl+C/signal paths. The authoritative list lives in `.agent/orientation.md` § "Smoke-test constraints (agent cannot verify)" — read it there rather than maintaining a second copy here.
+You cannot verify these from inside the agent — flag them for the user every time they're touched: the mic-capture, device-enumeration, live-latency, Ctrl+C/signal, and multi-hour-session paths. The authoritative list lives in `.agent/orientation.md` § "Smoke-test constraints (agent cannot verify)" — read it there rather than maintaining a second copy here.
 
 ## What to do right now
 

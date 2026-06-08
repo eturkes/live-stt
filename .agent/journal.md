@@ -6,6 +6,22 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — T4.2–T4.5 shipped: re-architecture complete, Gemini fully removed
+
+**Trigger:** User: "OK I authenticated Codex" — unblocked T4.2; ran the remaining T4 series to completion in one session.
+
+**T4.2 (→ D-011):** `codex app-server` JSON-RPC/stdio surface benched via `spike/backends/codex_client.py`. Binding config: Spark+`low` (`minimal` rejected), tool-features off at spawn (`web_search="disabled"` + 5 `features.*=false`) — THE latency lever, p50 3.15→**0.99 s**/turn (Gemini baseline 1.21 s); instructions via `developerInstructions` (4/4 injection-resistant; AGENTS.md-in-cwd mode REJECTED — obeyed "delete all files" as a request). Marginal ~180 uncached in + 7–60 out tok/turn; ~50 turns moved the 5 h window 0→0%. Plan reports `prolite` (user said Pro); Spark entitled regardless. Fallback: mini+`none`, p50 1.18 s.
+
+**T4.3 + T4.4:** `live_stt.py` rewritten — mic → resample → silero VAD + 60 s `RingBuffer` (absolute indexing; pre-pad 0.4 s re-slice) → executor decode → numbered `JA n:`/`EN n:` lines; `CodexTranslator` (warm-up turn absorbs ~3 s uncached cost; thread rotation @100 turns; degradation: missing CLI → JA-only at start, 3 consecutive failures → JA-only for session, backlog >50 drops oldest). RingBuffer phase bug caught by tests (oversized append ignored ring phase; fixed with phase-aligned two-segment write). 22 tests green; synthetic E2E: STT reproduces T4.1 bench exactly, 9/9 EN ordered @~1 s cadence.
+
+**T4.5:** `google-genai` + `python-dotenv` removed (25 pkgs; spike `load_dotenv` lines dropped), `list_live_models.py` + `.env` deleted, README/orientation/SESSION_PROMPT rewritten for the new architecture, D-001/D-003 superseded, L-002/L-003 historical, L-004 rescoped.
+
+**Did not verify (user smoke-test, L-004):** live mic capture, `--device`/`--list-devices`, Ctrl+C mid-utterance flush + translator drain, real-time latency feel, multi-hour quota burn. Note: secondary weekly Codex window already at 54% from user's other usage.
+
+**Carried open question:** import `ckc`'s `env` settings (`CLAUDE_CODE_SUBAGENT_MODEL=opus`, `CLAUDE_CODE_EFFORT_LEVEL=max`)? Still unanswered.
+
+---
+
 ## 2026-06-08 — T4 pivot (no API keys) + T4.1 shipped: local STT engine selected
 
 **Trigger:** User rejected the T-BACKENDS-001 premise mid-bootstrap: "I don't want to use API keys, I want to use a Codex subscription." Locked via AskUserQuestion: local STT + Codex-subscription translation (A), Gemini replaced outright, ChatGPT Pro tier. → **D-009**; T-BACKENDS-001 superseded; T4.1–T4.5 added to PLAN.
@@ -43,25 +59,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **ldconfig false-alarm → L-010:** `ldconfig -p | grep portaudio` is empty (container `ld.so.cache` unpopulated; `sudo ldconfig` doesn't repopulate) though `libportaudio.so.2` is installed at `/usr/lib/x86_64-linux-gnu/` and dlopens fine — use the Python import / `dpkg`, not `ldconfig`, to check native-lib presence here.
 
 **Did not verify (user smoke-test, L-004):** live mic capture, `--device`/`--list-devices` enumeration, real-time latency, Ctrl+C. A post-move failure, if any was observed, most likely lives in one of these agent-unverifiable paths — report the symptom.
-
----
-
-## 2026-06-04 — Token-efficiency overhaul of the memory system
-
-**Trigger:** User steering — "make working in this codebase more token-efficient." Measured per-session bootstrap read cost at ~14.6K tokens; `journal.md` was 43% of it (25K chars, 9 entries) and the only unbounded sink. `archive/` had never been used in 9 sessions; 5 of 9 entries were CLAUDE.md-sync / `compaction.sh` churn whose durable facts already live in `lessons.md` / `decisions.md` / `orientation.md`.
-
-**Changes (user-approved scope — Aggressive + git-as-archive):**
-- **Journal:** deleted 7 churn/sync entries; kept the 2 most-recent real-work entries (audit, T2.3), compressed to nugget + open follow-ups. Added this header cap.
-- **Removed `.agent/archive/`** entirely — it duplicated git. Updated `README.md` (Files table + Pruning), `decisions.md` D-004 (shape) and D-005 (stale archive pointer).
-- **Standing cap:** journal keeps ≤4 entries; enforced at `orientation.md` how-to-work step 7 + stated in `README.md` Pruning + `SESSION_PROMPT.md` working agreement.
-- **De-dup:** smoke-test-constraints list is now canonical in `orientation.md` only; `SESSION_PROMPT.md` references it instead of restating.
-- **Trimmed** superseded `L-007` to a one-line pointer to `L-008` (kept ID + trajectory note; full text in git).
-- **`CLAUDE.md` untouched** (user declined that option).
-
-**Result:** bootstrap read cost ~14.6K → ~9.6K tokens/session (−35%; 58.6K→38.3K chars, ~5.1K tok saved/session). Journal alone cut 82% (25K→4.4K chars) and is now self-limiting at ≤4 entries instead of growing ~2–3K chars/session unbounded.
-
-**Also fixed (env regression, no tracked diff):** `uv run pytest` and `uv run live-stt` both failed to spawn — the project had been moved `~/Documents/pro/live-stt → ~/Projects/live-stt`, leaving every `.venv/bin/` console-script shebang pointing at the dead old path. `.venv/bin/python` (a symlink to the uv-cached interpreter) still resolved, so `python -m pytest` masked it. Rebuilt: `rm -rf .venv && uv sync`. Lesson → L-009.
-
-**Verified:** `git show HEAD~1:.agent/journal.md` recovers all 9 pre-prune entries (git-as-archive confirmed). After venv rebuild: `uv run pytest -q` → 23 passed; `uv run python -c "import live_stt"` → OK. No app code touched.
-
-**Did not verify (user smoke-test):** `uv run live-stt` against a live mic — the entry-point shebang is now fixed and the launcher regenerated, but mic capture / device enumeration stay agent-unverifiable (L-004). The dir move had broken the launcher, so a real run is the end-to-end confirmation it's back.
