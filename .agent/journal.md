@@ -6,6 +6,20 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — Maintenance pass: pyright venv config + Optional fixes, deps bumped, codex already latest
+
+**Trigger:** No open PLAN tasks (T4 series complete; live-mic smoke test pending on user) — user picked "maintenance pass" from session-start options.
+
+**Pyright (closes last session's verify item):** plugin attached ✓ — `documentSymbol` returns full live_stt.py tree. Its first diagnostics exposed missing venv resolution → added `[tool.pyright] venvPath="." venv=".venv"` to pyproject.toml. Two real Optional-access fixes in `live_stt.py` (using the file's existing `assert` idiom): `close()` asserts `_proc.stdin` before closing; shutdown guard widened to `translator is not None and translator_task is not None` (logically equivalent — task exists iff translator). `time_info` unused-param hint left as-is (sounddevice callback signature). CLI verify: **0 errors / 0 warnings**. **Caveat learned:** the LSP server reads `[tool.pyright]` at session start — in-session diagnostics stay stale after config edits; the pyright CLI (now in orientation build/test cmds) is the immediate check. Full-project run then surfaced 28 errors, all `spike/` (prototypes import SDKs removed at T4.5 by design) → excluded. **Gotcha:** pyright `exclude` REPLACES its defaults — `.venv`/`models`/`__pycache__` must be re-listed or it walks ~1 GB and appears to hang (first attempt did; pyproject comment documents it). Cleanup of that hang spawned **L-013** (pgrep/pkill -f self-match via the harness Bash wrapper).
+
+**Deps:** numpy 2.4.4→2.4.6, packaging 26.1→26.2, ruff 0.15.10→0.15.16; sherpa-onnx unchanged. Verified: import smoke, ruff clean, 22 tests green, `bench.py --only local-k2` reproduces T4.1 (TTFT ≤0.01 s, totals 0.04–0.15 s, known 文→分 quirk intact). codex CLI 0.137.0 **is** the latest GitHub release (2026-06-04) — no update. `uv cache prune` reclaimed 28 MiB.
+
+**Hygiene:** line-count fact ~750→~800 in orientation + SESSION_PROMPT (795 actual); pyright CLI line added to build/test commands; scratch pruned — `2026-05-16_code-audit.md`, `2026-05-18_T2.3.md` deleted (pre-rearchitecture, unreferenced; git archives).
+
+**Open for user (unchanged):** T4.3/T4.4 live-mic smoke test (L-004 list); ckc stale plugin record + redundant env block.
+
+---
+
 ## 2026-06-08 — Env-block question closed (already global); pyright-lsp enabled project-scope
 
 **Trigger:** User picked "resolve env-settings question" from session-start options, then clarified: "I thought those settings were set globally?" — correct. Global `~/.claude/settings.json` (container HOME; symlink → `~/agents/claude/settings.json`) already carries `CLAUDE_CODE_SUBAGENT_MODEL=opus` + `CLAUDE_CODE_EFFORT_LEVEL=max` (plus MAX_OUTPUT_TOKENS=128000, agent-teams flag, etc.). Two sessions of "import ckc's env block?" flagging were moot — nobody had checked the global file. CLOSED → D-008 amendment (b). ckc's project copy = redundant no-op.
@@ -45,16 +59,4 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Env quirks:** `uv add sherpa-onnx` skipped its declared dep `sherpa-onnx-core` (carries libonnxruntime) — explicit add fixed import. Deny-list now verified enforced (Read(uv.lock) refused) **including via Bash** (twice) → D-008 amended: deny paths are off-limits via every tool; ask, don't probe.
 
 **Next (T4.2, user action required):** codex CLI 0.137.0 installed (`~/.local/bin/codex`), not yet authenticated. User must run `codex login --device-auth` interactively (may need "Allow device code login" at chatgpt.com Settings→Security). Then: latency bench, Spark entitlement check, instruction-control verification, quota accounting.
-
----
-
-## 2026-06-08 — CLAUDE.md sync (permissions.deny sentence) + `.claude/settings.json` created
-
-**Trigger:** User: "I updated the CLAUDE.md" — but live-stt's copy was byte-identical to HEAD (mtime 06-03, predating the claim; no stash/reflog trace). Forensics: sibling projects `ckc` (06-07), `lean-cds`+`rehab` (06-08) all carry one added sentence → "Maintain `permissions.deny` `Read()` rules in `.claude/settings.json`…". live-stt had been missed in the user's project-by-project propagation. Lesson → L-011.
-
-**Changes:** Synced the sentence into CLAUDE.md (byte parity with siblings). Created `.claude/settings.json` denying Read on `.git/.venv/.env*/uv.lock/LICENSE/spike cache/tool caches` (scope rationale → D-008; `ckc`-style `./`-anchored rules). Gitignored `.claude/settings.local.json`. Orientation file-map updated (+`.claude/settings.json` row, `.env` read-denied note).
-
-**Verified:** `jq` parses settings.json; pre-commit pytest on commit. **Did not verify:** deny-rule enforcement — rules load for new sessions; next session should confirm `Read(.venv/…)`/`Read(uv.lock)` are refused and Bash fallback works.
-
-**Flagged for user:** `ckc` settings also carry `env` `CLAUDE_CODE_SUBAGENT_MODEL=opus` + `CLAUDE_CODE_EFFORT_LEVEL=max` (mechanically enforces CLAUDE.md's max-model-subagents rule). Not imported — say the word and it lands here too.
 

@@ -6,12 +6,12 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 
 | Path | Role |
 |---|---|
-| `live_stt.py` | Main app (~750 lines). `audio_callback` → queue → `worker` (VAD + `RingBuffer` pre-pad re-slice + executor decode) → `emit_line`; `CodexTranslator` (JSON-RPC/stdio per D-011) consumes a sequential queue. Constants at top are the config surface. |
+| `live_stt.py` | Main app (~800 lines). `audio_callback` → queue → `worker` (VAD + `RingBuffer` pre-pad re-slice + executor decode) → `emit_line`; `CodexTranslator` (JSON-RPC/stdio per D-011) consumes a sequential queue. Constants at top are the config surface. |
 | `models/` | STT weights, gitignored except `models/README.md` (download cmds, expected layout, ~800 MB). |
 | `tests/test_audio.py` | Pure-function tests: `resample`, `RingBuffer`, `emit_line`. Run with `uv run pytest`. |
 | `pyproject.toml` | `uv`-managed deps (numpy, sounddevice, sherpa-onnx + sherpa-onnx-core). Entry point: `live-stt`. Python ≥ 3.11. |
 | `.githooks/pre-commit` | Runs `uv run pytest -q`; aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
-| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
+| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Pyright venv resolution = `[tool.pyright]` in pyproject.toml; the LSP server reads config at session start, so after config edits the in-session diagnostics are stale — run the pyright CLI (build/test commands) for an immediate check. Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
 | `README.md` | User-facing docs. Update only on user-visible behavior changes. |
 | `PLAN.md` | Roadmap with task IDs. Source of truth for what to do next. |
 | `SPIKE_REPORT.md` | Historical: REST → Gemini Live migration (architecture removed at T4.5). |
@@ -62,6 +62,7 @@ uv run live-stt --engine parakeet --no-translate # A/B engine, JA-only
 uv run live-stt --list-devices                   # enumerate audio devices
 uv run pytest                                    # run pure-function tests
 uv run python -c "import live_stt"               # cheap import smoke-check
+~/.local/share/lsp-node/node_modules/.bin/pyright --project . live_stt.py  # typecheck (CLI)
 sh compaction.sh                                 # context-usage gauge (needs jq)
 codex login --device-auth                        # user-interactive: enable EN leg
 ```

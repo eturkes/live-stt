@@ -123,3 +123,13 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** Default `--scope` is `user` for both `install` and `uninstall`. Project-scoped enablement (ckc pattern: `enabledPlugins` in project `.claude/settings.json` + `installed_plugins.json` record carrying `projectPath`) requires explicit `-s project`. Recovery: `uninstall -s user` then `install -s project`; the uninstall left an empty `"enabledPlugins": {}` in the global file (cleaned by hand — and note the global settings.json is a **symlink** into `~/agents/claude/`; Edit must target the resolved path). Each CLI write also reorders the global file's keys. Separately: `installed_plugins.json` bakes absolute `projectPath`s, so a moved project leaves a stale record (observed: ckc's pre-move path).
 
 **Rule:** Always pass `-s project` to `claude plugin install`/`uninstall` for project-local intent, and verify afterwards which settings file actually changed (grep `enabledPlugins` in both global and project files). After a project relocation, expect plugin install records to need a re-install from the new path.
+
+---
+
+## L-013 — `pgrep -f`/`pkill -f` self-match: the harness Bash wrapper embeds your pattern
+
+**Context:** 2026-06-08 maintenance. Killing a stalled pyright CLI: `pgrep -f "pyright/index.js"` kept "finding" a process after the kill, and a follow-up `pkill -f` exited 144 — it had killed its own shell.
+
+**Finding:** Claude Code runs each Bash call as `/usr/bin/bash -c 'eval <full command text>'`, so the pattern string appears verbatim in the wrapper's own cmdline. `pgrep -f`/`pkill -f` therefore match (and kill) the very shell executing them. The "phantom respawned PID" after the first kill was the next pgrep's wrapper, not the target.
+
+**Rule:** Break literal self-match with a bracket class in every `pgrep -f`/`pkill -f` pattern — `pgrep -f "pyright/index[.]js"` matches the target but not the wrapper's literal `[.]` text. Append `|| echo none` so zero matches is visible. Treat any -f match whose cmdline starts with `/usr/bin/bash -c source .../shell-snapshots/...` as your own wrapper.

@@ -542,6 +542,7 @@ class CodexTranslator:
             self._reader_task.cancel()
         if self._proc and self._proc.returncode is None:
             try:
+                assert self._proc.stdin
                 self._proc.stdin.close()
                 await asyncio.wait_for(self._proc.wait(), 5)
             except (TimeoutError, Exception):
@@ -712,7 +713,7 @@ async def run_session(args):
             await worker_task
         except asyncio.CancelledError:
             pass
-        if translator is not None:
+        if translator is not None and translator_task is not None:
             translator.submit_sentinel()
             try:
                 await asyncio.wait_for(translator_task, TRANSLATE_TIMEOUT_S + 5)

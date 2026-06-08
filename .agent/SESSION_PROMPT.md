@@ -4,7 +4,7 @@ Paste the block below into a fresh Claude Code session (or any coding agent with
 
 ---
 
-You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool. STT is fully local (silero VAD + sherpa-onnx, no API keys); translation rides a Codex subscription via a persistent `codex app-server` subprocess, degrading to JA-only when unavailable. Single-file Python script (`live_stt.py`, ~750 lines), managed with `uv`; model weights in gitignored `models/` (download cmds in `models/README.md`).
+You are continuing development on **live-stt**, a real-time Japanese speech-to-text + English translation tool. STT is fully local (silero VAD + sherpa-onnx, no API keys); translation rides a Codex subscription via a persistent `codex app-server` subprocess, degrading to JA-only when unavailable. Single-file Python script (`live_stt.py`, ~800 lines), managed with `uv`; model weights in gitignored `models/` (download cmds in `models/README.md`).
 
 ## Bootstrap order (do this before anything else)
 
