@@ -145,3 +145,19 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 - `google-genai`, reconnect/resumption machinery, `list_live_models.py` removed at T4.5.
 
 **Revisit if:** a subscription-auth realtime audio surface becomes programmatically sanctioned (re-evaluate one-leg architecture); or local-engine JA quality on CPU proves insufficient at T4.1 bench (fallback: revisit option B variants or larger local models before any metered API).
+
+---
+
+## D-010 — STT engine: reazonspeech-k2-v2 primary, parakeet-ja A/B alternate (both via sherpa-onnx)
+
+**Date:** 2026-06-08. **Source:** T4.1 bench, `spike/backends/prototype_local.py` (engine kwarg serves both).
+
+**Measured (5 clips, 8-core CPU, int8-enc+fp32-dec for k2):** both engines TTFT ≤0.10 s post-audio-end (Gemini baseline: 1.21 s mean), $0/hr, decode totals 0.03–0.21 s. Transcripts near-exact; k2 errors: 文→分 homophone (paused), ジェミニ→ゼミニ; parakeet: ジェミニ→`jeミinapi`, numeral style. Comparable to Gemini's own `paused` drift (採寸分).
+
+**Decision:** default **k2-v2** (RTF 0.054 vs 0.106, 148 MB vs 625 MB, Apache-2.0, JA-specialist, kanji-rich output); keep parakeet selectable (slightly better published CER, won the 文 homophone) — same integration, near-zero cost to retain.
+
+**Two findings that bind T4.3:**
+1. **Gemini-TTS boundary artifact:** multi-sentence single-segment TTS clips collapse continuous decode (each sentence decodes perfectly in isolation; model's own 13.4 s natural-speech test WAV is flawless). Bench clips re-rendered per-sentence with 0.7 s real silences (scenarios.py comment). Production (real mic, real pauses + VAD) is unaffected; synthetic continuous TTS is not a valid robustness test for these models.
+2. **Silero VAD onset clipping:** segments open 0.2–0.7 s late (こんにちは→はい); sherpa exposes no pad field. Fix: re-slice each segment from the fed-sample stream with `VAD_PRE_PAD_S = 0.4` lead-in (prototype_local.py). T4.3 needs a bounded ring buffer for the same.
+
+**Revisit if:** live-mic smoke tests show accuracy/latency regressions vs these synthetic results; or Reazon ships its planned native-streaming JA model (drop chunking); or proper-noun drift (foreign names) proves disruptive in practice.

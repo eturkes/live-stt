@@ -6,6 +6,20 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-08 — T4 pivot (no API keys) + T4.1 shipped: local STT engine selected
+
+**Trigger:** User rejected the T-BACKENDS-001 premise mid-bootstrap: "I don't want to use API keys, I want to use a Codex subscription." Locked via AskUserQuestion: local STT + Codex-subscription translation (A), Gemini replaced outright, ChatGPT Pro tier. → **D-009**; T-BACKENDS-001 superseded; T4.1–T4.5 added to PLAN.
+
+**Research (2 subagents, compressed → `.agent/scratch/2026-06-08_T4-research-notes.md`):** no native frame-sync streaming open JA model exists (June 2026) — all paths are VAD-chunked offline decode. Codex leg: persistent `codex app-server` (JSON-RPC/stdio) + `gpt-5.3-codex-spark` (Pro-only, separate rate pool); raw backend-api POST rejected (Cloudflare TLS fingerprinting).
+
+**T4.1 shipped (→ D-010):** `prototype_local.py` (sherpa-onnx offline + silero VAD, harness contract). Bench: **k2-v2** primary / parakeet A/B; TTFT ≤0.10 s vs Gemini 1.21 s; near-exact JA; $0/hr. Two T4.3-binding findings: Gemini-TTS boundary artifact (scenarios.py medium/long re-rendered per-sentence + 0.7 s silences) and silero onset clipping (`VAD_PRE_PAD_S=0.4` re-slice; production wants ring buffer). Models in gitignored `models/`.
+
+**Env quirks:** `uv add sherpa-onnx` skipped its declared dep `sherpa-onnx-core` (carries libonnxruntime) — explicit add fixed import. Deny-list now verified enforced (Read(uv.lock) refused) **including via Bash** (twice) → D-008 amended: deny paths are off-limits via every tool; ask, don't probe.
+
+**Next (T4.2, user action required):** codex CLI 0.137.0 installed (`~/.local/bin/codex`), not yet authenticated. User must run `codex login --device-auth` interactively (may need "Allow device code login" at chatgpt.com Settings→Security). Then: latency bench, Spark entitlement check, instruction-control verification, quota accounting.
+
+---
+
 ## 2026-06-08 — CLAUDE.md sync (permissions.deny sentence) + `.claude/settings.json` created
 
 **Trigger:** User: "I updated the CLAUDE.md" — but live-stt's copy was byte-identical to HEAD (mtime 06-03, predating the claim; no stash/reflog trace). Forensics: sibling projects `ckc` (06-07), `lean-cds`+`rehab` (06-08) all carry one added sentence → "Maintain `permissions.deny` `Read()` rules in `.claude/settings.json`…". live-stt had been missed in the user's project-by-project propagation. Lesson → L-011.
@@ -51,11 +65,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Verified:** `git show HEAD~1:.agent/journal.md` recovers all 9 pre-prune entries (git-as-archive confirmed). After venv rebuild: `uv run pytest -q` → 23 passed; `uv run python -c "import live_stt"` → OK. No app code touched.
 
 **Did not verify (user smoke-test):** `uv run live-stt` against a live mic — the entry-point shebang is now fixed and the launcher regenerated, but mic capture / device enumeration stay agent-unverifiable (L-004). The dir move had broken the launcher, so a real run is the end-to-end confirmation it's back.
-
----
-
-## 2026-05-18 — Proactive audit: doc-drift, spike lint
-
-No PLAN tasks were actionable (only blocked T-BACKENDS-001), so ran a self-audit: fixed line-anchor drift (`live_stt.py:248-300`), made `spike/` ruff-clean (15→0), gitignored `spike/backends/results.md`, documented the sentinel-on-full-queue recovery at `live_stt.py:440-442`. Finding: the `.agent/` system held up under second-look; the only durable drift was line-anchors/counts (cheap to mop up, no process change warranted). Full detail: git `fd7e3d4`.
-
-**Open:** T-BACKENDS-001 blocked on `DEEPGRAM_API_KEY` / `OPENAI_API_KEY`.

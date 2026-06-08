@@ -43,22 +43,32 @@ PRICING_USD_PER_HOUR = {
     "deepgram": 0.55 + 0.02,   # Nova-3 streaming + cascade
     "elevenlabs": 0.39 + 0.02,  # Scribe v2 RT + cascade
     "azure":    2.50,          # Speech Translation integrated
+    "local-k2": 0.0,           # CPU inference, no metered cost
+    "local-parakeet": 0.0,
 }
 
 
 BACKENDS = [
-    # (name, module, key_env_var, extra_kwargs_from_env)
+    # (name, module, key_env_var_or_None, extra_kwargs)
+    # key_env=None → no key required (local engines). In `extra`, the
+    # special key "region_env" resolves from the environment; everything
+    # else passes through to stream() verbatim.
     ("gemini",     "prototype_gemini",           "GEMINI_API_KEY",     {}),
     ("openai",     "prototype_openai_realtime",  "OPENAI_API_KEY",     {}),
     ("deepgram",   "prototype_deepgram",         "DEEPGRAM_API_KEY",   {}),
     ("elevenlabs", "prototype_elevenlabs",       "ELEVENLABS_API_KEY", {}),
     ("azure",      "prototype_azure",            "AZURE_SPEECH_KEY",
      {"region_env": "AZURE_SPEECH_REGION"}),
+    ("local-k2",       "prototype_local", None, {"engine": "k2v2"}),
+    ("local-parakeet", "prototype_local", None, {"engine": "parakeet"}),
 ]
 
 
 def _probe_keys() -> dict[str, str | None]:
-    return {name: os.environ.get(key_env) for name, _, key_env, _ in BACKENDS}
+    return {
+        name: ("(local)" if key_env is None else os.environ.get(key_env))
+        for name, _, key_env, _ in BACKENDS
+    }
 
 
 async def _run_one(
@@ -71,8 +81,8 @@ async def _run_one(
     duration_s: float,
     translate: bool,
 ) -> BenchResult:
-    api_key = os.environ.get(key_env)
-    if not api_key:
+    api_key = "" if key_env is None else os.environ.get(key_env)
+    if key_env is not None and not api_key:
         r = BenchResult(
             backend=backend_name,
             clip_id=clip_id,
@@ -85,7 +95,7 @@ async def _run_one(
     import importlib
     mod = importlib.import_module(module_name)
 
-    kwargs: dict = {}
+    kwargs: dict = {k: v for k, v in extra.items() if k != "region_env"}
     if "region_env" in extra:
         kwargs["region"] = os.environ.get(extra["region_env"])
 

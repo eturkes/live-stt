@@ -71,11 +71,17 @@ CLIPS: list[Clip] = [
         ja_ref="こんにちは、今日はライブAPIのテストをしています。よろしくお願いします。",
         en_ref="Hello. Today I'm testing the Live API. Nice to meet you.",
         purpose="T3.1 cross-spike comparability clip",
-        segments=[(
-            "こんにちは、今日はライブAPIのテストをしています。"
-            "よろしくお願いします。",
-            0.0,
-        )],
+        # Per-sentence segments with real silence: Gemini-TTS renders
+        # sentence boundaries without genuine pauses, which collapses
+        # continuous decode on acoustic models (k2-v2/parakeet keep only one
+        # sentence) while each sentence decodes perfectly in isolation.
+        # Natural speech has real pauses (VAD splits there); single-segment
+        # TTS rendering was a bench artifact, not a production condition.
+        segments=[
+            ("こんにちは、", 0.7),
+            ("今日はライブAPIのテストをしています。", 0.7),
+            ("よろしくお願いします。", 0.0),
+        ],
     ),
     Clip(
         id="long",
@@ -90,12 +96,11 @@ CLIPS: list[Clip] = [
             "and displays the Japanese transcription and English translation simultaneously."
         ),
         purpose="Does TTFT scale with utterance length?",
-        segments=[(
-            "このプロジェクトはリアルタイムの日本語音声認識ツールです。"
-            "マイクから音声を取り込み、ジェミニAPIに送って、"
-            "日本語の文字起こしと英語の翻訳を同時に表示します。",
-            0.0,
-        )],
+        # Per-sentence segments: see `medium` comment.
+        segments=[
+            ("このプロジェクトはリアルタイムの日本語音声認識ツールです。", 0.7),
+            ("マイクから音声を取り込み、ジェミニAPIに送って、日本語の文字起こしと英語の翻訳を同時に表示します。", 0.0),
+        ],
     ),
     Clip(
         id="paused",

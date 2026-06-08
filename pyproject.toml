@@ -21,6 +21,8 @@ dependencies = [
     "sounddevice>=0.4.6",
     "numpy>=1.24",
     "python-dotenv>=1.0",
+    "sherpa-onnx>=1.13.2",
+    "sherpa-onnx-core>=1.13.2",
 ]
 
 [project.scripts]

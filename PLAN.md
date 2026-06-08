@@ -29,9 +29,7 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 
 ### T4.1 — Pick local JA STT engine via spike bench
 
-**Status:** OPEN (research agents dispatched).
-
-**Acceptance:** ≥1 local engine prototyped against `spike/backends/harness.py` `stream()` protocol; `bench.py` rows on the 5 cached clips; TTFT + JA-quality compared to Gemini baseline (1.21 s mean, exact 4/5); engine choice recorded in ADR. CPU-only (8-core/30 GB).
+**Status:** SHIPPED 2026-06-08. Engine: **reazonspeech-k2-v2** primary, parakeet-ja A/B (ADR: D-010). Both via sherpa-onnx + silero VAD; TTFT ≤0.10 s vs Gemini 1.21 s; near-exact JA. `prototype_local.py` carries the pattern (VAD pre-pad 0.4 s, per-sentence bench clips — see D-010 findings). Models in `models/` (gitignored; URLs in `.agent/scratch/2026-06-08_T4-research-notes.md`).
 
 ### T4.2 — Codex CLI install + auth + translation-leg bench
 
