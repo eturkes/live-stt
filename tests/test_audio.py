@@ -6,7 +6,7 @@ import io
 
 import numpy as np
 
-from live_stt import emit_block, pcm16_bytes, resample
+from live_stt import RingBuffer, emit_block, resample
 
 
 def test_resample_identity():
@@ -37,74 +37,6 @@ def test_resample_preserves_first_endpoint():
     assert out[-1] == -1.0
 
 
-def test_pcm16_roundtrip():
-    audio = np.array([0.0, 0.5, -0.5], dtype=np.float32)
-    pcm = pcm16_bytes(audio)
-    parsed = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32767.0
-    np.testing.assert_allclose(parsed, audio, atol=1e-4)
-
-
-def test_pcm16_clipping():
-    audio = np.array([2.0, -2.0, 0.0], dtype=np.float32)
-    parsed = np.frombuffer(pcm16_bytes(audio), dtype=np.int16)
-    assert parsed[0] == 32767
-    assert parsed[1] == -32767
-    assert parsed[2] == 0
-
-
-def test_pcm16_byte_length():
-    audio = np.zeros(100, dtype=np.float32)
-    assert len(pcm16_bytes(audio)) == 200
-
-
-def test_emit_block_parses_ja_and_en(capsys):
-    buf = io.StringIO()
-    emit_block("JA: こんにちは\nEN: Hello", buf, expect_en=True)
-    captured = capsys.readouterr()
-    assert "JA: こんにちは" in captured.out
-    assert "EN: Hello" in captured.out
-    content = buf.getvalue()
-    assert "JA: こんにちは" in content
-    assert "EN: Hello" in content
-
-
-def test_emit_block_suppresses_en_when_not_expected(capsys):
-    buf = io.StringIO()
-    emit_block("JA: こんにちは\nEN: Hello", buf, expect_en=False)
-    captured = capsys.readouterr()
-    assert "JA: こんにちは" in captured.out
-    assert "EN:" not in captured.out
-
-
-def test_emit_block_omits_en_when_model_only_sent_ja(capsys):
-    buf = io.StringIO()
-    emit_block("JA: only japanese", buf, expect_en=True)
-    captured = capsys.readouterr()
-    assert "JA: only japanese" in captured.out
-    assert "EN:" not in captured.out
-
-
-def test_emit_block_falls_back_on_unlabeled_text(capsys):
-    buf = io.StringIO()
-    emit_block("just some text without prefixes", buf, expect_en=True)
-    captured = capsys.readouterr()
-    assert "JA: just some text without prefixes" in captured.out
-
-
-def test_emit_block_writes_iso8601_timestamp_prefix():
-    buf = io.StringIO()
-    emit_block("JA: テスト", buf, expect_en=True)
-    first_line = buf.getvalue().split("\n", 1)[0]
-    assert first_line.startswith("[") and first_line.endswith("]")
-    assert "T" in first_line
-
-
-def test_emit_block_no_file_no_crash(capsys):
-    emit_block("JA: テスト", None, expect_en=True)
-    captured = capsys.readouterr()
-    assert "JA: テスト" in captured.out
-
-
 def test_resample_integer_decimation_48k_to_16k_matches_slice():
     # Optimization: the 48k->16k path uses audio[::3] instead of np.interp.
     # Verify content matches a manual decimation.
@@ -123,8 +55,7 @@ def test_resample_integer_decimation_32k_to_16k_matches_slice():
 
 def test_resample_index_cache_repeat_calls():
     # The cache reuses precomputed indices AND the output buffer across same-shape
-    # calls — callers in audio_callback hand the result straight to pcm16_bytes,
-    # so the buffer is consumed before the next call. Copy when retaining.
+    # calls — audio_callback copies the result before enqueueing. Copy when retaining.
     a = np.random.RandomState(0).randn(4410).astype(np.float32) * 0.1
     out_a = resample(a, 44100, 16000).copy()
     b = np.random.RandomState(1).randn(4410).astype(np.float32) * 0.1
@@ -163,17 +94,6 @@ def test_resample_matches_np_interp_for_typical_rates():
         np.testing.assert_allclose(got, expected, atol=1e-6)
 
 
-def test_pcm16_accepts_strided_view():
-    # After the 48k->16k optimization, resample() returns a non-contiguous strided
-    # view (audio[::3]). pcm16_bytes must handle that input shape correctly.
-    audio = np.arange(4800, dtype=np.float32) / 5000.0  # 0..0.96
-    decimated = audio[::3]
-    assert not decimated.flags.c_contiguous
-    pcm = pcm16_bytes(decimated)
-    parsed = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32767.0
-    np.testing.assert_allclose(parsed, decimated, atol=1e-4)
-
-
 def test_resample_dtype_preserved_for_integer_decimation():
     audio = np.array([0.1, -0.1, 0.2, -0.2, 0.3, -0.3], dtype=np.float32)
     out = resample(audio, 48000, 16000)
@@ -181,53 +101,116 @@ def test_resample_dtype_preserved_for_integer_decimation():
 
 
 def test_audio_callback_pipeline_end_to_end():
-    # Walk the exact resample+pcm16 pipeline the live audio_callback runs, for
+    # Walk the exact resample+copy pipeline the live audio_callback runs, for
     # both the integer-decim path (48k) and the custom-interp path (44.1k).
     rng = np.random.default_rng(7)
     for native_rate, n_frames in [(48000, 960), (44100, 882), (32000, 640)]:
-        indata = (rng.standard_normal((n_frames, 1)).astype(np.float32) * 0.1)
+        indata = rng.standard_normal((n_frames, 1)).astype(np.float32) * 0.1
         mono = indata[:, 0]
         # Mirror the audio_callback RMS step.
         ms = float(mono.dot(mono)) / len(mono)
         assert ms >= 0.0
-        pcm = pcm16_bytes(resample(mono, native_rate, 16000))
-        # 16k mono pcm16 => 16000/native_rate * n_frames samples * 2 bytes.
+        pcm = resample(mono, native_rate, 16000).copy()
         expected_samples = int(n_frames * 16000 / native_rate)
-        assert len(pcm) == expected_samples * 2
-        # The bytes can be decoded back into int16 in the valid range.
-        parsed = np.frombuffer(pcm, dtype=np.int16)
-        assert parsed.min() >= -32767
-        assert parsed.max() <= 32767
+        assert len(pcm) == expected_samples
+        assert pcm.dtype == np.float32
+        # The copy must be contiguous and independent of the shared buffer.
+        assert pcm.flags.c_contiguous
 
 
-def test_pcm16_repeat_calls_share_scratch_buffers():
-    # pcm16_bytes caches a float and int16 scratch buffer per output length to
-    # skip per-call allocations. The returned bytes must still be independent of
-    # subsequent calls — bytes are immutable, so this is automatic, but verify.
-    from live_stt import _PCM16_FLOAT_BUF, _PCM16_INT16_BUF
-    a = np.array([0.1, -0.1, 0.2, -0.2], dtype=np.float32)
-    b = np.array([0.9, -0.9, 0.5, -0.5], dtype=np.float32)
-    pa = pcm16_bytes(a)
-    fa = _PCM16_FLOAT_BUF[len(a)]
-    ia = _PCM16_INT16_BUF[len(a)]
-    pb = pcm16_bytes(b)
-    # Same key -> same cached buffers (not realloc'd).
-    assert _PCM16_FLOAT_BUF[len(b)] is fa
-    assert _PCM16_INT16_BUF[len(b)] is ia
-    # Bytes are snapshots, so earlier results survive later calls.
-    assert pa != pb
-    parsed_a = np.frombuffer(pa, dtype=np.int16).astype(np.float32) / 32767.0
-    np.testing.assert_allclose(parsed_a, a, atol=1e-4)
+# --- RingBuffer (VAD pre-pad re-slicing, D-010 finding 2) ---
 
 
-def test_pcm16_clears_cache_when_too_many_sizes():
-    # The size-keyed cache evicts when it grows beyond 8 distinct sizes so a
-    # jittery blocksize can't leak memory.
-    from live_stt import _PCM16_FLOAT_BUF
-    _PCM16_FLOAT_BUF.clear()
-    for n in range(1, 9):
-        pcm16_bytes(np.zeros(n, dtype=np.float32))
-    assert len(_PCM16_FLOAT_BUF) == 8
-    # 9th distinct size triggers a cache flush before insert.
-    pcm16_bytes(np.zeros(100, dtype=np.float32))
-    assert len(_PCM16_FLOAT_BUF) == 1
+def test_ring_append_slice_basic():
+    r = RingBuffer(10)
+    r.append(np.arange(4, dtype=np.float32))
+    np.testing.assert_array_equal(r.slice(0, 4), np.arange(4, dtype=np.float32))
+    assert r.total == 4
+
+
+def test_ring_wraparound_keeps_absolute_indexing():
+    r = RingBuffer(8)
+    for i in range(5):  # 25 samples through an 8-sample ring
+        r.append(np.arange(i * 5, i * 5 + 5, dtype=np.float32))
+    assert r.total == 25
+    # The last 8 samples (17..24) are retained, absolute indices intact.
+    np.testing.assert_array_equal(
+        r.slice(17, 25), np.arange(17, 25, dtype=np.float32)
+    )
+
+
+def test_ring_slice_clamps_to_retained_window():
+    r = RingBuffer(8)
+    r.append(np.arange(20, dtype=np.float32))
+    # Samples 0..11 are gone; a slice reaching back returns only 12..15.
+    np.testing.assert_array_equal(
+        r.slice(0, 16), np.arange(12, 16, dtype=np.float32)
+    )
+
+
+def test_ring_slice_clamps_negative_prepad():
+    # The worker slices (start - pad, start + n); near stream start this goes
+    # negative and must clamp to 0.
+    r = RingBuffer(16)
+    r.append(np.arange(6, dtype=np.float32))
+    np.testing.assert_array_equal(r.slice(-4, 6), np.arange(6, dtype=np.float32))
+
+
+def test_ring_slice_empty_when_out_of_range():
+    r = RingBuffer(8)
+    r.append(np.arange(4, dtype=np.float32))
+    assert len(r.slice(10, 12)) == 0
+    assert len(r.slice(3, 3)) == 0
+
+
+def test_ring_append_larger_than_capacity():
+    r = RingBuffer(4)
+    r.append(np.arange(10, dtype=np.float32))
+    assert r.total == 10
+    np.testing.assert_array_equal(r.slice(6, 10), np.arange(6, 10, dtype=np.float32))
+
+
+def test_ring_slice_spanning_wrap_point():
+    r = RingBuffer(8)
+    r.append(np.arange(6, dtype=np.float32))   # fills 0..5
+    r.append(np.arange(6, 12, dtype=np.float32))  # wraps: retained 4..11
+    np.testing.assert_array_equal(r.slice(4, 12), np.arange(4, 12, dtype=np.float32))
+
+
+# --- emit_block ---
+
+
+def test_emit_block_ja_only(capsys):
+    buf = io.StringIO()
+    emit_block("こんにちは", "", buf)
+    captured = capsys.readouterr()
+    assert "JA: こんにちは" in captured.out
+    assert "EN:" not in captured.out
+    content = buf.getvalue()
+    assert "JA: こんにちは" in content
+    assert "EN:" not in content
+
+
+def test_emit_block_ja_and_en(capsys):
+    buf = io.StringIO()
+    emit_block("こんにちは", "Hello", buf)
+    captured = capsys.readouterr()
+    assert "JA: こんにちは" in captured.out
+    assert "EN: Hello" in captured.out
+    content = buf.getvalue()
+    assert "JA: こんにちは" in content
+    assert "EN: Hello" in content
+
+
+def test_emit_block_writes_iso8601_timestamp_prefix():
+    buf = io.StringIO()
+    emit_block("テスト", "", buf)
+    first_line = buf.getvalue().split("\n", 1)[0]
+    assert first_line.startswith("[") and first_line.endswith("]")
+    assert "T" in first_line
+
+
+def test_emit_block_no_file_no_crash(capsys):
+    emit_block("テスト", "", None)
+    captured = capsys.readouterr()
+    assert "JA: テスト" in captured.out

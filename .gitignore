@@ -19,8 +19,9 @@ spike/backends/cache/
 spike/backends/results.json
 spike/backends/results.md
 
-# Local STT model weights (download via models/ instructions; large binaries)
-models/
+# Local STT model weights (download via models/README.md; large binaries)
+models/*
+!models/README.md
 
 # Claude Code per-user overrides (project settings.json IS committed)
 .claude/settings.local.json

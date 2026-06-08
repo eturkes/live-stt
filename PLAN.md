@@ -37,9 +37,7 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 
 ### T4.3 — Rewrite `live_stt.py` around local STT
 
-**Status:** OPEN. Blocked by T4.1.
-
-**Acceptance:** Gemini session machinery removed; chosen engine streams mic audio with endpointing (engine-native or silero-vad); mic capture/level meter/`-o`/signal handling/`_StderrFormatter` preserved; `uv run pytest` green (pure-fn tests adapted); smoke-test items flagged per L-004.
+**Status:** SHIPPED 2026-06-08. Gemini machinery (session/reconnect/resumption/sender/receiver, `pcm16_bytes`) removed; mic → `resample` → silero VAD → `RingBuffer` pre-pad re-slice → executor decode → `emit_block(ja, en, file)`. Meter/`-o`/signals/`_StderrFormatter` kept; `--engine k2v2|parakeet`; `models/README.md` documents weights. 22 tests green (ring-buffer tests added; pcm16/parse tests dropped with their code). Synthetic end-to-end reproduces T4.1 bench. **User smoke test pending (L-004): live mic, `--device`, Ctrl+C flush.**
 
 ### T4.4 — Wire Codex translation into live loop
 
