@@ -11,7 +11,9 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | `models/` | STT weights, gitignored except `models/README.md` (download cmds, expected layout, ~800 MB). |
 | `tests/test_audio.py` | Pure-function tests: `resample`, `RingBuffer`, `emit_line`. Run with `uv run pytest`. |
 | `tests/test_replay.py` | Replay regression: model-independent WAV-loader tests (always run) + golden test (segment count + per-segment transcript + boundary vs `replay_goldens.json`; skips when models/clips absent). |
-| `tests/replay_goldens.json` | Characterization snapshot of the real pipeline over the cached clips, engine-keyed (`k2v2` + `parakeet`). Regenerate via `tests/gen_replay_goldens.py` after an intentional pipeline change, then diff-review. |
+| `tests/replay_goldens.json` | Characterization snapshot of the real pipeline over the cached clips (synthetic bench **+ real Common Voice**), engine-keyed (`k2v2` + `parakeet`). Regenerate via `tests/gen_replay_goldens.py` after an intentional pipeline change, then diff-review. |
+| `tests/fetch_real_clips.py` | T5.3 corpus fetcher (dev). Pulls real CV8.0-JA clips (CC0) from the ungated Parquet mirror via the HF datasets-server rows API, decodes MP3 (soundfile), writes WAVs to the deny-listed cache (internal path, L-016) + the manifest. Pins dataset revision + row indices. Run: `uv run --with soundfile python tests/fetch_real_clips.py`. |
+| `tests/real_clips.json` | Manifest of the real fetched clips (`id -> {ja_ref, purpose, source}`); `gen_replay_goldens.py` merges it with the inline synthetic `CLIPS`. Tracked; the WAVs stay gitignored in the cache. |
 | `pyproject.toml` | `uv`-managed deps (numpy, sounddevice, sherpa-onnx + sherpa-onnx-core). Entry point: `live-stt`. Python ≥ 3.11. |
 | `.githooks/pre-commit` | Runs `uv run pytest -q`; aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
 | `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, `.serena/` (cache + memories + project.local.yml), tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Pyright venv resolution = `[tool.pyright]` in pyproject.toml; the LSP server reads config at session start, so after config edits the in-session diagnostics are stale — run the pyright CLI (build/test commands) for an immediate check. Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
@@ -19,7 +21,7 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | `PLAN.md` | Roadmap with task IDs. Source of truth for what to do next. |
 | `SPIKE_REPORT.md` | Historical: REST → Gemini Live migration (architecture removed at T4.5). |
 | `SPIKE_REPORT_BACKENDS.md` | Historical: 5-provider streaming-STT comparison; premise (API keys) voided by D-009. |
-| `spike/backends/` | **Bench harness retired at T5** (D-014) — all runnable `.py` removed (`prototype_local.py` was a drifted copy of `live_stt.worker`; `replay.py` + tests supersede it). Retained: `cache/` (gitignored + deny-listed bench WAV corpus = the replay regression clips), historical `*.md` research/design/report docs, `codex_ws/AGENTS.md` (the `developerInstructions` source, D-011). |
+| `spike/backends/` | **Bench harness retired at T5** (D-014) — all runnable `.py` removed (`prototype_local.py` was a drifted copy of `live_stt.worker`; `replay.py` + tests supersede it). Retained: `cache/` (gitignored + deny-listed bench WAV corpus + T5.3 fetched real CV = the replay regression clips), historical `*.md` research/design/report docs, `codex_ws/AGENTS.md` (the `developerInstructions` source, D-011). |
 | `CLAUDE.md` | Meta-instructions for the agent. Agent may rewrite at any time. |
 | `compaction.sh` | Context-usage gauge; vendored snapshot of the shared `$HOME/.claude/` tool (re-sync if that changes — L-008). `sh compaction.sh` prints `PCT USED/WINDOW`; needs `jq`. Backs the CLAUDE.md 80% compaction rule. |
 | `.serena/` | Headroom/Serena LSP state (Headroom compresses everything the agent reads — CLAUDE.md). `project.yml` = tracked LSP config; `cache/`, `memories/`, `project.local.yml` are git-ignored (nested `.serena/.gitignore`) **and** deny-listed → the agent ignores them (D-013). The project memory system is `.agent/`, **not** `.serena/memories/`. |
@@ -68,6 +70,7 @@ uv run pytest                                    # pure-function + replay regres
 uv run python -c "import live_stt"               # cheap import smoke-check
 uv run python replay.py WAV [--engine] [--json]  # replay a WAV through the live pipeline (T5)
 uv run python tests/gen_replay_goldens.py        # regenerate replay goldens after a pipeline change
+uv run --with soundfile python tests/fetch_real_clips.py  # refetch real CV regression clips (T5.3)
 uvx pyright@1.1.410 --project . live_stt.py replay.py  # typecheck (vendored ~/.local pyright is dangling; uvx is self-contained)
 sh compaction.sh                                 # context-usage gauge (needs jq)
 codex login --device-auth                        # user-interactive: enable EN leg

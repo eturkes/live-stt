@@ -81,11 +81,22 @@ goldens). Parakeet snapshot reproduces the D-010 quirks (ジェミニ→`jeミin
 
 ### T5.3 — Real-recorded JA corpus
 
-**Status:** OPEN (user-gated). The corpus is Gemini-TTS synthetic (per-sentence with
-real silences — valid per D-010, but still synthetic). A handful of real mic-recorded JA
-clips would harden segmentation/endpointing coverage against true acoustics. Needs the
-user to record/source clips (agent cannot capture audio, L-004); drop them in the
-gitignored cache and regenerate goldens.
+**Status:** SHIPPED 2026-06-15. The gate ("user records/sources clips") was
+dissolved by web-fetch: L-004 blocks only *mic capture*, not network download
+(CLAUDE.md grants network access), so the agent fetched the clips itself. 7 real
+Common Voice 8.0 JA clips (CC0) added to the gitignored cache: 5 single utterances
++ 2 concatenations of independent real utterances joined by real silence (0.7 s ->
+3 seg, 2.0 s -> 2 seg; mirrors synthetic medium/paused, no continuous-render
+artifact per D-010). Sourced via the HF datasets-server `/rows` API on the ungated
+Parquet mirror `japanese-asr/ja_asr.common_voice_8_0` (a few labeled samples, tiny
+download; MP3 decoded by soundfile/libsndfile -> no ffmpeg). `tests/fetch_real_clips.py`
+(committed; pins dataset revision + row indices) writes the WAVs (internal path,
+L-016) + a `tests/real_clips.json` manifest, which `gen_replay_goldens.py` merges
+into its clip list. 49 tests green (was 35: +14 = 7 real clips x 2 engines).
+Real-acoustic signal the synthetic corpus lacked: katakana フィリピン decoded
+correctly; engines diverge on proper nouns / voicing (松井 k2v2 / 松居 parakeet;
+バック k2v2 / パック parakeet; 午後七時 / 午後7時) — captured as characterization
+goldens. Tooling-only; no `live_stt.py`/CLI change -> no new smoke surface.
 
 ### Coverage split — agent-verifiable (replay) vs user-only (smoke)
 

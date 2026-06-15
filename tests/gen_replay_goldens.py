@@ -57,6 +57,22 @@ CLIPS = [
 ]
 
 
+MANIFEST = ROOT / "tests" / "real_clips.json"
+
+
+def all_clips():
+    """Inline synthetic CLIPS plus the real fetched corpus (tests/real_clips.json).
+
+    Real clips are added by tests/fetch_real_clips.py (T5.3); the manifest is the
+    single source for their (id, ja_ref, purpose). Absent manifest -> synthetic only.
+    """
+    clips = list(CLIPS)
+    if MANIFEST.exists():
+        for cid, m in json.loads(MANIFEST.read_text(encoding="utf-8")).items():
+            clips.append((cid, m["ja_ref"], m["purpose"]))
+    return clips
+
+
 def main():
     if not CACHE.exists():
         print(f"cache dir absent: {CACHE}", file=sys.stderr)
@@ -68,7 +84,7 @@ def main():
             print(f"skip engine {engine}: {err.splitlines()[0]}", file=sys.stderr)
             continue
         out[engine] = {}
-        for cid, ja_ref, purpose in CLIPS:
+        for cid, ja_ref, purpose in all_clips():
             wav = CACHE / f"{cid}.wav"
             if not wav.exists():
                 print(f"skip {engine}/{cid}: {wav.name} absent", file=sys.stderr)

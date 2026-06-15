@@ -157,3 +157,28 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** The deny-list operates at the Claude **tool boundary**: it refuses a deny-listed path that appears in a Read/Edit target or anywhere on a Bash command line — so `uv run python -c "...spike/backends/cache/x.wav..."` is refused (the literal path sits in the command text). It does NOT intercept the OS. A script that builds the path from components internally (`CACHE = ROOT / "spike" / "backends" / "cache"`) and `open()`s it at runtime reads the file fine, because no deny-listed string ever crosses a tool. For an agent-side CLI smoke that therefore can't name the corpus, synthesize a throwaway WAV (no cache reference anywhere).
 
 **Rule:** When a tool/test/script must read a deny-listed path, construct the path from components *inside the script file* and let it `open()` at runtime — never pass the deny-listed path as a CLI argument or `-c` substring. To smoke-run a CLI that takes such a path, feed it a synthetic temp artifact, not the real deny-listed file. (Distinct from L-015: there the block is incidental Read-compression; here it is intentional and total at the tool boundary.)
+
+## L-017 — Fetch a few real labeled samples from HF via the datasets-server rows API, not the `datasets` loader
+
+**Context:** 2026-06-15, T5.3. Needed a handful of real JA speech clips (audio +
+ground-truth transcript) to harden the replay corpus; Common Voice is the canonical
+CC0 source.
+
+**Finding:** The `datasets` library is the wrong tool for *a few* samples.
+`mozilla-foundation/common_voice_17_0` is gated AND uses a loading script; `datasets`
+3.x no longer runs the script and raised `EmptyDatasetError` ("doesn't contain any
+data files"), and the datasets-server refuses script datasets too ("runs arbitrary
+Python code"). What works with zero gating, zero full-download, zero ffmpeg: pick an
+**ungated Parquet mirror** (here `japanese-asr/ja_asr.common_voice_8_0`), confirm it
+via the datasets-server `/splits` endpoint, then read rows from
+`https://datasets-server.huggingface.co/rows?dataset=...&config=...&split=...&offset=N&length=<=100`.
+Each row carries the label fields plus an `audio[0].src` URL — a **signed, expiring**
+cached-asset, so fetch it within the same run. `soundfile`/libsndfile (>=1.1) decodes
+the MP3 directly (`MP3` in `sf.available_formats()`) — no ffmpeg/sox; resample with
+the project's own resampler for fidelity.
+
+**Rule:** To pull a few real labeled samples (audio/text/image) from Hugging Face,
+prefer an ungated Parquet mirror + the datasets-server `/rows` API over `load_dataset`
+— it sidesteps gating, loading-script breakage, and multi-GB downloads. Verify viewer
+support with `/splits` first; treat `audio.src` URLs as expiring; check
+`soundfile.available_formats()` before reaching for ffmpeg.

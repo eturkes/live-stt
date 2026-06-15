@@ -1,0 +1,37 @@
+{
+  "cv_short": {
+    "ja_ref": "空が青いです。.",
+    "purpose": "real CV: short utterance -> 1 segment",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[65]"
+  },
+  "cv_med": {
+    "ja_ref": "この料理は家庭で作れます。.",
+    "purpose": "real CV: medium sentence -> 1 segment",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[10]"
+  },
+  "cv_long": {
+    "ja_ref": "わたしは松井さんが書いた作文を読みました。.",
+    "purpose": "real CV: longer sentence with a name -> 1 segment",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[2]"
+  },
+  "cv_kana": {
+    "ja_ref": "大昔のフィリピンには、豊かな土地があった。.",
+    "purpose": "real CV: katakana loanword (フィリピン) -> proper-noun acoustics",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[15]"
+  },
+  "cv_xlong": {
+    "ja_ref": "森永のおいしい牛乳は濃い青色に牛乳瓶をあしらったデザインのパック牛乳である.",
+    "purpose": "real CV: long katakana-heavy sentence -> sustained real decode",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[4]"
+  },
+  "cv_multi": {
+    "ja_ref": "東京は晴れでした。. 妹はもう寝ました。. 秋は涼しいです。.",
+    "purpose": "real CV x3, 0.7 s gaps (> VAD_MIN_SILENCE_S) -> 3 segments",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[11, 81, 93] gap=0.7s"
+  },
+  "cv_paused": {
+    "ja_ref": "国はどちらですか。. 今、午後七時です。.",
+    "purpose": "real CV x2, 2.0 s gap -> 2 segments",
+    "source": "japanese-asr/ja_asr.common_voice_8_0#test[46, 55] gap=2.0s"
+  }
+}

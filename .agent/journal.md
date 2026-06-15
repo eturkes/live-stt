@@ -6,6 +6,40 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-15 — T5.3: real-recorded JA corpus via web-fetch (gate dissolved)
+
+**Trigger:** User (`/session-prompt` override): "To unlock the current gate, can you
+fetch Japanese recordings from the web?" T5.3 was OPEN/user-gated. Reframe: L-004
+blocks only mic capture, not network fetch (CLAUDE.md network access) — so the agent
+sources real clips itself. Confirmed source (Common Voice JA) + shape (singles +
+concatenated) with the user before fetching.
+
+**Shipped:** 7 real CV8.0-JA clips (CC0) in the gitignored cache — 5 single utterances
++ 2 concatenations of independent real utterances joined by real silence (0.7 s -> 3
+seg, 2.0 s -> 2 seg; D-010 method, real voices). Fetched via the HF datasets-server
+`/rows` API on the ungated Parquet mirror `japanese-asr/ja_asr.common_voice_8_0` (few
+labeled samples; MP3 decoded by soundfile/libsndfile, no ffmpeg). `tests/fetch_real_clips.py`
+(committed; pinned revision + row indices) writes WAVs (internal path, L-016) +
+`tests/real_clips.json` manifest; `gen_replay_goldens.py` merges the manifest with the
+inline synthetic CLIPS.
+
+**Verified (agent-checkable):** 49 tests green (was 35: +14 = 7 clips x 2 engines); ruff
+clean; pyright 0 errors (soundfile import scoped-ignored — a `uv run --with` dep, not a
+project dep). Real-acoustic characterizations: katakana フィリピン correct; engine
+divergence 松井/松居, バック/パック, 午後七時/午後7時; cv_multi -> 3 seg + cv_paused -> 2
+seg confirm real-acoustic endpointing.
+
+**Did not verify (user smoke, L-004):** none newly affected — tooling-only (new dev
+fetch tool + manifest + goldens); `live_stt.py` untouched, no mic/`--device`/latency/
+Ctrl+C/multi-hour surface.
+
+**Memory:** PLAN T5.3 -> SHIPPED; D-014 amendment (2nd revisit-if resolved; web-fetch
+substitutes mic-record); orientation file-map (+fetch_real_clips.py, +real_clips.json;
+goldens row now bench+real); L-017 (HF rows-API fetch technique). Pruned oldest entry
+(2026-06-08 compaction).
+
+---
+
 ## 2026-06-15 — T5.2: parakeet-engine goldens (engine-first regression coverage)
 
 **Trigger:** User (`/session-prompt`, blank override → roadmap). T5.2 was the lowest-numbered agent-actionable open task; T5.3 is user-gated (needs real mic recordings, L-004). Goal: extend the T5.1 golden regression from `k2v2`-only to both engines. Confirmed direction before coding.
@@ -47,16 +81,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Verified (agent-checkable):** settings.json valid JSON; `git check-ignore` → all three subpaths ignored, `project.yml` tracked; `git add -n` stages exactly `project.yml` + `.serena/.gitignore`. No `live_stt.py`/runtime change → no smoke-test surface this session.
 
 **Spawned L-015:** Headroom compresses tool reads, so long exact-match Edit `old_string`s can silently miss (this session: a `git log`-backtick diff invisible in my compressed view failed an Edit). Re-anchor on raw bytes when an Edit fails.
-
----
-
-## 2026-06-08 — `compaction.sh` simplified to single-mode (verify + commit)
-
-**Trigger:** User (`/session-prompt` override) — verify the user's edit to `compaction.sh` (made it token-efficient, stripped unneeded functionality); commit if it works.
-
-**Verified (all green):** The edit drops the statusline (stdin-JSON) branch + ANSI coloring, leaving only the manual transcript-read path; the `c` color flag and the now-redundant `[ "$w" -gt 0 ]` guard (w is always set by the `case`) are gone. Exercised: normal → `23% 45K/200K`; `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (set in this env — explains the 200K window) → same; unset `CLAUDE_CODE_SESSION_ID` → falls back to newest `*.jsonl`, same; empty-usage awk branch → `? ?/1M`; `h()` 1M/1.5M/45K formatting correct; `sh -n` clean. Repo copy **byte-identical** to shared `$HOME/.claude/compaction.sh` → L-008 vendoring invariant holds (user updated both).
-
-**Memory:** L-008 "Current state" re-synced dual-mode → single-mode. orientation.md row (`prints PCT USED/WINDOW`, needs `jq`) still accurate, untouched.
-
-**Consequence to note (user-side):** if `compaction.sh` was ever wired as a Claude Code statusline command, it no longer consumes stdin JSON or emits color — it now reads the transcript (works as long as `CLAUDE_CODE_SESSION_ID` is set, or the newest transcript is the active session).
-

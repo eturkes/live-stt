@@ -240,3 +240,19 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Revisit if:** parakeet goldens added (T5.2 → key goldens by engine); a real-recorded corpus lands (T5.3); or `worker()` grows further instrumentation needs (consider a small event object over positional hook args).
 
 **Amendment 2026-06-15 (T5.2):** First revisit-if resolved — parakeet goldens added. Shape chosen: **engine-first** (`engine → clip_id → {n_segments, segments, …}`), the redundant per-clip `engine` field dropped (engine is the key). `gen_replay_goldens.py` loops `ENGINES` with a per-engine `check_models` skip-warn; `test_replay.py` parametrizes over `(engine, clip_id)` with per-engine gating. 35 tests green (+5 parakeet). Parakeet snapshot confirms the D-010 quirks (`jeミinapi`, `2つ目`, lowercase `api`) and the `文`-homophone win. T5.3 (real-recorded corpus) remains the open revisit-if.
+
+**Amendment 2026-06-15 (T5.3):** Second revisit-if resolved — a real-recorded
+corpus landed, via **web-fetch, not mic capture**: L-004 blocks only the microphone,
+so the agent downloaded real clips (CLAUDE.md network access). 7 Common Voice 8.0 JA
+clips (CC0; 5 single + 2 concatenated-with-real-silence, mirroring the D-010
+per-utterance+silence method with real voices) fetched from the ungated Parquet
+mirror `japanese-asr/ja_asr.common_voice_8_0` via the HF datasets-server `/rows` API
+(few labeled samples, no multi-GB pull; MP3 decoded by soundfile, no ffmpeg). Wiring:
+`tests/fetch_real_clips.py` (committed provenance tool; pinned revision + row indices)
+writes WAVs to the deny-listed cache (internal path, L-016) and a tracked
+`tests/real_clips.json` manifest; `gen_replay_goldens.py` merges that manifest with
+the inline synthetic `CLIPS` (chosen over inlining fetched multibyte transcripts:
+single source, drift-free, reproducible). 49 tests green (+14). Real-acoustic goldens
+expose engine divergence the TTS corpus could not (松井/松居, バック/パック,
+午後七時/午後7時) and confirm katakana フィリピン decodes cleanly. T5 revisit-ifs:
+none open (T5.1-T5.3 all shipped).
