@@ -54,6 +54,7 @@ RING_SECONDS = 60  # ring capacity; bounds VAD pre-pad re-slicing memory
 TRANSLATE_MODEL = "gpt-5.3-codex-spark"
 TRANSLATE_EFFORT = "low"
 TRANSLATE_TIMEOUT_S = 15.0
+CODEX_CONTROL_TIMEOUT_S = 10  # initialize + thread/start; turns use TRANSLATE_TIMEOUT_S
 TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> JA-only for the session
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
 TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) block
@@ -354,10 +355,10 @@ class CodexTranslator:
                     "initialize",
                     {"clientInfo": {"name": "live-stt", "title": "live-stt", "version": "1.0"}},
                 ),
-                10,
+                CODEX_CONTROL_TIMEOUT_S,
             )
             self._notify("initialized", {})
-            self._thread_id = await asyncio.wait_for(self._new_thread(), 10)
+            self._thread_id = await asyncio.wait_for(self._new_thread(), CODEX_CONTROL_TIMEOUT_S)
             # Warm-up turn: pays the one-time uncached-prompt cost (~3 s) at
             # startup instead of on the first caption, and proves the whole
             # translation path (auth, entitlement, instructions) up front.
@@ -473,7 +474,9 @@ class CodexTranslator:
             return ""
         try:
             if self._turns and self._turns % TRANSLATE_ROTATE_TURNS == 0:
-                self._thread_id = await asyncio.wait_for(self._new_thread(), 10)
+                self._thread_id = await asyncio.wait_for(
+                    self._new_thread(), CODEX_CONTROL_TIMEOUT_S
+                )
             self._turns += 1
             en = await asyncio.wait_for(self._turn(ja), TRANSLATE_TIMEOUT_S)
             self._failures = 0
@@ -549,7 +552,7 @@ class CodexTranslator:
                 assert self._proc.stdin
                 self._proc.stdin.close()
                 await asyncio.wait_for(self._proc.wait(), 5)
-            except (TimeoutError, Exception):
+            except Exception:
                 try:
                     self._proc.kill()
                 except ProcessLookupError:
@@ -611,25 +614,17 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
 
 
 async def meter(state, audio_q):
-    sleep = asyncio.sleep
-    interval = METER_INTERVAL
-    sqrt = math.sqrt
-    width = METER_WIDTH
-    scale = _METER_SCALE
-    bars = _METER_BARS
-    write = sys.stdout.write
-    flush = sys.stdout.flush
     while not state.stopping:
-        rms = sqrt(state.latest_ms)
-        level = int(rms * scale)
-        if level > width:
-            level = width
+        rms = math.sqrt(state.latest_ms)
+        level = int(rms * _METER_SCALE)
+        if level > METER_WIDTH:
+            level = METER_WIDTH
         qsize = audio_q.qsize()
         pending = f" q={qsize}" if qsize > 0 else ""
         dropped = f" drop={state.dropped}" if state.dropped else ""
-        write(f"\r  [{bars[level]}] {rms:.4f}{pending}{dropped}")
-        flush()
-        await sleep(interval)
+        sys.stdout.write(f"\r  [{_METER_BARS[level]}] {rms:.4f}{pending}{dropped}")
+        sys.stdout.flush()
+        await asyncio.sleep(METER_INTERVAL)
 
 
 async def run_session(args):

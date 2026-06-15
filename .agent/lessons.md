@@ -207,3 +207,23 @@ ruff, `uvx pyright@1.1.410`) -> re-verify the codex leg via a synthetic
 `CodexTranslator` turn. Keep package versions out of orientation (drift risk per
 CLAUDE.md); record the point-in-time verification in journal/PLAN + a dated decision
 amendment.
+
+## L-019 — A "refactor pass" on mature, guarded code may correctly yield almost nothing
+
+**Context:** 2026-06-15, T7. User asked for a proactive refactor pass (CLAUDE.md
+endorses periodic refactor). `live_stt.py` is small, heavily optimized, and already
+guarded by L-001/L-005/D-006. The pink-elephant pull (CLAUDE.md) is to manufacture
+changes to justify the task.
+
+**Finding:** Screening each candidate against L-001's test — "name the specific
+failure mode this edit prevents" — eliminated most ideas. What survived was tiny (a
+redundant exception tuple, a named timeout constant, one inert micro-opt removal);
+the higher-effort ideas (merge near-duplicate methods, cross-file dedup, centralize a
+constant, prune overlapping tests) each failed it (deliberate semantic difference,
+coupling cost > lines saved, or loses a named case).
+
+**Rule:** Treat a refactor-pass deliverable as an audit — read broadly, list
+candidates, apply only those with a nameable failure-mode-prevented or a
+house-style-conformance win, and record the rejected ones (scratch + PLAN) so they
+aren't re-litigated. "Mature; minimal change" is a valid, honest result; report it
+rather than forcing edits.

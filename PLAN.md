@@ -140,6 +140,28 @@ features. **Status: SHIPPED 2026-06-15.**
 
 ---
 
+## T7 — Proactive refactor pass
+
+Code-health pass per CLAUDE.md (periodic proactive refactor); no new features, no
+behavior change. **Status: SHIPPED 2026-06-15.**
+
+- **Applied (live_stt.py):** C1 `CodexTranslator.close()` `except (TimeoutError,
+  Exception)` -> `except Exception` (TimeoutError is an Exception subclass -> the
+  tuple was redundant; the lookalike `(CancelledError, Exception)` forms elsewhere
+  ARE necessary and were left). C9 named the control-plane RPC timeout
+  `CODEX_CONTROL_TIMEOUT_S = 10`, replacing 3 bare `10`s (initialize +
+  thread/start x2), matching the `TRANSLATE_TIMEOUT_S` convention. C2 removed
+  `meter()`'s 8-line global->local hoisting (inert at the 10 Hz meter cadence).
+- **Rejected (so they aren't re-litigated):** merge `submit`/`submit_sentinel`
+  (deliberate drop-vs-must-land split); cross-file dedup of the WAV loaders/writers
+  (different formats/sources); centralize the triplicated `CACHE` constant; prune
+  overlapping resample tests. Audit detail: `.agent/scratch/2026-06-15_T7.md`.
+- **Verified:** 49 tests green, ruff clean, pyright 0 errors, import OK. Changes are
+  behavior-preserving (C1/C9 provably inert, C2 logic-identical) -> codex leg not
+  re-benched (not a CLI drift, L-018); no new smoke surface.
+
+---
+
 ## Superseded
 
 ### T-BACKENDS-001 — Finish backends spike

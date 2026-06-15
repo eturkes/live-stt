@@ -6,6 +6,44 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-15 — T7: proactive refactor pass (minimal, evidence-driven)
+
+**Trigger:** User (`/session-prompt`, blank override). Bootstrap found the roadmap
+fully shipped (T1-T6); reported that and asked direction -> user chose a proactive
+refactor pass. Scoped as T7.
+
+**Method:** Read `live_stt.py` + `replay.py` + tests + tooling in full; cataloged
+refactor candidates and screened each against L-001 (name the failure mode the edit
+prevents), L-005 (less code, no abstraction), D-006 (don't churn `live_stt.py`).
+Presented the screened set; user picked C1+C9+C2.
+
+**Shipped (`live_stt.py` only):** C1 `close()` `except (TimeoutError, Exception)` ->
+`except Exception` (redundant: TimeoutError is a subclass of Exception; the lookalike
+`(CancelledError, Exception)` forms ARE necessary and were left untouched). C9 named
+the control-RPC timeout `CODEX_CONTROL_TIMEOUT_S = 10` (3 bare `10`s: initialize +
+thread/start x2; matches `TRANSLATE_TIMEOUT_S` house style; wrapped the one line that
+crossed 100 cols). C2 removed `meter()`'s 8-line global->local hoisting (inert at the
+10 Hz meter cadence, unlike the commented hot-path opts).
+
+**Rejected (detail in scratch):** submit/submit_sentinel merge, cross-file WAV
+loader/writer dedup, CACHE-constant centralization, resample-test pruning. Headline:
+the code is mature; an honest refactor pass yields little, and that is the correct
+outcome rather than a failure (-> L-019).
+
+**Verified (agent-checkable):** 49 tests green (unchanged), ruff clean, pyright 0
+errors, import OK. Behavior-preserving -> codex leg not re-benched (not a CLI drift,
+L-018).
+
+**Did not verify (user smoke, L-004):** the edits are inert at runtime; the standing
+pre-2026-06-08-rearch live smoke set (mic / `--device` / latency feel / Ctrl+C flush /
+multi-hour) is unaffected and still pending. C1 sits in the translator-teardown path
+and C2 in the meter coroutine, but both are behavior/logic-identical.
+
+**Memory:** PLAN +T7 (SHIPPED); L-019 (refactor-pass = audit; minimal honest output on
+mature code is valid); journal pruned oldest (T5.1). No new ADR (changes too minor).
+
+---
+
 ## 2026-06-15 — T6: maintenance + security pass (deps, codex-leg audit, drift re-verify)
 
 **Trigger:** User (`/session-prompt`, blank override). Bootstrap found the PLAN roadmap
@@ -81,20 +119,3 @@ goldens row now bench+real); L-017 (HF rows-API fetch technique). Pruned oldest 
 **Did not verify (user smoke, L-004):** none newly affected — tooling-only (goldens + generator + test); no mic/`--device`/latency/Ctrl+C/multi-hour surface touched; `live_stt.py` untouched.
 
 **Memory:** PLAN T5.2 → SHIPPED; D-014 amendment (engine-first shape; first revisit-if resolved); orientation goldens row `(k2v2)` → engine-keyed `(k2v2 + parakeet)`. No new lesson (ruff line-length=100 is project config, not generalizable).
-
----
-
-## 2026-06-15 — T5.1: deterministic WAV replay regression path; bench harness retired
-
-**Trigger:** User (`/session-prompt` override) — make live-stt regression-testable (no new features): a deterministic WAV replay/eval path through the **exact** VAD + RingBuffer + sherpa decode loop; reuse/retire the spike harness; minimal CLI/docs/tests; PLAN/.agent split of agent-verifiable replay vs user-only smoke. Confirmed 3 design choices before coding: real-`worker` hook (not a copy) / retire the whole bench harness / gitignored corpus + skip-if-absent.
-
-**Shipped (D-014):** `replay.py` drives `live_stt.worker` over a WAV via a new optional `on_segment(start, n, seg_len, decode_s, text)` hook — the mic path passes `on_segment=None`, so live behavior is unchanged (only `live_stt.py` edits: `import time` + the guarded hook + a docstring note). It reports per-segment segmentation + decode latency/RTF + transcript; `--json` for machine read (worker's `emit_line` stdout captured via `redirect_stdout` so the JSON stays valid). Golden regression `tests/test_replay.py` = 3 always-run WAV-loader tests + 5 characterization goldens (`replay_goldens.json`, k2v2) asserting segment count + per-segment text + boundary (±0.1 s), never the CPU-variable latency; skips when models/clips absent. Reproduces D-010 quirks (ジェミニ→ゼミニ, 文→分) + the 0.7 s-silence splits → it re-tests the real pipeline, not an idealized one.
-
-**Retired:** all 11 runnable `spike/backends/*.py` (`prototype_local.py` was a drifted copy of `worker`). Kept: `cache/*.wav` (gitignored+deny-listed replay corpus), `*.md` history, `codex_ws/AGENTS.md`. Memory/docs: PLAN T5 section + "Coverage split" table; README "Regression testing"; orientation file-map + replay-covered smoke pointer; D-014; L-016.
-
-**Verified (agent-checkable):** 30 tests green (22 + 3 loader + 5 golden); ruff clean; `uvx pyright@1.1.410` 0 errors; `import live_stt, replay`; synthetic-WAV CLI smoke (human + `--json`, 0-segment branch).
-
-**Did not verify (user smoke, L-004):** live mic / `--device` / real-time latency feel / Ctrl+C mid-utterance flush / multi-hour. None changed behaviorally (hook defaults None → mic path unchanged), but the `worker` signature did change, so flagged per policy.
-
-**Spawned L-016:** the deny-list blocks a path on a tool/Bash command line but not a script's own runtime `open()` — gen/test construct the `spike/backends/cache` path internally to read the corpus.
-
