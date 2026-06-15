@@ -141,3 +141,11 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** A leading `[` (or `{`) opens a YAML *flow sequence/mapping*; trailing prose after the `]` is then unexpected and the document raises `ParserError` (confirmed: `uv run --with pyyaml` parsed the quoted form, failed the bare form). Docs examples like `argument-hint: add [id] | list` only work because they start with a plain char — the bracket sits mid-scalar. Brittle parsers may drop a malformed `description`/`argument-hint` silently, so the command can register with a missing hint and no error.
 
 **Rule:** Quote any frontmatter scalar that begins with a YAML indicator (`[ { } ] , & * ! | > % @ \` "` `#` `: `). Verify ad-hoc frontmatter with an ephemeral parser — `uv run --with pyyaml python3 -c "import yaml,sys; yaml.safe_load(open(p).read().split('---')[1])"` — rather than eyeballing it.
+
+## L-015 — Headroom compresses tool reads; verify Edit anchors against raw bytes
+
+**Context:** 2026-06-15. CLAUDE.md now documents that Headroom compresses everything the agent reads. An `Edit` on `orientation.md` step 8 failed with "String to replace not found" even though the `old_string` matched what the Read tool had shown me.
+
+**Finding:** Read/Grep/Bash output is semantically compressed before it reaches the agent, so the rendered text is not guaranteed byte-identical to disk. Short anchors usually survive; long ones accumulate divergence — here `git log` appeared without backticks in my view but carried them on disk (`per ` `git log` ` style`). Edit matches real bytes, so a compressed-view mismatch fails silently.
+
+**Rule:** Prefer short, distinctive `old_string` anchors. When an Edit fails on a string you "see," fetch raw bytes (`sed -n 'Np' FILE | cat -A`) and re-anchor on those, reproducing exact Unicode (em-dash `—`, `§`) and backticks. To delete a large block you have not seen byte-exact, use a line-range delete (`sed -i 'A,Bd'`) instead of guessing its bytes.

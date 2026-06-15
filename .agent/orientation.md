@@ -11,7 +11,7 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | `tests/test_audio.py` | Pure-function tests: `resample`, `RingBuffer`, `emit_line`. Run with `uv run pytest`. |
 | `pyproject.toml` | `uv`-managed deps (numpy, sounddevice, sherpa-onnx + sherpa-onnx-core). Entry point: `live-stt`. Python ≥ 3.11. |
 | `.githooks/pre-commit` | Runs `uv run pytest -q`; aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
-| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Pyright venv resolution = `[tool.pyright]` in pyproject.toml; the LSP server reads config at session start, so after config edits the in-session diagnostics are stale — run the pyright CLI (build/test commands) for an immediate check. Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
+| `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, `.serena/` (cache + memories + project.local.yml), tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Pyright venv resolution = `[tool.pyright]` in pyproject.toml; the LSP server reads config at session start, so after config edits the in-session diagnostics are stale — run the pyright CLI (build/test commands) for an immediate check. Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
 | `README.md` | User-facing docs. Update only on user-visible behavior changes. |
 | `PLAN.md` | Roadmap with task IDs. Source of truth for what to do next. |
 | `SPIKE_REPORT.md` | Historical: REST → Gemini Live migration (architecture removed at T4.5). |
@@ -19,6 +19,7 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | `spike/backends/` | Bench harness (`harness.py`, `scenarios.py`, `bench.py`), prototypes (`prototype_local.py` = T4.1 winner pattern, `prototype_gemini.py` = old baseline), `codex_client.py` (T4.2 bench tool, donor of the `CodexTranslator` pattern), `codex_ws/AGENTS.md` (rejected agents-mode comparator). Cached bench WAVs live in the deny-listed `cache/`. |
 | `CLAUDE.md` | Meta-instructions for the agent. Agent may rewrite at any time. |
 | `compaction.sh` | Context-usage gauge; vendored snapshot of the shared `$HOME/.claude/` tool (re-sync if that changes — L-008). `sh compaction.sh` prints `PCT USED/WINDOW`; needs `jq`. Backs the CLAUDE.md 80% compaction rule. |
+| `.serena/` | Headroom/Serena LSP state (Headroom compresses everything the agent reads — CLAUDE.md). `project.yml` = tracked LSP config; `cache/`, `memories/`, `project.local.yml` are git-ignored (nested `.serena/.gitignore`) **and** deny-listed → the agent ignores them (D-013). The project memory system is `.agent/`, **not** `.serena/memories/`. |
 | `.agent/` | This memory system. |
 
 ## Smoke-test constraints (agent cannot verify)
@@ -42,7 +43,7 @@ The Codex leg itself IS agent-verifiable (subprocess + synthetic turns); the loc
 5. **Verify** what you can: `uv run python -c "import live_stt"` (syntax/imports), `uv run pytest` (pure fns), synthetic E2E via cached WAVs if decode/translation paths changed. For mic/signal paths, state explicitly what the user needs to smoke-test.
 6. **Update** `PLAN.md` (mark shipped, or revise open). Update `README.md` only if user-visible CLI/behavior changed.
 7. **Log** to `.agent/journal.md` at end of session, then prune it to the **≤4 most-recent entries** (git holds the rest — see `.agent/README.md` § Pruning). Promote any generalizable lesson to `.agent/lessons.md`.
-8. **Commit** at end-of-turn when closing cohesive work; defer if mid-iteration awaiting user input. Single focused commit; message optimized for LLM parsing; co-author line per `git log` style.
+8. **Commit** at end-of-turn when closing cohesive work; defer if mid-iteration awaiting user input. Single focused commit in scoped-commit form (`Scope: summary`, scopedcommits.com); message optimized for LLM parsing; co-author line per `git log` style.
 
 ## Style conventions for `live_stt.py`
 

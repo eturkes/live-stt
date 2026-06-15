@@ -203,3 +203,19 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Amendment 2026-06-08 — renamed `/session` → `/session-prompt`:** command file `session.md` → `session-prompt.md` (`git mv`, history preserved); the title/body/verify lines above already reflect the new name. The original name was `/session` (created earlier the same day). Live refs repointed (`.agent/README.md`, D-004 amendment); L-014's context line keeps its dated `session.md` path as accurate-at-date history.
 
 **Verify (user-side):** `/session-prompt` and `/session-prompt T2.2` must appear/expand correctly in a fresh session — slash-command registration is not agent-verifiable.
+
+---
+
+## D-013 — `.serena/` (Headroom) tracking split + deny-list; scoped-commit convention
+
+**Date:** 2026-06-15. **Trigger:** CLAUDE.md edit (synced template, L-011) adding two rules: (a) Headroom wraps the session and introduces `.serena/`, where `project.yml` is the tracked LSP config while `cache/`, `project.local.yml`, `memories/` "should be ignored both by you and Git"; (b) end-of-turn commits use the scoped-commit form (scopedcommits.com).
+
+**Decisions:**
+1. **Track `.serena/project.yml` + `.serena/.gitignore`**, leave `cache/`/`project.local.yml`/`memories/` untracked. The nested Serena-generated `.serena/.gitignore` ignores all three — `memories/` was missing and was added this session.
+2. **"Ignored by you" → `permissions.deny` `Read()`** on `.serena/cache/**`, `.serena/memories/**`, `.serena/project.local.yml` — same mechanism CLAUDE.md prescribes for low-value paths (D-008). `project.yml` + `.serena/.gitignore` stay readable.
+3. **Project memory stays `.agent/`, not Serena memories.** `.serena/memories/` is Serena's default store, unused here (D-004); deny+ignore keep it out of git and agent context. Avoid `mcp__serena__*_memory` tools for project notes.
+4. **Scoped commits** (`Scope: summary`): already the de-facto style (`Tooling:`/`Maintenance:`/`Settings:` + co-author trailer already match scopedcommits.com); now documented in orientation step 8. No retroactive rewrite.
+
+**Rationale:** `project.yml` is portable shared LSP config (no secrets/abs paths — verified before tracking); committing it gives fresh clones working LSP without re-bootstrapping Serena. The other three are machine-local / regenerable / redundant-with-`.agent/`. The deny-list mirrors git-ignore so neither git nor agent context carries them.
+
+**Revisit if:** Headroom changes `.serena/` layout; or a denied `.serena` path is needed repeatedly via Bash (narrow the rule per D-008).

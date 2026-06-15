@@ -7,6 +7,9 @@
       "Read(./uv.lock)",
       "Read(./LICENSE)",
       "Read(./spike/backends/cache/**)",
+      "Read(./.serena/cache/**)",
+      "Read(./.serena/memories/**)",
+      "Read(./.serena/project.local.yml)",
       "Read(**/__pycache__/**)",
       "Read(**/.pytest_cache/**)",
       "Read(**/.ruff_cache/**)"

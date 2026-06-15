@@ -6,6 +6,20 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-15 — CLAUDE.md sync: Headroom `.serena/` tracking + deny-list; scoped-commit doc
+
+**Trigger:** User (`/session-prompt` override) — "I updated CLAUDE.md; do any work it implies." Diff (+3/−2): dropped the `# CLAUDE.md` H1; added a preferred-tooling bullet (`uv`/`pnpm`/`chromiumfish`); added the Headroom/`.serena/` bullet; changed the commit rule to require a scoped commit (scopedcommits.com).
+
+**Triage:** Heading drop + tooling bullet → no project work (`uv` already used; `pnpm`/`chromiumfish` N/A to a Python/no-browser tool). Scoped-commit rule already met by history (`Tooling:`/`Maintenance:`/`Settings:` + co-author trailer match the `Scope: desc` spec) — documented only. All actionable work came from the `.serena/` bullet, which was out of sync.
+
+**Shipped (D-013):** `.serena/` was entirely untracked; its nested `.gitignore` ignored `cache`+`project.local.yml` but **not** `memories`. Added `/memories` to `.serena/.gitignore`; git-tracked `project.yml` + `.serena/.gitignore` (`project.yml` verified portable — stock Serena config, no secrets/abs paths); deny-listed `Read()` on `.serena/{cache,memories,project.local.yml}` to honor "ignored by you." Orientation gains a `.serena/` row + deny enumeration + scoped-commit term (step 8).
+
+**Verified (agent-checkable):** settings.json valid JSON; `git check-ignore` → all three subpaths ignored, `project.yml` tracked; `git add -n` stages exactly `project.yml` + `.serena/.gitignore`. No `live_stt.py`/runtime change → no smoke-test surface this session.
+
+**Spawned L-015:** Headroom compresses tool reads, so long exact-match Edit `old_string`s can silently miss (this session: a `git log`-backtick diff invisible in my compressed view failed an Edit). Re-anchor on raw bytes when an Edit fails.
+
+---
+
 ## 2026-06-08 — `compaction.sh` simplified to single-mode (verify + commit)
 
 **Trigger:** User (`/session-prompt` override) — verify the user's edit to `compaction.sh` (made it token-efficient, stripped unneeded functionality); commit if it works.
@@ -37,17 +51,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Gotcha (→ L-014):** `argument-hint: [TASK] …` is invalid YAML — a leading `[` opens a flow sequence and the trailing prose raises `ParserError`; quoted the value. Verified the frontmatter parses via `uv run --with pyyaml`.
 
 **Smoke-test (user-side, agent cannot verify):** in a fresh Claude Code session, `/session` (roadmap) and `/session <TASK>` (override) must register in the menu and expand correctly — slash-command discovery/expansion is outside agent reach.
-
----
-
-## 2026-06-08 — Maintenance pass: pyright venv config + Optional fixes, deps bumped, codex already latest
-
-**Trigger:** No open PLAN tasks (T4 series complete; live-mic smoke test pending on user) — user picked "maintenance pass" from session-start options.
-
-**Pyright (closes last session's verify item):** plugin attached ✓ — `documentSymbol` returns full live_stt.py tree. Its first diagnostics exposed missing venv resolution → added `[tool.pyright] venvPath="." venv=".venv"` to pyproject.toml. Two real Optional-access fixes in `live_stt.py` (using the file's existing `assert` idiom): `close()` asserts `_proc.stdin` before closing; shutdown guard widened to `translator is not None and translator_task is not None` (logically equivalent — task exists iff translator). `time_info` unused-param hint left as-is (sounddevice callback signature). CLI verify: **0 errors / 0 warnings**. **Caveat learned:** the LSP server reads `[tool.pyright]` at session start — in-session diagnostics stay stale after config edits; the pyright CLI (now in orientation build/test cmds) is the immediate check. Full-project run then surfaced 28 errors, all `spike/` (prototypes import SDKs removed at T4.5 by design) → excluded. **Gotcha:** pyright `exclude` REPLACES its defaults — `.venv`/`models`/`__pycache__` must be re-listed or it walks ~1 GB and appears to hang (first attempt did; pyproject comment documents it). Cleanup of that hang spawned **L-013** (pgrep/pkill -f self-match via the harness Bash wrapper).
-
-**Deps:** numpy 2.4.4→2.4.6, packaging 26.1→26.2, ruff 0.15.10→0.15.16; sherpa-onnx unchanged. Verified: import smoke, ruff clean, 22 tests green, `bench.py --only local-k2` reproduces T4.1 (TTFT ≤0.01 s, totals 0.04–0.15 s, known 文→分 quirk intact). codex CLI 0.137.0 **is** the latest GitHub release (2026-06-04) — no update. `uv cache prune` reclaimed 28 MiB.
-
-**Hygiene:** line-count fact ~750→~800 in orientation + SESSION_PROMPT (795 actual); pyright CLI line added to build/test commands; scratch pruned — `2026-05-16_code-audit.md`, `2026-05-18_T2.3.md` deleted (pre-rearchitecture, unreferenced; git archives).
-
-**Open for user (unchanged):** T4.3/T4.4 live-mic smoke test (L-004 list); ckc stale plugin record + redundant env block.
