@@ -182,3 +182,28 @@ prefer an ungated Parquet mirror + the datasets-server `/rows` API over `load_da
 — it sidesteps gating, loading-script breakage, and multi-GB downloads. Verify viewer
 support with `/splits` first; treat `audio.src` URLs as expiring; check
 `soundfile.available_formats()` before reaching for ffmpeg.
+
+## L-018 — Maintenance-pass recipe: outdated check, CVE scan, codex-leg re-verify
+
+**Context:** 2026-06-15, T6. Roadmap fully shipped; user asked for a periodic
+maintenance + security pass (CLAUDE.md: keep software current + schedule security
+audits). Captured the turnkey commands so future passes don't re-derive them.
+
+**Recipe:**
+- **Outdated deps:** `uv tree --outdated --depth 1` (current-vs-latest, runtime + dev).
+  Bump via `uv lock --upgrade-package NAME` then `uv sync`; leave the pyproject `>=`
+  floors alone — only the lock moves.
+- **CVE scan:** `uv export --format requirements-txt --all-groups --no-emit-project >
+  /tmp/reqs.txt && uvx pip-audit -r /tmp/reqs.txt`. pip-audit audits the *env* it runs
+  in, so a bare `uvx pip-audit` scans only itself — feed it the exported reqs.
+- **Codex-leg re-verify** (after a codex CLI version drift; it is NOT in pytest):
+  synthetic turn through the *real* class — `import CodexTranslator`, `await t.start()`
+  (its warm-up turn proves auth+entitlement+JSON-RPC), `await t._translate("…")`. Needs
+  `~/.codex/auth.json` (check existence only, never read it); negligible quota (D-011).
+
+**Rule:** Run a maintenance pass as inventory (`uv tree --outdated`) -> CVE scan
+(`uv export | uvx pip-audit -r`) -> apply safe lock bumps + full gate (import, pytest,
+ruff, `uvx pyright@1.1.410`) -> re-verify the codex leg via a synthetic
+`CodexTranslator` turn. Keep package versions out of orientation (drift risk per
+CLAUDE.md); record the point-in-time verification in journal/PLAN + a dated decision
+amendment.

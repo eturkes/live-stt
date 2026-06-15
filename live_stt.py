@@ -387,7 +387,10 @@ class CodexTranslator:
     async def _read_loop(self):
         assert self._proc and self._proc.stdout
         while True:
-            line = await self._proc.stdout.readline()
+            try:
+                line = await self._proc.stdout.readline()
+            except (ValueError, OSError):
+                break  # oversized line / broken transport -> EOF cleanup -> JA-only
             if not line:
                 break
             try:

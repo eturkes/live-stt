@@ -186,6 +186,15 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 
 **Revisit if:** Spark latency/entitlement changes on plan change; or sustained-session quota burn contradicts the ~0 % observation; or OpenAI sanctions a leaner instructions channel on subscription auth.
 
+**Amendment 2026-06-15 (T6):** Re-verified non-breaking at codex CLI **0.139.0** (bench
+was 0.137.0) — config (`gpt-5.3-codex-spark`+`low`+features-off+`developerInstructions`)
+still valid; clean JA->EN via a synthetic `CodexTranslator` turn (agent-verifiable per
+orientation; `auth.json` present). Also hardened `_read_loop`: `readline()` is now
+wrapped so a >64 KiB line (asyncio `StreamReader` default limit) or broken transport
+routes into the existing EOF cleanup -> immediate clean JA-only instead of waiting out
+the per-turn `wait_for` timeout (D-009 strengthened at the input boundary). Security
+audit verdict: no remotely-exploitable surface.
+
 ---
 
 ## D-012 — Bootstrap prompt is the `/session-prompt [TASK]` slash command

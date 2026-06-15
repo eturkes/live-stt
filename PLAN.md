@@ -117,6 +117,29 @@ Authoritative user-only list: `.agent/orientation.md` § "Smoke-test constraints
 
 ---
 
+## T6 — Maintenance + security pass
+
+Periodic upkeep per CLAUDE.md (security audits + keep software current); no new
+features. **Status: SHIPPED 2026-06-15.**
+
+- **Deps + CVEs:** runtime deps already latest (numpy 2.4.6, sherpa-onnx[-core] 1.13.2
+  = floor *and* newest, sounddevice 0.5.5); dev tooling bumped pytest 9.0.3->9.1.0 +
+  ruff 0.15.16->0.15.17 (lock + venv). `pip-audit` (`uv export | uvx pip-audit -r`) =
+  no known vulnerabilities. Suite + ruff + pyright green post-bump.
+- **Security review of the Codex leg** (the only non-local input surface): clean —
+  `create_subprocess_exec` (no shell), sandbox read-only + approvals never +
+  server-requests auto-denied, malformed-line skip, EOF/turn-failure -> JA-only
+  (D-009); no eval/os.system/shell/pickle/network-listener; `--device` int-typed,
+  `--engine` choices-bound, `-o` user-owned. No remotely-exploitable surface. One
+  low-sev gap fixed: `_read_loop`'s `readline()` wrapped so an oversized-line (>64 KiB
+  asyncio limit) / broken-transport error routes into the existing EOF cleanup
+  (immediate clean JA-only vs timeout-delayed).
+- **Codex drift re-verify:** CLI 0.137.0 (D-011 bench) -> 0.139.0; a synthetic turn
+  through the real `CodexTranslator` confirms `gpt-5.3-codex-spark`+low+features-off+
+  `developerInstructions` valid, clean JA->EN, 0 failures. Non-breaking.
+
+---
+
 ## Superseded
 
 ### T-BACKENDS-001 — Finish backends spike
