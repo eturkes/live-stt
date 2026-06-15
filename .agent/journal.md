@@ -6,6 +6,49 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-15 — T8: hardening roadmap generated via dynamic workflow
+
+**Trigger:** User (`/session-prompt` override): "The current roadmap is exhausted. Use a
+dynamic workflow to create new roadmap items." Bootstrap confirmed T1-T7 all SHIPPED, no
+OPEN task. User chose direction = **hardening & quality only (no new features)** +
+**write-through** to PLAN.
+
+**Method:** Ran a Workflow (multi-agent): 6 hardening lenses (error-paths, perf/
+multi-hour, test-coverage/CI, security, operational-diagnostics, documented-debt critic),
+each grounded by reading the real `live_stt.py` + `.agent/` memory, fanned out to
+candidates -> per-candidate adversarial philosophy screen (L-001 name-the-failure, L-005
+no-abstraction, L-019 no-padding, D-002, Out-of-scope, no-features gate) -> synthesis. 11
+candidates, 6 survived, merged to **5 items**. Re-verified the highest-stakes claims
+against live code before write-through; wrote tasks by symbol, not line number (refs were
+approximate).
+
+**Shipped (docs only):** PLAN.md +T8 series (T8.1-T8.5, all OPEN, priority-ranked) with
+acceptance criteria + the 5 screen-rejected candidates recorded. T8.1 = real shutdown
+deadlock (blocking `audio_q.put(None)` on a full queue after worker death -> SIGKILL-only,
+`-o` unclosed); T8.2 = the standing live-mic/soak smoke debt as a runnable checklist (the
+one acknowledged debt since 2026-06-08); T8.3 = wake the turn collect-loop on codex EOF
+(prompt JA-only vs 15 s timeout); T8.4 = `tests/test_translator.py` locking the
+degradation/backlog/read-loop branches (`CodexTranslator` is wholly untested); T8.5 =
+surface the 2 silent EN-leg degradations (EOF log + `tdrop` counter). No `live_stt.py`
+change this session.
+
+**Verified (agent-checkable):** claims cross-checked against `live_stt.py` (the blocking
+put in `run_session`'s finally; `submit_sentinel`'s evict-then-put idiom; `_turn`'s
+`_notes.get()` collect loop; `_read_loop` EOF cleanup has no log/sentinel; `submit`'s
+silent `QueueFull` evict vs the audio `drop=` precedent). No code changed -> 49 tests
+still green (pre-commit hook re-runs on commit).
+
+**Did not verify (user smoke, L-004):** none newly affected (docs only). The standing
+live-mic / `--device` / latency / Ctrl+C / multi-hour debt is unchanged and is now itself
+captured as OPEN task T8.2.
+
+**Memory:** PLAN +T8 series; L-020 (workflow recipe for roadmap generation: the
+adversarial screen carries the value; ground every finder in real code); journal pruned
+oldest (T5.2). No new ADR (the workflow is a process, not an architecture choice; the
+items earn ADRs if/when they ship).
+
+---
+
 ## 2026-06-15 — T7: proactive refactor pass (minimal, evidence-driven)
 
 **Trigger:** User (`/session-prompt`, blank override). Bootstrap found the roadmap
@@ -105,17 +148,3 @@ Ctrl+C/multi-hour surface.
 substitutes mic-record); orientation file-map (+fetch_real_clips.py, +real_clips.json;
 goldens row now bench+real); L-017 (HF rows-API fetch technique). Pruned oldest entry
 (2026-06-08 compaction).
-
----
-
-## 2026-06-15 — T5.2: parakeet-engine goldens (engine-first regression coverage)
-
-**Trigger:** User (`/session-prompt`, blank override → roadmap). T5.2 was the lowest-numbered agent-actionable open task; T5.3 is user-gated (needs real mic recordings, L-004). Goal: extend the T5.1 golden regression from `k2v2`-only to both engines. Confirmed direction before coding.
-
-**Shipped:** `replay_goldens.json` restructured **engine-first** (`engine → clip_id → {n_segments, segments, ja_ref, purpose}`); per-clip `engine` field dropped as redundant (engine is the key). `gen_replay_goldens.py` loops `ENGINES = [k2v2, parakeet]`, guarding each with `check_models` (skip+warn on absent weights, mirroring the existing clip-skip). `tests/test_replay.py` flattens goldens to `(engine, clip_id)` cases and parametrizes over them; `_resources_ready` gates per-engine. No `live_stt.py`/`replay.py` change — `replay.py` already accepted `--engine parakeet`.
-
-**Verified (agent-checkable):** regenerated both engines; **35 tests green** (was 30: +5 parakeet); ruff clean (fixed one E501 — the `{engine}/` prefix pushed the progress print to 102 > 100 at line-length 100; wrapped it); `uvx pyright@1.1.410` 0 errors; JSON top-level `[k2v2, parakeet]`, 10 cases. Parakeet snapshot reproduces D-010 quirks (ジェミニ→`jeミinapi`, `2つ目` numeral, lowercase `api`) and wins the `文` homophone (`最初の文です` vs k2v2 `最初の分です`) — characterization values, not asserted against idealized refs.
-
-**Did not verify (user smoke, L-004):** none newly affected — tooling-only (goldens + generator + test); no mic/`--device`/latency/Ctrl+C/multi-hour surface touched; `live_stt.py` untouched.
-
-**Memory:** PLAN T5.2 → SHIPPED; D-014 amendment (engine-first shape; first revisit-if resolved); orientation goldens row `(k2v2)` → engine-keyed `(k2v2 + parakeet)`. No new lesson (ruff line-length=100 is project config, not generalizable).

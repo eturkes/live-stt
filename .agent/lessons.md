@@ -227,3 +227,26 @@ candidates, apply only those with a nameable failure-mode-prevented or a
 house-style-conformance win, and record the rejected ones (scratch + PLAN) so they
 aren't re-litigated. "Mature; minimal change" is a valid, honest result; report it
 rather than forcing edits.
+
+## L-020 — Roadmap-generation workflow: the adversarial screen is the deliverable, not the ideation
+
+**Context:** 2026-06-15, T8. A `/session-prompt` override asked to generate new roadmap
+items via a dynamic (multi-agent) workflow on a mature, minimalist codebase whose own
+laws actively resist new work (L-005, L-019, D-002, a long Out-of-scope list).
+
+**Finding:** Naive fan-out ideation on a mature tool yields generic, ungrounded, or
+feature-creep candidates. The value came from two things: (1) **grounding** every finder
+by forcing it to read the real `live_stt.py` + `.agent/` memory first — ungrounded agents
+propose textbook STT features the Out-of-scope list already bans; (2) an **adversarial
+per-candidate screen** carrying the project's own laws (L-001 name-a-failure-mode-or-
+reject, no-abstraction, no-padding, the explicit out-of-scope list, plus a no-features
+gate). 11 candidates → 6 survivors → 5 merged items; the screen + synthesis removed half,
+and the survivors were all real (one genuine shutdown deadlock). A modest yield is the
+correct, honest outcome (L-019), not a workflow failure.
+
+**Rule:** When generating a roadmap (or any "find work" task) via a workflow on mature
+code: force every finder to read the actual code/memory first; gate every candidate
+through an adversarial reviewer carrying the project's own laws; record the rejected
+candidates so they aren't re-litigated; report a small high-conviction list without
+padding; and verify the highest-stakes survivors against live code yourself before
+landing them — agent line-number refs drift, so write the tasks by symbol/behavior.
