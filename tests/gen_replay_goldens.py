@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Regenerate tests/replay_goldens.json from the real STT pipeline.
 
-Replays the cached bench clips through replay.py and snapshots the
-*deterministic* outputs only: per-clip segment count + each segment's
-(start, n, text). Decode latency / RTF are excluded — they are CPU-variable.
+Replays the cached bench clips through replay.py for every engine and snapshots
+the *deterministic* outputs only: per-engine, per-clip segment count + each
+segment's (start, n, text). Decode latency / RTF are excluded — they are
+CPU-variable.
 
 Run when the pipeline's segmentation/decode behavior intentionally changes
 (e.g. VAD tuning, engine swap), then review the JSON diff before committing:
 
-    uv run python tests/gen_replay_goldens.py            # default engine k2v2
+    uv run python tests/gen_replay_goldens.py            # all engines (k2v2, parakeet)
+
+An engine whose weights are absent is skipped with a warning (the others still
+regenerate); rerun with that engine's models present to refresh its goldens.
 
 The bench WAVs live under the deny-listed spike/backends/cache/; this script's
 *runtime* reads are unaffected (D-008 amendment), and the deny-listed path is
@@ -25,10 +29,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import replay  # noqa: E402  (after sys.path injection)
+from live_stt import check_models  # noqa: E402
 
 CACHE = ROOT / "spike" / "backends" / "cache"
 GOLDENS = ROOT / "tests" / "replay_goldens.json"
-ENGINE = "k2v2"
+ENGINES = ["k2v2", "parakeet"]
 
 # Ported from the retired spike/backends/scenarios.py — (id, ja_ref, purpose).
 # `purpose` documents the expected segmentation; the asserted values come from
@@ -57,25 +62,33 @@ def main():
         print(f"cache dir absent: {CACHE}", file=sys.stderr)
         sys.exit(1)
     out: dict[str, dict] = {}
-    for cid, ja_ref, purpose in CLIPS:
-        wav = CACHE / f"{cid}.wav"
-        if not wav.exists():
-            print(f"skip {cid}: {wav.name} absent", file=sys.stderr)
+    for engine in ENGINES:
+        err = check_models(engine)
+        if err:
+            print(f"skip engine {engine}: {err.splitlines()[0]}", file=sys.stderr)
             continue
-        rep = replay.replay_wav(wav, ENGINE)
-        out[cid] = {
-            "ja_ref": ja_ref,
-            "purpose": purpose,
-            "engine": ENGINE,
-            "n_segments": rep["n_segments"],
-            "segments": [
-                {"start": s["start"], "n": s["n"], "text": s["text"]} for s in rep["segments"]
-            ],
-        }
-        texts = " | ".join(s["text"] for s in rep["segments"] if s["text"])
-        print(f"{cid}: {rep['n_segments']} seg, rtf {rep['overall_rtf']:.3f} :: {texts}")
+        out[engine] = {}
+        for cid, ja_ref, purpose in CLIPS:
+            wav = CACHE / f"{cid}.wav"
+            if not wav.exists():
+                print(f"skip {engine}/{cid}: {wav.name} absent", file=sys.stderr)
+                continue
+            rep = replay.replay_wav(wav, engine)
+            out[engine][cid] = {
+                "ja_ref": ja_ref,
+                "purpose": purpose,
+                "n_segments": rep["n_segments"],
+                "segments": [
+                    {"start": s["start"], "n": s["n"], "text": s["text"]} for s in rep["segments"]
+                ],
+            }
+            texts = " | ".join(s["text"] for s in rep["segments"] if s["text"])
+            print(
+                f"{engine}/{cid}: {rep['n_segments']} seg, "
+                f"rtf {rep['overall_rtf']:.3f} :: {texts}"
+            )
     GOLDENS.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {GOLDENS.relative_to(ROOT)} ({len(out)} clips)")
+    print(f"wrote {GOLDENS.relative_to(ROOT)} ({len(out)} engines)")
 
 
 if __name__ == "__main__":

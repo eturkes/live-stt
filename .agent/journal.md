@@ -6,6 +6,20 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-15 — T5.2: parakeet-engine goldens (engine-first regression coverage)
+
+**Trigger:** User (`/session-prompt`, blank override → roadmap). T5.2 was the lowest-numbered agent-actionable open task; T5.3 is user-gated (needs real mic recordings, L-004). Goal: extend the T5.1 golden regression from `k2v2`-only to both engines. Confirmed direction before coding.
+
+**Shipped:** `replay_goldens.json` restructured **engine-first** (`engine → clip_id → {n_segments, segments, ja_ref, purpose}`); per-clip `engine` field dropped as redundant (engine is the key). `gen_replay_goldens.py` loops `ENGINES = [k2v2, parakeet]`, guarding each with `check_models` (skip+warn on absent weights, mirroring the existing clip-skip). `tests/test_replay.py` flattens goldens to `(engine, clip_id)` cases and parametrizes over them; `_resources_ready` gates per-engine. No `live_stt.py`/`replay.py` change — `replay.py` already accepted `--engine parakeet`.
+
+**Verified (agent-checkable):** regenerated both engines; **35 tests green** (was 30: +5 parakeet); ruff clean (fixed one E501 — the `{engine}/` prefix pushed the progress print to 102 > 100 at line-length 100; wrapped it); `uvx pyright@1.1.410` 0 errors; JSON top-level `[k2v2, parakeet]`, 10 cases. Parakeet snapshot reproduces D-010 quirks (ジェミニ→`jeミinapi`, `2つ目` numeral, lowercase `api`) and wins the `文` homophone (`最初の文です` vs k2v2 `最初の分です`) — characterization values, not asserted against idealized refs.
+
+**Did not verify (user smoke, L-004):** none newly affected — tooling-only (goldens + generator + test); no mic/`--device`/latency/Ctrl+C/multi-hour surface touched; `live_stt.py` untouched.
+
+**Memory:** PLAN T5.2 → SHIPPED; D-014 amendment (engine-first shape; first revisit-if resolved); orientation goldens row `(k2v2)` → engine-keyed `(k2v2 + parakeet)`. No new lesson (ruff line-length=100 is project config, not generalizable).
+
+---
+
 ## 2026-06-15 — T5.1: deterministic WAV replay regression path; bench harness retired
 
 **Trigger:** User (`/session-prompt` override) — make live-stt regression-testable (no new features): a deterministic WAV replay/eval path through the **exact** VAD + RingBuffer + sherpa decode loop; reuse/retire the spike harness; minimal CLI/docs/tests; PLAN/.agent split of agent-verifiable replay vs user-only smoke. Confirmed 3 design choices before coding: real-`worker` hook (not a copy) / retire the whole bench harness / gitignored corpus + skip-if-absent.
@@ -46,12 +60,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 **Consequence to note (user-side):** if `compaction.sh` was ever wired as a Claude Code statusline command, it no longer consumes stdin JSON or emits color — it now reads the transcript (works as long as `CLAUDE_CODE_SESSION_ID` is set, or the newest transcript is the active session).
 
----
-
-## 2026-06-08 — Renamed `/session` slash command → `/session-prompt`
-
-**Trigger:** User (`/session` override) — rename the bootstrap slash command `/session` → `/session-prompt`.
-
-**Shipped:** `git mv .claude/commands/session.md → session-prompt.md` (history preserved; the command name derives from its filename). Body self-mention repointed (`text typed after /session-prompt`); frontmatter untouched, re-verified parsing (L-014). Live refs repointed: `.agent/README.md` intro pointer; `decisions.md` D-004 amendment + D-012 (title/body/verify → new name, plus a rename amendment recording the original `/session` for trajectory). Per user choice: historical `journal.md` entries and L-014's dated `session.md` context left intact (accurate-at-date). Grep-verified no stale *live* ref remains — remaining old-name hits are two false positives (`send/recv/session`, `thread/session`), the journal/L-014 history, and the amendment's own rename note. (Grep gotcha: `/session\b` matches `/session-prompt` because `-` is a word boundary; used `/session(?!-prompt)`.)
-
-**Smoke-test (user-side, agent cannot verify):** in a fresh Claude Code session `/session-prompt` (roadmap) and `/session-prompt <TASK>` (override) must register in the menu and expand correctly; old `/session` should no longer appear. Slash-command discovery/expansion is outside agent reach.

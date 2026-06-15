@@ -26,6 +26,10 @@ from live_stt import check_models
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDENS = json.loads((ROOT / "tests" / "replay_goldens.json").read_text(encoding="utf-8"))
+# Flatten the engine-keyed goldens to (engine, clip_id) cases for parametrization.
+GOLDEN_CASES = sorted(
+    (engine, clip_id) for engine, clips in GOLDENS.items() for clip_id in clips
+)
 CACHE = ROOT / "spike" / "backends" / "cache"
 # 0.1 s: guards against segmentation-boundary drift without flaking on the
 # sub-sample float noise that ONNX ops can introduce across runs/machines.
@@ -70,16 +74,16 @@ def test_load_wav_downmixes_stereo(tmp_path):
 
 # ---- models + cached corpus gated: golden regression ----
 
-def _resources_ready(clip_id: str) -> bool:
-    return check_models("k2v2") is None and (CACHE / f"{clip_id}.wav").exists()
+def _resources_ready(engine: str, clip_id: str) -> bool:
+    return check_models(engine) is None and (CACHE / f"{clip_id}.wav").exists()
 
 
-@pytest.mark.parametrize("clip_id", sorted(GOLDENS))
-def test_replay_golden(clip_id):
-    if not _resources_ready(clip_id):
-        pytest.skip(f"models or cached WAV for {clip_id!r} absent")
-    golden = GOLDENS[clip_id]
-    report = replay.replay_wav(CACHE / f"{clip_id}.wav", golden["engine"])
+@pytest.mark.parametrize("engine,clip_id", GOLDEN_CASES)
+def test_replay_golden(engine, clip_id):
+    if not _resources_ready(engine, clip_id):
+        pytest.skip(f"models for {engine!r} or cached WAV for {clip_id!r} absent")
+    golden = GOLDENS[engine][clip_id]
+    report = replay.replay_wav(CACHE / f"{clip_id}.wav", engine)
     assert report["n_segments"] == golden["n_segments"]
     got, exp = report["segments"], golden["segments"]
     assert len(got) == len(exp)

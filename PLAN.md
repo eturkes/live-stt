@@ -70,10 +70,14 @@ a drifted copy of this loop). 30 tests green.
 
 ### T5.2 — Parakeet-engine goldens
 
-**Status:** OPEN. Goldens cover `k2v2` only; the A/B `parakeet` engine has no regression
-coverage. `replay.py` already accepts `--engine parakeet`; add a parakeet pass to
-`gen_replay_goldens.py` (key goldens by engine) + parametrize the test over engines.
-Agent-verifiable (models present), low effort.
+**Status:** SHIPPED 2026-06-15. `replay_goldens.json` is now engine-first
+(`engine → clip_id → {n_segments, segments, …}`; the redundant per-clip `engine` field
+dropped); `gen_replay_goldens.py` regenerates both `k2v2` + `parakeet`, skipping (with a
+warning) any engine whose weights are absent; `tests/test_replay.py` is parametrized over
+`(engine, clip_id)` pairs with per-engine model gating. 35 tests green (was 30: +5 parakeet
+goldens). Parakeet snapshot reproduces the D-010 quirks (ジェミニ→`jeミinapi`, numeral
+`2つ目`, lowercase `api`) and wins the `文` homophone (`最初の文です` vs k2v2's
+`最初の分です`). Tooling-only; no `live_stt.py`/CLI change → no new smoke surface.
 
 ### T5.3 — Real-recorded JA corpus
 

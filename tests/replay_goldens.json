@@ -1,87 +1,166 @@
 {
-  "greet": {
-    "ja_ref": "こんにちは。",
-    "purpose": "single sentence -> 1 segment",
-    "engine": "k2v2",
-    "n_segments": 1,
-    "segments": [
-      {
-        "start": 3168,
-        "n": 10144,
-        "text": "こんにちは"
-      }
-    ]
+  "k2v2": {
+    "greet": {
+      "ja_ref": "こんにちは。",
+      "purpose": "single sentence -> 1 segment",
+      "n_segments": 1,
+      "segments": [
+        {
+          "start": 3168,
+          "n": 10144,
+          "text": "こんにちは"
+        }
+      ]
+    },
+    "short": {
+      "ja_ref": "今日はライブAPIのテストをしています。",
+      "purpose": "single sentence -> 1 segment",
+      "n_segments": 1,
+      "segments": [
+        {
+          "start": 4704,
+          "n": 36768,
+          "text": "きょうはライブAPIのテストをしています"
+        }
+      ]
+    },
+    "medium": {
+      "ja_ref": "こんにちは、今日はライブAPIのテストをしています。よろしくお願いします。",
+      "purpose": "3 sentences, 0.7 s silences (> VAD_MIN_SILENCE_S) -> 3 segments",
+      "n_segments": 3,
+      "segments": [
+        {
+          "start": 4704,
+          "n": 8288,
+          "text": "こんにちは"
+        },
+        {
+          "start": 30304,
+          "n": 39008,
+          "text": "今日はライブAPIのテストをしています"
+        },
+        {
+          "start": 82016,
+          "n": 19360,
+          "text": "よろしくお願いします"
+        }
+      ]
+    },
+    "long": {
+      "ja_ref": "このプロジェクトはリアルタイムの日本語音声認識ツールです。マイクから音声を取り込み、ジェミニAPIに送って、日本語の文字起こしと英語の翻訳を同時に表示します。",
+      "purpose": "2 sentences, 0.7 s silence -> 2 segments",
+      "n_segments": 2,
+      "segments": [
+        {
+          "start": 3168,
+          "n": 64608,
+          "text": "このプロジェクトはリアルタイムの日本語音声認識ツールです"
+        },
+        {
+          "start": 86112,
+          "n": 126368,
+          "text": "マイクから音声を取り込みゼミニAPIに送って日本語の文字起こしと英語の翻訳を同時に表示します"
+        }
+      ]
+    },
+    "paused": {
+      "ja_ref": "最初の文です。\n二つ目の文です。",
+      "purpose": "2.0 s gap -> 2 segments",
+      "n_segments": 2,
+      "segments": [
+        {
+          "start": 2656,
+          "n": 15456,
+          "text": "最初の分です"
+        },
+        {
+          "start": 55392,
+          "n": 18848,
+          "text": "二つ目の文です"
+        }
+      ]
+    }
   },
-  "short": {
-    "ja_ref": "今日はライブAPIのテストをしています。",
-    "purpose": "single sentence -> 1 segment",
-    "engine": "k2v2",
-    "n_segments": 1,
-    "segments": [
-      {
-        "start": 4704,
-        "n": 36768,
-        "text": "きょうはライブAPIのテストをしています"
-      }
-    ]
-  },
-  "medium": {
-    "ja_ref": "こんにちは、今日はライブAPIのテストをしています。よろしくお願いします。",
-    "purpose": "3 sentences, 0.7 s silences (> VAD_MIN_SILENCE_S) -> 3 segments",
-    "engine": "k2v2",
-    "n_segments": 3,
-    "segments": [
-      {
-        "start": 4704,
-        "n": 8288,
-        "text": "こんにちは"
-      },
-      {
-        "start": 30304,
-        "n": 39008,
-        "text": "今日はライブAPIのテストをしています"
-      },
-      {
-        "start": 82016,
-        "n": 19360,
-        "text": "よろしくお願いします"
-      }
-    ]
-  },
-  "long": {
-    "ja_ref": "このプロジェクトはリアルタイムの日本語音声認識ツールです。マイクから音声を取り込み、ジェミニAPIに送って、日本語の文字起こしと英語の翻訳を同時に表示します。",
-    "purpose": "2 sentences, 0.7 s silence -> 2 segments",
-    "engine": "k2v2",
-    "n_segments": 2,
-    "segments": [
-      {
-        "start": 3168,
-        "n": 64608,
-        "text": "このプロジェクトはリアルタイムの日本語音声認識ツールです"
-      },
-      {
-        "start": 86112,
-        "n": 126368,
-        "text": "マイクから音声を取り込みゼミニAPIに送って日本語の文字起こしと英語の翻訳を同時に表示します"
-      }
-    ]
-  },
-  "paused": {
-    "ja_ref": "最初の文です。\n二つ目の文です。",
-    "purpose": "2.0 s gap -> 2 segments",
-    "engine": "k2v2",
-    "n_segments": 2,
-    "segments": [
-      {
-        "start": 2656,
-        "n": 15456,
-        "text": "最初の分です"
-      },
-      {
-        "start": 55392,
-        "n": 18848,
-        "text": "二つ目の文です"
-      }
-    ]
+  "parakeet": {
+    "greet": {
+      "ja_ref": "こんにちは。",
+      "purpose": "single sentence -> 1 segment",
+      "n_segments": 1,
+      "segments": [
+        {
+          "start": 3168,
+          "n": 10144,
+          "text": "こんにちは"
+        }
+      ]
+    },
+    "short": {
+      "ja_ref": "今日はライブAPIのテストをしています。",
+      "purpose": "single sentence -> 1 segment",
+      "n_segments": 1,
+      "segments": [
+        {
+          "start": 4704,
+          "n": 36768,
+          "text": "今日はライブapiのテストをしています"
+        }
+      ]
+    },
+    "medium": {
+      "ja_ref": "こんにちは、今日はライブAPIのテストをしています。よろしくお願いします。",
+      "purpose": "3 sentences, 0.7 s silences (> VAD_MIN_SILENCE_S) -> 3 segments",
+      "n_segments": 3,
+      "segments": [
+        {
+          "start": 4704,
+          "n": 8288,
+          "text": "こんにちは"
+        },
+        {
+          "start": 30304,
+          "n": 39008,
+          "text": "きょうはライブapiのテストをしています"
+        },
+        {
+          "start": 82016,
+          "n": 19360,
+          "text": "よろしくお願いします"
+        }
+      ]
+    },
+    "long": {
+      "ja_ref": "このプロジェクトはリアルタイムの日本語音声認識ツールです。マイクから音声を取り込み、ジェミニAPIに送って、日本語の文字起こしと英語の翻訳を同時に表示します。",
+      "purpose": "2 sentences, 0.7 s silence -> 2 segments",
+      "n_segments": 2,
+      "segments": [
+        {
+          "start": 3168,
+          "n": 64608,
+          "text": "このプロジェクトはリアルタイムの日本語音声認識ツールです。"
+        },
+        {
+          "start": 86112,
+          "n": 126368,
+          "text": "マイクから音声を取り込みjeミinapiに送って日本語の文字起こしと英語の翻訳を同時に表示します"
+        }
+      ]
+    },
+    "paused": {
+      "ja_ref": "最初の文です。\n二つ目の文です。",
+      "purpose": "2.0 s gap -> 2 segments",
+      "n_segments": 2,
+      "segments": [
+        {
+          "start": 2656,
+          "n": 15456,
+          "text": "最初の文です"
+        },
+        {
+          "start": 55392,
+          "n": 18848,
+          "text": "2つ目の文です"
+        }
+      ]
+    }
   }
 }
