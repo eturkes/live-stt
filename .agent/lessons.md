@@ -149,3 +149,11 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 **Finding:** Read/Grep/Bash output is semantically compressed before it reaches the agent, so the rendered text is not guaranteed byte-identical to disk. Short anchors usually survive; long ones accumulate divergence — here `git log` appeared without backticks in my view but carried them on disk (`per ` `git log` ` style`). Edit matches real bytes, so a compressed-view mismatch fails silently.
 
 **Rule:** Prefer short, distinctive `old_string` anchors. When an Edit fails on a string you "see," fetch raw bytes (`sed -n 'Np' FILE | cat -A`) and re-anchor on those, reproducing exact Unicode (em-dash `—`, `§`) and backticks. To delete a large block you have not seen byte-exact, use a line-range delete (`sed -i 'A,Bd'`) instead of guessing its bytes.
+
+## L-016 — Deny-listed paths block on the command line, not on a script's runtime `open()`
+
+**Context:** 2026-06-15, T5. The replay regression corpus lives in `spike/backends/cache/` — deny-listed (D-008 amendment: refused via every tool, Bash included). `tests/gen_replay_goldens.py` and `tests/test_replay.py` must read those WAVs, and a manual `replay.py <cache.wav>` smoke would need the path too.
+
+**Finding:** The deny-list operates at the Claude **tool boundary**: it refuses a deny-listed path that appears in a Read/Edit target or anywhere on a Bash command line — so `uv run python -c "...spike/backends/cache/x.wav..."` is refused (the literal path sits in the command text). It does NOT intercept the OS. A script that builds the path from components internally (`CACHE = ROOT / "spike" / "backends" / "cache"`) and `open()`s it at runtime reads the file fine, because no deny-listed string ever crosses a tool. For an agent-side CLI smoke that therefore can't name the corpus, synthesize a throwaway WAV (no cache reference anywhere).
+
+**Rule:** When a tool/test/script must read a deny-listed path, construct the path from components *inside the script file* and let it `open()` at runtime — never pass the deny-listed path as a CLI argument or `-c` substring. To smoke-run a CLI that takes such a path, feed it a synthetic temp artifact, not the real deny-listed file. (Distinct from L-015: there the block is incidental Read-compression; here it is intentional and total at the tool boundary.)

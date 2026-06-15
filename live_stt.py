@@ -16,6 +16,7 @@ import logging
 import math
 import signal
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -552,12 +553,18 @@ class CodexTranslator:
                     pass
 
 
-async def worker(rec, vad, window, audio_q, state, output_file, translator=None):
+async def worker(rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None):
     """Drain mic queue -> feed VAD -> decode completed segments -> emit blocks.
 
     Decode runs in the default executor so queue draining (and the mic
     callback's enqueue) never stalls behind a long segment. Sequential decode
     preserves block order. A None sentinel flushes the VAD and exits.
+
+    `on_segment` is an optional instrumentation hook for the deterministic
+    replay/regression path (replay.py). When set, it is called once per popped
+    VAD segment as on_segment(start, n, seg_len, decode_s, text) — including
+    empty-text segments, so segmentation can be reported faithfully. The live
+    mic path leaves it None, so its behavior is unchanged.
     """
     loop = asyncio.get_running_loop()
     buf = np.empty(0, dtype=np.float32)
@@ -584,12 +591,15 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None)
                 n = len(vad.front.samples)
                 vad.pop()
                 seg = ring.slice(start - pad, start + n)
+                t_dec = time.perf_counter() if on_segment is not None else 0.0
                 text = await loop.run_in_executor(None, _decode, rec, seg)
                 if text:
                     seq += 1
                     emit_line("JA", seq, text, output_file)
                     if translator is not None:
                         translator.submit(seq, text)
+                if on_segment is not None:
+                    on_segment(start, n, len(seg), time.perf_counter() - t_dec, text)
             if flush:
                 return
     except Exception:

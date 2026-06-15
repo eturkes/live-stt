@@ -45,8 +45,8 @@ include = ["live_stt.py", "README.md", "PLAN.md"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-# spike/ = historical bench prototypes; several import SDKs removed at T4.5
-# (google-genai, openai, …) by design. Open-file LSP analysis still applies.
+# spike/ = historical research docs + the gitignored bench WAV corpus; the
+# runnable harness was retired at T5 (D-014). Excluded from pyright analysis.
 # Setting exclude REPLACES pyright's defaults — .venv/models/__pycache__ must
 # be re-listed or pyright walks ~1 GB of weights and the venv tree.
 exclude = ["spike", ".venv", "models", "**/__pycache__"]

@@ -6,6 +6,22 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-15 — T5.1: deterministic WAV replay regression path; bench harness retired
+
+**Trigger:** User (`/session-prompt` override) — make live-stt regression-testable (no new features): a deterministic WAV replay/eval path through the **exact** VAD + RingBuffer + sherpa decode loop; reuse/retire the spike harness; minimal CLI/docs/tests; PLAN/.agent split of agent-verifiable replay vs user-only smoke. Confirmed 3 design choices before coding: real-`worker` hook (not a copy) / retire the whole bench harness / gitignored corpus + skip-if-absent.
+
+**Shipped (D-014):** `replay.py` drives `live_stt.worker` over a WAV via a new optional `on_segment(start, n, seg_len, decode_s, text)` hook — the mic path passes `on_segment=None`, so live behavior is unchanged (only `live_stt.py` edits: `import time` + the guarded hook + a docstring note). It reports per-segment segmentation + decode latency/RTF + transcript; `--json` for machine read (worker's `emit_line` stdout captured via `redirect_stdout` so the JSON stays valid). Golden regression `tests/test_replay.py` = 3 always-run WAV-loader tests + 5 characterization goldens (`replay_goldens.json`, k2v2) asserting segment count + per-segment text + boundary (±0.1 s), never the CPU-variable latency; skips when models/clips absent. Reproduces D-010 quirks (ジェミニ→ゼミニ, 文→分) + the 0.7 s-silence splits → it re-tests the real pipeline, not an idealized one.
+
+**Retired:** all 11 runnable `spike/backends/*.py` (`prototype_local.py` was a drifted copy of `worker`). Kept: `cache/*.wav` (gitignored+deny-listed replay corpus), `*.md` history, `codex_ws/AGENTS.md`. Memory/docs: PLAN T5 section + "Coverage split" table; README "Regression testing"; orientation file-map + replay-covered smoke pointer; D-014; L-016.
+
+**Verified (agent-checkable):** 30 tests green (22 + 3 loader + 5 golden); ruff clean; `uvx pyright@1.1.410` 0 errors; `import live_stt, replay`; synthetic-WAV CLI smoke (human + `--json`, 0-segment branch).
+
+**Did not verify (user smoke, L-004):** live mic / `--device` / real-time latency feel / Ctrl+C mid-utterance flush / multi-hour. None changed behaviorally (hook defaults None → mic path unchanged), but the `worker` signature did change, so flagged per policy.
+
+**Spawned L-016:** the deny-list blocks a path on a tool/Bash command line but not a script's own runtime `open()` — gen/test construct the `spike/backends/cache` path internally to read the corpus.
+
+---
+
 ## 2026-06-15 — CLAUDE.md sync: Headroom `.serena/` tracking + deny-list; scoped-commit doc
 
 **Trigger:** User (`/session-prompt` override) — "I updated CLAUDE.md; do any work it implies." Diff (+3/−2): dropped the `# CLAUDE.md` H1; added a preferred-tooling bullet (`uv`/`pnpm`/`chromiumfish`); added the Headroom/`.serena/` bullet; changed the commit rule to require a scoped commit (scopedcommits.com).
@@ -39,15 +55,3 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 **Shipped:** `git mv .claude/commands/session.md → session-prompt.md` (history preserved; the command name derives from its filename). Body self-mention repointed (`text typed after /session-prompt`); frontmatter untouched, re-verified parsing (L-014). Live refs repointed: `.agent/README.md` intro pointer; `decisions.md` D-004 amendment + D-012 (title/body/verify → new name, plus a rename amendment recording the original `/session` for trajectory). Per user choice: historical `journal.md` entries and L-014's dated `session.md` context left intact (accurate-at-date). Grep-verified no stale *live* ref remains — remaining old-name hits are two false positives (`send/recv/session`, `thread/session`), the journal/L-014 history, and the amendment's own rename note. (Grep gotcha: `/session\b` matches `/session-prompt` because `-` is a word boundary; used `/session(?!-prompt)`.)
 
 **Smoke-test (user-side, agent cannot verify):** in a fresh Claude Code session `/session-prompt` (roadmap) and `/session-prompt <TASK>` (override) must register in the menu and expand correctly; old `/session` should no longer appear. Slash-command discovery/expansion is outside agent reach.
-
----
-
-## 2026-06-08 — Session bootstrap prompt → `/session [TASK]` slash command
-
-**Trigger:** User — turn the reusable `SESSION_PROMPT.md` into a native slash command; a `<TASK>` arg overrides the roadmap for that session, blank follows `PLAN.md`.
-
-**Shipped:** `.claude/commands/session.md` (`/session [TASK]`). Body = old prompt minus the human-paste preamble; the trailing "USER STEERING" HTML comment is replaced by an `$ARGUMENTS` slot in § "What to do right now" (non-empty → override + still run bootstrap reads; empty → lowest-numbered open `PLAN.md` task). `.agent/SESSION_PROMPT.md` deleted. Refs repointed: `.agent/README.md` (intro pointer added, stale table row dropped), `decisions.md` D-004 amended + **D-012** added. Historical journal mentions of `SESSION_PROMPT` left intact (accurate at their dates).
-
-**Gotcha (→ L-014):** `argument-hint: [TASK] …` is invalid YAML — a leading `[` opens a flow sequence and the trailing prose raises `ParserError`; quoted the value. Verified the frontmatter parses via `uv run --with pyyaml`.
-
-**Smoke-test (user-side, agent cannot verify):** in a fresh Claude Code session, `/session` (roadmap) and `/session <TASK>` (override) must register in the menu and expand correctly — slash-command discovery/expansion is outside agent reach.

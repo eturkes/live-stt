@@ -23,7 +23,7 @@ Status legend: `SHIPPED` `OPEN` `BLOCKED` `DEFERRED` `OUT-OF-SCOPE` `SUPERSEDED`
 
 ---
 
-## Open — T4 series: no-API-key re-architecture (ADR: D-009)
+## T4 series (shipped) — no-API-key re-architecture (ADR: D-009)
 
 User directive 2026-06-08: zero metered API keys. New architecture: **local STT (JA) + Codex-subscription translation**. Gemini Live replaced outright. Plan detail: `.agent/scratch/2026-06-08_T4-rearch.md`.
 
@@ -46,6 +46,59 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 ### T4.5 — Cleanup
 
 **Status:** SHIPPED 2026-06-08. `google-genai` + `python-dotenv` removed (25 pkgs uninstalled; spike `load_dotenv` lines dropped — export keys manually if re-running historical metered benches); `list_live_models.py` + `.env` deleted; README/orientation rewritten for local-STT+Codex architecture; D-001/D-003 superseded-by-D-009; L-002/L-003 historical, L-004 rescoped; SPIKE_REPORT*.md kept as history.
+
+---
+
+## T5 series — regression-testability (ADR: D-014)
+
+Make the local STT pipeline deterministically replayable so agents can catch
+segmentation/transcript regressions without a mic. No new app features; the live-mic
+path behavior is unchanged.
+
+### T5.1 — Deterministic WAV replay / evaluation path
+
+**Status:** SHIPPED 2026-06-15. `replay.py` drives the **exact** production loop
+(`live_stt.worker` via a new optional `on_segment` hook — mic path behavior unchanged)
+over a WAV and reports per-segment segmentation (start/length), decode latency + RTF,
+and transcript: `uv run python replay.py WAV [--engine k2v2|parakeet] [--json]`. Golden
+regression `tests/test_replay.py` vs `tests/replay_goldens.json` (characterization
+snapshot of the real pipeline; regenerate via `tests/gen_replay_goldens.py`) asserts
+segment count + per-segment text + boundary (±0.1 s), never the CPU-variable latency;
+skips when models/WAVs absent. Reproduces D-010 quirks (ジェミニ→ゼミニ, 文→分) and the
+0.7 s-silence splits. Retired the now-superseded bench harness (`prototype_local.py` was
+a drifted copy of this loop). 30 tests green.
+
+### T5.2 — Parakeet-engine goldens
+
+**Status:** OPEN. Goldens cover `k2v2` only; the A/B `parakeet` engine has no regression
+coverage. `replay.py` already accepts `--engine parakeet`; add a parakeet pass to
+`gen_replay_goldens.py` (key goldens by engine) + parametrize the test over engines.
+Agent-verifiable (models present), low effort.
+
+### T5.3 — Real-recorded JA corpus
+
+**Status:** OPEN (user-gated). The corpus is Gemini-TTS synthetic (per-sentence with
+real silences — valid per D-010, but still synthetic). A handful of real mic-recorded JA
+clips would harden segmentation/endpointing coverage against true acoustics. Needs the
+user to record/source clips (agent cannot capture audio, L-004); drop them in the
+gitignored cache and regenerate goldens.
+
+### Coverage split — agent-verifiable (replay) vs user-only (smoke)
+
+| Behavior | Replay covers (agent, no mic) | User-only smoke |
+|---|---|---|
+| WAV → resample → VAD segmentation (count + boundaries) | ✅ | |
+| RingBuffer pre-pad re-slice → sherpa decode → transcript | ✅ | |
+| Per-segment decode latency / RTF | ✅ (report-only) | |
+| JA-only path (translator absent) | ✅ | |
+| Mic capture (`sd.InputStream`, `audio_callback`, `call_soon_threadsafe`) | | ✅ |
+| Device enumeration / `--device` selection | | ✅ |
+| Real-time latency feel + VAD endpointing on live speech | | ✅ |
+| Ctrl+C / signal mid-utterance flush + translator drain | | ✅ |
+| Multi-hour session (quota burn, thread rotation, memory) | | ✅ |
+| Live Codex translation cadence/interleave | | ✅ (leg correctness itself is agent-verifiable via synthetic turns) |
+
+Authoritative user-only list: `.agent/orientation.md` § "Smoke-test constraints".
 
 ---
 

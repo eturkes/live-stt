@@ -89,14 +89,15 @@ Numbered lines tie JA/EN pairs together even when the next utterance's JA prints
 ```
 live-stt/
 ├── live_stt.py              # main app (single file)
+├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
-├── tests/                   # pytest suite for pure functions
+├── tests/                   # pytest suite (pure functions + replay regression)
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
 ├── PLAN.md                  # roadmap
 ├── SPIKE_REPORT.md          # historical: REST → Gemini Live decision (superseded)
 ├── SPIKE_REPORT_BACKENDS.md # historical: streaming-STT backend comparison
-├── spike/                   # bench harness, prototypes, research notes
+├── spike/                   # historical research notes + gitignored bench WAV corpus
 ├── CLAUDE.md                # agent meta-instructions
 └── .agent/                  # agent memory/notetaking
 ```
@@ -111,6 +112,17 @@ git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 Tests cover `resample`, `RingBuffer`, and `emit_line`. No network, mic, or model weights required.
 
 The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync` — run it once after cloning.
+
+#### Regression testing (WAV replay)
+
+`replay.py` feeds a WAV through the **exact** live STT pipeline (VAD + `RingBuffer` + sherpa decode — no mic, no translation) and reports per-segment segmentation, decode latency + RTF, and transcript:
+
+```sh
+uv run python replay.py path/to.wav --engine k2v2   # human-readable report
+uv run python replay.py path/to.wav --json          # machine-readable
+```
+
+`tests/test_replay.py` replays the cached bench clips and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted — it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`.
 
 ## Key constants
 

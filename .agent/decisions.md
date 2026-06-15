@@ -219,3 +219,22 @@ Architectural/design choices with rationale. ADR-style but compact. Append-only;
 **Rationale:** `project.yml` is portable shared LSP config (no secrets/abs paths — verified before tracking); committing it gives fresh clones working LSP without re-bootstrapping Serena. The other three are machine-local / regenerable / redundant-with-`.agent/`. The deny-list mirrors git-ignore so neither git nor agent context carries them.
 
 **Revisit if:** Headroom changes `.serena/` layout; or a denied `.serena` path is needed repeatedly via Bash (narrow the rule per D-008).
+
+---
+
+## D-014 — Deterministic WAV replay as the local-pipeline regression harness; bench harness retired
+
+**Date:** 2026-06-15. **Trigger:** user (`/session-prompt` override) — make live-stt regression-testable (not add features): a deterministic WAV replay/eval path through the exact VAD + RingBuffer + sherpa decode pipeline, live-mic path unchanged. Three design choices were confirmed with the user before coding.
+
+**Decisions:**
+1. **Replay drives the real `live_stt.worker`, not a copy.** Added an optional `on_segment=None` instrumentation hook to `worker()`; the live-mic path passes nothing → behavior byte-for-byte unchanged. `replay.py` passes a collector capturing `(start, n, seg_len, decode_s, text)` per popped VAD segment (incl. empty-text, for segmentation fidelity). Chosen over freeze-and-reimplement precisely because a reimplemented loop is what drifted in the old `prototype_local.py`.
+2. **Retire the whole bench harness.** Deleted the runnable `.py` (`harness`/`bench`/`scenarios`/`prototype_local` + dead metered prototypes + `codex_client`/`translate`). `prototype_local.py` was a superseded copy of the production loop (its `fed_slice` was marked "production wants RingBuffer instead"); `codex_client.py`'s pattern lives in `CodexTranslator` (D-011); the metered prototypes died with T-BACKENDS-001 (D-009). Kept the gitignored WAV corpus (`cache/`), the historical `*.md` records (D-005 precedent), and `codex_ws/AGENTS.md` (D-011 instructions source).
+3. **Corpus stays gitignored; goldens are characterization snapshots.** The 5 bench WAVs stay in the deny-listed `spike/backends/cache/` (not promoted to tracked fixtures); `tests/test_replay.py` skips when they (or the models) are absent. Expected values = the *current* real-pipeline output in tracked `tests/replay_goldens.json` (engines carry stable known quirks per D-010 — ジェミニ→ゼミニ, 文→分 — so golden-master beats asserting idealized refs). Asserted surface = segment count + per-segment text + boundary (±0.1 s); CPU-variable decode latency/RTF is reported only.
+
+**Rationale:** a regression test of a *copy* of the pipeline tests the copy, not the product. The hook makes replay exercise the identical loop the mic feeds, so a future agent editing VAD/worker/ring code gets an immediate deterministic signal; retiring the drift-prone harness removes the second copy entirely.
+
+**Practical note:** the cache is deny-listed, so its path cannot appear on a Bash command line, but a script's *runtime* file reads are unaffected (D-008 amendment) — `gen_replay_goldens.py` and the test construct the cache path internally and read the WAVs at runtime.
+
+**Coverage split (the deliverable):** replay covers WAV→resample→VAD segmentation→ring re-slice→decode→transcript + per-segment latency + JA-only degradation; mic capture, device selection, live-latency feel, Ctrl+C flush, multi-hour quota, and live Codex cadence stay user-only. Tabulated in `PLAN.md` § T5 "Coverage split"; authoritative user-only list in `orientation.md` § Smoke-test constraints.
+
+**Revisit if:** parakeet goldens added (T5.2 → key goldens by engine); a real-recorded corpus lands (T5.3); or `worker()` grows further instrumentation needs (consider a small event object over positional hook args).

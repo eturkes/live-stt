@@ -7,8 +7,11 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | Path | Role |
 |---|---|
 | `live_stt.py` | Main app (~800 lines). `audio_callback` → queue → `worker` (VAD + `RingBuffer` pre-pad re-slice + executor decode) → `emit_line`; `CodexTranslator` (JSON-RPC/stdio per D-011) consumes a sequential queue. Constants at top are the config surface. |
+| `replay.py` | Deterministic WAV replay/eval (T5, D-014). Drives the **exact** `live_stt.worker` (via its optional `on_segment` hook) over a WAV → per-segment segmentation + decode latency/RTF + transcript. Dev/regression tool, not packaged: `uv run python replay.py WAV [--engine] [--json]`. |
 | `models/` | STT weights, gitignored except `models/README.md` (download cmds, expected layout, ~800 MB). |
 | `tests/test_audio.py` | Pure-function tests: `resample`, `RingBuffer`, `emit_line`. Run with `uv run pytest`. |
+| `tests/test_replay.py` | Replay regression: model-independent WAV-loader tests (always run) + golden test (segment count + per-segment transcript + boundary vs `replay_goldens.json`; skips when models/clips absent). |
+| `tests/replay_goldens.json` | Characterization snapshot of the real pipeline over the cached clips (k2v2). Regenerate via `tests/gen_replay_goldens.py` after an intentional pipeline change, then diff-review. |
 | `pyproject.toml` | `uv`-managed deps (numpy, sounddevice, sherpa-onnx + sherpa-onnx-core). Entry point: `live-stt`. Python ≥ 3.11. |
 | `.githooks/pre-commit` | Runs `uv run pytest -q`; aborts commit on failure. Enabled via `git config --local core.hooksPath .githooks` (per-clone, one-time). |
 | `.claude/settings.json` | `permissions.deny` `Read()` rules keeping low-value paths out of context: `.git`, `.venv`, `.env*`, `uv.lock`, `LICENSE`, spike cache, `.serena/` (cache + memories + project.local.yml), tool caches. Deny-listed paths are refused via **every** tool, Bash included (D-008 amendment) — ask the user instead of probing. Runtime reads by the app itself are unaffected. Also `enabledPlugins`: pyright-lsp, project-scoped (server = user-level `~/.local/bin/pyright-langserver`; D-008 amendment b). Pyright venv resolution = `[tool.pyright]` in pyproject.toml; the LSP server reads config at session start, so after config edits the in-session diagnostics are stale — run the pyright CLI (build/test commands) for an immediate check. Env (subagent model=opus, effort=max) comes from the **global** `~/.claude/settings.json` — set there, not here. |
@@ -16,7 +19,7 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 | `PLAN.md` | Roadmap with task IDs. Source of truth for what to do next. |
 | `SPIKE_REPORT.md` | Historical: REST → Gemini Live migration (architecture removed at T4.5). |
 | `SPIKE_REPORT_BACKENDS.md` | Historical: 5-provider streaming-STT comparison; premise (API keys) voided by D-009. |
-| `spike/backends/` | Bench harness (`harness.py`, `scenarios.py`, `bench.py`), prototypes (`prototype_local.py` = T4.1 winner pattern, `prototype_gemini.py` = old baseline), `codex_client.py` (T4.2 bench tool, donor of the `CodexTranslator` pattern), `codex_ws/AGENTS.md` (rejected agents-mode comparator). Cached bench WAVs live in the deny-listed `cache/`. |
+| `spike/backends/` | **Bench harness retired at T5** (D-014) — all runnable `.py` removed (`prototype_local.py` was a drifted copy of `live_stt.worker`; `replay.py` + tests supersede it). Retained: `cache/` (gitignored + deny-listed bench WAV corpus = the replay regression clips), historical `*.md` research/design/report docs, `codex_ws/AGENTS.md` (the `developerInstructions` source, D-011). |
 | `CLAUDE.md` | Meta-instructions for the agent. Agent may rewrite at any time. |
 | `compaction.sh` | Context-usage gauge; vendored snapshot of the shared `$HOME/.claude/` tool (re-sync if that changes — L-008). `sh compaction.sh` prints `PCT USED/WINDOW`; needs `jq`. Backs the CLAUDE.md 80% compaction rule. |
 | `.serena/` | Headroom/Serena LSP state (Headroom compresses everything the agent reads — CLAUDE.md). `project.yml` = tracked LSP config; `cache/`, `memories/`, `project.local.yml` are git-ignored (nested `.serena/.gitignore`) **and** deny-listed → the agent ignores them (D-013). The project memory system is `.agent/`, **not** `.serena/memories/`. |
@@ -32,7 +35,7 @@ The agent must flag these for the user every time they're touched:
 - **Ctrl+C / signal handling** in a real terminal (mid-utterance flush, translator drain).
 - **Multi-hour sessions** — Codex quota burn over time, thread rotation, memory growth.
 
-The Codex leg itself IS agent-verifiable (subprocess + synthetic turns); the local decode path is verifiable against cached bench WAVs via `spike/backends/harness.py` loaders.
+The Codex leg itself IS agent-verifiable (subprocess + synthetic turns); the local decode path (VAD segmentation + `RingBuffer` re-slice + sherpa decode → transcript) is agent-verifiable via `replay.py` + `tests/test_replay.py` over the cached clips (T5, D-014). The replay-covered vs. user-only split is tabulated in `PLAN.md` § T5 "Coverage split".
 
 ## How to work (per-task loop)
 
@@ -61,9 +64,11 @@ git config --local core.hooksPath .githooks      # one-time: enable pre-commit h
 uv run live-stt                                  # run with defaults (k2v2 + Codex translation)
 uv run live-stt --engine parakeet --no-translate # A/B engine, JA-only
 uv run live-stt --list-devices                   # enumerate audio devices
-uv run pytest                                    # run pure-function tests
+uv run pytest                                    # pure-function + replay regression tests
 uv run python -c "import live_stt"               # cheap import smoke-check
-~/.local/share/lsp-node/node_modules/.bin/pyright --project . live_stt.py  # typecheck (CLI)
+uv run python replay.py WAV [--engine] [--json]  # replay a WAV through the live pipeline (T5)
+uv run python tests/gen_replay_goldens.py        # regenerate replay goldens after a pipeline change
+uvx pyright@1.1.410 --project . live_stt.py replay.py  # typecheck (vendored ~/.local pyright is dangling; uvx is self-contained)
 sh compaction.sh                                 # context-usage gauge (needs jq)
 codex login --device-auth                        # user-interactive: enable EN leg
 ```
