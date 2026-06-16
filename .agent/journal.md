@@ -6,6 +6,34 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-17 — CLAUDE.md sync #5: H1 rename `# CLAUDE.md` → `# Alignment - Remember at all times` (no-op)
+
+**Trigger:** `/session-prompt` override: "I updated the `CLAUDE.md`. If there is any work you
+need to do in response, use this session to do so." 5th CLAUDE.md-sync session (prior: sync
+#4). Diff (1+/1−): the document's H1 renamed from the filename `# CLAUDE.md` to
+`# Alignment - Remember at all times` (reframes the doc as an always-on alignment charter);
+file otherwise byte-identical, filename unchanged.
+
+**Checked every surface the edit could touch (→ no work):** code/config — none (a markdown
+H1 has no code anchor); memory/docs — every `CLAUDE.md` reference across `.agent/*`,
+`PLAN.md`, `README.md`, `.claude/commands/` is to the *filename* (unchanged), never the
+heading text (`git grep` for the `^# CLAUDE.md` heading-form → 0 hits; `git grep 'Alignment'`
+→ only the new heading itself); user-facing README/CLI — unaffected. Not an L-011 case: the
+edit was already in the working tree (`M CLAUDE.md`), so no sibling-template recovery needed.
+
+**Action:** committed the user's heading rename alone + this journal note (user chose "Just
+make a commit" over deeper-reframing / pivot-to-T8.3). No code/config/doc-content change.
+
+**Did not verify (user smoke, L-004):** none — no mic/`--device`/latency/Ctrl+C/multi-hour
+surface touched. Standing live-mic/soak debt (T8.2 checklist) unchanged.
+
+**Memory:** journal pruned oldest (sync #3 → git). No new lesson/ADR — a cosmetic heading
+rename is not a new failure mode or architecture choice (L-008 spirit: record state, not an
+"always"; the no-op-sync pattern is already covered by the sync #3/#4 entries + L-021).
+Roadmap untouched — **T8.3** remains the lowest open task next session.
+
+---
+
 ## 2026-06-16 — CLAUDE.md sync #4: human-facing prose polish (dashes + de-smell)
 
 **Trigger:** `/session-prompt` override: "I updated the `CLAUDE.md`. If there is any work
@@ -123,33 +151,4 @@ already-reasoned idiom is not a new failure mode or architecture choice (L-008 s
 the idiom + its rationale already live in code comments + the submit_sentinel
 precedent; nothing generalizable beyond L-005/L-020). **T8.2** is the lowest open task
 next session.
-
----
-
-## 2026-06-16 — CLAUDE.md sync #3: cosmetic UI/UX-rule prose polish (no-op)
-
-**Trigger:** User (`/session-prompt` override): "I updated the `CLAUDE.md`. If there is
-any work you need to do in response, use this session to do so." Third consecutive
-CLAUDE.md-sync session today; unlike the prior two syncs (substantive `.serena`/gitignore),
-this diff (1+/1−) is a single-sentence **cosmetic prose polish** of the UI/UX rule: clause
-reorder ("As it is largely human-authored" fronted) + de-parenthesized "...forced
-optimizations present for LLM steering...". No new directive/constraint/fact/structural
-requirement.
-
-**Checked every surface the edit could touch (→ no work):** code/config — none (the UI/UX
-rule has no code/config surface); live memory docs — no orientation/lessons/decisions entry
-quotes the changed sentence (L-001 quotes a *different* CLAUDE.md rule, unchanged; journal
-#2's "largely human-authored" is a historical diff description, left as-is); user-facing
-README/CLI — unaffected (what compliance means is unchanged).
-
-**Action:** committed the user's prose polish alone + this journal note. Confirmed scope
-with the user first (chose "commit polish, end here" over recover-from-siblings / pivot-to-
-T8.1). No code/config/doc change.
-
-**Did not verify (user smoke, L-004):** none — no mic/`--device`/latency/Ctrl+C/multi-hour
-surface touched. Standing live-mic/soak debt (T8.2) unchanged.
-
-**Memory:** journal pruned oldest (T7 → git). No new lesson/ADR — a cosmetic doc tweak is
-not a new failure mode or architecture choice (L-008 spirit: record state, not an "always").
-Roadmap untouched — **T8.1** remains the lowest open task next session.
 

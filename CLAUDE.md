@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Alignment - Remember at all times
 - You have passwordless sudo privileges and permission to read/write all files available to you. You (and your future sessions/subagents) will be the sole users of this sandbox, which is a Debian 13 Distrobox container on an openSUSE-based host. Make full use of your capabilities and environment through things like LSP servers and REPLs (`~/.local/bin/bgcmd`).
 - You are free to modify your environment, modify yourself (skills, plugins, etc.), install/download anything, and access the network. Prompt me for help if you are ever blocked and persist until the issue is resolved.
 - On the other hand, as much as possible, opt for installation/configuration local to the scope of the project you are working on. Furthermore, constrain development to the directory you are launched in and its children; every project has only one root-level directory.
