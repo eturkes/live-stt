@@ -716,7 +716,23 @@ async def run_session(args):
             stream.close()
         except Exception:
             pass
-        await audio_q.put(None)
+        # worker() is audio_q's sole consumer and may already be dead (an
+        # in-worker exception calls request_stop and returns). With the mic
+        # callback having possibly filled audio_q to AUDIO_QUEUE_MAX before
+        # stream.stop(), a blocking `await audio_q.put(None)` would park the
+        # loop forever — Ctrl+C routes to request_stop, not KeyboardInterrupt,
+        # so the only escape would be SIGKILL and -o is left unclosed. Evict the
+        # oldest block then retry (the submit_sentinel idiom); dropping one
+        # queued block at shutdown is harmless.
+        while True:
+            try:
+                audio_q.put_nowait(None)
+                break
+            except asyncio.QueueFull:
+                try:
+                    audio_q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
         try:
             await worker_task
         except asyncio.CancelledError:

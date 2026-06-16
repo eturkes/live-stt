@@ -6,6 +6,44 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-16 — T8.1: non-blocking worker-stop sentinel (shutdown deadlock fix)
+
+**Trigger:** `/session-prompt` (no override) → roadmap. T8.1 was the lowest open
+task; user confirmed "Proceed with T8.1" over redirecting to another T8 item.
+
+**Shipped (live_stt.py + tests):** `run_session`'s shutdown `finally` replaced its
+blocking `await audio_q.put(None)` with the evict-then-put idiom (`put_nowait`; on
+`QueueFull`, `get_nowait` one stale block, retry) — a verbatim transplant of
+`submit_sentinel`. Fixes the named deadlock: `worker()` is audio_q's only consumer
+and returns on an in-worker exception (after `request_stop`); if the mic callback
+filled audio_q to `AUDIO_QUEUE_MAX`, the blocking put parked the loop forever, and
+since Ctrl+C routes to `request_stop` (not `KeyboardInterrupt`) the only escape was
+SIGKILL with `-o` left unclosed. New `test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking`
+(tests/test_audio.py) drives the idiom on a synthetic full `asyncio.Queue(maxsize=4)`
+under a 1 s `wait_for` (must not fire) + asserts the sentinel lands while the oldest
+block is evicted (1,2,3 survive). No new symbol.
+
+**Verified (agent):** 50 tests green (+1 over 49), ruff clean, `uvx pyright@1.1.410`
+0 errors/warnings/informations. Normal Ctrl+C path is effect-identical (a put with
+spare capacity lands immediately then breaks); only the dead-worker + full-queue case
+changes (drops one block vs hangs to SIGKILL). Replay path structurally untouched —
+replay.py drives `worker` directly, never `run_session`. (In-session LSP flagged
+stale `capsys`/`time_info` "unused" notes from line shifts; the pyright CLI gate is
+authoritative and clean.)
+
+**Did not verify (user smoke, L-004):** live Ctrl+C-in-terminal mid-utterance flush
++ `-o` persistence — structurally unchanged but on the shutdown/signal path, so it
+stays user-smoke (now itself the open T8.2 checklist task).
+
+**Memory:** PLAN T8.1 → SHIPPED with a shipped-summary; journal pruned oldest (T8
+roadmap entry → git). No new lesson/ADR — a clean transplant of an existing,
+already-reasoned idiom is not a new failure mode or architecture choice (L-008 spirit:
+the idiom + its rationale already live in code comments + the submit_sentinel
+precedent; nothing generalizable beyond L-005/L-020). **T8.2** is the lowest open task
+next session.
+
+---
+
 ## 2026-06-16 — CLAUDE.md sync #3: cosmetic UI/UX-rule prose polish (no-op)
 
 **Trigger:** User (`/session-prompt` override): "I updated the `CLAUDE.md`. If there is
@@ -113,46 +151,3 @@ untouched — T8.1 remains the lowest open task next session.
 **Memory:** D-013 amendment; orientation 2 rows; L-015 updated; journal pruned oldest
 (T5.3). No new ADR/lesson — CLAUDE.md now states the sync rule and D-013 records the
 project state.
-
----
-
-## 2026-06-15 — T8: hardening roadmap generated via dynamic workflow
-
-**Trigger:** User (`/session-prompt` override): "The current roadmap is exhausted. Use a
-dynamic workflow to create new roadmap items." Bootstrap confirmed T1-T7 all SHIPPED, no
-OPEN task. User chose direction = **hardening & quality only (no new features)** +
-**write-through** to PLAN.
-
-**Method:** Ran a Workflow (multi-agent): 6 hardening lenses (error-paths, perf/
-multi-hour, test-coverage/CI, security, operational-diagnostics, documented-debt critic),
-each grounded by reading the real `live_stt.py` + `.agent/` memory, fanned out to
-candidates -> per-candidate adversarial philosophy screen (L-001 name-the-failure, L-005
-no-abstraction, L-019 no-padding, D-002, Out-of-scope, no-features gate) -> synthesis. 11
-candidates, 6 survived, merged to **5 items**. Re-verified the highest-stakes claims
-against live code before write-through; wrote tasks by symbol, not line number (refs were
-approximate).
-
-**Shipped (docs only):** PLAN.md +T8 series (T8.1-T8.5, all OPEN, priority-ranked) with
-acceptance criteria + the 5 screen-rejected candidates recorded. T8.1 = real shutdown
-deadlock (blocking `audio_q.put(None)` on a full queue after worker death -> SIGKILL-only,
-`-o` unclosed); T8.2 = the standing live-mic/soak smoke debt as a runnable checklist (the
-one acknowledged debt since 2026-06-08); T8.3 = wake the turn collect-loop on codex EOF
-(prompt JA-only vs 15 s timeout); T8.4 = `tests/test_translator.py` locking the
-degradation/backlog/read-loop branches (`CodexTranslator` is wholly untested); T8.5 =
-surface the 2 silent EN-leg degradations (EOF log + `tdrop` counter). No `live_stt.py`
-change this session.
-
-**Verified (agent-checkable):** claims cross-checked against `live_stt.py` (the blocking
-put in `run_session`'s finally; `submit_sentinel`'s evict-then-put idiom; `_turn`'s
-`_notes.get()` collect loop; `_read_loop` EOF cleanup has no log/sentinel; `submit`'s
-silent `QueueFull` evict vs the audio `drop=` precedent). No code changed -> 49 tests
-still green (pre-commit hook re-runs on commit).
-
-**Did not verify (user smoke, L-004):** none newly affected (docs only). The standing
-live-mic / `--device` / latency / Ctrl+C / multi-hour debt is unchanged and is now itself
-captured as OPEN task T8.2.
-
-**Memory:** PLAN +T8 series; L-020 (workflow recipe for roadmap generation: the
-adversarial screen carries the value; ground every finder in real code); journal pruned
-oldest (T5.2). No new ADR (the workflow is a process, not an architecture choice; the
-items earn ADRs if/when they ship).

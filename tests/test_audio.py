@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 
 import numpy as np
@@ -215,3 +216,38 @@ def test_emit_line_no_file_no_crash(capsys):
     emit_line("JA", 1, "テスト", None)
     captured = capsys.readouterr()
     assert "JA 1: テスト" in captured.out
+
+
+# --- shutdown worker-stop sentinel (T8.1, run_session finally) ---
+
+
+def test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking():
+    # run_session's shutdown sentinels worker() via an evict-then-put idiom
+    # (matching CodexTranslator.submit_sentinel), NOT a blocking
+    # `await audio_q.put(None)`. If worker() already died and the mic callback
+    # filled audio_q to capacity, a blocking put would park the loop forever
+    # (Ctrl+C routes to request_stop, not KeyboardInterrupt -> SIGKILL-only).
+    # This exercises that idiom on a synthetic full queue: it must land the
+    # sentinel without blocking, evicting exactly the oldest block.
+    async def sentinel_into_full_queue():
+        q: asyncio.Queue = asyncio.Queue(maxsize=4)
+        for i in range(4):  # fill to capacity, no consumer
+            q.put_nowait(i)
+        while True:
+            try:
+                q.put_nowait(None)
+                break
+            except asyncio.QueueFull:
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+        return q
+
+    # wait_for must NOT fire: a regression to a blocking put would hang here.
+    q = asyncio.run(asyncio.wait_for(sentinel_into_full_queue(), 1.0))
+    assert q.qsize() == 4  # still capped
+    items = [q.get_nowait() for _ in range(4)]
+    assert items[-1] is None  # sentinel landed
+    assert items.count(None) == 1  # exactly one sentinel
+    assert 0 not in items  # oldest block evicted, newer ones (1,2,3) survive

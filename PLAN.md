@@ -173,7 +173,20 @@ number (agent line refs drift). Honest yield is modest — correct for a mature 
 
 ### T8.1 — Non-blocking worker-stop sentinel (fix shutdown deadlock)
 
-**Status:** OPEN. **Effort:** S. **Verification:** agent.
+**Status:** SHIPPED 2026-06-16. **Effort:** S. **Verification:** agent.
+
+**Shipped:** `run_session`'s shutdown `finally` no longer blocks on
+`await audio_q.put(None)` — replaced with the in-file evict-then-put idiom
+(`put_nowait`; on `QueueFull`, `get_nowait` one stale block, retry), the same
+pattern as `submit_sentinel`. Normal Ctrl+C path is effect-identical (a put with
+spare capacity lands immediately, then `break`); only the pathological
+dead-worker + full-queue case changes (drops one queued block instead of hanging
+to SIGKILL). No new symbol. Test `test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking`
+(tests/test_audio.py) exercises the idiom on a synthetic full
+`asyncio.Queue(maxsize=4)` under a 1 s `wait_for` (must not fire) and asserts the
+sentinel lands while the oldest block is evicted (1,2,3 survive). 50 tests green
+(+1), ruff + pyright clean. Live Ctrl+C-in-terminal flush stays user-smoke (L-004,
+captured in T8.2) but is structurally unchanged.
 
 **Problem (named failure mode):** `run_session`'s shutdown `finally` does a *blocking*
 `await audio_q.put(None)` on the bounded `audio_q` (`AUDIO_QUEUE_MAX`). `worker()` is the
