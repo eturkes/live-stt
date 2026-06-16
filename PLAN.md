@@ -37,7 +37,7 @@ User directive 2026-06-08: zero metered API keys. New architecture: **local STT 
 
 ### T4.3 — Rewrite `live_stt.py` around local STT
 
-**Status:** SHIPPED 2026-06-08. Gemini machinery (session/reconnect/resumption/sender/receiver, `pcm16_bytes`) removed; mic → `resample` → silero VAD → `RingBuffer` pre-pad re-slice → executor decode → `emit_block(ja, en, file)`. Meter/`-o`/signals/`_StderrFormatter` kept; `--engine k2v2|parakeet`; `models/README.md` documents weights. 22 tests green (ring-buffer tests added; pcm16/parse tests dropped with their code). Synthetic end-to-end reproduces T4.1 bench. **User smoke test pending (L-004): live mic, `--device`, Ctrl+C flush.**
+**Status:** SHIPPED 2026-06-08. Gemini machinery (session/reconnect/resumption/sender/receiver, `pcm16_bytes`) removed; mic → `resample` → silero VAD → `RingBuffer` pre-pad re-slice → executor decode → `emit_block(ja, en, file)`. Meter/`-o`/signals/`_StderrFormatter` kept; `--engine k2v2|parakeet`; `models/README.md` documents weights. 22 tests green (ring-buffer tests added; pcm16/parse tests dropped with their code). Synthetic end-to-end reproduces T4.1 bench. **User smoke test pending (L-004): live mic, `--device`, Ctrl+C flush — runnable procedure: `.agent/smoke.md`.**
 
 ### T4.4 — Wire Codex translation into live loop
 
@@ -212,7 +212,21 @@ becomes a permanent hang.
 
 ### T8.2 — Repeatable live-mic smoke + multi-hour soak checklist
 
-**Status:** OPEN. **Effort:** S. **Verification:** user-smoke.
+**Status:** SHIPPED 2026-06-16. **Effort:** S. **Verification:** user-smoke.
+
+**Shipped:** `.agent/smoke.md` — a numbered live-mic pass (7 items: `--list-devices`,
+capture+meter, `--device N`, latency+endpointing, translation cadence/interleave,
+Ctrl+C mid-utterance flush+persist, `-o` persistence) + a soak section, each item
+stating its pass criterion **and** the backing `live_stt.py` observable. Soak watches
+exactly the three in-code signals — meter `q=`/`drop=` (`AUDIO_QUEUE_MAX`/`state.dropped`),
+thread rotation at `_turns % TRANSLATE_ROTATE_TURNS`, quota via the out-of-band
+`account/rateLimits/read` RPC (D-011) — plus an external RSS check with its code
+rationale (fixed-cap ring, capped `_RESAMPLE_CACHE`, draining `_notes`/`_pending`); no
+invented metric, no new code. PLAN T4.3 + orientation "Smoke-test constraints" now link
+the file so the recurring "Did not verify (L-004)" disclaimer points at a fixed list.
+Every observable was grounded against live `live_stt.py` first (L-020). Doc only; no
+code/CLI/output change. **The checklist itself is user-executed (it is the L-004 smoke
+debt made runnable, not closed) — the live path still awaits an actual user pass.**
 
 **Problem:** The one acknowledged standing debt — the live path has had no user smoke
 since the 2026-06-08 re-architecture (re-derived ad-hoc in 3 journal entries). The

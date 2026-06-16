@@ -12,6 +12,7 @@ Persistent context for agent sessions. Read on every fresh session before touchi
 | `journal.md` | Chronological session log: dated entries of what each session did | Catching up on recent history |
 | `lessons.md` | Mistakes-and-fixes; generalizable rules harvested from past errors | Before attempting a task similar to a past one |
 | `decisions.md` | Architectural/design decisions with rationale (ADR-style, compact) | Before re-litigating a settled design call |
+| `smoke.md` | Live-path smoke + soak checklist: the user-only L-004 paths, each item tied to a `live_stt.py` observable | About to smoke-test the live path, or closing an L-004 disclaimer |
 | `scratch/` | Ephemeral per-task notes (committed). One file per task: `YYYY-MM-DD_<topic>.md` | While actively working a task |
 
 ## Conventions

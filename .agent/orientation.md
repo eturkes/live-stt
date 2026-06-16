@@ -29,7 +29,7 @@ Single-file Python tool. Local JA speech-to-text (silero VAD + sherpa-onnx, CPU)
 
 ## Smoke-test constraints (agent cannot verify)
 
-The agent must flag these for the user every time they're touched:
+The agent must flag these for the user every time they're touched (runnable pass/fail procedure: `.agent/smoke.md`, where the recurring "Did not verify (L-004)" disclaimer should point):
 
 - **Microphone capture** — `sd.InputStream` boundary crossing, `loop.call_soon_threadsafe`, `audio_callback` timing.
 - **Device enumeration / selection** — `--device N`, `--list-devices`.

@@ -6,6 +6,45 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-16 — T8.2: live-mic smoke + soak checklist (`.agent/smoke.md`)
+
+**Trigger:** `/session-prompt` (no override) → roadmap. T8.2 was the lowest open task;
+user confirmed "Proceed with T8.2" over redirecting to an agent-verifiable T8 code task.
+
+**Shipped (docs only, `live_stt.py` untouched):** new `.agent/smoke.md` — the standing
+L-004 live-path debt made *runnable*. A 7-item numbered live-mic pass (`--list-devices`,
+capture+meter, `--device N`, latency+VAD endpointing, translation cadence/interleave,
+Ctrl+C mid-utterance flush+persist, `-o` persistence) + a soak section; each item states
+its pass criterion **and** the backing `live_stt.py` observable. Every observable was
+grounded against live code first (L-020): meter `{rms:.4f}{ q=}{ drop=}`
+(`audio_callback`→`state.latest_ms`/`state.dropped`, `AUDIO_QUEUE_MAX`), endpoint
+latency = `VAD_MIN_SILENCE_S` + ~0.1 s decode (D-010), shutdown flush in `worker`'s
+`finally` + translator-drain-last (T1.4/T8.1), `emit_line` per-line flush, rotation at
+`_turns % TRANSLATE_ROTATE_TURNS`, quota via the out-of-band `account/rateLimits/read`
+RPC (D-011 — not surfaced in code). Soak = the 3 in-code signals + an external RSS check
+with its code rationale (fixed-cap ring, `_RESAMPLE_CACHE`≤8, draining
+`_notes`/`_pending`); no invented metric, no new code. Linked from PLAN T4.3 +
+orientation "Smoke-test constraints" so the recurring "Did not verify (L-004)" disclaimer
+points at a fixed list; indexed in `.agent/README.md`.
+
+**Verified (agent):** 50 tests green (doc-only; pre-commit gate unaffected). No
+code/CLI/output surface touched.
+
+**Did not verify (user smoke, L-004):** the checklist is the deliverable but is
+*user-executed* — T8.2 makes the live-path debt runnable, it does **not** close it. The
+live path (mic, `--device`/`--list-devices`, latency feel, Ctrl+C flush+persist, `-o`,
+multi-hour soak) still awaits an actual user pass through `.agent/smoke.md`; that standing
+debt is unchanged, now with a fixed procedure to execute.
+
+**Memory:** PLAN T8.2 → SHIPPED with a shipped-summary; orientation + PLAN T4.3 linked;
+README indexed; journal pruned oldest (CLAUDE.md sync #1 → git). No new lesson/ADR —
+authoring a smoke procedure from already-decided observables is not a new failure mode or
+architecture choice (the observables trace to existing D-/T-records; L-020 already covers
+"ground against live code"). **T8.3** is the lowest open task next session — its read-loop
+test ideally lands with T8.4's scaffold (T8.3 synergy note).
+
+---
+
 ## 2026-06-16 — T8.1: non-blocking worker-stop sentinel (shutdown deadlock fix)
 
 **Trigger:** `/session-prompt` (no override) → roadmap. T8.1 was the lowest open
@@ -111,43 +150,3 @@ lesson (CLAUDE.md already states the sync rule; this is a one-line reversal, not
 mode — L-008 spirit: record state, not an "always"). Roadmap untouched — **T8.1** remains the
 lowest open task next session.
 
----
-
-## 2026-06-16 — CLAUDE.md sync: Serena/gitignore + `ignored_paths` alignment
-
-**Trigger:** User (`/session-prompt` override): "I updated the CLAUDE.md. Do the work
-necessary to bring the project into alignment with it." Diff (19+/17−) is mostly
-behavioral (concise responses, multi-step reasoning, code-review-report-everything,
-fuzzing/PBT, UI/UX language, inform-on-rewrite, URL→local-`~/agents/docs` refs) → no
-files. Three edits encode structural requirements; confirmed scope with the user (chose
-root-only memories home).
-
-**Shipped (config + docs; `live_stt.py` untouched):**
-- Root `.gitignore` +`.serena/memories/`; removed `/memories` from the nested
-  `.serena/.gitignore` so root is the sole, durable home (Serena regenerates the nested
-  file and once dropped `memories` — the original D-013 trigger). Nested keeps `/cache`
-  + `/project.local.yml`.
-- `.serena/project.yml` `ignored_paths: [uv.lock, LICENSE]` — the deny-listed paths git
-  does NOT ignore, synced per the new rule (Serena honors `.gitignore` but not the Claude
-  `permissions.deny`).
-- Docs: D-013 amendment (relocation + 3-surface sync rule), orientation `.serena/` +
-  `.claude/settings.json` rows, L-015 (lead recovery with `headroom_retrieve`; replaced
-  the now-globally-denied `cat -A` with `sed -n 'Nl'`).
-
-**Verified (agent):** root `.gitignore:28` matches `.serena/memories/` (nested removal
-didn't regress); nested still catches cache + project.local.yml; `.serena/` tracking
-unchanged (`.gitignore` + `project.yml`). project.yml parses → `['uv.lock','LICENSE']`.
-Global `~/.claude/settings.json` confirmed denying `cat`/`less`/`od`/… (CLAUDE.md claim
-true). 49 tests green (no code touched).
-
-**Did not verify (user smoke, L-004):** none — config + docs only, no
-mic/`--device`/latency/Ctrl+C/multi-hour surface. The standing live-mic/soak debt (T8.2)
-is unchanged.
-
-**Already aligned (no action):** `/session-prompt` already does blank→roadmap /
-arg→override; deny-list already embodies "do-not-read distinct from gitignore". Roadmap
-untouched — T8.1 remains the lowest open task next session.
-
-**Memory:** D-013 amendment; orientation 2 rows; L-015 updated; journal pruned oldest
-(T5.3). No new ADR/lesson — CLAUDE.md now states the sync rule and D-013 records the
-project state.
