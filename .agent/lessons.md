@@ -250,3 +250,26 @@ through an adversarial reviewer carrying the project's own laws; record the reje
 candidates so they aren't re-litigated; report a small high-conviction list without
 padding; and verify the highest-stakes survivors against live code yourself before
 landing them — agent line-number refs drift, so write the tasks by symbol/behavior.
+
+## L-021 — CLAUDE.md's "hyphens over dashes" / de-LLM-smell applies to human-facing surfaces only
+
+**Context:** 2026-06-16, CLAUDE.md sync #4. The UI/UX rule gained "When writing for a human
+audience, prefer hyphens over other kinds of dashes, enumerate flexibly, and vary comparative
+constructions." The naive read is "sweep every em-dash in the repo."
+
+**Finding:** The rule is scoped to *human-facing* text and explicitly exempts "underlying
+code, including comments." In this repo the human-facing set is small and fixed: `README.md`
+plus the user-facing CLI strings in `live_stt.py` (startup `print`s, argparse `help`, the
+`__doc__` shown by `--help`). Everything else is agent/model-facing and intentionally keeps
+em-dashes: `.agent/*`, `PLAN.md`, `CLAUDE.md` itself, every code comment, and the Codex
+`developerInstructions` prompt string. Mass-reformatting those wastes effort and directly
+contradicts L-015 (em-dashes are deliberate in agent docs) and the "comments tailored to your
+ease of use" carve-out. "Full polish" here was mostly a dash sweep + one de-cliché; README
+was already free of comparative/triadic tics, so those sub-directives changed almost nothing
+— do not manufacture rewrites to satisfy them (L-019 spirit).
+
+**Rule:** When applying CLAUDE.md's human-facing style directives, edit only `README.md` and
+the user-facing CLI strings in `live_stt.py`; leave `.agent/*`, `PLAN.md`, `CLAUDE.md`, code
+comments, and the Codex prompt untouched. Confirm zero human-facing dashes with
+`grep -nP '[\x{2013}\x{2014}]' README.md`. Keep any string duplicated across code and README
+in sync (e.g. a startup-status literal echoed in both).

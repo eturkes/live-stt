@@ -656,7 +656,7 @@ async def run_session(args):
             translator = t
             print(f"Translation: {TRANSLATE_MODEL} via codex app-server")
         else:
-            print("Translation: unavailable — JA-only (see log)")
+            print("Translation: unavailable (JA-only, see log)")
     else:
         print("Translation: disabled (--no-translate)")
 

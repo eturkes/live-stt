@@ -6,6 +6,49 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-16 — CLAUDE.md sync #4: human-facing prose polish (dashes + de-smell)
+
+**Trigger:** `/session-prompt` override: "I updated the `CLAUDE.md`. If there is any work
+you need to do in response, use this session to do so." 4th consecutive CLAUDE.md-sync
+session. Diff (2+/2−): (1) the biases/"pink-elephant" rule rephrased + scope-broadened to
+"writing text you will later read, especially if interpreted as a prompt" (no actionable
+surface — governs how I phrase agent-facing text); (2) the UI/UX rule gained a concrete
+directive — *"When writing for a human audience, prefer hyphens over other kinds of dashes,
+enumerate flexibly, and vary comparative constructions"* (+ "user-facing"→"human-facing",
+"+smells"). User chose **"Full human-facing polish"** over no-op / dashes-only.
+
+**Shipped (README.md + `live_stt.py:659` string; no logic change):** swept all 13 em/en-dash
+sites from README (the only human-facing doc) — pipeline steps `**X** —` → `**X.**`, em-dash
+asides → parens/commas/sentence-splits, range en-dashes (`0.2–0.7`, `7–60`) → hyphens — plus
+one de-cliché ("degrades gracefully"→"falls back"). `live_stt.py`'s lone human-facing dash
+(`unavailable — JA-only` startup status) → `unavailable (JA-only, see log)`, mirroring the
+sibling `disabled (--no-translate)`; README L36's code-literal synced to it. The other two
+sub-directives (enumerate flexibly, vary comparatives) yielded ~nothing — README was already
+clean of "not just X but Y"/forced triads. Plan in `.agent/scratch/2026-06-16_claudemd-sync4-human-polish.md`.
+
+**Exempt (rule's own carve-out: "underlying code, including comments"):** all `.agent/*`,
+`PLAN.md`, `CLAUDE.md`, every `live_stt.py` comment, the Codex `developerInstructions` prompt
+(`:68`, model-facing + benched D-011), and the `__doc__`/argparse help (clean already).
+Mass-sweeping those would fight L-015 (em-dashes deliberate in agent docs) → new **L-021**.
+
+**Verified (agent):** README `grep -P '[\x{2013}\x{2014}]'` → 0; `import live_stt` OK; 50
+tests green; ruff clean; `uvx pyright@1.1.410` 0/0/0 (confirms the in-session
+`time_info`-unused note at `:663` is the known stale-LSP false-positive — `audio_callback`'s
+sounddevice-signature param, unrelated to the string edit). The `:659` change has no test
+coupling (grep) and touches no logic.
+
+**Did not verify (user smoke, L-004):** none — no mic/`--device`/latency/Ctrl+C/multi-hour
+surface touched (the `:659` status print is off those paths). Standing live-mic/soak debt
+(T8.2 checklist) unchanged.
+
+**Memory:** new **L-021** (apply human-facing style rules to human-facing surfaces only;
+agent docs/comments/prompt exempt). No ADR — a style-rule application, not an architecture
+choice (prior syncs' "record state, not an always" reasoning, L-008 spirit). Journal pruned
+oldest (sync #2 → git). Roadmap untouched — **T8.3** remains the lowest open task next
+session.
+
+---
+
 ## 2026-06-16 — T8.2: live-mic smoke + soak checklist (`.agent/smoke.md`)
 
 **Trigger:** `/session-prompt` (no override) → roadmap. T8.2 was the lowest open task;
@@ -109,44 +152,4 @@ surface touched. Standing live-mic/soak debt (T8.2) unchanged.
 **Memory:** journal pruned oldest (T7 → git). No new lesson/ADR — a cosmetic doc tweak is
 not a new failure mode or architecture choice (L-008 spirit: record state, not an "always").
 Roadmap untouched — **T8.1** remains the lowest open task next session.
-
----
-
-## 2026-06-16 — CLAUDE.md sync #2: `.serena/` committed-as-is, memories un-ignored
-
-**Trigger:** User (`/session-prompt` override): "I updated the `CLAUDE.md`. If there is any
-work you need to do in response, use this session to do so." Diff (8+/7−) is mostly cosmetic
-— `# CLAUDE.md` title, backticks, Git-rule relocated higher, "Casual"→"Wasteful" file-dumps,
-"largely human-authored", "`ignored_paths` in `.serena/project.yml`" made explicit. **One
-substantive change** reverses last session: the `.serena/` rule dropped "home
-`.serena/memories/` in the repo-root `.gitignore`" for "`.serena/` comes with its own
-gitignore file and can be committed as is" + the new fact "Serena … memory system … disabled
-globally".
-
-**Verified the new claim:** `~/.serena/serena_config.yml` `excluded_tools:` lists all six
-memory tools → Serena never writes `.serena/memories/`. Confirmed `.serena/memories/` is empty
-and was protected only by the root reach-in (root `.gitignore:28`).
-
-**User chose "fully as is"** (over self-contain / docs-only):
-- Root `.gitignore`: removed `.serena/memories/`; left a one-line breadcrumb comment so the
-  entry stops oscillating nested↔root across sessions. Nested `.serena/.gitignore` untouched
-  (`/cache` + `/project.local.yml`) — now the only `.serena/` gitignore.
-- `.serena/memories/` is now un-ignored by git (empty; memory disabled → stays empty; `.agent/`
-  is the sole store). Still **Read-denied** in `.claude/settings.json` — the sanctioned
-  do-not-read ≠ gitignore split.
-- Docs: D-013 amendment #2 (reversal + verified disabled-globally); orientation `.serena/` row
-  rewritten.
-
-**Verified (agent):** `git check-ignore` confirms memories/ un-ignored; `project.local.yml`
-still caught by nested; only 4 files modified (no stray `.serena/` staging — empty dir); 49
-tests green (no code touched).
-
-**Did not verify (user smoke, L-004):** none — config + docs only; no
-mic/`--device`/latency/Ctrl+C/multi-hour surface. The standing live-mic/soak debt (T8.2) is
-unchanged.
-
-**Memory:** D-013 amendment #2; orientation `.serena/` row; journal pruned oldest (T6). No new
-lesson (CLAUDE.md already states the sync rule; this is a one-line reversal, not a new failure
-mode — L-008 spirit: record state, not an "always"). Roadmap untouched — **T8.1** remains the
-lowest open task next session.
 

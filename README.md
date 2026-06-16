@@ -3,7 +3,7 @@
 Real-time Japanese speech-to-text + English translation. **No API keys.**
 
 - **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) endpointing + [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) offline decode (reazonspeech-k2-v2 by default), CPU-only.
-- **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess — zero marginal cost, GPT-5.x quality. Without it the tool degrades gracefully to JA-only.
+- **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to JA-only.
 
 Each utterance prints as a numbered `JA n:` line the moment decoding ends (≤0.1 s after you stop speaking); its `EN n:` line follows when the translation turn completes (~1 s).
 
@@ -33,7 +33,7 @@ live-stt                          # transcribe + translate
 python live_stt.py                # equivalent
 ```
 
-Startup prints the translation status: `Translation: gpt-5.3-codex-spark via codex app-server` (a ~3 s warm-up turn runs first), `unavailable — JA-only`, or `disabled (--no-translate)`.
+Startup prints the translation status: `Translation: gpt-5.3-codex-spark via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (JA-only, see log)`, or `disabled (--no-translate)`.
 
 ### CLI
 
@@ -49,15 +49,15 @@ Startup prints the translation status: `Translation: gpt-5.3-codex-spark via cod
 
 ### Audio → JA pipeline (all local)
 
-1. **Capture** — `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enqueued onto an `asyncio.Queue`.
-2. **Endpoint** — silero VAD splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
-3. **Re-slice** — silero opens segments 0.2–0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`).
-4. **Decode** — sherpa-onnx `OfflineRecognizer` runs in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores, so it never falls behind the mic).
-5. **Emit** — `JA n:` prints immediately; the text is queued for translation.
+1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enqueued onto an `asyncio.Queue`.
+2. **Endpoint.** silero VAD splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
+3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`).
+4. **Decode.** sherpa-onnx `OfflineRecognizer` runs in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores, so it never falls behind the mic).
+5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
 ### JA → EN leg (Codex subscription)
 
-`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features disabled — the latency lever, see D-011), one `turn/start` per utterance, sequential so EN lines keep JA order. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed).
+`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so EN lines keep JA order. Disabling the tool features is the latency lever (see D-011). The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed).
 
 Degradation, in order:
 
@@ -111,22 +111,22 @@ git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 
 Tests cover `resample`, `RingBuffer`, and `emit_line`. No network, mic, or model weights required.
 
-The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync` — run it once after cloning.
+The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync`. Run it once after cloning.
 
 #### Regression testing (WAV replay)
 
-`replay.py` feeds a WAV through the **exact** live STT pipeline (VAD + `RingBuffer` + sherpa decode — no mic, no translation) and reports per-segment segmentation, decode latency + RTF, and transcript:
+`replay.py` feeds a WAV through the **exact** live STT pipeline (VAD + `RingBuffer` + sherpa decode, no mic or translation) and reports per-segment segmentation, decode latency + RTF, and transcript:
 
 ```sh
 uv run python replay.py path/to.wav --engine k2v2   # human-readable report
 uv run python replay.py path/to.wav --json          # machine-readable
 ```
 
-`tests/test_replay.py` replays the cached corpus (synthetic bench + real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted — it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`. The corpus mixes synthetic bench clips with real Common Voice clips (CC0); the latter are (re)fetched via `uv run --with soundfile python tests/fetch_real_clips.py`.
+`tests/test_replay.py` replays the cached corpus (synthetic bench + real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`. The corpus mixes synthetic bench clips with real Common Voice clips (CC0); the latter are (re)fetched via `uv run --with soundfile python tests/fetch_real_clips.py`.
 
 ## Key constants
 
-Defined at the top of `live_stt.py` (the config surface — no config files by design):
+Defined at the top of `live_stt.py` (the config surface, no config files by design):
 
 | Constant | Value | Purpose |
 |---|---|---|
@@ -147,7 +147,7 @@ Defined at the top of `live_stt.py` (the config surface — no config files by d
 
 - Japanese-only by design; a `--language` flag was considered and deferred (see `PLAN.md` § Deferred).
 - `Ctrl+C` stops the stream, flushes any in-flight VAD segment, waits for pending translations, and shuts the app-server down cleanly.
-- Translation uses your Codex subscription quota: ~180 uncached input + ~7–60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window.
+- Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window.
 - This project's primary developers are AI agents. See `CLAUDE.md` and `.agent/` for context on how it's maintained.
 
 ## License
