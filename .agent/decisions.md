@@ -229,6 +229,10 @@ audit verdict: no remotely-exploitable surface.
 
 **Revisit if:** Headroom changes `.serena/` layout; or a denied `.serena` path is needed repeatedly via Bash (narrow the rule per D-008).
 
+**Amendment 2026-06-16 (CLAUDE.md sync) — memories→root gitignore + `ignored_paths` sync:** CLAUDE.md was updated to (a) home the `.serena/memories/` ignore in the **repo-root** `.gitignore` and (b) sync Serena's `ignored_paths` with the non-gitignored "do-not-read" set. Two changes vs. decisions 1–2 above:
+- **Memories ignore moved nested→root, sole home.** `.serena/memories/` now lives in the repo-root `.gitignore`; the `/memories` line was removed from the Serena-generated `.serena/.gitignore` (which still carries `/cache` + `/project.local.yml`). Rationale: Serena regenerates the nested file and once dropped `memories` entirely (the original D-013 trigger) — the root entry is durable across regenerations. Verified: root `.gitignore` now matches `.serena/memories/`; nothing was tracked there.
+- **`.serena/project.yml` `ignored_paths` = `[uv.lock, LICENSE]`.** Exactly the deny-listed paths (D-008) that git does *not* ignore, so Serena's file tools (which honor `.gitignore` but not the Claude `permissions.deny`) would otherwise surface them. Gitignored deny entries need no listing (`ignore_all_files_in_gitignore: true` covers them). **Keep these three surfaces in sync:** a new non-gitignored deny entry must also land in `ignored_paths`.
+
 ---
 
 ## D-014 — Deterministic WAV replay as the local-pipeline regression harness; bench harness retired

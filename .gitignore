@@ -24,6 +24,9 @@ models/*
 # Claude Code per-user overrides (project settings.json IS committed)
 .claude/settings.local.json
 
+# Serena/Headroom LSP state (project.yml is tracked; .agent/ is the sole memory store — D-013)
+.serena/memories/
+
 # Environment / secrets
 .env
 .env.*

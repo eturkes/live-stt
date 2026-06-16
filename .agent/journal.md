@@ -6,6 +6,47 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-16 — CLAUDE.md sync: Serena/gitignore + `ignored_paths` alignment
+
+**Trigger:** User (`/session-prompt` override): "I updated the CLAUDE.md. Do the work
+necessary to bring the project into alignment with it." Diff (19+/17−) is mostly
+behavioral (concise responses, multi-step reasoning, code-review-report-everything,
+fuzzing/PBT, UI/UX language, inform-on-rewrite, URL→local-`~/agents/docs` refs) → no
+files. Three edits encode structural requirements; confirmed scope with the user (chose
+root-only memories home).
+
+**Shipped (config + docs; `live_stt.py` untouched):**
+- Root `.gitignore` +`.serena/memories/`; removed `/memories` from the nested
+  `.serena/.gitignore` so root is the sole, durable home (Serena regenerates the nested
+  file and once dropped `memories` — the original D-013 trigger). Nested keeps `/cache`
+  + `/project.local.yml`.
+- `.serena/project.yml` `ignored_paths: [uv.lock, LICENSE]` — the deny-listed paths git
+  does NOT ignore, synced per the new rule (Serena honors `.gitignore` but not the Claude
+  `permissions.deny`).
+- Docs: D-013 amendment (relocation + 3-surface sync rule), orientation `.serena/` +
+  `.claude/settings.json` rows, L-015 (lead recovery with `headroom_retrieve`; replaced
+  the now-globally-denied `cat -A` with `sed -n 'Nl'`).
+
+**Verified (agent):** root `.gitignore:28` matches `.serena/memories/` (nested removal
+didn't regress); nested still catches cache + project.local.yml; `.serena/` tracking
+unchanged (`.gitignore` + `project.yml`). project.yml parses → `['uv.lock','LICENSE']`.
+Global `~/.claude/settings.json` confirmed denying `cat`/`less`/`od`/… (CLAUDE.md claim
+true). 49 tests green (no code touched).
+
+**Did not verify (user smoke, L-004):** none — config + docs only, no
+mic/`--device`/latency/Ctrl+C/multi-hour surface. The standing live-mic/soak debt (T8.2)
+is unchanged.
+
+**Already aligned (no action):** `/session-prompt` already does blank→roadmap /
+arg→override; deny-list already embodies "do-not-read distinct from gitignore". Roadmap
+untouched — T8.1 remains the lowest open task next session.
+
+**Memory:** D-013 amendment; orientation 2 rows; L-015 updated; journal pruned oldest
+(T5.3). No new ADR/lesson — CLAUDE.md now states the sync rule and D-013 records the
+project state.
+
+---
+
 ## 2026-06-15 — T8: hardening roadmap generated via dynamic workflow
 
 **Trigger:** User (`/session-prompt` override): "The current roadmap is exhausted. Use a
@@ -115,36 +156,3 @@ user smoke-test since 2026-06-08.
 **Memory:** PLAN +T6 (SHIPPED); D-011 amendment (re-verified at 0.139.0 + reader-loop
 hardening); L-018 (maintenance-pass recipe); journal pruned oldest (CLAUDE.md sync).
 
----
-
-## 2026-06-15 — T5.3: real-recorded JA corpus via web-fetch (gate dissolved)
-
-**Trigger:** User (`/session-prompt` override): "To unlock the current gate, can you
-fetch Japanese recordings from the web?" T5.3 was OPEN/user-gated. Reframe: L-004
-blocks only mic capture, not network fetch (CLAUDE.md network access) — so the agent
-sources real clips itself. Confirmed source (Common Voice JA) + shape (singles +
-concatenated) with the user before fetching.
-
-**Shipped:** 7 real CV8.0-JA clips (CC0) in the gitignored cache — 5 single utterances
-+ 2 concatenations of independent real utterances joined by real silence (0.7 s -> 3
-seg, 2.0 s -> 2 seg; D-010 method, real voices). Fetched via the HF datasets-server
-`/rows` API on the ungated Parquet mirror `japanese-asr/ja_asr.common_voice_8_0` (few
-labeled samples; MP3 decoded by soundfile/libsndfile, no ffmpeg). `tests/fetch_real_clips.py`
-(committed; pinned revision + row indices) writes WAVs (internal path, L-016) +
-`tests/real_clips.json` manifest; `gen_replay_goldens.py` merges the manifest with the
-inline synthetic CLIPS.
-
-**Verified (agent-checkable):** 49 tests green (was 35: +14 = 7 clips x 2 engines); ruff
-clean; pyright 0 errors (soundfile import scoped-ignored — a `uv run --with` dep, not a
-project dep). Real-acoustic characterizations: katakana フィリピン correct; engine
-divergence 松井/松居, バック/パック, 午後七時/午後7時; cv_multi -> 3 seg + cv_paused -> 2
-seg confirm real-acoustic endpointing.
-
-**Did not verify (user smoke, L-004):** none newly affected — tooling-only (new dev
-fetch tool + manifest + goldens); `live_stt.py` untouched, no mic/`--device`/latency/
-Ctrl+C/multi-hour surface.
-
-**Memory:** PLAN T5.3 -> SHIPPED; D-014 amendment (2nd revisit-if resolved; web-fetch
-substitutes mic-record); orientation file-map (+fetch_real_clips.py, +real_clips.json;
-goldens row now bench+real); L-017 (HF rows-API fetch technique). Pruned oldest entry
-(2026-06-08 compaction).

@@ -148,7 +148,7 @@ When a lesson supersedes an earlier one, mark the earlier as `STATUS: SUPERSEDED
 
 **Finding:** Read/Grep/Bash output is semantically compressed before it reaches the agent, so the rendered text is not guaranteed byte-identical to disk. Short anchors usually survive; long ones accumulate divergence — here `git log` appeared without backticks in my view but carried them on disk (`per ` `git log` ` style`). Edit matches real bytes, so a compressed-view mismatch fails silently.
 
-**Rule:** Prefer short, distinctive `old_string` anchors. When an Edit fails on a string you "see," fetch raw bytes (`sed -n 'Np' FILE | cat -A`) and re-anchor on those, reproducing exact Unicode (em-dash `—`, `§`) and backticks. To delete a large block you have not seen byte-exact, use a line-range delete (`sed -i 'A,Bd'`) instead of guessing its bytes.
+**Rule:** Prefer short, distinctive `old_string` anchors. When a read looks garbled/truncated or an Edit fails on a string you "see," recover the on-disk original first — call `headroom_retrieve` (CLAUDE.md's named recovery) or re-read the exact line range — then re-anchor on those bytes, reproducing exact Unicode (em-dash `—`, `§`) and backticks. To reveal hidden bytes use `sed -n 'Nl' FILE` (sed's `l` prints escapes unambiguously; `cat -A`/`od`/`xxd` are globally denied). To delete a large block you have not seen byte-exact, use a line-range delete (`sed -i 'A,Bd'`) instead of guessing its bytes.
 
 ## L-016 — Deny-listed paths block on the command line, not on a script's runtime `open()`
 
