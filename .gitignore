@@ -24,8 +24,7 @@ models/*
 # Claude Code per-user overrides (project settings.json IS committed)
 .claude/settings.local.json
 
-# Serena/Headroom LSP state (project.yml is tracked; .agent/ is the sole memory store — D-013)
-.serena/memories/
+# .serena/ is committed as is via its own .serena/.gitignore; Serena memory disabled globally (D-013)
 
 # Environment / secrets
 .env

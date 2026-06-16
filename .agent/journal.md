@@ -6,6 +6,46 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-16 — CLAUDE.md sync #2: `.serena/` committed-as-is, memories un-ignored
+
+**Trigger:** User (`/session-prompt` override): "I updated the `CLAUDE.md`. If there is any
+work you need to do in response, use this session to do so." Diff (8+/7−) is mostly cosmetic
+— `# CLAUDE.md` title, backticks, Git-rule relocated higher, "Casual"→"Wasteful" file-dumps,
+"largely human-authored", "`ignored_paths` in `.serena/project.yml`" made explicit. **One
+substantive change** reverses last session: the `.serena/` rule dropped "home
+`.serena/memories/` in the repo-root `.gitignore`" for "`.serena/` comes with its own
+gitignore file and can be committed as is" + the new fact "Serena … memory system … disabled
+globally".
+
+**Verified the new claim:** `~/.serena/serena_config.yml` `excluded_tools:` lists all six
+memory tools → Serena never writes `.serena/memories/`. Confirmed `.serena/memories/` is empty
+and was protected only by the root reach-in (root `.gitignore:28`).
+
+**User chose "fully as is"** (over self-contain / docs-only):
+- Root `.gitignore`: removed `.serena/memories/`; left a one-line breadcrumb comment so the
+  entry stops oscillating nested↔root across sessions. Nested `.serena/.gitignore` untouched
+  (`/cache` + `/project.local.yml`) — now the only `.serena/` gitignore.
+- `.serena/memories/` is now un-ignored by git (empty; memory disabled → stays empty; `.agent/`
+  is the sole store). Still **Read-denied** in `.claude/settings.json` — the sanctioned
+  do-not-read ≠ gitignore split.
+- Docs: D-013 amendment #2 (reversal + verified disabled-globally); orientation `.serena/` row
+  rewritten.
+
+**Verified (agent):** `git check-ignore` confirms memories/ un-ignored; `project.local.yml`
+still caught by nested; only 4 files modified (no stray `.serena/` staging — empty dir); 49
+tests green (no code touched).
+
+**Did not verify (user smoke, L-004):** none — config + docs only; no
+mic/`--device`/latency/Ctrl+C/multi-hour surface. The standing live-mic/soak debt (T8.2) is
+unchanged.
+
+**Memory:** D-013 amendment #2; orientation `.serena/` row; journal pruned oldest (T6). No new
+lesson (CLAUDE.md already states the sync rule; this is a one-line reversal, not a new failure
+mode — L-008 spirit: record state, not an "always"). Roadmap untouched — **T8.1** remains the
+lowest open task next session.
+
+---
+
 ## 2026-06-16 — CLAUDE.md sync: Serena/gitignore + `ignored_paths` alignment
 
 **Trigger:** User (`/session-prompt` override): "I updated the CLAUDE.md. Do the work
@@ -125,34 +165,3 @@ and C2 in the meter coroutine, but both are behavior/logic-identical.
 
 **Memory:** PLAN +T7 (SHIPPED); L-019 (refactor-pass = audit; minimal honest output on
 mature code is valid); journal pruned oldest (T5.1). No new ADR (changes too minor).
-
----
-
-## 2026-06-15 — T6: maintenance + security pass (deps, codex-leg audit, drift re-verify)
-
-**Trigger:** User (`/session-prompt`, blank override). Bootstrap found the PLAN roadmap
-fully shipped (T1–T5 done, no OPEN task); I reported that and asked for direction — user
-chose a maintenance + security pass. Scoped as T6.
-
-**Shipped:** (1) Deps — runtime all at latest (sherpa-onnx 1.13.2 is floor+newest);
-bumped dev tooling pytest 9.0.3→9.1.0 + ruff 0.15.16→0.15.17; `pip-audit` clean (no
-known vulns). (2) Security-reviewed the Codex leg (only non-local input): strong posture
-(no shell, sandbox/approvals locked, server-requests auto-denied, graceful JA-only
-degradation) — no remotely-exploitable surface; one low-sev gap fixed (unwrapped
-`_read_loop` `readline()` → wrapped, user-approved over document-only, so an
-oversized-line/broken-transport error routes into the EOF cleanup). (3) Re-verified the
-codex leg against CLI 0.139.0 (D-011 benched 0.137.0) via a synthetic `CodexTranslator`
-turn — config valid, clean JA→EN, non-breaking.
-
-**Verified (agent-checkable):** 49 tests green (unchanged count; the codex leg isn't in
-pytest, so re-verified separately via synthetic `CodexTranslator` turns — 3 clean JA→EN
-incl. one post-edit); ruff clean; pyright 0 errors; pip-audit clean.
-
-**Did not verify (user smoke, L-004):** the `_read_loop` edit is in the codex path, not
-the mic path. Still pending from the T4 re-arch and NOT closed here: live mic /
-`--device` / real-time latency / Ctrl+C flush / multi-hour — the live path has had no
-user smoke-test since 2026-06-08.
-
-**Memory:** PLAN +T6 (SHIPPED); D-011 amendment (re-verified at 0.139.0 + reader-loop
-hardening); L-018 (maintenance-pass recipe); journal pruned oldest (CLAUDE.md sync).
-
