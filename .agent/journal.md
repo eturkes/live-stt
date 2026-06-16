@@ -6,6 +6,35 @@ Chronological log of agent sessions. Most recent at the top. One section per ses
 
 ---
 
+## 2026-06-16 — CLAUDE.md sync #3: cosmetic UI/UX-rule prose polish (no-op)
+
+**Trigger:** User (`/session-prompt` override): "I updated the `CLAUDE.md`. If there is
+any work you need to do in response, use this session to do so." Third consecutive
+CLAUDE.md-sync session today; unlike the prior two syncs (substantive `.serena`/gitignore),
+this diff (1+/1−) is a single-sentence **cosmetic prose polish** of the UI/UX rule: clause
+reorder ("As it is largely human-authored" fronted) + de-parenthesized "...forced
+optimizations present for LLM steering...". No new directive/constraint/fact/structural
+requirement.
+
+**Checked every surface the edit could touch (→ no work):** code/config — none (the UI/UX
+rule has no code/config surface); live memory docs — no orientation/lessons/decisions entry
+quotes the changed sentence (L-001 quotes a *different* CLAUDE.md rule, unchanged; journal
+#2's "largely human-authored" is a historical diff description, left as-is); user-facing
+README/CLI — unaffected (what compliance means is unchanged).
+
+**Action:** committed the user's prose polish alone + this journal note. Confirmed scope
+with the user first (chose "commit polish, end here" over recover-from-siblings / pivot-to-
+T8.1). No code/config/doc change.
+
+**Did not verify (user smoke, L-004):** none — no mic/`--device`/latency/Ctrl+C/multi-hour
+surface touched. Standing live-mic/soak debt (T8.2) unchanged.
+
+**Memory:** journal pruned oldest (T7 → git). No new lesson/ADR — a cosmetic doc tweak is
+not a new failure mode or architecture choice (L-008 spirit: record state, not an "always").
+Roadmap untouched — **T8.1** remains the lowest open task next session.
+
+---
+
 ## 2026-06-16 — CLAUDE.md sync #2: `.serena/` committed-as-is, memories un-ignored
 
 **Trigger:** User (`/session-prompt` override): "I updated the `CLAUDE.md`. If there is any
@@ -127,41 +156,3 @@ captured as OPEN task T8.2.
 adversarial screen carries the value; ground every finder in real code); journal pruned
 oldest (T5.2). No new ADR (the workflow is a process, not an architecture choice; the
 items earn ADRs if/when they ship).
-
----
-
-## 2026-06-15 — T7: proactive refactor pass (minimal, evidence-driven)
-
-**Trigger:** User (`/session-prompt`, blank override). Bootstrap found the roadmap
-fully shipped (T1-T6); reported that and asked direction -> user chose a proactive
-refactor pass. Scoped as T7.
-
-**Method:** Read `live_stt.py` + `replay.py` + tests + tooling in full; cataloged
-refactor candidates and screened each against L-001 (name the failure mode the edit
-prevents), L-005 (less code, no abstraction), D-006 (don't churn `live_stt.py`).
-Presented the screened set; user picked C1+C9+C2.
-
-**Shipped (`live_stt.py` only):** C1 `close()` `except (TimeoutError, Exception)` ->
-`except Exception` (redundant: TimeoutError is a subclass of Exception; the lookalike
-`(CancelledError, Exception)` forms ARE necessary and were left untouched). C9 named
-the control-RPC timeout `CODEX_CONTROL_TIMEOUT_S = 10` (3 bare `10`s: initialize +
-thread/start x2; matches `TRANSLATE_TIMEOUT_S` house style; wrapped the one line that
-crossed 100 cols). C2 removed `meter()`'s 8-line global->local hoisting (inert at the
-10 Hz meter cadence, unlike the commented hot-path opts).
-
-**Rejected (detail in scratch):** submit/submit_sentinel merge, cross-file WAV
-loader/writer dedup, CACHE-constant centralization, resample-test pruning. Headline:
-the code is mature; an honest refactor pass yields little, and that is the correct
-outcome rather than a failure (-> L-019).
-
-**Verified (agent-checkable):** 49 tests green (unchanged), ruff clean, pyright 0
-errors, import OK. Behavior-preserving -> codex leg not re-benched (not a CLI drift,
-L-018).
-
-**Did not verify (user smoke, L-004):** the edits are inert at runtime; the standing
-pre-2026-06-08-rearch live smoke set (mic / `--device` / latency feel / Ctrl+C flush /
-multi-hour) is unaffected and still pending. C1 sits in the translator-teardown path
-and C2 in the meter coroutine, but both are behavior/logic-identical.
-
-**Memory:** PLAN +T7 (SHIPPED); L-019 (refactor-pass = audit; minimal honest output on
-mature code is valid); journal pruned oldest (T5.1). No new ADR (changes too minor).
