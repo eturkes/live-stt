@@ -1,0 +1,249 @@
+"""Regression locks for CodexTranslator's degradation contract (D-009, D-011).
+
+The happy-path live turn needs a real `codex app-server` + auth and stays a
+user smoke (L-004). What is locked here is the failure surface a refactor can
+silently break: 3-strike session disable, backlog eviction, and the `_read_loop`
+dispatch/EOF branches (the sole non-local input boundary, T6-hardened). All in
+memory — fake stdio over an asyncio.StreamReader, `asyncio.run` per test, no
+subprocess, no mic, no new dependency.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+
+import pytest
+
+import live_stt
+
+
+class _FakeStdin:
+    """Captures the JSON-RPC the translator writes; `close()` for graceful shutdown."""
+
+    def __init__(self):
+        self.writes: list[bytes] = []
+        self.closed = False
+
+    def write(self, data: bytes):
+        self.writes.append(data)
+
+    def close(self):
+        self.closed = True
+
+
+class _FakeProc:
+    """Minimal asyncio.subprocess.Process stand-in: a real StreamReader stdout
+    feeds `_read_loop`; `wait`/`kill` let `close()` run its shutdown path."""
+
+    def __init__(self, stdout: asyncio.StreamReader):
+        self.stdout = stdout
+        self.stdin = _FakeStdin()
+        self.returncode: int | None = None
+
+    async def wait(self):
+        self.returncode = 0
+        return 0
+
+    def kill(self):
+        self.returncode = -9
+
+
+def test_consecutive_failures_disable_then_reset():
+    # D-009 hard requirement: transient turn failures degrade per-block, but
+    # TRANSLATE_MAX_FAILURES in a row must flip the session to JA-only; a single
+    # success must reset the streak. A regression that never disables hangs every
+    # block; one that never resets disables a healthy leg after a transient blip.
+    async def scenario():
+        t = live_stt.CodexTranslator()
+        t.enabled = True
+        t._proc = None  # _abort_turn early-returns -> no interrupt write needed
+
+        async def boom(_ja):
+            raise RuntimeError("turn failed")
+
+        t._turn = boom  # type: ignore[assignment]
+        n = live_stt.TRANSLATE_MAX_FAILURES
+        for i in range(1, n + 1):
+            assert await t._translate(f"x{i}") == ""
+            assert t._failures == i
+            assert t.enabled is (i < n)  # still enabled until the nth failure
+
+        t.enabled = True  # operator-independent re-enable for the reset check
+
+        async def ok(_ja):
+            return "hello"
+
+        t._turn = ok  # type: ignore[assignment]
+        assert await t._translate("y") == "hello"
+        assert t._failures == 0
+
+    asyncio.run(scenario())
+
+
+def test_submit_evicts_oldest_and_counts():
+    # Backlog overflow drops the STALEST caption (newest beats oldest) and bumps
+    # the eviction counter the meter surfaces as tdrop= (T8.5). An inverted
+    # eviction would silently drop the freshest caption.
+    async def scenario():
+        t = live_stt.CodexTranslator()
+        t.enabled = True
+        cap = live_stt.TRANSLATE_QUEUE_MAX
+        for i in range(cap):
+            t.submit(i, f"ja{i}")
+        assert t.queue.qsize() == cap
+        assert t.dropped_translations == 0
+
+        t.submit(cap, f"ja{cap}")  # one past full
+        assert t.queue.qsize() == cap  # still capped
+        assert t.dropped_translations == 1
+
+        seqs = []
+        while not t.queue.empty():
+            seq, _ = t.queue.get_nowait()
+            seqs.append(seq)
+        assert 0 not in seqs  # oldest evicted
+        assert cap in seqs  # newest survived
+        assert len(seqs) == cap
+
+    asyncio.run(scenario())
+
+
+def test_submit_sentinel_lands_on_full_queue():
+    # Shutdown must enqueue the None sentinel even when the backlog is full,
+    # evicting to make room (mirrors the audio-side T8.1 idiom) — a blocking put
+    # would hang shutdown.
+    async def scenario():
+        t = live_stt.CodexTranslator()
+        t.enabled = True
+        cap = live_stt.TRANSLATE_QUEUE_MAX
+        for i in range(cap):
+            t.submit(i, f"ja{i}")
+        assert t.queue.qsize() == cap
+
+        t.submit_sentinel()
+        assert t.queue.qsize() == cap  # still capped, room made by eviction
+        items = [t.queue.get_nowait() for _ in range(cap)]
+        assert items.count(None) == 1  # exactly one sentinel landed
+
+    asyncio.run(scenario())
+
+
+def test_read_loop_dispatch_and_eof():
+    # The one non-local input boundary (T6). Lock each dispatch branch and the
+    # EOF cleanup: malformed line skipped; server request auto-denied; id+result
+    # resolves a pending future; a notification lands in _notes; EOF flips
+    # enabled off, fails remaining pending futures, and (T8.3) enqueues the wake
+    # sentinel after the real notes.
+    async def scenario():
+        reader = asyncio.StreamReader()
+        proc = _FakeProc(reader)
+        t = live_stt.CodexTranslator()
+        t._proc = proc  # type: ignore[assignment]
+        t.enabled = True
+
+        loop = asyncio.get_running_loop()
+        resolved = loop.create_future()
+        t._pending[7] = resolved
+
+        reader.feed_data(b"not json\n")  # skipped
+        reader.feed_data(
+            json.dumps({"id": 99, "method": "applyPatchApproval", "params": {}}).encode() + b"\n"
+        )  # server request -> auto-deny
+        reader.feed_data(json.dumps({"id": 7, "result": {"ok": 1}}).encode() + b"\n")
+        reader.feed_data(
+            json.dumps({"method": "item/agentMessage/delta", "params": {"delta": "x"}}).encode()
+            + b"\n"
+        )  # notification -> _notes
+
+        orphan = loop.create_future()
+        t._pending[8] = orphan  # no response arrives; EOF must fail it
+        reader.feed_eof()
+        await t._read_loop()
+
+        assert resolved.result() == {"ok": 1}
+        assert any(b'"denied"' in w for w in proc.stdin.writes)
+        first = t._notes.get_nowait()
+        assert first["method"] == "item/agentMessage/delta"
+        sentinel = t._notes.get_nowait()  # T8.3 wake sentinel, after the real note
+        assert sentinel["method"] == "error"
+        assert t.enabled is False
+        assert orphan.done() and isinstance(orphan.exception(), RuntimeError)
+
+    asyncio.run(scenario())
+
+
+def test_turn_wakes_on_eof_under_timeout():
+    # T8.3: codex dies after turn/start resolves but before turn/completed, so
+    # the turn is parked on _notes.get() with no pending request to fail. The
+    # EOF sentinel must wake it; without it the collect loop blocks until the
+    # outer TRANSLATE_TIMEOUT_S (15 s). A 2 s bound proves "prompt".
+    async def scenario():
+        reader = asyncio.StreamReader()
+        t = live_stt.CodexTranslator()
+        t._proc = _FakeProc(reader)  # type: ignore[assignment]
+        t._thread_id = "thread-1"
+        t.enabled = True
+
+        reader_task = asyncio.create_task(t._read_loop())
+        turn_task = asyncio.create_task(t._turn("テスト"))
+
+        for _ in range(50):  # let _turn issue turn/start
+            await asyncio.sleep(0)
+            if t._pending:
+                break
+        assert t._pending, "turn/start was never issued"
+        next(iter(t._pending.values())).set_result({})  # advance into collect loop
+
+        reader.feed_eof()  # codex dies mid-turn
+        with pytest.raises(RuntimeError):
+            await asyncio.wait_for(turn_task, timeout=2.0)
+        assert t.enabled is False
+        await reader_task
+
+    asyncio.run(scenario())
+
+
+def test_graceful_close_enqueues_no_sentinel():
+    # The flip side of T8.3: close() cancels _reader_task mid-readline, raising
+    # CancelledError that escapes the (ValueError, OSError) catch -> EOF cleanup
+    # is never reached, so a clean shutdown enqueues no spurious wake sentinel.
+    async def scenario():
+        reader = asyncio.StreamReader()
+        t = live_stt.CodexTranslator()
+        t._proc = _FakeProc(reader)  # type: ignore[assignment]
+        t.enabled = True
+        t._reader_task = asyncio.create_task(t._read_loop())
+        for _ in range(10):  # let the read loop park on readline()
+            await asyncio.sleep(0)
+
+        await t.close()
+        try:
+            await t._reader_task
+        except asyncio.CancelledError:
+            pass
+        assert t._reader_task.cancelled()
+        assert t._notes.empty()
+
+    asyncio.run(scenario())
+
+
+def test_eof_logs_once_and_disables(caplog):
+    # T8.5: an EOF in an idle gap was the one silent, permanent degradation
+    # (startup and 3-strike both log). The cleanup must log exactly one error
+    # and flip enabled off.
+    async def scenario():
+        reader = asyncio.StreamReader()
+        t = live_stt.CodexTranslator()
+        t._proc = _FakeProc(reader)  # type: ignore[assignment]
+        t.enabled = True
+        reader.feed_eof()
+        with caplog.at_level(logging.ERROR, logger="live_stt"):
+            await t._read_loop()
+        assert t.enabled is False
+        errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert len(errors) == 1
+        assert "JA-only" in errors[0].getMessage()
+
+    asyncio.run(scenario())

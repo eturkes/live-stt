@@ -332,6 +332,7 @@ class CodexTranslator:
         self._thread_id: str | None = None
         self._turns = 0
         self._failures = 0
+        self.dropped_translations = 0  # captions evicted under backlog (T8.5 tdrop=)
         self.enabled = False
 
     async def start(self) -> bool:
@@ -411,12 +412,23 @@ class CodexTranslator:
                 self._write({"jsonrpc": "2.0", "id": msg["id"], "result": {"decision": "denied"}})
             else:
                 self._notes.put_nowait(msg)
-        # EOF: app-server died. Fail pending requests; _translate degrades.
+        # EOF: app-server died -> JA-only. Log once on the enabled->disabled
+        # transition (startup/3-strike both log; a death in an idle gap was the
+        # one silent, permanent case) — T8.5.
+        if self.enabled:
+            logger.error("codex app-server exited; JA-only for the rest of the session")
         self.enabled = False
+        # Fail pending requests; their awaiters raise and degrade per-block.
         for fut in self._pending.values():
             if not fut.done():
                 fut.set_exception(RuntimeError("codex app-server exited"))
         self._pending.clear()
+        # Wake a turn already collecting notes: its turn/start has resolved, so
+        # no pending request reaches it; without this its _notes.get() blocks
+        # until wait_for fires TRANSLATE_TIMEOUT_S later. The error branch raises
+        # -> prompt degrade (D-009, T8.3). close() cancels this task mid-readline
+        # (CancelledError skips here), so a graceful close enqueues no sentinel.
+        self._notes.put_nowait({"method": "error", "params": {}})
 
     def _write(self, obj: dict):
         assert self._proc and self._proc.stdin
@@ -442,6 +454,7 @@ class CodexTranslator:
             # Translation has fallen behind; fresh captions beat stale ones.
             try:
                 self.queue.get_nowait()
+                self.dropped_translations += 1  # surfaced as meter tdrop= (T8.5)
                 self.queue.put_nowait((seq, ja))
             except (asyncio.QueueEmpty, asyncio.QueueFull):
                 pass
@@ -613,7 +626,7 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
         state.request_stop()
 
 
-async def meter(state, audio_q):
+async def meter(state, audio_q, translator=None):
     while not state.stopping:
         rms = math.sqrt(state.latest_ms)
         level = int(rms * _METER_SCALE)
@@ -622,7 +635,13 @@ async def meter(state, audio_q):
         qsize = audio_q.qsize()
         pending = f" q={qsize}" if qsize > 0 else ""
         dropped = f" drop={state.dropped}" if state.dropped else ""
-        sys.stdout.write(f"\r  [{_METER_BARS[level]}] {rms:.4f}{pending}{dropped}")
+        # tdrop= mirrors drop= for the translation backlog (shown only when >0).
+        tdrop = (
+            f" tdrop={translator.dropped_translations}"
+            if translator and translator.dropped_translations
+            else ""
+        )
+        sys.stdout.write(f"\r  [{_METER_BARS[level]}] {rms:.4f}{pending}{dropped}{tdrop}")
         sys.stdout.flush()
         await asyncio.sleep(METER_INTERVAL)
 
@@ -695,7 +714,7 @@ async def run_session(args):
         callback=audio_callback,
     )
 
-    meter_task = asyncio.create_task(meter(state, audio_q))
+    meter_task = asyncio.create_task(meter(state, audio_q, translator))
     worker_task = asyncio.create_task(
         worker(rec, vad, window, audio_q, state, output_file, translator)
     )

@@ -3,38 +3,14 @@
 Canonical plan + status. Pick the lowest-numbered OPEN task; restate its acceptance criteria before coding. Trajectory: single-file tool, simplicity over completeness — no frameworks, no config, no premature abstraction. Status legend: OPEN · SHIPPED · DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED.
 
 ## Status
-- Phase: **T8 hardening/quality pass** (no new features — user directive). Shipped through **T8.2**; next open is **T8.3**.
-- Open: T8.3 → T8.4 → T8.5 (priority order). T8.4's read-loop test locks the agent tests for T8.3 and T8.5, so landing T8.4 alongside is efficient.
+- Phase: **T8 hardening/quality pass** (no new features — user directive). Shipped through **T8.5**; T8's coding tasks are closed — only the standing live-mic user smoke remains (L-004).
+- Open: none actionable by an agent (see § Open). Standing debt: the live-mic user smoke + soak, user-only.
 - Architecture stable since the 2026-06-08 re-arch (D-009): mic → resample → silero VAD → RingBuffer pre-pad → sherpa-onnx decode (JA) → `CodexTranslator` (JA→EN via persistent `codex app-server`, D-011) → `emit_line`; degrades to JA-only when codex is absent/failing.
 - Standing debt: the live-mic path has had no real user smoke since the re-arch (L-004). Runnable procedure: `.agent/memory.md` § Smoke. T8.2 made it runnable, not closed — it still needs an actual user pass.
 
 ## Open (do these; lowest ID first)
 
-### T8.3 — Wake the turn collect-loop on codex EOF (prompt mid-turn degrade) · effort S · agent-verifiable
-Failure mode: `_turn` collects via `while True: await self._notes.get()`. `_read_loop`'s EOF cleanup fails pending *requests* but never sentinels `_notes`. If codex dies after `turn/start` resolves but before `turn/completed` (turn already collecting, no pending request to fail), the `get()` blocks until the outer `wait_for(_turn, TRANSLATE_TIMEOUT_S)` fires — a full 15 s before JA-only, breaking the D-009 "degrade promptly" contract at the one boundary T6's readline-hardening missed.
-Acceptance:
-- `_read_loop`'s EOF cleanup enqueues one sentinel note onto `_notes` that `_turn`'s existing `error`/no-`willRetry` branch raises on.
-- Agent test (no subprocess/mic): fake `_proc`/stdout `StreamReader`, resolve `turn/start`, start `_turn` as a task, `feed_eof`; the in-flight `_turn` raises well under `TRANSLATE_TIMEOUT_S`.
-- Fires only on genuine death: `close()` cancels `_reader_task` (CancelledError escapes the `(ValueError, OSError)` catch → cleanup not reached), so graceful close enqueues no sentinel — assert no spurious raise. Output identical JA-only, just prompt; ruff/pyright clean.
-Approach: one line in the EOF cleanup — `self._notes.put_nowait({"method": "error", "params": {}})` — reusing `_turn`'s error branch → `_translate`'s per-block fallback.
-
-### T8.4 — `tests/test_translator.py`: lock degradation + backlog + read-loop branches · effort M · agent-verifiable
-Problem: zero regression coverage on the documented graceful-degradation contract (D-009 hard requirement, D-011) and the sole non-local input boundary T6 hardened. Tests reference only `check_models`/`RingBuffer`/`emit_line`/`resample`; all of `CodexTranslator` is untested. A refactor can silently break degradation (3-strike never disables → hang every block; `submit` eviction inverts → drops newest caption; `_read_loop` stops auto-denying server requests) with nothing to catch it pre-session.
-Acceptance:
-- New `tests/test_translator.py`; no new dependency (`asyncio.run` per test, no pytest-asyncio); no subprocess/mic; no `live_stt.py` change.
-- 3-strike disable: `enabled=True`, `_proc=None` (so `_abort_turn` early-returns), `_turn` monkeypatched to raise; 3× `_translate` flips `enabled` False on the 3rd with `_failures==3`; a passing `_turn` resets `_failures`.
-- Backlog eviction: fill `queue` to `TRANSLATE_QUEUE_MAX` then `submit` → `qsize==cap`, oldest evicted + newest survives; `submit_sentinel` on a full queue lands `None` at `size==cap`.
-- `_read_loop` dispatch via `StreamReader` + `FakeProc`: malformed line skipped; id+result resolves a pending future; a notification lands in `_notes`; `feed_eof` sets `enabled==False` and fails pending futures (also locks T8.3/T8.5 once they land).
-Approach: single pytest file, in-memory fakes (`StreamReader` + tiny `FakeProc`), `asyncio.run` per test. Cover only named-failure branches, not the happy-path live turn (stays user-smoke, L-019).
-
-### T8.5 — Surface the two silent translator-degradation events · effort S · agent + user-smoke
-Failure mode: two silent EN-leg failures, asymmetric with the audio side. (1) `_read_loop`'s EOF cleanup flips `enabled=False` with no log, while both sibling degradations (startup, 3-strike) log — so a codex death in an idle gap silently becomes permanent JA-only, indistinguishable from "operator stopped speaking." (2) `submit`'s `QueueFull` handler evicts the oldest caption with no counter/log, while the audio side surfaces its analogue (`state.dropped` → `drop=N` meter field). The operator cannot diagnose a dead or load-shedding translation leg.
-Acceptance:
-- `_read_loop` logs the EOF degradation exactly once (e.g. `logger.error("codex app-server exited; JA-only for the rest of the session")`) on the existing TTY-aware logger, guarded against repeat.
-- `submit` increments an eviction counter on `QueueFull` (init beside the other counters) and surfaces it: default a `tdrop=N` meter field (shown only when >0, mirroring `drop=`); acceptable fallback if meter-creep is too much = a throttled `logger.warning`.
-- Agent test (fold into `test_translator.py`): EOF path asserts the one error record + `enabled` False via caplog; `submit` past `TRANSLATE_QUEUE_MAX` asserts the counter increments while `qsize` stays capped.
-- No new output mode/stream/config/abstraction; only `live_stt.py`; ruff/pyright clean; the two existing degradation logs now symmetric with the EOF case.
-Approach: (a) one guarded `logger.error` at the EOF break; (b) `dropped_translations` counter + conditional `tdrop=` on the existing meter (the one diagnostic surface Out-of-scope permits; `drop=` is precedent), throttled-log fallback documented.
+None actionable by an agent. The sole remaining T8 item is the live-mic user smoke + soak (L-004; procedure in `.agent/memory.md` § Smoke) — user-only, unverifiable in the sandbox. A fresh session handed an empty task should surface this to the user rather than invent work; new coding tasks come from the user or a roadmap-generation pass (L-020).
 
 ## Shipped (ID · outcome · decisions/lessons produced)
 - T1.1 ✓ Exponential reconnect backoff (1s→30s, resets after stability) — pre-Live-API; moot since D-009.
@@ -59,6 +35,9 @@ Approach: (a) one guarded `logger.error` at the EOF break; (b) `dropped_translat
 - T7 ✓ Proactive refactor — C1/C9/C2 behavior-preserving; rejections recorded; → L-018 (no re-bench when no CLI drift).
 - T8.1 ✓ Non-blocking worker-stop sentinel — shutdown `finally` uses the evict-then-put idiom; fixes dead-worker + full-queue hang; test `test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking`.
 - T8.2 ✓ Live-mic smoke + soak checklist (`.agent/memory.md` § Smoke) — 7-item live pass + soak watching only in-code observables (meter `q=`/`drop=`, `TRANSLATE_ROTATE_TURNS`, `account/rateLimits/read` quota) → L-020. Runnable, not yet user-passed.
+- T8.3 ✓ Wake the turn collect-loop on codex EOF — EOF cleanup enqueues one error sentinel onto `_notes`; a turn parked mid-collect (turn/start resolved, no pending request to fail) raises via the error branch and degrades in <2 s vs waiting out TRANSLATE_TIMEOUT_S (D-009); graceful close() cancels mid-readline → stays silent. Tests `test_turn_wakes_on_eof_under_timeout`, `test_graceful_close_enqueues_no_sentinel`.
+- T8.4 ✓ `tests/test_translator.py` — first CodexTranslator regression net: 3-strike disable+reset, backlog evict-oldest, sentinel-on-full-queue, `_read_loop` dispatch/EOF branches. In-memory StreamReader+FakeProc, `asyncio.run` per test, no new dep.
+- T8.5 ✓ Surface the two silent translator degradations — `_read_loop` logs the EOF→JA-only flip once (guarded on `enabled`); `submit` counts evictions in `dropped_translations` → meter `tdrop=` (>0 only, mirrors `drop=`). Tests `test_eof_logs_once_and_disables`, `test_submit_evicts_oldest_and_counts`; meter render is user-smoke (L-004).
 
 ## Rejected (recorded so they are not re-litigated)
 T8 screen:
