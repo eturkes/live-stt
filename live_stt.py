@@ -368,6 +368,17 @@ class CodexTranslator:
             logger.warning("codex app-server init failed (%s); running JA-only", e)
             await self.close()
             return False
+        # A warm-up turn can complete and the server then die before we enable:
+        # its turn/completed is consumed, the next readline hits EOF, and
+        # _read_loop's cleanup runs with enabled still False (logs nothing,
+        # leaves only a finished reader task). Enabling now would strand every
+        # later turn on a turn/start request no one resolves until
+        # TRANSLATE_TIMEOUT_S. Refuse to enable a dead server (T8.6).
+        assert self._proc is not None and self._reader_task is not None
+        if self._reader_task.done() or self._proc.returncode is not None:
+            logger.warning("codex app-server exited during warm-up; running JA-only")
+            await self.close()
+            return False
         self.enabled = True
         return True
 

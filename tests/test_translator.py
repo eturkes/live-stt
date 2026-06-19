@@ -50,6 +50,27 @@ class _FakeProc:
         self.returncode = -9
 
 
+def _rpc_result(rid: int, result: dict) -> bytes:
+    """A JSON-RPC response line, framed as _read_loop expects (one line, \\n)."""
+    return (json.dumps({"id": rid, "result": result}) + "\n").encode()
+
+
+def _rpc_note(method: str, params: dict) -> bytes:
+    """A JSON-RPC notification line (no id) -> lands in _notes."""
+    return (json.dumps({"method": method, "params": params}) + "\n").encode()
+
+
+async def _await_pending(t: live_stt.CodexTranslator, rid: int, spins: int = 1000):
+    """Yield until request `rid` is registered in _pending (issued and awaiting a
+    response). Lets a feeder answer requests the production way -- through
+    _read_loop -- instead of reaching past it with set_result."""
+    for _ in range(spins):
+        await asyncio.sleep(0)
+        if rid in t._pending:
+            return
+    raise AssertionError(f"request id {rid} was never issued")
+
+
 def test_consecutive_failures_disable_then_reset():
     # D-009 hard requirement: transient turn failures degrade per-block, but
     # TRANSLATE_MAX_FAILURES in a row must flip the session to JA-only; a single
@@ -205,6 +226,37 @@ def test_turn_wakes_on_eof_under_timeout():
     asyncio.run(scenario())
 
 
+def test_translate_degrades_to_ja_only_on_eof_under_timeout():
+    # End-to-end of T8.3 (the wake test above stops at _turn raising). Drive the
+    # public _translate: resolve turn/start through _read_loop the production
+    # way, then kill the server mid-turn. _translate must catch, degrade the
+    # block to "" (JA-only), bump _failures, and flip the session off -- all well
+    # under TRANSLATE_TIMEOUT_S (15 s). A 2 s bound proves "prompt".
+    async def scenario():
+        reader = asyncio.StreamReader()
+        proc = _FakeProc(reader)
+        t = live_stt.CodexTranslator()
+        t._proc = proc  # type: ignore[assignment]
+        t._thread_id = "thread-1"
+        t.enabled = True
+
+        reader_task = asyncio.create_task(t._read_loop())
+        translate_task = asyncio.create_task(t._translate("テスト"))
+
+        await _await_pending(t, 1)  # turn/start is the first request id
+        reader.feed_data(_rpc_result(1, {}))  # resolve via the reader, not set_result
+        proc.returncode = 0  # server is dead -> _abort_turn early-returns
+        reader.feed_eof()  # codex dies mid-turn
+
+        en = await asyncio.wait_for(translate_task, timeout=2.0)
+        assert en == ""  # JA-only block, not a hang
+        assert t.enabled is False  # session degraded
+        assert t._failures == 1
+        await reader_task
+
+    asyncio.run(scenario())
+
+
 def test_graceful_close_enqueues_no_sentinel():
     # The flip side of T8.3: close() cancels _reader_task mid-readline, raising
     # CancelledError that escapes the (ValueError, OSError) catch -> EOF cleanup
@@ -245,5 +297,45 @@ def test_eof_logs_once_and_disables(caplog):
         errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert len(errors) == 1
         assert "JA-only" in errors[0].getMessage()
+
+    asyncio.run(scenario())
+
+
+def test_start_refuses_dead_server_after_warmup(monkeypatch):
+    # T8.6: the warm-up turn completes, then the server dies before start()
+    # enables (its turn/completed is consumed, the next readline hits EOF). The
+    # EOF cleanup runs with enabled still False, so nothing logs and the only
+    # trace is a finished reader task. start() must NOT enable over that corpse
+    # -- doing so strands every later turn on a turn/start no one resolves until
+    # TRANSLATE_TIMEOUT_S. Without the liveness guard this returns True.
+    async def scenario():
+        reader = asyncio.StreamReader()
+        proc = _FakeProc(reader)
+
+        async def fake_exec(*_a, **_k):
+            return proc
+
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", fake_exec)
+        t = live_stt.CodexTranslator()
+
+        async def feeder():
+            await _await_pending(t, 1)  # initialize
+            reader.feed_data(_rpc_result(1, {}))
+            await _await_pending(t, 2)  # thread/start
+            reader.feed_data(_rpc_result(2, {"thread": {"id": "th-1"}}))
+            await _await_pending(t, 3)  # warm-up turn/start
+            # Complete the warm-up turn, then die -- all buffered before the read
+            # loop drains, so EOF is processed before start() reaches the guard.
+            reader.feed_data(_rpc_result(3, {}))
+            reader.feed_data(_rpc_note("item/agentMessage/delta", {"delta": "hi"}))
+            reader.feed_data(_rpc_note("turn/completed", {}))
+            reader.feed_eof()
+
+        feeder_task = asyncio.create_task(feeder())
+        ok = await asyncio.wait_for(t.start(), timeout=3.0)
+        await feeder_task
+
+        assert ok is False  # refused to enable a dead server
+        assert t.enabled is False
 
     asyncio.run(scenario())

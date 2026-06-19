@@ -3,7 +3,7 @@
 Canonical plan + status. Pick the lowest-numbered OPEN task; restate its acceptance criteria before coding. Trajectory: single-file tool, simplicity over completeness — no frameworks, no config, no premature abstraction. Status legend: OPEN · SHIPPED · DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED.
 
 ## Status
-- Phase: **T8 hardening/quality pass** (no new features — user directive). Shipped through **T8.5**; T8's coding tasks are closed — only the standing live-mic user smoke remains (L-004).
+- Phase: **T8 hardening/quality pass** (no new features — user directive). Shipped through **T8.6**; T8's coding tasks are closed — only the standing live-mic user smoke remains (L-004).
 - Open: none actionable by an agent (see § Open). Standing debt: the live-mic user smoke + soak, user-only.
 - Architecture stable since the 2026-06-08 re-arch (D-009): mic → resample → silero VAD → RingBuffer pre-pad → sherpa-onnx decode (JA) → `CodexTranslator` (JA→EN via persistent `codex app-server`, D-011) → `emit_line`; degrades to JA-only when codex is absent/failing.
 - Standing debt: the live-mic path has had no real user smoke since the re-arch (L-004). Runnable procedure: `.agent/memory.md` § Smoke. T8.2 made it runnable, not closed — it still needs an actual user pass.
@@ -38,6 +38,7 @@ None actionable by an agent. The sole remaining T8 item is the live-mic user smo
 - T8.3 ✓ Wake the turn collect-loop on codex EOF — EOF cleanup enqueues one error sentinel onto `_notes`; a turn parked mid-collect (turn/start resolved, no pending request to fail) raises via the error branch and degrades in <2 s vs waiting out TRANSLATE_TIMEOUT_S (D-009); graceful close() cancels mid-readline → stays silent. Tests `test_turn_wakes_on_eof_under_timeout`, `test_graceful_close_enqueues_no_sentinel`.
 - T8.4 ✓ `tests/test_translator.py` — first CodexTranslator regression net: 3-strike disable+reset, backlog evict-oldest, sentinel-on-full-queue, `_read_loop` dispatch/EOF branches. In-memory StreamReader+FakeProc, `asyncio.run` per test, no new dep.
 - T8.5 ✓ Surface the two silent translator degradations — `_read_loop` logs the EOF→JA-only flip once (guarded on `enabled`); `submit` counts evictions in `dropped_translations` → meter `tdrop=` (>0 only, mirrors `drop=`). Tests `test_eof_logs_once_and_disables`, `test_submit_evicts_oldest_and_counts`; meter render is user-smoke (L-004).
+- T8.6 ✓ Refuse to enable a dead app-server after warm-up — codex-review Finding 1 (HIGH): a warm-up turn that completes seconds before the server dies left `start()` flipping `enabled=True` over a finished reader, stranding every later turn on an unresolved turn/start until TRANSLATE_TIMEOUT_S (the silent-degrade class T8.5 targeted, reopened in the warm-up window). `start()` now checks `_reader_task.done()`/`returncode` before enabling. Tests `test_start_refuses_dead_server_after_warmup` (guard-disabled run confirms it fails — non-vacuous), `test_translate_degrades_to_ja_only_on_eof_under_timeout` (Finding 3: end-to-end of T8.3 through `_translate`, not just `_turn`). Findings 2 (EOF cleanup logs once; the 3-strike second log is `_translate`'s, distinct+correct) and 4 (close() runs only after `translator_task` ends — no mid-collect turn) rejected as correctly-scoped.
 
 ## Rejected (recorded so they are not re-litigated)
 T8 screen:
