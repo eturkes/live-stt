@@ -1,6 +1,6 @@
 # T3.1 Spike Report — Gemini Live API
 
-**Scope:** PLAN.md T3.1. Does a persistent bidirectional `client.aio.live.connect` session beat the existing 5-worker REST-with-chunking pipeline on latency and code size enough to justify the cost?
+**Scope:** .agent/roadmap.md T3.1. Does a persistent bidirectional `client.aio.live.connect` session beat the existing 5-worker REST-with-chunking pipeline on latency and code size enough to justify the cost?
 
 **Outcome:** Rewrite landed in `live_stt.py`. The Live path is materially better on perceived latency and code size. It is **~10× more expensive per minute** at list price, driven by audio-output tokens we cannot opt out of on native-audio Live models. Recommendation below.
 
@@ -84,5 +84,5 @@ If this tool ever sees high-volume usage, revisit by either:
 
 - **Session reconnect with resumption handle** (removes 15 min cliff).
 - **Audio ring buffer across reconnect** (so no words are lost in the swap).
-- **`--language` flag** — T2.2 in PLAN.md, trivial to add now that the system instruction is parameterized.
+- **`--language` flag** — T2.2 in .agent/roadmap.md, trivial to add now that the system instruction is parameterized.
 - **Remove or fix the `list_live_models.py` line-length lint warning** (pre-existing; line 19).

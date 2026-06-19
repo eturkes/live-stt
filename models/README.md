@@ -15,7 +15,7 @@ models/
     └── tokens.txt
 ```
 
-Download (engine selection rationale: `.agent/decisions.md` D-010):
+Download (engine selection rationale: `.agent/memory.md` D-010):
 
 ```sh
 cd models
