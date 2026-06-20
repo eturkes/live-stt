@@ -1,6 +1,5 @@
 Run a non-interactive Codex review of this session and hold yourself accountable
-to it; Codex runs with full autonomy, the latest model, and the highest reasoning
-effort.
+to it.
 
 Build the prompt: focus below non-empty ⇒ review exactly that; empty ⇒
 adversarially review this session's work — correctness and logic, soundness of
