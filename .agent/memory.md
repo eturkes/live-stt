@@ -1,6 +1,6 @@
 # Memory — live-stt
 
-Sole carried-forward store: orientation, decisions (D-, cited by code), lessons (L-, cited by tests), and the live-smoke checklist. Roadmap/status lives in `roadmap.md`. Every line must earn its place against `live_stt.py`/tests + README + git; cut anything they already say. Delete superseded/obsolete entries outright — git history and `roadmap.md`'s status ledger hold the trajectory; never leave a "historical" pointer in always-loaded memory. Keep the D-/L- IDs still cited by `live_stt.py`, `pyproject.toml`, `README.md`, `models/README.md`, `tests/`, or `roadmap.md`; numbering is monotonic, so a deletion leaves a gap (no renumber).
+Sole carried-forward store: orientation, decisions (D-, cited by code), lessons (L-, cited by tests), and the live-smoke checklist. Roadmap/status lives in `roadmap.md`. Every line must earn its place against `live_stt.py`/tests + README + git; cut anything they already say. Keep the D-/L- IDs still cited by `live_stt.py`, `pyproject.toml`, `README.md`, `models/README.md`, `tests/`, or `roadmap.md`; numbering is monotonic, so a deletion leaves a gap (no renumber).
 
 ## Orientation
 
