@@ -97,7 +97,8 @@ live-stt/
 ├── SPIKE_REPORT.md          # historical: REST → Gemini Live decision (superseded)
 ├── SPIKE_REPORT_BACKENDS.md # historical: streaming-STT backend comparison
 ├── spike/                   # historical research notes + gitignored bench WAV corpus
-├── CLAUDE.md                # agent meta-instructions
+├── AGENTS.md                # agent instructions (CLAUDE.md imports these)
+├── CLAUDE.md                # agent instructions, Claude Code specifics
 └── .agent/                  # agent memory + roadmap (memory.md, roadmap.md)
 ```
 
@@ -147,7 +148,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 - Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/roadmap.md` § Deferred).
 - `Ctrl+C` stops the stream, flushes any in-flight VAD segment, waits for pending translations, and shuts the app-server down cleanly.
 - Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window.
-- This project's primary developers are AI agents. See `CLAUDE.md` and `.agent/` for context on how it's maintained.
+- This project's primary developers are AI agents. See `AGENTS.md`/`CLAUDE.md` and `.agent/` for context on how it's maintained.
 
 ## License
 
