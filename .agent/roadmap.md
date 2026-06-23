@@ -19,15 +19,15 @@ None actionable by an agent. The sole remaining T8 item is the live-mic user smo
 - T1.4 ✓ Graceful shutdown — partial-turn flush in `finally`; Ctrl+C mid-utterance persists.
 - T2.1 ✓ Pure-function tests (`tests/test_audio.py`: resample/pcm16/emit).
 - T2.3 ✓ Structured logging — 5 stderr sites → `logger`; `_StderrFormatter` clears the meter line only on a TTY.
-- T3.1 ✓ Gemini Live API rewrite → D-001 (superseded by D-009). History: `SPIKE_REPORT.md`.
-- T3.2 ✓ Long-session memory (resumption + context compression) → D-003 (superseded by D-009), L-002.
+- T3.1 ✓ Gemini Live API rewrite — superseded by D-009; history in `SPIKE_REPORT.md`.
+- T3.2 ✓ Long-session memory (resumption + context compression) — Gemini-era, superseded by D-009; history in `SPIKE_REPORT.md`.
 - T-CLEANUP-001 ✓ Spike artifact audit (cache gitignored).
 - T-HOOK-001 ✓ `uv run pytest -q` pre-commit hook (`.githooks/`; `core.hooksPath`) → D-007.
 - T4.1 ✓ Local JA STT engine via spike bench — k2v2 primary, parakeet A/B; sherpa-onnx + silero VAD; TTFT ≤0.10s → D-010.
 - T4.2 ✓ Codex CLI install+auth+bench — Spark+low, tool features off, `developerInstructions`; p50 0.99s/turn → D-011.
 - T4.3 ✓ Rewrite `live_stt.py` around local STT (Gemini machinery removed) → L-004 smoke debt opened.
 - T4.4 ✓ Wire Codex translation into live loop (`CodexTranslator`, sequential turns, warm-up, JA-only degrade) → D-011.
-- T4.5 ✓ Cleanup — google-genai/python-dotenv removed; D-001/D-003 superseded by D-009; SPIKE_REPORT*.md kept as history.
+- T4.5 ✓ Cleanup — google-genai/python-dotenv removed; Gemini backend superseded by D-009; SPIKE_REPORT*.md kept as history.
 - T5.1 ✓ Deterministic WAV replay (`replay.py` drives the production `worker` via `on_segment`) + golden regression → D-014, reproduces D-010 quirks; retired the drifted bench harness.
 - T5.2 ✓ Parakeet goldens — `replay_goldens.json` engine-first; tests parametrized per (engine, clip).
 - T5.3 ✓ Real-recorded JA corpus — 7 Common Voice 8.0 clips fetched over network (L-004 blocks mic, not download) → L-016, characterization goldens; 49 tests.
