@@ -1,4 +1,4 @@
-Continue this project (fresh session). Non-empty task below ⇒ it is your sole task: do exactly it, leaving `.agent/roadmap.md` untouched unless it directs otherwise. Empty ⇒ run the MODE for the active phase (`.agent/roadmap.md` § Status names it).
+Continue this project (fresh session). Non-empty task below ⇒ it is your sole task: do exactly it, editing `.agent/roadmap.md` only if it directs you to. Empty ⇒ run the MODE for the active phase (`.agent/roadmap.md` § Status names it).
 
 Load `.agent/roadmap.md` (status + task ledger; legend OPEN · SHIPPED · DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED), then `.agent/memory.md` (orientation, decisions, lessons). CLAUDE.md (it imports `AGENTS.md`) is auto-injected. Read only what the step implicates. Navigate via LSP where available, else grep.
 
