@@ -3,9 +3,10 @@
 The happy-path live turn needs a real `codex app-server` + auth and stays a
 user smoke (L-004). What is locked here is the failure surface a refactor can
 silently break: 3-strike session disable, backlog eviction, and the `_read_loop`
-dispatch/EOF branches (the sole non-local input boundary, T6-hardened). All in
-memory — fake stdio over an asyncio.StreamReader, `asyncio.run` per test, no
-subprocess, no mic, no new dependency.
+dispatch/EOF branches plus its oversized-line/broken-transport guard (the sole
+non-local input boundary, T6-hardened). All in memory — fake stdio over an
+asyncio.StreamReader, `asyncio.run` per test, no subprocess, no mic, no new
+dependency.
 """
 
 from __future__ import annotations
@@ -191,6 +192,39 @@ def test_read_loop_dispatch_and_eof():
         assert sentinel["method"] == "error"
         assert t.enabled is False
         assert orphan.done() and isinstance(orphan.exception(), RuntimeError)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("trigger", ["oversized", "broken"])
+def test_read_loop_input_boundary_degrades(trigger):
+    # T6 hardening (the sole non-local input boundary): an oversized line
+    # (ValueError from the 64 KiB readline limit) or a broken transport (OSError)
+    # must route into the SAME post-loop cleanup as EOF -> JA-only, not crash the
+    # reader task. Locks the `except (ValueError, OSError)` guard -- dropping
+    # either type lets the exception escape and strands the degrade. EOF entry is
+    # covered by test_read_loop_dispatch_and_eof.
+    async def scenario():
+        stdout = asyncio.StreamReader()  # default 64 KiB limit
+        if trigger == "oversized":
+            stdout.feed_data(b"x" * (2**16 + 16))  # no newline -> readline() raises ValueError
+        else:
+
+            async def _broken(*_a, **_k):
+                raise OSError("transport closed")
+
+            stdout.readline = _broken  # type: ignore[assignment]
+        t = live_stt.CodexTranslator()
+        t._proc = _FakeProc(stdout)  # type: ignore[assignment]
+        t.enabled = True
+        orphan = asyncio.get_running_loop().create_future()
+        t._pending[1] = orphan  # the shared cleanup must fail it
+
+        await t._read_loop()  # returns (degrades), does not raise
+
+        assert t.enabled is False  # session degraded to JA-only
+        assert orphan.done() and isinstance(orphan.exception(), RuntimeError)
+        assert t._notes.get_nowait()["method"] == "error"  # T8.3 wake sentinel enqueued
 
     asyncio.run(scenario())
 
