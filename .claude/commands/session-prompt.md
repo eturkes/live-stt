@@ -1,4 +1,4 @@
-Continue this project (fresh session). Non-empty task below ⇒ it is your sole task: do exactly it, editing `.agent/roadmap.md` only if it directs you to. Empty ⇒ run the MODE for the active phase (`.agent/roadmap.md` § Status names it).
+Continue this project (fresh session). Non-empty task below ⇒ your sole task: do exactly it, editing `.agent/roadmap.md` only if it directs you to. Empty ⇒ run the MODE for the active phase (`.agent/roadmap.md` § Status names it).
 
 Load `.agent/roadmap.md` (status + task ledger; legend OPEN · SHIPPED · DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED), then `.agent/memory.md` (orientation, decisions, lessons). CLAUDE.md (it imports `AGENTS.md`) is auto-injected. Read only what the step implicates. Navigate via LSP where available, else grep.
 
@@ -20,9 +20,9 @@ WORK-TASK.
 - Do: (1) restate the task + its acceptance in one line; (2) implement, reusing modules, matching surrounding style; (3) GATE — a gated task needs its precondition met; confirm functionally (resolve through the pipeline/tooling), deny-listed inputs off-limits; unmet ⇒ stop and report, so every result traces to real inputs; (4) VERIFY the project's quality gates pass (`.agent/memory.md` § Commands — pytest, pyright, import-smoke); touched scripts exit clean; (5) record durable decisions/lessons in `.agent/memory.md`.
 - Close: record the task's context-usage (`.agent/context.sh`, full `pct used/window`) into its § Shipped line; set the task SHIPPED; commit `<scope> (T<p>.<t>): …`.
 
-PHASE-REVIEW — I launch this with 1M context (ideally the only 1M session): hold it all in-context, not split across subagents.
+PHASE-REVIEW — I launch this with 1M context (ideally the only 1M session): hold it all in-context, undivided.
 - Read every commit of the phase, planning commits included.
-- Adversarially review the phase's whole body — correctness, claim-vs-guarantee gaps, cross-task consistency, conformance to scope/AGENTS.md/memory, token-efficiency, obsolescence — and fix what you find; revise the scope source on a better design (requirements changes reach me first).
+- Adversarially review the phase's whole body — AGENTS.md's review criteria + cross-task consistency, conformance to scope/AGENTS.md/memory, token-efficiency, obsolescence — and fix what you find; revise the scope source on a better design (requirements changes reach me first).
 - Close: note the phase reviewed in § Status, commit `<scope> (T<p> review): …`. The next session plans the next phase.
 
 Commit convention — scoped (`<scope>: …`), trace key in parens: task `(T<p>.<t>)`, plan `(T<p> plan)`, review `(T<p> review)`. Codex-review follow-ups keep the key and add a `Codex-Review: <accepted findings>` trailer. Grep a phase's history: `git log --grep "(T<p>[. ]"`.
