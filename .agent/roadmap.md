@@ -42,7 +42,7 @@ None actionable by an agent. The sole remaining T8 item is the live-mic user smo
 
 ## Rejected (recorded so they are not re-litigated)
 T8 screen:
-- GitHub Actions CI mirroring the local hook — ~zero marginal catch for a single-user/AI-only repo; the one novel hazard (L-009 moved-venv) is absent from CI's fresh-clone env; D-007 already chose the minimal local hook (L-019 productivity theater).
+- GitHub Actions CI mirroring the local hook — ~zero marginal catch for a single-user/AI-only repo; the one novel hazard (moved-dir venv shebangs) is absent from CI's fresh-clone env; D-007 already chose the minimal local hook (L-019 productivity theater).
 - Drain residual codex notes at turn entry — self-contradicting: the next turn's collect loop already drains leaked notes; worst case is one self-healing dropped EN line.
 - Assert `check_models` missing-file branch — tautological change-detector against a hardcoded literal; a regression fails loudly on next manual run.
 - Bound `_notes` queue (DoS) — incoherent threat model: flooding needs the locally-spawned, user-authenticated codex CLI to attack its own client, already trusted.
