@@ -21,8 +21,9 @@ spike/backends/cache/
 models/*
 !models/README.md
 
-# Claude Code per-user overrides (project settings.json IS committed)
+# Claude Code per-user overrides (committed counterparts: .claude/settings.json, CLAUDE.md)
 .claude/settings.local.json
+CLAUDE.local.md
 
 # .serena/ is committed as is via its own .serena/.gitignore; Serena memory disabled globally (D-013)
 
