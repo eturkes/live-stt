@@ -14,7 +14,7 @@ timeout 1500 codex exec --dangerously-bypass-approvals-and-sandbox \
   -o "$RUN.review" < "$RUN.prompt" 2>/dev/null
 ```
 
-Review = `$RUN.review` (also echoed to stdout). Both lost → fall back to rollout JSONL `~/.codex/sessions/<date>/`, but disambiguate by cwd NOT mtime: rollout's 1st line = `session_meta` w/ `payload.cwd` + `payload.session_id` (id also in filename) → newest rollout where `payload.cwd` == `$PWD` → read its last assistant message.
+Review = `$RUN.review` (also echoed to stdout). Both lost → fall back to rollout JSONL under `~/.codex/sessions/<Y>/<M>/<D>/` (date-nested → recurse the tree, not one dir), but disambiguate by cwd NOT mtime: rollout's 1st line = `session_meta` w/ `payload.cwd` + `payload.session_id` (id also in filename) → newest rollout where `payload.cwd` == `$PWD` → read its last assistant message.
 
 Relay the findings, say which you accept or reject and why, and fix the accepted ones before closing.
 
