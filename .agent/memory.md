@@ -36,7 +36,7 @@ sh .agent/context.sh                             # context-usage gauge (needs jq
 
 `rg` skips dotdirs by default, silently missing `.agent/` + `.claude/` (memory, roadmap, commands) — pass `--hidden --glob '!.git/**'` to search them.
 
-**Do-not-read** (deny-listed in `.claude/settings.json`; off-limits via *every* tool, ask rather than probe — D-008): `.git/**`, `.venv/**`, `.env*`, `uv.lock`, `LICENSE`, `spike/backends/cache/**`, `.serena/{cache,memories,project.local.yml}`, `**/{__pycache__,.pytest_cache,.ruff_cache}/**`. A script's *runtime* `open()` of a deny-listed path still works — only the tool boundary blocks (L-016). Keep `.serena/project.yml` `ignored_paths` (`[uv.lock, LICENSE]`) in sync with non-gitignored deny entries (D-013).
+**Do-not-read** (deny-listed in `.claude/settings.json`; off-limits via *every* tool, ask rather than probe — D-008): `.git/**`, `.venv/**`, `.env*`, `uv.lock`, `LICENSE`, `spike/backends/cache/**`, `.serena/{cache,memories,project.local.yml}`, `.tokensave/**` (regenerable code-graph state), `**/{__pycache__,.pytest_cache,.ruff_cache}/**`. A script's *runtime* `open()` of a deny-listed path still works — only the tool boundary blocks (L-016). Keep `.serena/project.yml` `ignored_paths` (`[uv.lock, LICENSE]`) in sync with non-gitignored deny entries (D-013).
 
 **Style:** constants at the top of `live_stt.py` are the config surface; no frameworks/DI/config systems/back-compat shims (0.1.0, one user); comments explain *why*; module-level imports; default to inlining, three similar lines beat a premature abstraction (L-005); only edit code if you can name the failure mode it prevents (L-001).
 

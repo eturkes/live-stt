@@ -1,6 +1,6 @@
 Continue this project (fresh session). Non-empty task below ⇒ your sole task: do exactly it, editing `.agent/roadmap.md` only if it directs you to. Empty ⇒ run the MODE for the active phase (`.agent/roadmap.md` § Status names it).
 
-Load `.agent/roadmap.md` (status + task ledger; legend OPEN · SHIPPED · DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED), then `.agent/memory.md` (orientation, decisions, lessons). CLAUDE.md (it imports `AGENTS.md`) is auto-injected. Read only what the step implicates. Navigate via LSP where available, else grep.
+Load `.agent/roadmap.md` (status + task ledger; legend OPEN · SHIPPED · DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED), then `.agent/memory.md` (orientation, decisions, lessons). CLAUDE.md (it imports `AGENTS.md`) is auto-injected. Read only what the step implicates. Navigate via tokensave or LSP where available, else grep.
 
 MODE ← active-phase state (each mode advances it, then closes on a scoped commit; convention at the end):
 - scope not yet split into tasks → PLANNING

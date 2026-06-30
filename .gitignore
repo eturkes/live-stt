@@ -27,6 +27,9 @@ CLAUDE.local.md
 
 # .serena/ is committed as is via its own .serena/.gitignore; Serena memory disabled globally (D-013)
 
+# Headroom tokensave code-graph state (regenerable via tokensave init/sync; deny-Read'd in .claude/settings.json)
+.tokensave/
+
 # Environment / secrets
 .env
 .env.*
