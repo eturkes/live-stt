@@ -586,9 +586,11 @@ class CodexTranslator:
 async def worker(rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None):
     """Drain mic queue -> feed VAD -> decode completed segments -> emit blocks.
 
-    Decode runs in the default executor so queue draining (and the mic
-    callback's enqueue) never stalls behind a long segment. Sequential decode
-    preserves block order. A None sentinel flushes the VAD and exits.
+    Decode runs in the default executor (the event loop and mic enqueue stay
+    live), but this coroutine awaits it, so queue draining pauses for each
+    decode; the bounded audio_q absorbs the pause and drops past
+    AUDIO_QUEUE_MAX chunks (fix planned: T9.5). Sequential decode preserves
+    block order. A None sentinel flushes the VAD and exits.
 
     `on_segment` is an optional instrumentation hook for the deterministic
     replay/regression path (replay.py). When set, it is called once per popped

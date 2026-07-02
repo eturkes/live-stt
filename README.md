@@ -52,7 +52,7 @@ Startup prints the translation status: `Translation: gpt-5.3-codex-spark via cod
 1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enqueued onto an `asyncio.Queue`.
 2. **Endpoint.** silero VAD splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
 3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`).
-4. **Decode.** sherpa-onnx `OfflineRecognizer` runs in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores, so it never falls behind the mic).
+4. **Decode.** sherpa-onnx `OfflineRecognizer` runs in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores). While a decode is in flight the queue buffers capture (~2 s headroom); overflow shows as `drop=` on the meter.
 5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
 ### JA → EN leg (Codex subscription)
