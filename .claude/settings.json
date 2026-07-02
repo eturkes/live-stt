@@ -3,6 +3,8 @@
     "deny": [
       "Read(./.git/**)",
       "Read(./.venv/**)",
+      "Read(./.venv-host/**)",
+      "Read(./.direnv/**)",
       "Read(./.env*)",
       "Read(./uv.lock)",
       "Read(./LICENSE)",

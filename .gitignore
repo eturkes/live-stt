@@ -1,5 +1,9 @@
-# Virtual environment
+# Virtual environments (per-layer: .venv = container, .venv-host = host; see .envrc)
 .venv/
+.venv-host/
+
+# direnv cache (committed .envrc picks the per-layer uv venv)
+.direnv/
 
 # Python
 __pycache__/

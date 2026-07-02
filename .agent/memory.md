@@ -34,11 +34,13 @@ sh .agent/context.sh                             # context-usage gauge (needs jq
 ```
 `sounddevice` dlopens system PortAudio at import; without it import/pytest/hook fail `OSError: PortAudio library not found` → `sudo apt-get install libportaudio2` (Debian). Confirm native libs by importing the binding, not `ldconfig -p` (L-010).
 
+Per-layer venvs (host = live-mic runtime, lowest latency; container = agent dev/test): committed `.envrc` (direnv, pose-estimation pattern) keys on path prefix — `/run/host/*` → `.venv` (uv default; agent non-interactive Bash needs no export), else `.venv-host` — plus `UV_LINK_MODE=copy` both layers (uv cache crosses filesystems; hardlink warning otherwise). Guards a proven footgun: a host `uv run` re-baked `.venv`'s wheel to `file:///home/eturkes/…` (2026-07-02), container sync flipped it back. Host shells without direnv must export manually. `.venv-host` is gitignored + deny-Read'd + pyright-excluded (it materializes in-container via the shared tree).
+
 `rg` skips dotdirs by default, silently missing `.agent/` + `.claude/` (memory, roadmap, commands) — pass `--hidden --glob '!.git/**'` to search them.
 
 **Do-not-read** (deny-listed in `.claude/settings.json`; off-limits via *every* tool, ask rather than probe — D-008): `.git/**`, `.venv/**`, `.env*`, `uv.lock`, `LICENSE`, `spike/backends/cache/**`, `.serena/{cache,memories,project.local.yml}`, `.tokensave/**` (regenerable code-graph state), `**/{__pycache__,.pytest_cache,.ruff_cache}/**`. A script's *runtime* `open()` of a deny-listed path still works — only the tool boundary blocks (L-016). Keep `.serena/project.yml` `ignored_paths` (`[uv.lock, LICENSE]`) in sync with non-gitignored deny entries (D-013).
 
-**Style:** constants at the top of `live_stt.py` are the config surface; no frameworks/DI/config systems/back-compat shims (0.1.0, one user); comments explain *why*; module-level imports; default to inlining, three similar lines beat a premature abstraction (L-005); only edit code if you can name the failure mode it prevents (L-001).
+**Style:** constants at the top of `live_stt.py` are the config surface; no frameworks/DI/config systems/back-compat shims (0.1.0, one user); comments explain *why*; module-level imports; default to inlining, three similar lines beat a premature abstraction (L-005); only edit code if you can name the failure mode it prevents (L-001); personal single-user tool (user directive 2026-07-02): performance is the bar — skip robustness/flexibility toward unpredictable users/use-cases.
 
 **Known caveats:**
 - Models are a runtime prerequisite — `check_models()` preflights and points at `models/README.md`.
@@ -48,7 +50,7 @@ sh .agent/context.sh                             # context-usage gauge (needs jq
 - Codex auth is external state (`~/.codex/auth.json`, check existence only, never read); plan reports `prolite`, Spark entitled regardless (D-011).
 - `sherpa-onnx` + `sherpa-onnx-core` (carries libonnxruntime) are both pinned — keep both (uv once skipped the declared sub-dep).
 - Benign default-engine STT quirks: ジェミニ→ゼミニ, 文→分 homophone — EN leg translates through them.
-- The EN leg needs `codex` on the PATH of the machine *running* live-stt: the user's host lacks it (first smoke, 2026-07-02) while this container has it — host install + `codex login` are user-only actions; a container login does not carry over.
+- The EN leg needs `codex` on the PATH of the machine *running* live-stt; installs/logins are per-machine, user-only, and a container login does not carry over. Both layers have it now — host installed + EN confirmed live there (second smoke, 2026-07-02).
 
 ## Decisions (D-002 … D-014)
 

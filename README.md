@@ -26,6 +26,10 @@ cat models/README.md     # download model weights (curl commands inside)
 codex login              # optional: enable the EN leg
 ```
 
+### One tree, two environments
+
+The working tree is shared between the host OS, where live-mic sessions run (the mic and the lowest latency live there), and a dev container, where development and testing happen. Python venvs hard-code absolute paths and each side sees the tree at a different one, so each side keeps its own venv: `.venv` in the container (uv's default), `.venv-host` on the host. The committed `.envrc` exports `UV_PROJECT_ENVIRONMENT` to match; allow it once per machine (`direnv allow`). In shells without direnv, export the variable yourself before running `uv`.
+
 ## Usage
 
 ```sh
@@ -94,6 +98,7 @@ live-stt/
 ├── tests/                   # pytest suite (pure functions + replay regression)
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
+├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
 ├── SPIKE_REPORT.md          # historical: REST → Gemini Live decision (superseded)
 ├── SPIKE_REPORT_BACKENDS.md # historical: streaming-STT backend comparison
 ├── spike/                   # historical research notes + gitignored bench WAV corpus

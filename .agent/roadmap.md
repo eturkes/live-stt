@@ -7,7 +7,7 @@ Canonical plan + status. Pick the lowest-numbered OPEN task; restate its accepta
 - Trigger: first live-mic smoke (user, 2026-07-02) — long continuous speech loses content (truncated fragments, e.g. a 2-char segment) + `drop=35`; user cannot judge JA accuracy → the accuracy loop moves agent-side. Accuracy defect reproduced deterministically in planning (§ Open evidence block); drop=35 root-caused from code — its deterministic repro lands with T9.3.
 - Open: T9.1 → T9.7 (§ Open). Deps: 9.4 needs 9.1+9.2 · 9.5 needs 9.3 · 9.6 best-effort off-path · 9.7 last.
 - Architecture stable since the 2026-06-08 re-arch (D-009): mic → resample → silero VAD → RingBuffer pre-pad → sherpa-onnx decode (JA) → `CodexTranslator` (JA→EN via persistent `codex app-server`, D-011) → `emit_line`; degrades to JA-only when codex is absent/failing.
-- Standing debt (user-only, procedure `.agent/memory.md` § Smoke): 2026-07-02 partial pass — devices/capture/device-select/Ctrl+C-shutdown observables OK; latency-feel, EN cadence, `-o`, soak untested; EN leg blocked on the host (no `codex` on host PATH — install+login there, or run in-container). Accuracy + backpressure verification becomes agent-owned via T9.
+- Standing debt (user-only, procedure `.agent/memory.md` § Smoke): 2026-07-02 partial pass — devices/capture/device-select/Ctrl+C-shutdown observables OK; second host run (codex installed there) confirms EN leg live end-to-end (EN 1–3 trailed JA 1–3); latency-feel, `-o`, soak untested. Same run re-confirms the T9 trigger: modest-length sentences still land as truncated fragments. Accuracy + backpressure verification becomes agent-owned via T9.
 
 ## Open (do these; lowest ID first)
 
