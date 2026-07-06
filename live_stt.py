@@ -245,13 +245,22 @@ def load_recognizer(engine: str) -> sherpa_onnx.OfflineRecognizer:
     )
 
 
-def make_vad() -> tuple[sherpa_onnx.VoiceActivityDetector, int]:
-    """Returns (vad, window_size_in_samples)."""
+def make_vad(max_speech_s: float | None = None) -> tuple[sherpa_onnx.VoiceActivityDetector, int]:
+    """Returns (vad, window_size_in_samples).
+
+    max_speech_s overrides silero's soft cap (sherpa default 20 s: past it the
+    threshold rises and the utterance is cut at the next dip). Live + replay
+    callers pass nothing; the stressor build (tests/build_stressor.py) raises it
+    to run a control VAD with the cap effectively off, proving the cap is what
+    cuts a continuous stream mid-stream.
+    """
     cfg = sherpa_onnx.VadModelConfig()
     cfg.silero_vad.model = str(VAD_MODEL)
     cfg.silero_vad.threshold = 0.5
     cfg.silero_vad.min_silence_duration = VAD_MIN_SILENCE_S
     cfg.silero_vad.min_speech_duration = VAD_MIN_SPEECH_S
+    if max_speech_s is not None:
+        cfg.silero_vad.max_speech_duration = max_speech_s
     cfg.sample_rate = SAMPLE_RATE
     window = int(cfg.silero_vad.window_size)
     return sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60), window

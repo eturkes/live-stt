@@ -12,7 +12,10 @@
     "crossfade_ms": 10.0,
     "lead_s": 0.3,
     "tail_s": 0.6,
-    "excess_metric": "stressor D - sum(component baseline D), over concat ref chars"
+    "excess_metric": "stressor D - sum(component baseline D), over concat ref chars",
+    "excess_isolates": "length + segmentation (join is constant-power, no dip)",
+    "continuity_proof": "every join_samples offset inside a VAD segment",
+    "softcap_proof": "cap-on VAD segments > cap-off (control) segments"
   },
   "components": {
     "cv_short": {
@@ -137,7 +140,49 @@
         "cv_xlong"
       ],
       "component_count": 15,
-      "audio_s": 44.722
+      "audio_s": 44.722,
+      "peak": 0.8773,
+      "audio_sha256": "e87f505d21005a7ada8b5349b57a7a29a44e7e235ce67a2270048567257fabe8",
+      "join_samples": [
+        28368,
+        58000,
+        106064,
+        146960,
+        238544,
+        262032,
+        291664,
+        339728,
+        380624,
+        472208,
+        495696,
+        525328,
+        573392,
+        614288
+      ],
+      "validation": {
+        "vad_segs_capon": 2,
+        "vad_segs_capoff": 1,
+        "joins_inside_segments": true,
+        "soft_cap_fired": true,
+        "per_engine": {
+          "k2v2": {
+            "n_seg": 2,
+            "preflush_s": 20.054,
+            "raw_D": 54,
+            "baseline_D": 6,
+            "excess_D": 48,
+            "excess_rate": 0.1702
+          },
+          "parakeet": {
+            "n_seg": 2,
+            "preflush_s": 20.054,
+            "raw_D": 22,
+            "baseline_D": 9,
+            "excess_D": 13,
+            "excess_rate": 0.0461
+          }
+        }
+      }
     },
     "stress_med": {
       "ja_ref": "空が青いです。. この料理は家庭で作れます。. わたしは松井さんが書いた作文を読みました。. 大昔のフィリピンには、豊かな土地があった。. 森永のおいしい牛乳は濃い青色に牛乳瓶をあしらったデザインのパック牛乳である. 空が青いです。. この料理は家庭で作れます。. わたしは松井さんが書いた作文を読みました。.",
@@ -152,7 +197,42 @@
         "cv_long"
       ],
       "component_count": 8,
-      "audio_s": 21.838
+      "audio_s": 21.838,
+      "peak": 0.8773,
+      "audio_sha256": "e0d96e30d162153f7098956833f4afe4f0fa3f447accb22c7a8138d09ba08c1e",
+      "join_samples": [
+        28368,
+        58000,
+        106064,
+        146960,
+        238544,
+        262032,
+        291664
+      ],
+      "validation": {
+        "vad_segs_capon": 2,
+        "vad_segs_capoff": 1,
+        "joins_inside_segments": true,
+        "soft_cap_fired": true,
+        "per_engine": {
+          "k2v2": {
+            "n_seg": 2,
+            "preflush_s": 20.054,
+            "raw_D": 41,
+            "baseline_D": 4,
+            "excess_D": 37,
+            "excess_rate": 0.2803
+          },
+          "parakeet": {
+            "n_seg": 2,
+            "preflush_s": 20.054,
+            "raw_D": 15,
+            "baseline_D": 5,
+            "excess_D": 10,
+            "excess_rate": 0.0758
+          }
+        }
+      }
     }
   }
 }
