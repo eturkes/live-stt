@@ -4,11 +4,11 @@ Prompt: focus below non-empty ⇒ review exactly that; empty ⇒ adversarially r
 
 **Parallel-safe: one run = one tag.** ≥1 `/codex-review` may be live across unrelated projects → give each run its own path — a fixed one like `/tmp/codex-review-prompt.txt` gets clobbered by parallel runs → you track the wrong codex thread. `RUN` = unique path under session scratchpad (`codex-review-<cwd-basename>-<short random>`); this run's prompt = `$RUN.prompt`, review = `$RUN.review`.
 
-Deliver the prompt via stdin from a file: Write it to `$RUN.prompt`, then redirect into `codex exec`. (The inline-argument form `codex exec "…"` and the `"$(cat <<'EOF'…)"` form both fail — prompts are backtick-heavy: inline backticks run as command substitution and the nested `cat` is denied as a file-dump, so the argument empties, `codex exec` silently falls back to stdin and, backgrounded or redirected, blocks forever at 0 CPU until killed. Stdin-from-file sidesteps shell quoting and preserves backticks verbatim.) Model = `~/.codex/config.toml` (always your latest); effort forced `xhigh`; `-o` → final review to `$RUN.review`; `timeout` guards an upstream stall:
+Deliver the prompt via stdin from a file: Write it to `$RUN.prompt`, then redirect into `codex exec`. (Prompts are backtick-heavy → the inline-argument form `codex exec "…"` runs backticks as command substitution, and an argument that ends up empty makes `codex exec` silently fall back to stdin — backgrounded or redirected, it then blocks forever at 0 CPU until killed. A `"$(cat <<'EOF'…)"` argument passes the perm layer yet embeds the whole prompt in the command text → transcript bloat + terminator-collision risk. Stdin-from-file sidesteps shell quoting and preserves backticks verbatim.) Model = `~/.codex/config.toml` (always your latest); effort forced `xhigh`; `-o` → final review to `$RUN.review`; `timeout` guards an upstream stall:
 
 ```bash
 RUN="<session-scratchpad>/codex-review-myproj-7f3a"   # unique/run → parallel-safe
-# $RUN.prompt already written via the Write tool — heredoc/`cat` fail here:
+# $RUN.prompt already written via the Write tool (shell heredocs risk backtick/terminator mangling):
 timeout 1500 codex exec --dangerously-bypass-approvals-and-sandbox \
   -c model_reasoning_effort="xhigh" \
   -o "$RUN.review" < "$RUN.prompt" 2>/dev/null
