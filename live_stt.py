@@ -591,7 +591,7 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
     Decode runs in the default executor (the event loop and mic enqueue stay
     live), but this coroutine awaits it, so queue draining pauses for each
     decode; the bounded audio_q absorbs the pause and drops past
-    AUDIO_QUEUE_MAX chunks (fix planned: T9.5). Sequential decode preserves
+    AUDIO_QUEUE_MAX chunks (fix planned: M9.5). Sequential decode preserves
     block order. A None sentinel flushes the VAD and exits.
 
     `on_segment` is an optional instrumentation hook for the deterministic

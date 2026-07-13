@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the continuous-speech stressor corpus (T9.1). Deterministic, no network.
+"""Build the continuous-speech stressor corpus (M9.1). Deterministic, no network.
 
 Long pause-less Japanese speech is where the offline decoder deletes content
 wholesale (L-023, D-010) and silero's max_speech_duration soft cap (20 s default,
@@ -303,7 +303,7 @@ def main() -> None:
 
 
 def validate(stressors: dict[str, dict], baselines: dict[str, dict]) -> tuple[bool, dict]:
-    """Prove the three T9.1 acceptance signals; return (passed, per-stressor report).
+    """Prove the three M9.1 acceptance signals; return (passed, per-stressor report).
 
     continuity  -- every crossfade join offset lands inside a VAD speech segment.
     soft cap    -- cap-on VAD yields more segments than the cap-off control, and

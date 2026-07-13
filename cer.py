@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Character-level alignment for JA STT evaluation: normalize + Levenshtein S/D/I.
 
-Shared eval primitive (sibling to replay.py). tests/build_stressor.py (T9.1)
+Shared eval primitive (sibling to replay.py). tests/build_stressor.py (M9.1)
 uses it to score excess deletion; the CER harness + its fixed-vector unit tests
-(T9.2) build on top. Pure stdlib, no third-party deps.
+(M9.2) build on top. Pure stdlib, no third-party deps.
 
 normalize(): NFKC -> casefold -> drop Unicode categories P/S/Z/M (punctuation,
 symbols, separators incl. whitespace, combining marks). One aggressive recipe,
