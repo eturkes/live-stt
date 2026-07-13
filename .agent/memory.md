@@ -96,8 +96,8 @@ The live paths a sandboxed agent can't run: mic capture, device select, latency 
 
 **Live-mic pass (~5 min):**
 1. **Devices** — `uv run live-stt --list-devices` lists the `sd.query_devices()` table and exits. Pass: your mic shows with input channels.
-2. **Capture + meter** — `uv run live-stt`, speak. Pass: the bar rises with voice / falls in silence; no `drop=` and `q=` absent (brief `q=1–2` during a decode is fine; a standing `q=N` or any `drop=N` fails — audio_q drained).
-3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; meter reacts as in (2).
+2. **Capture + backlog** — `uv run live-stt`, speak. Pass: `JA n:` lines print (capture + decode live); no `drop=` and `q=` absent (brief `q=1–2` during a decode is fine; a standing `q=N` or any `drop=N` fails — audio_q drained).
+3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; capture works as in (2).
 4. **Latency + endpointing** — one sentence, then stop. Pass: `JA n:` prints ~0.6 s after you stop (0.5 s `VAD_MIN_SILENCE_S` + ~0.1 s decode, D-010); a brief mid-sentence pause does not split it.
 5. **Translation cadence** — Codex up. Pass: each `EN n:` trails its `JA n:` by ~1 s, shared `n` keeps pairs matched; `--no-translate` suppresses every EN line.
 6. **Ctrl+C mid-utterance** — start speaking, Ctrl+C while still talking. Pass: the in-progress `JA n:` still prints (worker flushes the VAD in `finally`), its `EN n:` still lands if Codex is up (translator drains last), then `Stopped.` with no hang (non-blocking shutdown sentinel, T8.1).

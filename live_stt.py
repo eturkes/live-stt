@@ -13,7 +13,6 @@ import argparse
 import asyncio
 import json
 import logging
-import math
 import signal
 import sys
 import time
@@ -25,9 +24,7 @@ import sherpa_onnx
 import sounddevice as sd
 
 SAMPLE_RATE = 16000  # VAD + recognizer rate; mic native rate is resampled to this
-METER_WIDTH = 40
 METER_INTERVAL = 0.1
-METER_FULL_SCALE_RMS = 0.05  # RMS that fills the bar
 AUDIO_QUEUE_MAX = 100
 NUM_THREADS = 4  # onnxruntime intra-op threads (8-core box; decode RTF ~0.05)
 
@@ -88,10 +85,6 @@ _CODEX_CONFIG = {
     "features.apps": "false",
 }
 
-# Prebuilt meter bars indexed by fill level — avoids two string allocations per tick.
-_METER_BARS = tuple("#" * i + " " * (METER_WIDTH - i) for i in range(METER_WIDTH + 1))
-# Constant-folded scale factor: rms * _METER_SCALE truncates to bar level.
-_METER_SCALE = METER_WIDTH / METER_FULL_SCALE_RMS
 # ANSI: carriage-return + erase-line. Lets block output overwrite the live meter.
 _LINE_CLEAR = "\r\x1b[2K"
 
@@ -293,9 +286,6 @@ def check_models(engine: str) -> str | None:
 
 class State:
     def __init__(self):
-        # Mean-square only; sqrt is deferred to the meter render path so the audio
-        # thread doesn't pay for it 10-200x per second.
-        self.latest_ms = 0.0
         self.dropped = 0
         self.stopping = False
         self.stop_event: asyncio.Event = None  # type: ignore[assignment]
@@ -649,11 +639,10 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
 
 
 async def meter(state, audio_q, translator=None):
+    # Self-refreshing status line: backlog/drop counters only (each shown when
+    # nonzero). _LINE_CLEAR erases the whole line per tick so a shrinking width
+    # (e.g. q= clearing) leaves no residue, and block/log output overwrites it.
     while not state.stopping:
-        rms = math.sqrt(state.latest_ms)
-        level = int(rms * _METER_SCALE)
-        if level > METER_WIDTH:
-            level = METER_WIDTH
         qsize = audio_q.qsize()
         pending = f" q={qsize}" if qsize > 0 else ""
         dropped = f" drop={state.dropped}" if state.dropped else ""
@@ -663,7 +652,7 @@ async def meter(state, audio_q, translator=None):
             if translator and translator.dropped_translations
             else ""
         )
-        sys.stdout.write(f"\r  [{_METER_BARS[level]}] {rms:.4f}{pending}{dropped}{tdrop}")
+        sys.stdout.write(f"{_LINE_CLEAR} {pending}{dropped}{tdrop}")
         sys.stdout.flush()
         await asyncio.sleep(METER_INTERVAL)
 
@@ -704,12 +693,8 @@ async def run_session(args):
     def audio_callback(indata, frames, time_info, status):
         if status:
             logger.warning("audio: %s", status)
-        # sounddevice always passes a 2-D (frames, channels) array for InputStream;
-        # frames is the same as len(mono), so use it directly.
+        # sounddevice always passes a 2-D (frames, channels) array for InputStream.
         mono = indata[:, 0]
-        # Dot product avoids the (mono**2) temporary allocation; sqrt is deferred
-        # to the meter render path so the audio thread doesn't pay for it.
-        state.latest_ms = float(mono.dot(mono)) / frames
         # Copy: resample() returns a shared/reused (or strided-view) buffer, and
         # the queue defers consumption past the next callback.
         pcm = resample(mono, native_rate, SAMPLE_RATE).copy()

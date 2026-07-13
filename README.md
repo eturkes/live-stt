@@ -72,17 +72,16 @@ Degradation, in order:
 
 ### Diagnostics
 
-Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the level-meter line in place; with stderr redirected (`live-stt 2> errors.log`) the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
+Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the meter line in place; with stderr redirected (`live-stt 2> errors.log`) the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
 
 ### Display
 
 ```
 JA 1: こんにちは、今日はいい天気ですね。
 EN 1: Hello, the weather is nice today.
-  [#########                               ] 0.0082 q=1
+  q=1
 ```
 
-- `#` bars: current RMS level
 - `q=N`: pending audio blocks (appears when non-zero)
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
 
