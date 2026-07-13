@@ -108,9 +108,6 @@ def test_audio_callback_pipeline_end_to_end():
     for native_rate, n_frames in [(48000, 960), (44100, 882), (32000, 640)]:
         indata = rng.standard_normal((n_frames, 1)).astype(np.float32) * 0.1
         mono = indata[:, 0]
-        # Mirror the audio_callback RMS step.
-        ms = float(mono.dot(mono)) / len(mono)
-        assert ms >= 0.0
         pcm = resample(mono, native_rate, 16000).copy()
         expected_samples = int(n_frames * 16000 / native_rate)
         assert len(pcm) == expected_samples
@@ -216,6 +213,17 @@ def test_emit_line_no_file_no_crash(capsys):
     emit_line("JA", 1, "テスト", None)
     captured = capsys.readouterr()
     assert "JA 1: テスト" in captured.out
+
+
+def test_emit_line_line_clear_gated_on_stdout_tty(monkeypatch, capsys):
+    # The \r\x1b[2K status-line clear must reach stdout only on a TTY, so a
+    # redirected stdout stays ANSI-clean (symmetric with _StderrFormatter).
+    monkeypatch.setattr("live_stt._STDOUT_TTY", False)
+    emit_line("JA", 1, "x", None)
+    assert "\x1b[2K" not in capsys.readouterr().out
+    monkeypatch.setattr("live_stt._STDOUT_TTY", True)
+    emit_line("JA", 2, "y", None)
+    assert "\x1b[2K" in capsys.readouterr().out
 
 
 # --- shutdown worker-stop sentinel (T8.1, run_session finally) ---

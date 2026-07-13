@@ -71,7 +71,7 @@ T7 screen: merge `submit`/`submit_sentinel` (deliberate drop-vs-must-land split)
 - T-BACKENDS-001 — Backends spike, superseded by the T4 series (user ruled out metered API keys, removing Deepgram + OpenAI Realtime candidates). `SPIKE_REPORT_BACKENDS.md` stands as history; its "populate keys" recommendation is void.
 
 ## Out of scope (do not redebate)
-Config files / YAML / TOML for tunables (constants at the top of `live_stt.py` are the config surface) · multi-mic mixing · speaker diarization · web UI · auth / multi-user · metrics dashboards beyond the level meter · package split / multi-module layout (`.agent/memory.md` D-002).
+Config files / YAML / TOML for tunables (constants at the top of `live_stt.py` are the config surface) · multi-mic mixing · speaker diarization · web UI · auth / multi-user · metrics dashboards beyond the backlog/drop status counters · package split / multi-module layout (`.agent/memory.md` D-002).
 
 ## Decisions pending from user
 None. (Last resolved 2026-05-18: language scope = Japanese-only; pre-commit hook = yes.)

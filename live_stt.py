@@ -85,15 +85,17 @@ _CODEX_CONFIG = {
     "features.apps": "false",
 }
 
-# ANSI: carriage-return + erase-line. Lets block output overwrite the live meter.
+# ANSI: carriage-return + erase-line. Lets block output overwrite the status line.
 _LINE_CLEAR = "\r\x1b[2K"
+# Gate stdout's status-line rewrites on a TTY so redirected stdout stays ANSI-clean.
+_STDOUT_TTY = sys.stdout.isatty()
 
 logger = logging.getLogger("live_stt")
 
 
 class _StderrFormatter(logging.Formatter):
     # Prepend _LINE_CLEAR only when stderr is a TTY so log records erase the live
-    # level meter (stdout) in place. When stderr is redirected to a file, the prefix
+    # status line (stdout) in place. When stderr is redirected to a file, the prefix
     # is omitted so the log stays free of ANSI escapes.
     def __init__(self):
         super().__init__(fmt="[%(asctime)s] %(levelname)s %(message)s")
@@ -304,7 +306,8 @@ def emit_line(tag, seq, text, output_file):
     unambiguous. File entries are one self-describing line per event.
     """
     line = f"{tag} {seq}: {text}"
-    sys.stdout.write(_LINE_CLEAR)
+    if _STDOUT_TTY:
+        sys.stdout.write(_LINE_CLEAR)
     print(f"  {line}")
     if output_file:
         ts = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -642,6 +645,10 @@ async def meter(state, audio_q, translator=None):
     # Self-refreshing status line: backlog/drop counters only (each shown when
     # nonzero). _LINE_CLEAR erases the whole line per tick so a shrinking width
     # (e.g. q= clearing) leaves no residue, and block/log output overwrites it.
+    # Off a TTY the carriage-return rewrites would corrupt a redirected stream, so
+    # stay silent there (symmetric with _StderrFormatter).
+    if not _STDOUT_TTY:
+        return
     while not state.stopping:
         qsize = audio_q.qsize()
         pending = f" q={qsize}" if qsize > 0 else ""

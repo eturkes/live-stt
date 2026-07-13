@@ -84,6 +84,7 @@ EN 1: Hello, the weather is nice today.
 
 - `q=N`: pending audio blocks (appears when non-zero)
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
+- `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
 
 Numbered lines tie JA/EN pairs together even when the next utterance's JA prints before the previous EN arrives.
 
