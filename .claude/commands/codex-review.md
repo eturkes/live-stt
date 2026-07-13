@@ -1,16 +1,15 @@
 Run a non-interactive Codex review of this session and act on its findings.
 
-Prompt: focus below non-empty ⇒ review exactly that; empty ⇒ adversarially review this session's work per AGENTS.md's review criteria.
+Prompt: focus below non-empty ⇒ review exactly that; empty ⇒ adversarially review this session's work per AGENTS.md's review criteria. Either way, AGENTS.md sets the review bar → add only what it omits, positively framed: output = the review only → the caller applies accepted fixes (verify freely via reads + non-destructive checks — tests, build, `git diff`); each finding → severity, `file:line`, flaw, impact, concrete fix.
 
 **Parallel-safe: one run = one tag.** ≥1 `/codex-review` may be live across unrelated projects → give each run its own path — a fixed one like `/tmp/codex-review-prompt.txt` gets clobbered by parallel runs → you track the wrong codex thread. `RUN` = unique path under session scratchpad (`codex-review-<cwd-basename>-<short random>`); this run's prompt = `$RUN.prompt`, review = `$RUN.review`.
 
-Deliver the prompt via stdin from a file: Write it to `$RUN.prompt`, then redirect into `codex exec`. (Prompts are backtick-heavy → the inline-argument form `codex exec "…"` runs backticks as command substitution, and an argument that ends up empty makes `codex exec` silently fall back to stdin — backgrounded or redirected, it then blocks forever at 0 CPU until killed. A `"$(cat <<'EOF'…)"` argument passes the perm layer yet embeds the whole prompt in the command text → transcript bloat + terminator-collision risk. Stdin-from-file sidesteps shell quoting and preserves backticks verbatim.) Model = `~/.codex/config.toml` (always your latest); effort forced `max`; `-o` → final review to `$RUN.review`. NO `timeout` wrapper: review length scales with scope, a guard kill wastes the whole max-effort run, and a second clock invites wait-vs-guard misreckoning (bit once) — detect stalls, never guess them:
+Deliver the prompt via stdin from a file: Write it to `$RUN.prompt`, then redirect into `codex exec`. (Prompts are backtick-heavy → the inline-argument form `codex exec "…"` runs backticks as command substitution, and an argument that ends up empty makes `codex exec` silently fall back to stdin — backgrounded or redirected, it then blocks forever at 0 CPU until killed. A `"$(cat <<'EOF'…)"` argument passes the perm layer yet embeds the whole prompt in the command text → transcript bloat + terminator-collision risk. Stdin-from-file sidesteps shell quoting and preserves backticks verbatim.) `-o` → final review to `$RUN.review`. Let `codex exec` run to completion — review length scales with scope, a `timeout` guard's kill wastes the whole run, and a second clock invites wait-vs-guard misreckoning (bit once); detect stalls from the probe below:
 
 ```bash
 RUN="<session-scratchpad>/codex-review-myproj-7f3a"   # unique/run → parallel-safe
 # $RUN.prompt already written via the Write tool (shell heredocs risk backtick/terminator mangling):
 codex exec --dangerously-bypass-approvals-and-sandbox \
-  -c model_reasoning_effort="max" \
   -o "$RUN.review" < "$RUN.prompt" 2>/dev/null
 ```
 
