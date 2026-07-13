@@ -29,6 +29,9 @@ models/*
 .claude/settings.local.json
 CLAUDE.local.md
 
+# Headroom live-wrap marker (ephemeral: pid/port/env key; written per live session, removed on exit)
+.claude/.headroom_wrap_marker.json
+
 # .serena/ is committed as is via its own .serena/.gitignore; Serena memory disabled globally (D-013)
 
 # Headroom tokensave code-graph state (regenerable via tokensave init/sync; deny-Read'd in .claude/settings.json)
