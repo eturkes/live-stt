@@ -21,7 +21,6 @@ from pathlib import Path
 
 import numpy as np
 import sherpa_onnx
-import sounddevice as sd
 
 SAMPLE_RATE = 16000  # VAD + recognizer rate; mic native rate is resampled to this
 METER_INTERVAL = 0.1
@@ -845,6 +844,10 @@ async def meter(state, audio_q, translator=None):
 
 
 async def run_session(args):
+    # PortAudio probes host audio devices at import. Keep that side effect out of
+    # replay/evaluator processes, which import this module but never touch a mic.
+    import sounddevice as sd
+
     print(f"Loading {args.engine} model...")
     rec = load_recognizer(args.engine)
     vad, window = make_vad()
@@ -992,6 +995,8 @@ def main():
     args = parser.parse_args()
 
     if args.list_devices:
+        import sounddevice as sd
+
         print(sd.query_devices())
         return
 

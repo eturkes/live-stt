@@ -15,6 +15,11 @@ models/
     └── tokens.txt
 ```
 
+Runtime compatibility: these model layouts are supported with `sherpa-onnx` +
+`sherpa-onnx-core` ≥ 1.13.4. That declared floor is the compatibility/security
+bound; `uv.lock` is the exact evaluator-qualified runtime and currently resolves
+both packages to 1.13.4. Re-run the evaluator gate before qualifying a newer lock.
+
 Download (engine selection rationale: `.agent/memory.md` D-010):
 
 ```sh

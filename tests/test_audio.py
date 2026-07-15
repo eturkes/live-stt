@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import subprocess
+import sys
 
 import numpy as np
 
@@ -21,6 +23,17 @@ from live_stt import (
     resample,
     submit_audio_sentinel,
 )
+
+
+def test_module_import_keeps_audio_backend_lazy():
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import live_stt; assert 'sounddevice' not in sys.modules",
+        ],
+        check=True,
+    )
 
 
 def test_resample_identity():

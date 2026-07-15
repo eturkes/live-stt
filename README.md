@@ -9,7 +9,9 @@ Each short utterance typically prints as a numbered `JA n:` line about 0.1 s aft
 
 ## Requirements
 
-- Python ≥ 3.11 (developed on 3.14)
+- Python ≥ 3.11. The supported sherpa runtime floor is `sherpa-onnx` +
+  `sherpa-onnx-core` ≥ 1.13.4; `uv sync --locked` reproduces the exact
+  evaluator-qualified resolution (currently CPython 3.14.5 + sherpa 1.13.4).
 - Working microphone
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
@@ -21,7 +23,7 @@ Each short utterance typically prints as a numbered `JA n:` line about 0.1 s aft
 ## Setup
 
 ```sh
-uv sync                  # install Python deps
+uv sync --locked         # install the exact evaluator-qualified Python deps
 cat models/README.md     # download model weights (curl commands inside)
 codex login              # optional: enable the EN leg
 ```
