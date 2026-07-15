@@ -1,0 +1,1335 @@
+#!/usr/bin/env python3
+"""Model-neutral M10 ASR evaluator + expanded current-control baseline.
+
+The default command validates the pinned corpus, evaluates both shipped controls
+in separate child processes, then atomically publishes:
+
+- ignored, content-addressed per-clip JSONL under ``spike/backends/cache/``;
+- ``tests/model_baseline.json`` with deterministic aggregates/fingerprints;
+- a structurally separate measurements block (cold load, RSS, repeated warm RTF).
+
+``ASRAdapter.decode()`` is the tournament contract. The shipped-controls adapter
+feeds sherpa OfflineRecognizer through replay.py -> the production worker. Later
+direct-online and direct-OpenVINO adapters can return the same content/completion
+record without pretending to share the buffered-offline execution path.
+
+Run from the repository root after M10.2's corpus build:
+
+    UV_PROJECT_ENVIRONMENT=.venv uv run --no-sync python tests/eval_models.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.metadata
+import inspect
+import json
+import os
+import platform
+import resource
+import shutil
+import subprocess
+import sys
+import time
+import wave
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from fractions import Fraction
+from pathlib import Path, PurePosixPath
+from statistics import median
+from typing import Any, Protocol
+
+ROOT = Path(__file__).resolve().parent.parent
+TESTS = ROOT / "tests"
+sys.path[:0] = [str(TESTS), str(ROOT)]
+
+from fetch_real_clips import (  # noqa: E402
+    file_sha256,
+    validate_cached_index,
+    write_atomic,
+)
+
+import replay  # noqa: E402
+from cer import align, normalize  # noqa: E402
+from live_stt import (  # noqa: E402
+    DECODE_CHUNK_OVERLAP_S,
+    DECODE_CHUNK_S,
+    DECODE_SPLIT_RMS_WINDOW_S,
+    DECODE_SPLIT_SEARCH_S,
+    DECODE_SPLIT_TRIGGER_S,
+    ENGINE_DIRS,
+    NUM_THREADS,
+    RING_SECONDS,
+    SAMPLE_RATE,
+    VAD_MAX_SPEECH_S,
+    VAD_MIN_SILENCE_S,
+    VAD_MIN_SPEECH_S,
+    VAD_MODEL,
+    VAD_PRE_PAD_S,
+    check_models,
+    load_recognizer,
+)
+
+SCHEMA_VERSION = 1
+BASELINE = TESTS / "model_baseline.json"
+SHORT_CORPUS = TESTS / "short_corpus.json"
+REPLAY_GOLDENS = TESTS / "replay_goldens.json"
+CER_BASELINE = TESTS / "cer_baseline.json"
+STRESSORS = TESTS / "stressor_clips.json"
+LONG_FORM = TESTS / "long_form.json"
+CACHE = ROOT / "spike" / "backends" / "cache"
+DETAILS_DIR = CACHE / "model_eval-v1"
+
+CONTROL_ENGINES = ("k2v2", "parakeet")
+STRESSOR_IDS = ("stress_long", "stress_med")
+LONG_FORM_ID = "gongitsune_01"
+TAIL_EXEMPLARS = 10
+TIMING_RUNS = 3
+
+# Frozen before expanded-control scores. A candidate's content result and each
+# execution path's resource result are evaluated independently (M10 plan gate).
+DISPLACEMENT_GATES = {
+    "comparator": {
+        "metric": "common_voice_8.micro.cer",
+        "selection": "minimum",
+        "tie_break": "engine_id_ascending",
+    },
+    "content": {
+        "common_voice_relative_cer_improvement_min": 0.10,
+        "fleurs_micro_cer_regression_max_abs": 0.01,
+        "long_form_cer_regression_max_abs": 0.01,
+        "require_complete_run": True,
+        "require_nonempty_run": True,
+        "stressor_cer_max": 0.15,
+        "stressor_excess_deletion_rate_max": 0.04,
+    },
+    "resource": {
+        "cpu_miss_disqualifies_content": False,
+        "production_eligible_paths_min": 1,
+        "post_warm_rtf_max": 0.20,
+    },
+}
+
+METRIC_CONTRACT = {
+    "alignment": "cer.normalize + diagonal-preferred Levenshtein S/D/I",
+    "duration_buckets_s": ["[0,5)", "[5,10)", "[10,20)", "[20,+inf)"],
+    "empty_hypothesis": "complete row; scored as D=N and retained by case ID",
+    "macro": "arithmetic mean of per-row S/D/I/CER rates; repeated recordings remain rows",
+    "micro": "sum(S/D/I) over sum(N)",
+    "worst_tail": "top 10 rows/source by exact CER descending, then case ID ascending",
+}
+
+MODEL_FILES = {
+    "k2v2": (
+        "encoder-epoch-99-avg-1.int8.onnx",
+        "decoder-epoch-99-avg-1.onnx",
+        "joiner-epoch-99-avg-1.onnx",
+        "tokens.txt",
+    ),
+    "parakeet": ("model.int8.onnx", "tokens.txt"),
+}
+
+
+@dataclass(frozen=True)
+class EvalCase:
+    case_id: str
+    source: str
+    wav: Path
+    reference: str
+    duration_samples: int
+    gender: str | None = None
+    duration_bucket: str | None = None
+
+
+@dataclass(frozen=True)
+class Transcript:
+    hypothesis: str
+    segments: tuple[dict, ...]
+    accepted_samples: int
+    eof_count: int
+    complete: bool
+
+
+@dataclass(frozen=True)
+class DecodeObservation:
+    """Content/completion is deterministic; elapsed fields are measurements."""
+
+    content: Transcript
+    decode_seconds: float
+    wall_seconds: float
+
+
+class ASRAdapter(Protocol):
+    adapter_id: str
+
+    def identity(self) -> dict: ...
+
+    def decode(self, case: EvalCase) -> DecodeObservation: ...
+
+
+class SherpaOfflineAdapter:
+    """Current-control adapter: production VAD/ring/chunker + sherpa offline ASR."""
+
+    def __init__(self, engine: str):
+        self.adapter_id = engine
+        self.recognizer: Any = load_recognizer(engine)
+        model_config = self.recognizer.config.model_config
+        if model_config.provider != "cpu":
+            raise RuntimeError(
+                f"{engine}: expected sherpa CPU provider, got {model_config.provider!r}"
+            )
+        if model_config.num_threads != NUM_THREADS:
+            raise RuntimeError(
+                f"{engine}: recognizer threads {model_config.num_threads} != {NUM_THREADS}"
+            )
+
+    def identity(self) -> dict:
+        cfg = self.recognizer.config
+        model = cfg.model_config
+        feat = cfg.feat_config
+        return {
+            "adapter": "sherpa_offline_production_worker",
+            "adapter_id": self.adapter_id,
+            "architecture": "buffered_offline_vad",
+            "actual_execution_device": "CPU",
+            "execution_device_evidence": {
+                "field": "OfflineRecognizer.config.model_config.provider",
+                "value": model.provider,
+            },
+            "feature_config": {
+                "dither": feat.dither,
+                "feature_dim": feat.feature_dim,
+                "normalize_samples": feat.normalize_samples,
+                "sample_rate_hz": feat.sampling_rate,
+                "snip_edges": feat.snip_edges,
+            },
+            "model": model_fingerprint(self.adapter_id),
+            "recognizer_config": {
+                "decoding_method": cfg.decoding_method,
+                "model_type": model.model_type,
+                "num_threads": model.num_threads,
+                "provider": model.provider,
+            },
+        }
+
+    def decode(self, case: EvalCase) -> DecodeObservation:
+        started = time.perf_counter()
+        report = replay.replay_recognizer(case.wav, self.recognizer, self.adapter_id)
+        wall_seconds = time.perf_counter() - started
+        observed_samples = round(report["audio_s"] * SAMPLE_RATE)
+        if observed_samples != case.duration_samples:
+            raise RuntimeError(
+                f"{case.case_id}: audio samples {observed_samples} != {case.duration_samples}"
+            )
+        segments = tuple(
+            {
+                "n": row["n"],
+                "seg_len": row["seg_len"],
+                "start": row["start"],
+                "text": row["text"],
+            }
+            for row in report["segments"]
+        )
+        return DecodeObservation(
+            content=Transcript(
+                hypothesis="".join(row["text"] for row in segments),
+                segments=segments,
+                accepted_samples=observed_samples,
+                eof_count=1,
+                complete=True,
+            ),
+            decode_seconds=report["total_decode_s"],
+            wall_seconds=wall_seconds,
+        )
+
+
+def _json_bytes(value: object, *, compact: bool = False) -> bytes:
+    return (
+        json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            indent=None if compact else 2,
+            separators=(",", ":") if compact else None,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _relative(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
+
+
+def _duration_bucket(samples: int) -> str:
+    if samples < 5 * SAMPLE_RATE:
+        return "0-5"
+    if samples < 10 * SAMPLE_RATE:
+        return "5-10"
+    if samples < 20 * SAMPLE_RATE:
+        return "10-20"
+    return "20+"
+
+
+def _wav_samples(path: Path) -> int:
+    try:
+        with wave.open(str(path), "rb") as source:
+            if (
+                source.getnchannels() != 1
+                or source.getsampwidth() != 2
+                or source.getframerate() != SAMPLE_RATE
+                or source.getcomptype() != "NONE"
+            ):
+                raise RuntimeError(f"non-canonical evaluator WAV: {_relative(path)}")
+            return source.getnframes()
+    except (EOFError, OSError, wave.Error) as exc:
+        raise RuntimeError(f"cannot read evaluator WAV {_relative(path)}: {exc}") from exc
+
+
+def _safe_corpus_wav(corpus_dir: Path, relative: str) -> Path:
+    path = PurePosixPath(relative)
+    if path.is_absolute() or ".." in path.parts or path.suffix != ".wav":
+        raise RuntimeError(f"unsafe corpus WAV path: {relative!r}")
+    wav = corpus_dir.joinpath(*path.parts)
+    if not wav.is_file():
+        raise RuntimeError(f"missing corpus WAV: {relative}")
+    return wav
+
+
+def load_corpus_cases(*, verify_pcm: bool) -> tuple[dict, list[EvalCase]]:
+    manifest = _load_json(SHORT_CORPUS)
+    cache_meta = manifest["cache"]
+    corpus_dir = ROOT / cache_meta["directory"]
+    index = corpus_dir / cache_meta["index"]
+    if not index.is_file() or file_sha256(index) != cache_meta["index_sha256"]:
+        raise RuntimeError("short-corpus index fingerprint mismatch")
+    if verify_pcm:
+        entries = validate_cached_index(corpus_dir, cache_meta["index_sha256"])
+    else:
+        entries = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+    if len(entries) != cache_meta["rows"]:
+        raise RuntimeError(f"short-corpus rows {len(entries)} != {cache_meta['rows']}")
+
+    cases = []
+    seen: set[str] = set()
+    for entry in entries:
+        case_id = entry["corpus_id"]
+        if case_id in seen:
+            raise RuntimeError(f"duplicate corpus ID: {case_id}")
+        seen.add(case_id)
+        duration_samples = entry["duration_samples"]
+        if entry["normalized_reference"] != normalize(entry["reference"]):
+            raise RuntimeError(f"normalized reference drift: {case_id}")
+        cases.append(
+            EvalCase(
+                case_id=case_id,
+                source=entry["source"],
+                wav=_safe_corpus_wav(corpus_dir, entry["wav"]),
+                reference=entry["reference"],
+                duration_samples=duration_samples,
+                gender=entry.get("gender"),
+                duration_bucket=_duration_bucket(duration_samples),
+            )
+        )
+    return manifest, cases
+
+
+def compatibility_cases() -> tuple[dict[str, list[EvalCase]], dict]:
+    goldens = _load_json(REPLAY_GOLDENS)
+    cer_baseline = _load_json(CER_BASELINE)
+    stressors = _load_json(STRESSORS)
+    long_form = _load_json(LONG_FORM)
+
+    short = []
+    first_engine = CONTROL_ENGINES[0]
+    if set(goldens) != set(CONTROL_ENGINES):
+        raise RuntimeError("replay-golden controls drifted")
+    for case_id, meta in goldens[first_engine].items():
+        if any(goldens[engine][case_id]["ja_ref"] != meta["ja_ref"] for engine in CONTROL_ENGINES):
+            raise RuntimeError(f"cross-engine short reference drift: {case_id}")
+        wav = CACHE / f"{case_id}.wav"
+        short.append(
+            EvalCase(
+                case_id=case_id,
+                source="compat_short",
+                wav=wav,
+                reference=meta["ja_ref"],
+                duration_samples=_wav_samples(wav),
+            )
+        )
+
+    stress = []
+    for case_id in STRESSOR_IDS:
+        wav = CACHE / f"{case_id}.wav"
+        stress.append(
+            EvalCase(
+                case_id=case_id,
+                source="continuous_stressor",
+                wav=wav,
+                reference=stressors["stressors"][case_id]["ja_ref"],
+                duration_samples=_wav_samples(wav),
+            )
+        )
+
+    long_wav = ROOT / long_form["build"]["wav"]
+    long = [
+        EvalCase(
+            case_id=LONG_FORM_ID,
+            source="long_form",
+            wav=long_wav,
+            reference=long_form["reference"]["text"],
+            duration_samples=_wav_samples(long_wav),
+        )
+    ]
+    expected = {
+        "goldens": goldens,
+        "cer_baseline": cer_baseline,
+        "stressor_manifest": stressors,
+        "long_form": long_form,
+    }
+    return {"short": short, "stressors": stress, "long_form": long}, expected
+
+
+def _score(case: EvalCase, transcript: Transcript) -> dict:
+    ref = normalize(case.reference)
+    if not ref:
+        raise RuntimeError(f"reference normalizes to empty: {case.case_id}")
+    hyp = normalize(transcript.hypothesis)
+    substitutions, deletions, insertions = align(ref, hyp)
+    n = len(ref)
+    return {
+        "D": deletions,
+        "I": insertions,
+        "N": n,
+        "S": substitutions,
+        "accepted_samples": transcript.accepted_samples,
+        "case_id": case.case_id,
+        "cer": (substitutions + deletions + insertions) / n,
+        "complete": transcript.complete,
+        "duration_bucket": case.duration_bucket,
+        "duration_samples": case.duration_samples,
+        "eof_count": transcript.eof_count,
+        "gender": case.gender,
+        "hyp": transcript.hypothesis,
+        "ref": case.reference,
+        "segments": list(transcript.segments),
+        "source": case.source,
+    }
+
+
+def _expected_score(ref: str, hyp: str) -> tuple[int, int, int, int]:
+    normalized_ref = normalize(ref)
+    substitutions, deletions, insertions = align(normalized_ref, normalize(hyp))
+    return len(normalized_ref), substitutions, deletions, insertions
+
+
+def _compatibility_row(engine: str, group: str, case: EvalCase, row: dict, expected: dict) -> dict:
+    if group == "short":
+        golden = expected["goldens"][engine][case.case_id]
+        expected_hyp = "".join(segment["text"] for segment in golden["segments"])
+        expected_segments = [segment["text"] for segment in golden["segments"]]
+        observed_segments = [segment["text"] for segment in row["segments"]]
+        if observed_segments != expected_segments:
+            raise RuntimeError(f"{engine}/{case.case_id}: short segment hypotheses drifted")
+        legacy = expected["cer_baseline"]["corpus"][engine].get(case.case_id)
+    elif group == "stressors":
+        legacy = expected["cer_baseline"]["stressors"][engine][case.case_id]
+        expected_hyp = legacy["hyp"]
+    else:
+        legacy = expected["long_form"]["scores"][engine]
+        expected_hyp = legacy["hyp"]
+
+    n, substitutions, deletions, insertions = _expected_score(case.reference, expected_hyp)
+    expected_counts = (n, substitutions, deletions, insertions)
+    observed_counts = (row["N"], row["S"], row["D"], row["I"])
+    if row["hyp"] != expected_hyp or observed_counts != expected_counts:
+        raise RuntimeError(
+            f"{engine}/{case.case_id}: compatibility drift; "
+            f"counts={observed_counts} expected={expected_counts}"
+        )
+    if legacy is not None:
+        legacy_counts = (legacy["N"], legacy["S"], legacy["D"], legacy["I"])
+        if legacy["hyp"] != row["hyp"] or legacy_counts != observed_counts:
+            raise RuntimeError(f"{engine}/{case.case_id}: legacy score drift")
+
+    output = {key: row[key] for key in ("D", "I", "N", "S", "cer", "hyp", "ref")}
+    output["n_segments"] = len(row["segments"])
+    if group == "stressors":
+        if legacy is None:
+            raise RuntimeError(f"{engine}/{case.case_id}: missing stressor baseline")
+        order = expected["stressor_manifest"]["stressors"][case.case_id]["order"]
+        baseline_d = sum(
+            expected["stressor_manifest"]["components"][component]["baseline"][engine]["D"]
+            for component in order
+        )
+        output["excess_D"] = row["D"] - baseline_d
+        output["excess_del_rate"] = round(output["excess_D"] / row["N"], 4)
+        if (
+            output["excess_D"] != legacy["excess_D"]
+            or output["excess_del_rate"] != legacy["excess_del_rate"]
+        ):
+            raise RuntimeError(f"{engine}/{case.case_id}: excess-deletion drift")
+    return output
+
+
+def validate_compatibility_snapshot(engine: str, snapshot: dict, expected: dict) -> None:
+    """Recheck a child/committed legacy snapshot without running either model."""
+    if set(snapshot) != {"short", "stressors", "long_form"}:
+        raise RuntimeError(f"{engine}: compatibility groups drifted")
+
+    goldens = expected["goldens"][engine]
+    if set(snapshot["short"]) != set(goldens):
+        raise RuntimeError(f"{engine}: short compatibility IDs drifted")
+    for case_id, golden in goldens.items():
+        row = snapshot["short"][case_id]
+        hyp = "".join(segment["text"] for segment in golden["segments"])
+        counts = _expected_score(golden["ja_ref"], hyp)
+        if (
+            row["hyp"] != hyp
+            or row["ref"] != golden["ja_ref"]
+            or row["n_segments"] != golden["n_segments"]
+            or tuple(row[key] for key in ("N", "S", "D", "I")) != counts
+        ):
+            raise RuntimeError(f"{engine}/{case_id}: short compatibility snapshot drifted")
+
+    legacy_stress = expected["cer_baseline"]["stressors"][engine]
+    if set(snapshot["stressors"]) != set(legacy_stress):
+        raise RuntimeError(f"{engine}: stressor compatibility IDs drifted")
+    for case_id, legacy in legacy_stress.items():
+        row = snapshot["stressors"][case_id]
+        keys = ("D", "I", "N", "S", "cer", "excess_D", "excess_del_rate", "hyp", "ref")
+        if any(row[key] != legacy[key] for key in keys) or row["n_segments"] <= 0:
+            raise RuntimeError(f"{engine}/{case_id}: stressor compatibility snapshot drifted")
+
+    legacy_long = expected["long_form"]["scores"][engine]
+    if set(snapshot["long_form"]) != {LONG_FORM_ID}:
+        raise RuntimeError(f"{engine}: long-form compatibility IDs drifted")
+    long_row = snapshot["long_form"][LONG_FORM_ID]
+    keys = ("D", "I", "N", "S", "cer", "hyp", "ref")
+    if any(long_row[key] != legacy_long[key] for key in keys) or long_row["n_segments"] <= 0:
+        raise RuntimeError(f"{engine}: long-form compatibility snapshot drifted")
+
+
+def _artifact(path: Path) -> dict:
+    return {
+        "bytes": path.stat().st_size,
+        "path": _relative(path),
+        "sha256": file_sha256(path),
+    }
+
+
+def model_fingerprint(engine: str) -> dict:
+    model_dir = ENGINE_DIRS[engine]
+    artifacts = [_artifact(model_dir / name) for name in MODEL_FILES[engine]]
+    return {
+        "artifacts": artifacts,
+        "bytes": sum(row["bytes"] for row in artifacts),
+        "directory": _relative(model_dir),
+    }
+
+
+def _current_rss_mib() -> float:
+    try:
+        for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    raise RuntimeError("cannot read current RSS from /proc/self/status")
+
+
+def _peak_rss_mib() -> float:
+    # Linux ru_maxrss is KiB. The evaluator records its Linux runtime fingerprint.
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+
+
+def _cpu_model() -> str:
+    try:
+        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except (OSError, IndexError):
+        pass
+    return platform.processor() or "unknown"
+
+
+def runtime_fingerprint() -> dict:
+    packages = {
+        name: importlib.metadata.version(name)
+        for name in ("numpy", "sherpa-onnx", "sherpa-onnx-core")
+    }
+    return {
+        "host": {
+            "cpu": _cpu_model(),
+            "logical_cpus": os.cpu_count(),
+            "machine": platform.machine(),
+            "system": platform.system(),
+        },
+        "kernel": platform.release(),
+        "packages": packages,
+        "python": {
+            "implementation": platform.python_implementation(),
+            "version": platform.python_version(),
+        },
+        "uv_lock_sha256": file_sha256(ROOT / "uv.lock"),
+    }
+
+
+def pipeline_fingerprint() -> dict:
+    values = {
+        "decode_chunk_overlap_s": DECODE_CHUNK_OVERLAP_S,
+        "decode_chunk_s": DECODE_CHUNK_S,
+        "decode_split_rms_window_s": DECODE_SPLIT_RMS_WINDOW_S,
+        "decode_split_search_s": DECODE_SPLIT_SEARCH_S,
+        "decode_split_trigger_s": DECODE_SPLIT_TRIGGER_S,
+        "num_threads": NUM_THREADS,
+        "ring_seconds": RING_SECONDS,
+        "sample_rate_hz": SAMPLE_RATE,
+        "vad_max_speech_s": VAD_MAX_SPEECH_S,
+        "vad_min_silence_s": VAD_MIN_SILENCE_S,
+        "vad_min_speech_s": VAD_MIN_SPEECH_S,
+        "vad_pre_pad_s": VAD_PRE_PAD_S,
+    }
+    contract_source = "\n\n".join(
+        inspect.getsource(obj)
+        for obj in (
+            EvalCase,
+            Transcript,
+            DecodeObservation,
+            SherpaOfflineAdapter,
+            _json_bytes,
+            _duration_bucket,
+            load_corpus_cases,
+            _score,
+        )
+    ).encode()
+    probes, _ = compatibility_cases()
+    compatibility_wavs = [
+        {"case_id": case.case_id, "group": group, **_artifact(case.wav)}
+        for group, cases in probes.items()
+        for case in cases
+    ]
+    return {
+        "compatibility_inputs": {
+            "manifests": [
+                _artifact(path) for path in (CER_BASELINE, LONG_FORM, REPLAY_GOLDENS, STRESSORS)
+            ],
+            "wavs": compatibility_wavs,
+        },
+        "evaluator_contract_sha256": _sha256_bytes(contract_source),
+        "implementation": [
+            _artifact(ROOT / name) for name in ("cer.py", "live_stt.py", "replay.py")
+        ],
+        "values": values,
+        "vad_model": _artifact(VAD_MODEL),
+    }
+
+
+def evaluation_inputs(corpus_manifest: dict) -> dict:
+    """Fingerprint every non-model input that can change deterministic rows."""
+    return {
+        "corpus_index_sha256": corpus_manifest["cache"]["index_sha256"],
+        "pipeline": pipeline_fingerprint(),
+        "runtime": runtime_fingerprint(),
+    }
+
+
+def _metric(rows: Sequence[dict]) -> dict:
+    if not rows:
+        return {
+            "audio_s": 0.0,
+            "empty_hypotheses": 0,
+            "macro": {"d_rate": None, "i_rate": None, "s_rate": None, "cer": None},
+            "micro": {"D": 0, "I": 0, "N": 0, "S": 0, "cer": None},
+            "rows": 0,
+        }
+    n = sum(row["N"] for row in rows)
+    substitutions = sum(row["S"] for row in rows)
+    deletions = sum(row["D"] for row in rows)
+    insertions = sum(row["I"] for row in rows)
+    count = len(rows)
+
+    def macro(key: str) -> float:
+        return round(float(sum(Fraction(row[key], row["N"]) for row in rows) / count), 8)
+
+    return {
+        "audio_s": round(sum(row["duration_samples"] for row in rows) / SAMPLE_RATE, 6),
+        "empty_hypotheses": sum(not normalize(row["hyp"]) for row in rows),
+        "macro": {
+            "d_rate": macro("D"),
+            "i_rate": macro("I"),
+            "s_rate": macro("S"),
+            "cer": round(
+                float(
+                    sum(Fraction(row["S"] + row["D"] + row["I"], row["N"]) for row in rows) / count
+                ),
+                8,
+            ),
+        },
+        "micro": {
+            "D": deletions,
+            "I": insertions,
+            "N": n,
+            "S": substitutions,
+            "cer": round((substitutions + deletions + insertions) / n, 8),
+        },
+        "rows": count,
+    }
+
+
+def aggregate_rows(rows: Sequence[dict]) -> dict:
+    by_source = {
+        source: _metric([row for row in rows if row["source"] == source])
+        for source in sorted({row["source"] for row in rows})
+    }
+    fleurs = [row for row in rows if row["source"] == "fleurs"]
+    gender = {
+        value: _metric([row for row in fleurs if row["gender"] == value])
+        for value in sorted({row["gender"] for row in fleurs})
+        if value is not None
+    }
+    duration = {
+        bucket: _metric([row for row in fleurs if row["duration_bucket"] == bucket])
+        for bucket in ("0-5", "5-10", "10-20", "20+")
+    }
+    completion = {
+        "accepted_all_audio_rows": sum(
+            type(row["accepted_samples"]) is int
+            and row["accepted_samples"] == row["duration_samples"]
+            for row in rows
+        ),
+        "complete_rows": sum(row["complete"] is True for row in rows),
+        "empty_case_ids": [row["case_id"] for row in rows if not normalize(row["hyp"])],
+        "empty_hypotheses": sum(not normalize(row["hyp"]) for row in rows),
+        "eof_once_rows": sum(
+            type(row["eof_count"]) is int and row["eof_count"] == 1 for row in rows
+        ),
+        "rows": len(rows),
+    }
+    completion["complete"] = all(
+        completion[key] == len(rows)
+        for key in ("accepted_all_audio_rows", "complete_rows", "eof_once_rows")
+    )
+    worst_tail = {}
+    for source in by_source:
+        selected = [row for row in rows if row["source"] == source]
+        selected.sort(
+            key=lambda row: (
+                -Fraction(row["S"] + row["D"] + row["I"], row["N"]),
+                row["case_id"],
+            )
+        )
+        worst_tail[source] = [
+            {
+                key: row[key]
+                for key in ("D", "I", "N", "S", "case_id", "cer", "gender", "hyp", "ref")
+            }
+            for row in selected[:TAIL_EXEMPLARS]
+        ]
+    return {
+        "by_source": by_source,
+        "completion": completion,
+        "fleurs_duration": duration,
+        "fleurs_gender": gender,
+        "worst_tail": worst_tail,
+    }
+
+
+def select_comparator(controls: Mapping[str, dict]) -> dict:
+    ranked = []
+    for engine, control in controls.items():
+        micro = control["aggregates"]["by_source"]["common_voice_8"]["micro"]
+        ranked.append((Fraction(micro["S"] + micro["D"] + micro["I"], micro["N"]), engine))
+    score, engine = min(ranked)
+    return {
+        "engine": engine,
+        "micro_cer": round(float(score), 8),
+        "rule": DISPLACEMENT_GATES["comparator"],
+    }
+
+
+def _score_fraction(row: Mapping[str, int]) -> Fraction:
+    return Fraction(row["S"] + row["D"] + row["I"], row["N"])
+
+
+def _source_micro_fraction(control: dict, source: str) -> Fraction:
+    return _score_fraction(control["aggregates"]["by_source"][source]["micro"])
+
+
+def content_verdict(candidate: dict, comparator: dict) -> dict:
+    """Mechanically apply content gates; resource evidence is intentionally absent."""
+    gates = DISPLACEMENT_GATES["content"]
+    candidate_cv = _source_micro_fraction(candidate, "common_voice_8")
+    comparator_cv = _source_micro_fraction(comparator, "common_voice_8")
+    relative_gain = (comparator_cv - candidate_cv) / comparator_cv if comparator_cv else Fraction(0)
+    candidate_fleurs = _source_micro_fraction(candidate, "fleurs")
+    comparator_fleurs = _source_micro_fraction(comparator, "fleurs")
+    candidate_long = _score_fraction(candidate["compatibility"]["long_form"][LONG_FORM_ID])
+    comparator_long = _score_fraction(comparator["compatibility"]["long_form"][LONG_FORM_ID])
+    candidate_stress = candidate["compatibility"]["stressors"]
+    required_stressors = set(comparator["compatibility"]["stressors"])
+    relative_min = Fraction(str(gates["common_voice_relative_cer_improvement_min"]))
+    fleurs_regression_max = Fraction(str(gates["fleurs_micro_cer_regression_max_abs"]))
+    long_regression_max = Fraction(str(gates["long_form_cer_regression_max_abs"]))
+    stressor_cer_max = Fraction(str(gates["stressor_cer_max"]))
+    stressor_deletion_max = Fraction(str(gates["stressor_excess_deletion_rate_max"]))
+
+    checks = {
+        "common_voice_relative_cer": {
+            "observed_improvement": round(float(relative_gain), 8),
+            "pass": relative_gain >= relative_min,
+        },
+        "complete_run": {
+            "observed": candidate["aggregates"]["completion"]["complete"],
+            "pass": candidate["aggregates"]["completion"]["complete"] is True,
+        },
+        "nonempty_run": {
+            "observed": (
+                candidate["aggregates"]["completion"]["rows"]
+                - candidate["aggregates"]["completion"]["empty_hypotheses"]
+            ),
+            "pass": (
+                candidate["aggregates"]["completion"]["rows"]
+                > candidate["aggregates"]["completion"]["empty_hypotheses"]
+            ),
+        },
+        "fleurs_micro_cer_regression": {
+            "observed_abs": round(float(candidate_fleurs - comparator_fleurs), 8),
+            "pass": candidate_fleurs - comparator_fleurs <= fleurs_regression_max,
+        },
+        "long_form_cer_regression": {
+            "observed_abs": round(float(candidate_long - comparator_long), 8),
+            "pass": candidate_long - comparator_long <= long_regression_max,
+        },
+        "stressors_complete": {
+            "observed": sorted(candidate_stress),
+            "pass": set(candidate_stress) == required_stressors,
+        },
+        "stressors_cer": {
+            "observed_max": round(
+                float(
+                    max(
+                        (_score_fraction(row) for row in candidate_stress.values()),
+                        default=Fraction(1),
+                    )
+                ),
+                8,
+            ),
+            "pass": bool(candidate_stress)
+            and all(_score_fraction(row) <= stressor_cer_max for row in candidate_stress.values()),
+        },
+        "stressors_excess_deletion": {
+            "observed_max": round(
+                float(
+                    max(
+                        (Fraction(row["excess_D"], row["N"]) for row in candidate_stress.values()),
+                        default=Fraction(1),
+                    )
+                ),
+                8,
+            ),
+            "pass": bool(candidate_stress)
+            and all(
+                Fraction(row["excess_D"], row["N"]) <= stressor_deletion_max
+                for row in candidate_stress.values()
+            ),
+        },
+    }
+    return {"checks": checks, "qualified": all(check["pass"] for check in checks.values())}
+
+
+def resource_verdict(paths: Mapping[str, dict]) -> dict:
+    """Apply only execution-path gates; accuracy/content is intentionally absent."""
+    maximum = DISPLACEMENT_GATES["resource"]["post_warm_rtf_max"]
+    checks = {
+        name: {
+            "actual_execution_device": row["actual_execution_device"],
+            "post_warm_rtf": row["post_warm_rtf"],
+            "production_eligible": row["production_eligible"],
+            "qualified": row["production_eligible"] and row["post_warm_rtf"] <= maximum,
+        }
+        for name, row in sorted(paths.items())
+    }
+    qualified = sum(row["qualified"] for row in checks.values())
+    return {
+        "paths": checks,
+        "qualified": qualified >= DISPLACEMENT_GATES["resource"]["production_eligible_paths_min"],
+    }
+
+
+def _detail_rows(path: Path, cases: Sequence[EvalCase], expected_sha256: str) -> list[dict]:
+    if not path.is_file() or file_sha256(path) != expected_sha256:
+        raise RuntimeError(f"detail fingerprint mismatch: {path}")
+    try:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"cannot parse detail rows: {path}") from exc
+    expected_ids = [case.case_id for case in cases]
+    if [row.get("case_id") for row in rows] != expected_ids:
+        raise RuntimeError("detail rows are incomplete, duplicated, or reordered")
+    for row, case in zip(rows, cases, strict=True):
+        identity = {
+            "case_id": case.case_id,
+            "duration_bucket": case.duration_bucket,
+            "duration_samples": case.duration_samples,
+            "gender": case.gender,
+            "ref": case.reference,
+            "source": case.source,
+        }
+        if any(row.get(key) != value for key, value in identity.items()):
+            raise RuntimeError(f"detail identity drift: {case.case_id}")
+        segments = row.get("segments")
+        if not isinstance(segments, list) or any(
+            not isinstance(segment, dict) or not isinstance(segment.get("text"), str)
+            for segment in segments
+        ):
+            raise RuntimeError(f"invalid detail segments: {case.case_id}")
+        if row.get("hyp") != "".join(segment["text"] for segment in segments):
+            raise RuntimeError(f"detail hypothesis/segments drift: {case.case_id}")
+        ref = normalize(case.reference)
+        substitutions, deletions, insertions = align(ref, normalize(row["hyp"]))
+        counts = (len(ref), substitutions, deletions, insertions)
+        if tuple(row.get(key) for key in ("N", "S", "D", "I")) != counts:
+            raise RuntimeError(f"detail score drift: {case.case_id}")
+        if row.get("cer") != (substitutions + deletions + insertions) / len(ref):
+            raise RuntimeError(f"detail CER drift: {case.case_id}")
+    return rows
+
+
+def _corpus_fingerprint(manifest: dict) -> dict:
+    return {
+        "index_sha256": manifest["cache"]["index_sha256"],
+        "manifest": _relative(SHORT_CORPUS),
+        "manifest_sha256": file_sha256(SHORT_CORPUS),
+        "rows": manifest["cache"]["rows"],
+        "sources": {
+            source: {
+                "revision": row["revision"],
+                "rows": row["statistics"]["rows"],
+                "source_identity": row["source_identity"],
+            }
+            for source, row in sorted(manifest["sources"].items())
+        },
+    }
+
+
+def build_manifest(
+    corpus_manifest: dict,
+    corpus_cases: Sequence[EvalCase],
+    summaries: Mapping[str, dict],
+    detail_paths: Mapping[str, Path],
+) -> dict:
+    if set(summaries) != set(CONTROL_ENGINES) or set(detail_paths) != set(CONTROL_ENGINES):
+        raise RuntimeError("both current controls are required for the baseline")
+    expected_inputs = evaluation_inputs(corpus_manifest)
+    _, compatibility_expected = compatibility_cases()
+    controls = {}
+    measurements = {}
+    for engine in CONTROL_ENGINES:
+        summary = summaries[engine]
+        if summary.get("engine") != engine or summary.get("schema_version") != SCHEMA_VERSION:
+            raise RuntimeError(f"invalid child summary: {engine}")
+        if summary.get("inputs") != expected_inputs:
+            raise RuntimeError(f"{engine}: child input fingerprint drift")
+        if summary["adapter"]["model"] != model_fingerprint(engine):
+            raise RuntimeError(f"{engine}: child model fingerprint drift")
+        validate_compatibility_snapshot(engine, summary["compatibility"], compatibility_expected)
+        detail = summary["details"]
+        if detail["rows"] != len(corpus_cases):
+            raise RuntimeError(f"{engine}: incomplete child row count")
+        rows = _detail_rows(detail_paths[engine], corpus_cases, detail["sha256"])
+        aggregates = aggregate_rows(rows)
+        if not aggregates["completion"]["complete"]:
+            raise RuntimeError(f"{engine}: incomplete transcript contract")
+        controls[engine] = {
+            "adapter": summary["adapter"],
+            "aggregates": aggregates,
+            "compatibility": summary["compatibility"],
+            "details": {
+                "rows": detail["rows"],
+                "sha256": detail["sha256"],
+            },
+        }
+        measurement = summary["measurements"]
+        path = {
+            "actual_execution_device": summary["adapter"]["actual_execution_device"],
+            "post_warm_rtf": measurement["post_warm"]["median_decode_rtf"],
+            "production_eligible": True,
+        }
+        measurements[engine] = {
+            **measurement,
+            "resource_verdict": resource_verdict({"sherpa_cpu": path}),
+        }
+
+    deterministic = {
+        "comparator": select_comparator(controls),
+        "controls": controls,
+        "corpus": _corpus_fingerprint(corpus_manifest),
+        "displacement_gates": DISPLACEMENT_GATES,
+        "metric_contract": METRIC_CONTRACT,
+        "pipeline": pipeline_fingerprint(),
+        "runtime": runtime_fingerprint(),
+    }
+    return {
+        "deterministic": deterministic,
+        "measurements": {
+            "controls": measurements,
+            "excluded_from_deterministic_equality": True,
+            "note": (
+                "Elapsed time and RSS vary; scored content and fingerprints live "
+                "under deterministic."
+            ),
+        },
+        "schema_version": SCHEMA_VERSION,
+    }
+
+
+def install_evidence(
+    manifest: dict,
+    summaries: Mapping[str, dict],
+    staged_details: Mapping[str, Path],
+    *,
+    baseline: Path = BASELINE,
+    details_dir: Path = DETAILS_DIR,
+) -> None:
+    """Install validated immutable details first, then atomically replace the manifest."""
+    destinations = {}
+    for engine in CONTROL_ENGINES:
+        expected = summaries[engine]["details"]["sha256"]
+        source = staged_details[engine]
+        if file_sha256(source) != expected:
+            raise RuntimeError(f"{engine}: staged detail hash changed before install")
+        destinations[engine] = details_dir / f"{engine}-{expected[:16]}.jsonl"
+
+    # All validation above precedes writes. Detail files are immutable/content-addressed;
+    # an interrupted final manifest write can only leave an unreferenced cache file.
+    for engine, destination in destinations.items():
+        expected = summaries[engine]["details"]["sha256"]
+        if destination.exists():
+            if file_sha256(destination) != expected:
+                raise RuntimeError(f"content-addressed detail collision: {destination}")
+        else:
+            write_atomic(destination, [staged_details[engine].read_bytes()])
+        manifest["deterministic"]["controls"][engine]["details"]["path"] = _relative(destination)
+    write_atomic(baseline, [_json_bytes(manifest)])
+
+
+def _benchmark(adapter: ASRAdapter, case: EvalCase, expected_hyp: str) -> dict:
+    runs = []
+    for index in range(1, TIMING_RUNS + 1):
+        observation = adapter.decode(case)
+        if observation.content.hypothesis != expected_hyp or not observation.content.complete:
+            raise RuntimeError(f"{adapter.adapter_id}: timing replay content drift at run {index}")
+        audio_s = case.duration_samples / SAMPLE_RATE
+        runs.append(
+            {
+                "decode_rtf": round(observation.decode_seconds / audio_s, 6),
+                "decode_s": round(observation.decode_seconds, 6),
+                "wall_rtf": round(observation.wall_seconds / audio_s, 6),
+                "wall_s": round(observation.wall_seconds, 6),
+            }
+        )
+    return {
+        "audio_s": round(case.duration_samples / SAMPLE_RATE, 6),
+        "case_id": case.case_id,
+        "median_decode_rtf": round(median(row["decode_rtf"] for row in runs), 6),
+        "median_wall_rtf": round(median(row["wall_rtf"] for row in runs), 6),
+        "runs": runs,
+        "warmup": "compatibility/stress_long decode before measured repetitions",
+    }
+
+
+def run_worker(engine: str, details_path: Path, summary_path: Path) -> None:
+    err = check_models(engine)
+    if err:
+        raise RuntimeError(f"{engine}: {err.splitlines()[0]}")
+    corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=False)
+    probes, expected = compatibility_cases()
+
+    rss_before = _current_rss_mib()
+    started = time.perf_counter()
+    adapter = SherpaOfflineAdapter(engine)
+    cold_load_s = time.perf_counter() - started
+    rss_loaded = _current_rss_mib()
+    peak_loaded = _peak_rss_mib()
+    identity = adapter.identity()
+    print(
+        f"{engine}: loaded {identity['model']['bytes'] / 1_000_000:.1f} MB model "
+        f"in {cold_load_s:.3f}s; RSS={rss_loaded:.1f} MiB",
+        flush=True,
+    )
+
+    compatibility: dict[str, dict] = {group: {} for group in probes}
+    for group, cases in probes.items():
+        for case in cases:
+            row = _score(case, adapter.decode(case).content)
+            compatibility[group][case.case_id] = _compatibility_row(
+                engine, group, case, row, expected
+            )
+        print(f"{engine}: compatibility/{group} exact ({len(cases)} cases)", flush=True)
+
+    benchmark_case = next(case for case in probes["stressors"] if case.case_id == "stress_long")
+    post_warm = _benchmark(
+        adapter,
+        benchmark_case,
+        compatibility["stressors"]["stress_long"]["hyp"],
+    )
+    print(
+        f"{engine}: post-warm median decode RTF={post_warm['median_decode_rtf']:.3f}",
+        flush=True,
+    )
+
+    digest = hashlib.sha256()
+    rows_written = 0
+
+    def detail_chunks() -> Iterable[bytes]:
+        nonlocal rows_written
+        for index, case in enumerate(corpus_cases, 1):
+            row = _score(case, adapter.decode(case).content)
+            data = _json_bytes(row, compact=True)
+            digest.update(data)
+            rows_written += 1
+            if index == 1 or index % 250 == 0 or index == len(corpus_cases):
+                print(f"{engine}: corpus {index}/{len(corpus_cases)}", flush=True)
+            yield data
+
+    write_atomic(details_path, detail_chunks())
+    detail_sha256 = digest.hexdigest()
+    if rows_written != len(corpus_cases) or file_sha256(details_path) != detail_sha256:
+        raise RuntimeError(f"{engine}: detail write incomplete")
+
+    measurements = {
+        "cold_recognizer_load_s": round(cold_load_s, 6),
+        "device_memory_mib": None,
+        "device_memory_note": "CPU path has no separate accelerator-memory allocation.",
+        "isolated_process": True,
+        "post_warm": post_warm,
+        "rss_mib": {
+            "current_before_recognizer_load": round(rss_before, 3),
+            "current_model_load_delta": round(rss_loaded - rss_before, 3),
+            "current_model_loaded": round(rss_loaded, 3),
+            "ru_maxrss_after_load": round(peak_loaded, 3),
+            "ru_maxrss_process": round(_peak_rss_mib(), 3),
+        },
+    }
+    summary = {
+        "adapter": identity,
+        "compatibility": compatibility,
+        "details": {"rows": rows_written, "sha256": detail_sha256},
+        "engine": engine,
+        "inputs": evaluation_inputs(corpus_manifest),
+        "measurements": measurements,
+        "schema_version": SCHEMA_VERSION,
+    }
+    write_atomic(summary_path, [_json_bytes(summary)])
+    print(
+        f"{engine}: complete; detail={detail_sha256}; peak RSS="
+        f"{measurements['rss_mib']['ru_maxrss_process']:.1f} MiB",
+        flush=True,
+    )
+
+
+def _reusable_child(
+    engine: str,
+    summary_path: Path,
+    detail_path: Path,
+    corpus_manifest: dict,
+    corpus_cases: Sequence[EvalCase],
+) -> dict | None:
+    """Return a complete matching staged child, else remove it for a clean rerun."""
+    if not summary_path.is_file() or not detail_path.is_file():
+        summary_path.unlink(missing_ok=True)
+        detail_path.unlink(missing_ok=True)
+        return None
+    try:
+        summary = _load_json(summary_path)
+        if (
+            summary.get("schema_version") != SCHEMA_VERSION
+            or summary.get("engine") != engine
+            or summary.get("inputs") != evaluation_inputs(corpus_manifest)
+            or summary["adapter"]["model"] != model_fingerprint(engine)
+            or summary["details"]["rows"] != len(corpus_cases)
+        ):
+            raise RuntimeError("staged child fingerprint drift")
+        _detail_rows(detail_path, corpus_cases, summary["details"]["sha256"])
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        print(f"{engine}: discard unusable staged child ({exc})", flush=True)
+        summary_path.unlink(missing_ok=True)
+        detail_path.unlink(missing_ok=True)
+        return None
+    return summary
+
+
+def _child_measurement(measurement: dict) -> dict:
+    """Strip parent verdicts and migrate pre-review RSS labels without new timing."""
+    output = {key: value for key, value in measurement.items() if key != "resource_verdict"}
+    rss = dict(output["rss_mib"])
+    aliases = {
+        "before_recognizer_load": "current_before_recognizer_load",
+        "model_load_delta": "current_model_load_delta",
+        "model_loaded": "current_model_loaded",
+        "peak_after_load": "ru_maxrss_after_load",
+        "peak_process": "ru_maxrss_process",
+    }
+    for old, new in aliases.items():
+        if old in rss:
+            rss[new] = rss.pop(old)
+    output["rss_mib"] = rss
+    output.setdefault("device_memory_mib", None)
+    output.setdefault(
+        "device_memory_note", "CPU path has no separate accelerator-memory allocation."
+    )
+    return output
+
+
+def _pipeline_reaggregate_compatible(previous: dict, current: dict) -> bool:
+    if previous == current:
+        return True
+    # One-time M10.3 hardening: old evidence lacked explicit compatibility-WAV
+    # and evaluator-contract fields. Current row + legacy-snapshot validation
+    # substantiates adding them without rerunning unchanged decode code.
+    legacy_current = {
+        key: value
+        for key, value in current.items()
+        if key not in {"compatibility_inputs", "evaluator_contract_sha256"}
+    }
+    return previous == legacy_current
+
+
+def reaggregate_parent() -> None:
+    """Rebuild aggregate logic from exact details when decode inputs are unchanged."""
+    previous = _load_json(BASELINE)
+    deterministic = previous["deterministic"]
+    corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=True)
+    current = {
+        "corpus": _corpus_fingerprint(corpus_manifest),
+        "pipeline": pipeline_fingerprint(),
+        "runtime": runtime_fingerprint(),
+    }
+    for key, value in current.items():
+        matches = (
+            _pipeline_reaggregate_compatible(deterministic.get(key, {}), value)
+            if key == "pipeline"
+            else deterministic.get(key) == value
+        )
+        if not matches:
+            raise RuntimeError(f"aggregate-only refused: {key} fingerprint changed")
+
+    summaries = {}
+    details = {}
+    for engine in CONTROL_ENGINES:
+        control = deterministic["controls"][engine]
+        if control["adapter"]["model"] != model_fingerprint(engine):
+            raise RuntimeError(f"aggregate-only refused: {engine} model changed")
+        measurement = previous["measurements"]["controls"][engine]
+        summaries[engine] = {
+            "adapter": control["adapter"],
+            "compatibility": control["compatibility"],
+            "details": {
+                "rows": control["details"]["rows"],
+                "sha256": control["details"]["sha256"],
+            },
+            "engine": engine,
+            "inputs": evaluation_inputs(corpus_manifest),
+            "measurements": _child_measurement(measurement),
+            "schema_version": SCHEMA_VERSION,
+        }
+        details[engine] = ROOT / control["details"]["path"]
+
+    rebuilt = build_manifest(corpus_manifest, corpus_cases, summaries, details)
+    install_evidence(rebuilt, summaries, details)
+    print(f"wrote {_relative(BASELINE)} from exact cached details", flush=True)
+
+
+def run_parent() -> None:
+    print("validating pinned corpus PCM + index before isolated runs", flush=True)
+    corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=True)
+    compatibility_cases()  # fail before staging when any legacy probe input is absent
+    for engine in CONTROL_ENGINES:
+        err = check_models(engine)
+        if err:
+            raise RuntimeError(f"{engine}: {err.splitlines()[0]}")
+
+    staging = CACHE / "model_eval-v1.staging"
+    staging.mkdir(parents=True, exist_ok=True)
+    summaries: dict[str, dict] = {}
+    details: dict[str, Path] = {}
+    installed = False
+    try:
+        for engine in CONTROL_ENGINES:
+            detail = staging / f"{engine}.jsonl"
+            summary = staging / f"{engine}.summary.json"
+            reusable = _reusable_child(engine, summary, detail, corpus_manifest, corpus_cases)
+            if reusable is None:
+                command = [
+                    sys.executable,
+                    "-u",
+                    str(Path(__file__).resolve()),
+                    "--worker",
+                    engine,
+                    "--details",
+                    str(detail),
+                    "--summary",
+                    str(summary),
+                ]
+                completed = subprocess.run(command, cwd=ROOT, check=False)
+                if completed.returncode:
+                    raise RuntimeError(f"isolated {engine} evaluator exited {completed.returncode}")
+                reusable = _load_json(summary)
+            else:
+                print(f"{engine}: reuse complete fingerprint-matched staged child", flush=True)
+            summaries[engine] = reusable
+            details[engine] = detail
+
+        manifest = build_manifest(corpus_manifest, corpus_cases, summaries, details)
+        install_evidence(manifest, summaries, details)
+        installed = True
+    finally:
+        if installed:
+            shutil.rmtree(staging, ignore_errors=True)
+
+    comparator = manifest["deterministic"]["comparator"]
+    print(
+        f"PASS: complete controls; Common Voice comparator={comparator['engine']} "
+        f"CER={comparator['micro_cer']:.2%}",
+        flush=True,
+    )
+    print(f"wrote {_relative(BASELINE)} + immutable ignored JSONL details", flush=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument("--worker", choices=CONTROL_ENGINES, help=argparse.SUPPRESS)
+    parser.add_argument("--details", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--summary", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--aggregate-only",
+        action="store_true",
+        help="Rebuild aggregates from exact cached details; refuse changed decode inputs.",
+    )
+    args = parser.parse_args()
+    if args.worker:
+        if args.aggregate_only:
+            parser.error("--worker and --aggregate-only are mutually exclusive")
+        if args.details is None or args.summary is None:
+            parser.error("--worker requires --details and --summary")
+        run_worker(args.worker, args.details, args.summary)
+    elif args.details is not None or args.summary is not None:
+        parser.error("--details/--summary are internal worker arguments")
+    elif args.aggregate_only:
+        reaggregate_parent()
+    else:
+        run_parent()
+
+
+if __name__ == "__main__":
+    main()

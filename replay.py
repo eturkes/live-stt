@@ -80,9 +80,8 @@ def load_wav_f32_16k(path: Path) -> np.ndarray:
     return np.ascontiguousarray(data, dtype=np.float32)
 
 
-async def _run(samples: np.ndarray, engine: str) -> list[dict]:
-    """Drive the real worker() over `samples` and collect per-segment rows."""
-    rec = _recognizer(engine)
+async def _run_recognizer(samples: np.ndarray, rec) -> list[dict]:
+    """Drive the real worker() with an already-loaded offline recognizer."""
     vad, window = make_vad()
     audio_q: asyncio.Queue = asyncio.Queue()
     # Keep replay blocks within live AudioQueue's 2 s headroom. VAD framing is
@@ -106,6 +105,11 @@ async def _run(samples: np.ndarray, engine: str) -> list[dict]:
     if state.stopping:
         raise RuntimeError("STT worker failed during replay")
     return rows
+
+
+async def _run(samples: np.ndarray, engine: str) -> list[dict]:
+    """Compatibility wrapper used by replay's engine-keyed regression tests."""
+    return await _run_recognizer(samples, _recognizer(engine))
 
 
 def build_report(engine: str, wav: str, samples: np.ndarray, rows: list[dict]) -> dict:
@@ -140,16 +144,21 @@ def build_report(engine: str, wav: str, samples: np.ndarray, rows: list[dict]) -
     }
 
 
-def replay_wav(path, engine: str = "k2v2") -> dict:
-    """Load a WAV and replay it through the pipeline. Returns the report dict.
+def replay_recognizer(path, rec, engine: str) -> dict:
+    """Replay a WAV through the worker with an already-loaded recognizer.
 
     The real worker() prints its live `JA n:` lines via emit_line; capture that
     stdout so replay's only output is its own report (keeps --json valid).
     """
     samples = load_wav_f32_16k(Path(path))
     with contextlib.redirect_stdout(io.StringIO()):
-        rows = asyncio.run(_run(samples, engine))
+        rows = asyncio.run(_run_recognizer(samples, rec))
     return build_report(engine, str(path), samples, rows)
+
+
+def replay_wav(path, engine: str = "k2v2") -> dict:
+    """Load a WAV and replay it through the engine-keyed production pipeline."""
+    return replay_recognizer(path, _recognizer(engine), engine)
 
 
 def render(report: dict) -> str:
