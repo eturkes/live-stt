@@ -53,10 +53,10 @@ Startup prints the translation status: `Translation: gpt-5.3-codex-spark via cod
 
 ### Audio → JA pipeline (all local)
 
-1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enqueued onto an `asyncio.Queue`.
-2. **Endpoint.** silero VAD splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
-3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`).
-4. **Decode.** sherpa-onnx `OfflineRecognizer` runs in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores). While a decode is in flight the queue buffers capture (~2 s headroom); overflow shows as `drop=` on the meter.
+1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 2 seconds of PCM, independent of callback block size.
+2. **Endpoint.** a dedicated feeder drains capture into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
+3. **Re-slice + queue.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) and copied into an 8-segment queue.
+4. **Decode.** a separate sequential consumer runs sherpa-onnx `OfflineRecognizer` in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores). Capture and VAD feeding continue during decode; sustained overload shows as `seg=`, then `q=` / `drop=` on the meter.
 5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
 ### JA → EN leg (Codex subscription)
@@ -79,10 +79,11 @@ Runtime warnings/errors go to stderr via Python `logging`. On a terminal each me
 ```
 JA 1: こんにちは、今日はいい天気ですね。
 EN 1: Hello, the weather is nice today.
-  q=1
+  q=0.02s seg=1
 ```
 
-- `q=N`: pending audio blocks (appears when non-zero)
+- `q=Ns`: captured audio waiting for VAD, measured in seconds (appears when non-zero)
+- `seg=N`: completed utterances waiting for sequential decode (appears when non-zero)
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
 - `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
 
@@ -95,7 +96,7 @@ live-stt/
 ├── live_stt.py              # main app (single file)
 ├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
-├── tests/                   # pytest suite (pure functions + replay regression)
+├── tests/                   # pytest suite + replay/CER/backpressure evaluators
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
@@ -115,7 +116,7 @@ uv run pytest                                 # run pure-function tests
 git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 ```
 
-Tests cover `resample`, `RingBuffer`, and `emit_line`. No network, mic, or model weights required.
+Core tests cover audio primitives, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay/CER/backpressure cases use local models and the cached corpus when present, otherwise they skip cleanly.
 
 The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync`. Run it once after cloning.
 
@@ -137,7 +138,8 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | Constant | Value | Purpose |
 |---|---|---|
 | `SAMPLE_RATE` | 16000 | VAD + recognizer rate; mic native rate resampled to this |
-| `AUDIO_QUEUE_MAX` | 100 | Max buffered audio blocks before dropping |
+| `AUDIO_HEADROOM_S` | 2 s | Max captured PCM waiting for VAD before dropping |
+| `SEGMENT_QUEUE_MAX` | 8 | Max completed utterances waiting for decode |
 | `NUM_THREADS` | 4 | onnxruntime intra-op threads |
 | `VAD_MIN_SILENCE_S` | 0.5 s | Silence that closes an utterance |
 | `VAD_MIN_SPEECH_S` | 0.25 s | Shorter blips discarded |
@@ -152,7 +154,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 ## Notes
 
 - Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/roadmap.md` § Deferred).
-- `Ctrl+C` stops the stream, flushes any in-flight VAD segment, waits for pending translations, and shuts the app-server down cleanly.
+- `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
 - Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window.
 - Codex is this project's sole development agent. See `AGENTS.md`, `.agents/skills/`, `.codex/prompts/`, and `.agent/` for its workflow and context.
 

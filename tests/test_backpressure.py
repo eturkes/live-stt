@@ -1,15 +1,50 @@
-"""Regression tests for the M9.3 paced-replay backpressure harness."""
+"""Regression tests for the M9.3/M9.5 paced-replay backpressure gate."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 import pytest
 
-from live_stt import AUDIO_QUEUE_MAX, VAD_MODEL, State, enqueue_audio
+from live_stt import (
+    AUDIO_HEADROOM_S,
+    SAMPLE_RATE,
+    SEGMENT_QUEUE_MAX,
+    VAD_MODEL,
+    AudioQueue,
+    State,
+    enqueue_audio,
+    submit_audio_sentinel,
+    worker,
+)
 from tests.eval_backpressure import CACHE, SHORT_CLIPS, STRESSOR, paced_wav
+
+
+class _FakeVad:
+    def __init__(self):
+        self.segments = []
+        self.accepted = 0
+
+    def accept_waveform(self, samples):
+        self.segments.append(SimpleNamespace(start=self.accepted, samples=samples.copy()))
+        self.accepted += len(samples)
+
+    def flush(self):
+        pass
+
+    def empty(self):
+        return not self.segments
+
+    @property
+    def front(self):
+        return self.segments[0]
+
+    def pop(self):
+        self.segments.pop(0)
 
 
 def test_enqueue_audio_uses_drop_newest_policy_and_counts_saturation():
@@ -28,6 +63,109 @@ def test_enqueue_audio_uses_drop_newest_policy_and_counts_saturation():
     assert queue.get_nowait() is second
 
 
+def test_audio_queue_bounds_headroom_by_samples_not_callback_blocks():
+    state = State()
+    queue = AudioQueue(headroom_s=4 / SAMPLE_RATE)
+    three_samples = np.ones(3, dtype=np.float32)
+
+    assert enqueue_audio(queue, state, three_samples)
+    assert not enqueue_audio(queue, state, np.ones(2, dtype=np.float32))
+    assert queue.queued_samples == 3
+    assert queue.qsize() == 1
+    assert state.dropped == 1
+
+    assert queue.get_nowait() is three_samples
+    for _ in range(4):
+        assert enqueue_audio(queue, state, np.ones(1, dtype=np.float32))
+    assert not enqueue_audio(queue, state, np.ones(1, dtype=np.float32))
+    assert queue.queued_samples == 4
+    assert queue.qsize() == 4
+    assert state.dropped == 2
+
+
+def test_worker_feeds_vad_and_flushes_while_decode_is_blocked():
+    async def scenario():
+        window = 16
+        vad = _FakeVad()
+        state = State()
+        audio_q = AudioQueue(headroom_s=2 * window / SAMPLE_RATE)
+        decode_started = asyncio.Event()
+        release_decode = asyncio.Event()
+        rows = []
+
+        def fake_run_in_executor(_executor, _fn, *_args):
+            decode_started.set()
+
+            async def finish_decode():
+                await release_decode.wait()
+                return "decoded"
+
+            return asyncio.create_task(finish_decode())
+
+        def on_segment(start, n, seg_len, decode_s, text):
+            rows.append((start, n, seg_len, text))
+
+        loop = asyncio.get_running_loop()
+        with mock.patch.object(loop, "run_in_executor", fake_run_in_executor):
+            assert enqueue_audio(audio_q, state, np.ones(window, dtype=np.float32))
+            worker_task = asyncio.create_task(
+                worker(object(), vad, window, audio_q, state, None, on_segment=on_segment)
+            )
+            await asyncio.wait_for(decode_started.wait(), 1.0)
+
+            # This block and shutdown sentinel arrive during the first decode.
+            # The feeder must consume + flush both before the decoder is released.
+            assert enqueue_audio(audio_q, state, np.ones(window, dtype=np.float32))
+            submit_audio_sentinel(audio_q)
+            for _ in range(5):
+                await asyncio.sleep(0)
+            assert vad.accepted == 2 * window
+            assert audio_q.empty()
+            assert not worker_task.done()
+
+            release_decode.set()
+            await asyncio.wait_for(worker_task, 1.0)
+
+        assert rows == [
+            (0, window, window, "decoded"),
+            (window, window, 2 * window, "decoded"),
+        ]
+        assert 0 < state.max_segment_queue_depth <= SEGMENT_QUEUE_MAX
+        assert not state.stopping
+
+    asyncio.run(scenario())
+
+
+def test_worker_failure_cancels_both_stages_and_requests_stop(caplog):
+    async def scenario():
+        window = 16
+        state = State()
+        state.stop_event = asyncio.Event()
+        audio_q = AudioQueue(headroom_s=window / SAMPLE_RATE)
+        loop = asyncio.get_running_loop()
+
+        def fail_decode(_executor, _fn, *_args):
+            failed = loop.create_future()
+            failed.set_exception(RuntimeError("decode failed"))
+            return failed
+
+        assert enqueue_audio(audio_q, state, np.ones(window, dtype=np.float32))
+        with mock.patch.object(loop, "run_in_executor", fail_decode):
+            await asyncio.wait_for(
+                worker(object(), _FakeVad(), window, audio_q, state, None), 1.0
+            )
+
+        assert state.stopping
+        assert state.stop_event.is_set()
+        assert state.segment_queue_depth == 0
+        assert audio_q.empty()
+        current = asyncio.current_task()
+        assert all(task is current or task.done() for task in asyncio.all_tasks())
+
+    asyncio.run(scenario())
+    assert "worker died" in caplog.text
+
+
 def _resources_ready(paths: tuple[Path, ...]) -> bool:
     return VAD_MODEL.is_file() and all(path.is_file() for path in paths)
 
@@ -39,10 +177,11 @@ SHORT_PATHS = tuple(CACHE / f"{cid}.wav" for cid in SHORT_CLIPS)
 @pytest.mark.skipif(
     not _resources_ready((LONG_PATH,)), reason="silero model or stressor WAV absent"
 )
-def test_long_paced_replay_reproduces_audio_queue_drops():
+def test_long_paced_replay_is_drop_free_with_bounded_two_stage_queues():
     report = paced_wav(LONG_PATH)
-    assert report["drops"] > 0
-    assert report["max_depth"] == AUDIO_QUEUE_MAX
+    assert report["drops"] == 0
+    assert report["max_audio_s"] <= AUDIO_HEADROOM_S
+    assert 0 < report["max_segment_depth"] <= SEGMENT_QUEUE_MAX
     assert report["accepted"] + report["drops"] == report["arrivals"]
 
 

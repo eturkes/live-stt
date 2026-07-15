@@ -19,6 +19,7 @@ from live_stt import (
     _split_decode_segment,
     emit_line,
     resample,
+    submit_audio_sentinel,
 )
 
 
@@ -294,15 +295,7 @@ def test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking():
         q: asyncio.Queue = asyncio.Queue(maxsize=4)
         for i in range(4):  # fill to capacity, no consumer
             q.put_nowait(i)
-        while True:
-            try:
-                q.put_nowait(None)
-                break
-            except asyncio.QueueFull:
-                try:
-                    q.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
+        submit_audio_sentinel(q)
         return q
 
     # wait_for must NOT fire: a regression to a blocking put would hang here.

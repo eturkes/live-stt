@@ -25,7 +25,14 @@ import sounddevice as sd
 
 SAMPLE_RATE = 16000  # VAD + recognizer rate; mic native rate is resampled to this
 METER_INTERVAL = 0.1
-AUDIO_QUEUE_MAX = 100
+# PortAudio chooses callback block sizes, so a chunk-count cap has no stable
+# duration. Bound captured PCM directly: the VAD feeder normally drains this
+# immediately; 2 s absorbs event-loop stalls without hiding sustained overload.
+AUDIO_HEADROOM_S = 2.0
+# Completed VAD segments own copied PCM while the recognizer decodes them in
+# order. This cap bounds that second stage; a sustained slowdown eventually
+# pushes back into the measured audio headroom and surfaces as ``drop=``.
+SEGMENT_QUEUE_MAX = 8
 NUM_THREADS = 4  # onnxruntime intra-op threads (8-core box; decode RTF ~0.05)
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
@@ -355,6 +362,8 @@ def check_models(engine: str) -> str | None:
 class State:
     def __init__(self):
         self.dropped = 0
+        self.segment_queue_depth = 0
+        self.max_segment_queue_depth = 0
         self.stopping = False
         self.stop_event: asyncio.Event = None  # type: ignore[assignment]
 
@@ -364,13 +373,42 @@ class State:
             self.stop_event.set()
 
 
+class AudioQueue(asyncio.Queue):
+    """Non-blocking capture queue capped by PCM duration, independent of blocks."""
+
+    def __init__(self, headroom_s: float = AUDIO_HEADROOM_S):
+        max_samples = round(headroom_s * SAMPLE_RATE)
+        if max_samples <= 0:
+            raise ValueError("audio headroom must be positive")
+        # A non-empty block has at least one sample, so this secondary entry cap
+        # can never bind first; it only bounds pathological zero-length blocks.
+        super().__init__(maxsize=max_samples)
+        self.max_samples = max_samples
+        self.queued_samples = 0
+        self.max_queued_samples = 0
+
+    def put_nowait(self, item):
+        samples = 0 if item is None else len(item)
+        if self.queued_samples + samples > self.max_samples:
+            raise asyncio.QueueFull
+        super().put_nowait(item)
+        self.queued_samples += samples
+        self.max_queued_samples = max(self.max_queued_samples, self.queued_samples)
+
+    def get_nowait(self):
+        item = super().get_nowait()
+        if item is not None:
+            self.queued_samples -= len(item)
+        return item
+
+
 def enqueue_audio(audio_q: asyncio.Queue, state: State, pcm: np.ndarray) -> bool:
     """Enqueue one captured block, counting saturation drops.
 
-    This is the shared live + paced-replay policy: fresh audio is accepted while
-    capacity remains; once full, the arriving block is dropped and surfaced via
-    ``state.dropped``. The return value is instrumentation for the deterministic
-    backpressure harness; the sounddevice callback does not need it.
+    Live ``AudioQueue`` capacity is PCM duration rather than backend-dependent
+    callback count. The generic queue support keeps the policy directly testable.
+    Fresh audio wins while capacity remains; a saturated arrival is dropped and
+    surfaced via ``state.dropped``.
     """
     try:
         audio_q.put_nowait(pcm)
@@ -378,6 +416,19 @@ def enqueue_audio(audio_q: asyncio.Queue, state: State, pcm: np.ndarray) -> bool
         state.dropped += 1
         return False
     return True
+
+
+def submit_audio_sentinel(audio_q: asyncio.Queue) -> None:
+    """Land the worker-stop sentinel without blocking, evicting oldest if full."""
+    while True:
+        try:
+            audio_q.put_nowait(None)
+            return
+        except asyncio.QueueFull:
+            try:
+                audio_q.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
 
 
 def emit_line(tag, seq, text, output_file):
@@ -667,68 +718,93 @@ class CodexTranslator:
                     pass
 
 
-async def worker(rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None):
-    """Drain mic queue -> feed VAD -> decode completed segments -> emit blocks.
-
-    Decode runs in the default executor (the event loop and mic enqueue stay
-    live), but this coroutine awaits it, so queue draining pauses for each
-    decode; the bounded audio_q absorbs the pause and drops past
-    AUDIO_QUEUE_MAX chunks (fix planned: M9.5). Sequential decode preserves
-    block order. A None sentinel flushes the VAD and exits.
-
-    `on_segment` is an optional instrumentation hook for the deterministic
-    replay/regression path (replay.py). When set, it is called once per popped
-    VAD segment as on_segment(start, n, seg_len, decode_s, text) — including
-    empty-text segments and reporting internally chunked decode as one merged
-    segment. The live mic path leaves it None.
-    """
-    loop = asyncio.get_running_loop()
+async def _feed_segments(vad, window, audio_q, segment_q, state):
+    """Drain captured PCM into VAD and queue copied, pre-padded segments."""
     buf = np.empty(0, dtype=np.float32)
     ring = RingBuffer(RING_SECONDS * SAMPLE_RATE)
     pad = int(VAD_PRE_PAD_S * SAMPLE_RATE)
+    while True:
+        chunk = await audio_q.get()
+        flush = chunk is None
+        if not flush:
+            buf = np.concatenate([buf, chunk]) if len(buf) else chunk
+            while len(buf) >= window:
+                vad.accept_waveform(buf[:window])
+                ring.append(buf[:window])
+                buf = buf[window:]
+        else:
+            if len(buf):
+                vad.accept_waveform(buf)
+                ring.append(buf)
+            vad.flush()
+        while not vad.empty():
+            start = int(vad.front.start)
+            n = len(vad.front.samples)
+            vad.pop()
+            # RingBuffer.slice returns a copy: later feeding cannot overwrite a
+            # queued segment while the decoder is still consuming older work.
+            seg = ring.slice(start - pad, start + n)
+            await segment_q.put((start, n, seg))
+            state.segment_queue_depth += 1
+            state.max_segment_queue_depth = max(
+                state.max_segment_queue_depth, state.segment_queue_depth
+            )
+        if flush:
+            await segment_q.put(None)
+            return
+
+
+async def _decode_segments(
+    rec, segment_q, state, output_file, translator=None, on_segment=None
+):
+    """Sequentially decode queued VAD segments and preserve emission order."""
+    loop = asyncio.get_running_loop()
     seq = 0
+    while True:
+        item = await segment_q.get()
+        if item is None:
+            return
+        state.segment_queue_depth -= 1
+        start, n, seg = item
+        t_dec = time.perf_counter() if on_segment is not None else 0.0
+        chunks = _split_decode_segment(seg)
+        if len(chunks) == 1:
+            # This is the ordinary path: same array object, one _decode call,
+            # and no merge transform (M9.4 identity guarantee).
+            text = await loop.run_in_executor(None, _decode, rec, seg)
+        else:
+            parts = []
+            for chunk in chunks:
+                parts.append(await loop.run_in_executor(None, _decode, rec, chunk))
+            text = _merge_chunk_text(parts)
+        if text:
+            seq += 1
+            emit_line("JA", seq, text, output_file)
+            if translator is not None:
+                translator.submit(seq, text)
+        if on_segment is not None:
+            on_segment(start, n, len(seg), time.perf_counter() - t_dec, text)
+
+
+async def worker(rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None):
+    """Feed VAD and decode concurrently; a None audio sentinel drains both stages.
+
+    ``on_segment`` retains replay's observation-only contract: one call per
+    popped VAD segment as ``(start, n, seg_len, decode_s, text)``, including
+    empty text and reporting internally chunked decode as one merged segment.
+    """
+    segment_q: asyncio.Queue = asyncio.Queue(maxsize=SEGMENT_QUEUE_MAX)
     try:
-        while True:
-            chunk = await audio_q.get()
-            flush = chunk is None
-            if not flush:
-                buf = np.concatenate([buf, chunk]) if len(buf) else chunk
-                while len(buf) >= window:
-                    vad.accept_waveform(buf[:window])
-                    ring.append(buf[:window])
-                    buf = buf[window:]
-            else:
-                if len(buf):
-                    vad.accept_waveform(buf)
-                    ring.append(buf)
-                vad.flush()
-            while not vad.empty():
-                start = int(vad.front.start)
-                n = len(vad.front.samples)
-                vad.pop()
-                seg = ring.slice(start - pad, start + n)
-                t_dec = time.perf_counter() if on_segment is not None else 0.0
-                chunks = _split_decode_segment(seg)
-                if len(chunks) == 1:
-                    # This is the ordinary path: same array object, one _decode
-                    # call, and no merge transform (M9.4 identity guarantee).
-                    text = await loop.run_in_executor(None, _decode, rec, seg)
-                else:
-                    parts = []
-                    for chunk in chunks:
-                        parts.append(await loop.run_in_executor(None, _decode, rec, chunk))
-                    text = _merge_chunk_text(parts)
-                if text:
-                    seq += 1
-                    emit_line("JA", seq, text, output_file)
-                    if translator is not None:
-                        translator.submit(seq, text)
-                if on_segment is not None:
-                    on_segment(start, n, len(seg), time.perf_counter() - t_dec, text)
-            if flush:
-                return
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(_feed_segments(vad, window, audio_q, segment_q, state))
+            tasks.create_task(
+                _decode_segments(
+                    rec, segment_q, state, output_file, translator, on_segment
+                )
+            )
     except Exception:
         logger.exception("worker died")
+        state.segment_queue_depth = 0
         state.request_stop()
 
 
@@ -741,8 +817,11 @@ async def meter(state, audio_q, translator=None):
     if not _STDOUT_TTY:
         return
     while not state.stopping:
-        qsize = audio_q.qsize()
-        pending = f" q={qsize}" if qsize > 0 else ""
+        queued_samples = getattr(audio_q, "queued_samples", 0)
+        audio_pending = f" q={queued_samples / SAMPLE_RATE:.2f}s" if queued_samples else ""
+        segment_pending = (
+            f" seg={state.segment_queue_depth}" if state.segment_queue_depth else ""
+        )
         dropped = f" drop={state.dropped}" if state.dropped else ""
         # tdrop= mirrors drop= for the translation backlog (shown only when >0).
         tdrop = (
@@ -750,7 +829,9 @@ async def meter(state, audio_q, translator=None):
             if translator and translator.dropped_translations
             else ""
         )
-        sys.stdout.write(f"{_LINE_CLEAR} {pending}{dropped}{tdrop}")
+        sys.stdout.write(
+            f"{_LINE_CLEAR} {audio_pending}{segment_pending}{dropped}{tdrop}"
+        )
         sys.stdout.flush()
         await asyncio.sleep(METER_INTERVAL)
 
@@ -771,7 +852,7 @@ async def run_session(args):
     state = State()
     state.stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
-    audio_q: asyncio.Queue = asyncio.Queue(maxsize=AUDIO_QUEUE_MAX)
+    audio_q: asyncio.Queue = AudioQueue()
 
     output_file = open(args.output, "a", encoding="utf-8") if args.output else None
     if output_file:
@@ -834,23 +915,10 @@ async def run_session(args):
             stream.close()
         except Exception:
             pass
-        # worker() is audio_q's sole consumer and may already be dead (an
-        # in-worker exception calls request_stop and returns). With the mic
-        # callback having possibly filled audio_q to AUDIO_QUEUE_MAX before
-        # stream.stop(), a blocking `await audio_q.put(None)` would park the
-        # loop forever — Ctrl+C routes to request_stop, not KeyboardInterrupt,
-        # so the only escape would be SIGKILL and -o is left unclosed. Evict the
-        # oldest block then retry (the submit_sentinel idiom); dropping one
-        # queued block at shutdown is harmless.
-        while True:
-            try:
-                audio_q.put_nowait(None)
-                break
-            except asyncio.QueueFull:
-                try:
-                    audio_q.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
+        # worker() may already be dead. A blocking put could then strand
+        # shutdown behind a saturated queue, so land the sentinel with the
+        # established evict-oldest handshake (T8.1).
+        submit_audio_sentinel(audio_q)
         try:
             await worker_task
         except asyncio.CancelledError:
