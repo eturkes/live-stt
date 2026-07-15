@@ -113,7 +113,7 @@ live-stt/
 ├── live_stt.py              # main app (single file)
 ├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
-├── tests/                   # pytest suite + replay/CER/backpressure/long-form evaluators
+├── tests/                   # pytest suite + corpus/replay/CER/backpressure/long-form evaluators
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
@@ -146,7 +146,13 @@ uv run python replay.py path/to.wav --engine k2v2   # human-readable report
 uv run python replay.py path/to.wav --json          # machine-readable
 ```
 
-`tests/test_replay.py` replays the cached corpus (synthetic bench + real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`. The corpus mixes synthetic bench clips with real Common Voice clips (CC0); the latter are (re)fetched from a revision- and SHA-pinned 144 MiB Parquet via `uv run --with soundfile --with pyarrow python tests/fetch_real_clips.py`.
+`tests/test_replay.py` replays the cached corpus (synthetic bench + seven real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`.
+
+`tests/fetch_real_clips.py` also builds the complete pinned Japanese evaluation corpus: all 4,483 Common Voice 8 test recordings (CC0-1.0) and all 650 FLEURS test recordings (CC-BY-4.0). Verified sources, 16 kHz PCM, and the detailed index stay in the gitignored cache; `tests/short_corpus.json` commits only provenance, distributions, and fingerprints. The command is exact because decoder drift must produce an explicit corpus requalification:
+
+```sh
+uv run --with soundfile==0.14.0 --with pyarrow==25.0.0 python tests/fetch_real_clips.py
+```
 
 ## Key constants
 

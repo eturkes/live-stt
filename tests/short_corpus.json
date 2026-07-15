@@ -1,0 +1,161 @@
+{
+  "audio": {
+    "channels": 1,
+    "encoding": "PCM16",
+    "sample_rate_hz": 16000
+  },
+  "builder": {
+    "dependencies": {
+      "libsndfile": "1.2.2",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.0",
+      "soundfile": "0.14.0"
+    },
+    "script": "tests/fetch_real_clips.py"
+  },
+  "cache": {
+    "directory": "spike/backends/cache/short_corpus-v1-98e0d8a40fbc2d6e",
+    "index": "index.jsonl",
+    "index_sha256": "98e0d8a40fbc2d6e819ddd8db22fd23c2d7f050ac2da5773ac207a1bd0a14d36",
+    "rows": 5133
+  },
+  "schema_version": 1,
+  "sources": {
+    "common_voice_8": {
+      "attribution": "Mozilla Common Voice contributors",
+      "dataset": "japanese-asr/ja_asr.common_voice_8_0",
+      "dataset_card": "https://huggingface.co/datasets/japanese-asr/ja_asr.common_voice_8_0/blob/bf8819e8d9a5feb51b0c718686bd20ea67a3c729/README.md",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "limitations": [
+        "crowd-recorded scripted speech",
+        "mirror omits speaker metadata",
+        "training overlap with evaluated models is unknown"
+      ],
+      "payloads": [
+        {
+          "path": "data/test-00000-of-00001.parquet",
+          "sha256": "44a9141bc16cfa34877955fb39003ad34d3b730417a05c9eb50d8e90ba3ec40a",
+          "size_bytes": 151322876,
+          "url": "https://huggingface.co/datasets/japanese-asr/ja_asr.common_voice_8_0/resolve/bf8819e8d9a5feb51b0c718686bd20ea67a3c729/data/test-00000-of-00001.parquet"
+        }
+      ],
+      "revision": "bf8819e8d9a5feb51b0c718686bd20ea67a3c729",
+      "source_identity": "test[0:4483]",
+      "speaker_metadata": "absent",
+      "statistics": {
+        "audio_hours": 6.48402,
+        "duration_seconds": {
+          "buckets": {
+            "0-5": 2459,
+            "10-20": 53,
+            "20+": 0,
+            "5-10": 1971
+          },
+          "max": 10.548,
+          "mean": 5.206886,
+          "min": 1.584,
+          "total": 23342.472
+        },
+        "fingerprints": {
+          "pcm_sha256": "28ff89a3e21ef721691647999014c4f98d58a23b6ad825cacd99ad36e16a3710",
+          "references_sha256": "bbf0fa754e2cc14294fa0bb19a705af8de4f1836aff21bd476f23acd9ac95ad3"
+        },
+        "gender": {},
+        "pcm": {
+          "duplicate_groups": 0,
+          "duplicate_rows": 0,
+          "unique": 4483
+        },
+        "references": {
+          "duplicate_groups": 1,
+          "duplicate_rows": 1,
+          "max_recordings_per_reference": 2,
+          "recordings_per_reference": {
+            "1": 4481,
+            "2": 1
+          },
+          "unique": 4482
+        },
+        "rows": 4483
+      }
+    },
+    "fleurs": {
+      "attribution": "FLEURS authors and recording contributors; cite Conneau et al. (2022)",
+      "citation": "https://arxiv.org/abs/2205.12446",
+      "dataset": "google/fleurs",
+      "dataset_card": "https://huggingface.co/datasets/google/fleurs/blob/70bb2e84b976b7e960aa89f1c648e09c59f894dd/README.md",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "limitations": [
+        "read speech; not an unseen production-speech proxy",
+        "repeated sentences have one to three independent recordings",
+        "Nemotron publishes FLEURS results, so candidate overlap is explicit",
+        "gender labels are corpus metadata, not stable speaker identities"
+      ],
+      "payloads": [
+        {
+          "path": "data/ja_jp/test.tsv",
+          "sha256": "5dd9643511437414681ad3f23508596c621cdf78978724a09f1f06fefe9d300b",
+          "size_bytes": 361174,
+          "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/ja_jp/test.tsv"
+        },
+        {
+          "path": "data/ja_jp/audio/test.tar.gz",
+          "sha256": "5de465fa7aaafc4e2c13aba44771550b8cd2dd29bb9b265daeb6d92ca8e0c136",
+          "size_bytes": 448762391,
+          "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/ja_jp/audio/test.tar.gz"
+        }
+      ],
+      "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd",
+      "source_identity": "ja_jp/test[0:650]",
+      "speaker_metadata": "gender only; no speaker ID",
+      "statistics": {
+        "audio_hours": 2.3642,
+        "duration_seconds": {
+          "buckets": {
+            "0-5": 0,
+            "10-20": 489,
+            "20+": 30,
+            "5-10": 131
+          },
+          "max": 28.2,
+          "mean": 13.094031,
+          "min": 6.36,
+          "total": 8511.12
+        },
+        "fingerprints": {
+          "pcm_sha256": "7e75303d66590862b6fa32c1a1a2fa8003251c467d2a71525649788111724347",
+          "references_sha256": "2c2bf2413e299ce55aadf1c38a028d8093b473114f8f330a7cabee6cb584c6ce"
+        },
+        "gender": {
+          "female": {
+            "audio_seconds": 1102.98,
+            "rows": 79
+          },
+          "male": {
+            "audio_seconds": 7408.14,
+            "rows": 571
+          }
+        },
+        "pcm": {
+          "duplicate_groups": 0,
+          "duplicate_rows": 0,
+          "unique": 650
+        },
+        "references": {
+          "duplicate_groups": 223,
+          "duplicate_rows": 329,
+          "max_recordings_per_reference": 3,
+          "recordings_per_reference": {
+            "1": 98,
+            "2": 117,
+            "3": 106
+          },
+          "unique": 321
+        },
+        "rows": 650
+      }
+    }
+  }
+}
