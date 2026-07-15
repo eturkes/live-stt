@@ -116,7 +116,7 @@ def test_worker_feeds_vad_and_flushes_while_decode_is_blocked():
             # This block and shutdown sentinel arrive during the first decode.
             # The feeder must consume + flush both before the decoder is released.
             assert enqueue_audio(audio_q, state, np.ones(window, dtype=np.float32))
-            submit_audio_sentinel(audio_q)
+            await submit_audio_sentinel(audio_q)
             for _ in range(5):
                 await asyncio.sleep(0)
             assert vad.accepted == 2 * window

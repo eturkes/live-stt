@@ -144,7 +144,7 @@ uv run python replay.py path/to.wav --engine k2v2   # human-readable report
 uv run python replay.py path/to.wav --json          # machine-readable
 ```
 
-`tests/test_replay.py` replays the cached corpus (synthetic bench + real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`. The corpus mixes synthetic bench clips with real Common Voice clips (CC0); the latter are (re)fetched via `uv run --with soundfile python tests/fetch_real_clips.py`.
+`tests/test_replay.py` replays the cached corpus (synthetic bench + real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`. The corpus mixes synthetic bench clips with real Common Voice clips (CC0); the latter are (re)fetched from a revision- and SHA-pinned 144 MiB Parquet via `uv run --with soundfile --with pyarrow python tests/fetch_real_clips.py`.
 
 ## Key constants
 

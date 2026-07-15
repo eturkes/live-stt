@@ -8,10 +8,10 @@ splicing the narration. The reference is section 一 from Aozora Bunko's pinned
 Shift-JIS text, with ruby + editor notes removed and the spoken「章おわり」added.
 
 Every remote input is SHA-256 pinned. The 62 selected alignment rows are
-sample-contiguous, so the resulting 4:48 WAV is one untouched real narration
-span plus 0.4/0.6 s of source-native lead/tail. It lands in the established
-gitignored replay cache; only the self-substantiating provenance/results table
-is committed.
+sample-contiguous, so the resulting 4:48 WAV is one unspliced real narration
+span, resampled to 16 kHz, plus 0.4/0.6 s of source-native lead/tail. It lands
+in the established gitignored replay cache; only the self-substantiating
+provenance/results table is committed.
 
 Requires both model sets plus transient libsndfile bindings for MP3 decode:
 

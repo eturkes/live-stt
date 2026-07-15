@@ -13,7 +13,7 @@
     "lead_s": 0.3,
     "tail_s": 0.6,
     "excess_metric": "stressor D - sum(component baseline D), over concat ref chars",
-    "excess_isolates": "length + segmentation (join is constant-power, no dip)",
+    "excess_includes": "length + segmentation + constant-power crossfade effects (no inserted silence)",
     "decode_control": "production worker with M9.4 chunking disabled (before-fix QC)",
     "continuity_proof": "every join_samples offset inside a VAD segment",
     "softcap_proof": "cap-on VAD segments > cap-off (control) segments"

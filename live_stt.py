@@ -418,8 +418,16 @@ def enqueue_audio(audio_q: asyncio.Queue, state: State, pcm: np.ndarray) -> bool
     return True
 
 
-def submit_audio_sentinel(audio_q: asyncio.Queue) -> None:
-    """Land the worker-stop sentinel without blocking, evicting oldest if full."""
+async def submit_audio_sentinel(audio_q: asyncio.Queue) -> None:
+    """Land the worker-stop sentinel without waiting for queue capacity.
+
+    The mic callback schedules captures with ``call_soon_threadsafe``. Once the
+    stream has stopped, one event-loop turn lets those already-scheduled puts
+    land before the sentinel; otherwise the worker can exit at ``None`` and
+    strand captured PCM behind it. A full queue still evicts oldest rather than
+    risking a dead-worker shutdown hang (T8.1).
+    """
+    await asyncio.sleep(0)
     while True:
         try:
             audio_q.put_nowait(None)
@@ -918,7 +926,7 @@ async def run_session(args):
         # worker() may already be dead. A blocking put could then strand
         # shutdown behind a saturated queue, so land the sentinel with the
         # established evict-oldest handshake (T8.1).
-        submit_audio_sentinel(audio_q)
+        await submit_audio_sentinel(audio_q)
         try:
             await worker_task
         except asyncio.CancelledError:

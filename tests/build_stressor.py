@@ -23,10 +23,10 @@ metric is EXCESS deletion = stressor D - sum(component baseline D) over the
 concatenated reference. Since M9.4, this builder temporarily raises only the
 decode-split trigger so its manifest remains the reproducible before-fix control;
 tests/eval_cer.py scores the current shipped path. Baseline and stressor otherwise
-share identical trim + framing + worker decode, isolating length + segmentation.
-It is not a purely acoustic length isolate: any decode difference at a ~10 ms
-equal-power join rides along too, but that join is constant-power (no dip, no
-inserted silence) and the continuity check confirms no segmentation artifact.
+share identical trim + framing + worker decode; the excess therefore covers
+length + segmentation plus any effect from the documented joins. A ~10 ms
+equal-power crossfade inserts no silence, and the continuity check confirms
+that it creates no VAD segmentation boundary.
 cer.py supplies normalize + S/D/I alignment.
 
 Acceptance is proven, not asserted loosely (see validate()):
@@ -38,7 +38,8 @@ Acceptance is proven, not asserted loosely (see validate()):
   excess    -- k2v2 excess deletion >= EXCESS_TARGET on both stressors.
 The full per-(stressor, engine) validation matrix + the generated-WAV sha256 are
 persisted into the manifest, so the committed numbers are reproducible and
-self-substantiating; a failing run writes nothing and exits nonzero.
+self-substantiating; failed validation leaves the tracked manifest untouched
+(cache WAVs have already been rebuilt) and exits nonzero.
 
 Outputs (gitignored cache + manifest beside real_clips.json):
     spike/backends/cache/stress_long.wav   (>=35 s continuous)
@@ -297,7 +298,10 @@ def main() -> None:
             "lead_s": LEAD_S,
             "tail_s": TAIL_S,
             "excess_metric": "stressor D - sum(component baseline D), over concat ref chars",
-            "excess_isolates": "length + segmentation (join is constant-power, no dip)",
+            "excess_includes": (
+                "length + segmentation + constant-power crossfade effects "
+                "(no inserted silence)"
+            ),
             "decode_control": "production worker with M9.4 chunking disabled (before-fix QC)",
             "continuity_proof": "every join_samples offset inside a VAD segment",
             "softcap_proof": "cap-on VAD segments > cap-off (control) segments",

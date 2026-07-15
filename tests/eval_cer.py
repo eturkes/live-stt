@@ -10,7 +10,9 @@ Requires both model sets and the gitignored replay corpus:
     uv run python tests/eval_cer.py
 
 The M9.4 shipped-config gate is default-engine excess deletion <=4% on each
-stressor. A miss prints every scored row but leaves the committed table intact.
+stressor plus total CER <=15% for both engines. The CER bound prevents overlap
+duplication from gaming a deletion-only gate. A miss prints every scored row but
+leaves the committed table intact.
 """
 
 from __future__ import annotations
@@ -52,6 +54,9 @@ ENGINES = ("k2v2", "parakeet")
 LENGTHS_S = (5, 10, 20, 40)
 DEFAULT_ENGINE = "k2v2"
 MAX_EXCESS_DEL_RATE = 0.04
+# Current worst stressor CER is 12.12%; 15% retains measured headroom while
+# rejecting both the pre-fix collapse and a material overlap-insertion regression.
+MAX_CER = 0.15
 
 
 def score_wav(ref: str, wav: Path, engine: str) -> dict:
@@ -73,6 +78,23 @@ def score_wav(ref: str, wav: Path, engine: str) -> dict:
         "del_rate": d / n,
         "ins_rate": ins / n,
     }
+
+
+def validation_failures(out: dict[str, dict]) -> list[str]:
+    """Return shipped stressor-gate misses without mutating the baseline."""
+    failures = [
+        f"{DEFAULT_ENGINE}/{sid} excess deletion {row['excess_del_rate']:.1%} > "
+        f"{MAX_EXCESS_DEL_RATE:.1%}"
+        for sid, row in out["stressors"][DEFAULT_ENGINE].items()
+        if row["excess_del_rate"] > MAX_EXCESS_DEL_RATE
+    ]
+    failures.extend(
+        f"{engine}/{sid} CER {row['cer']:.1%} > {MAX_CER:.1%}"
+        for engine, rows in out["stressors"].items()
+        for sid, row in rows.items()
+        if row["cer"] > MAX_CER
+    )
+    return failures
 
 
 def main() -> None:
@@ -152,15 +174,10 @@ def main() -> None:
                     f"segments={row['n_nonempty']}/{row['n_seg']}"
                 )
 
-    failures = [
-        f"{sid} excess deletion {row['excess_del_rate']:.1%} > "
-        f"{MAX_EXCESS_DEL_RATE:.1%}"
-        for sid, row in out["stressors"][DEFAULT_ENGINE].items()
-        if row["excess_del_rate"] > MAX_EXCESS_DEL_RATE
-    ]
+    failures = validation_failures(out)
     if failures:
         for failure in failures:
-            print(f"FAIL: {DEFAULT_ENGINE}/{failure}", file=sys.stderr)
+            print(f"FAIL: {failure}", file=sys.stderr)
         print(f"not writing {BASELINE.relative_to(ROOT)}", file=sys.stderr)
         sys.exit(1)
 
@@ -170,7 +187,8 @@ def main() -> None:
     )
     print(
         f"PASS: {DEFAULT_ENGINE} excess deletion <= {MAX_EXCESS_DEL_RATE:.1%} "
-        f"on {len(out['stressors'][DEFAULT_ENGINE])} stressors"
+        f"and both-engine CER <= {MAX_CER:.1%} on "
+        f"{len(out['stressors'][DEFAULT_ENGINE])} stressors"
     )
     print(f"wrote {BASELINE.relative_to(ROOT)}")
 

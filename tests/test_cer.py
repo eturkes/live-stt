@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from cer import align, cer, normalize
+from tests.eval_cer import MAX_CER, validation_failures
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
@@ -86,8 +87,23 @@ def test_stressor_excess_uses_component_baseline_and_meets_shipped_gate():
             )
             assert row["excess_D"] == row["D"] - baseline_d
             assert row["excess_del_rate"] == round(row["excess_D"] / row["N"], 4)
+            assert row["cer"] <= MAX_CER
             if engine == "k2v2":  # shipped default: M9.4 acceptance <=4% absolute
                 assert row["excess_del_rate"] <= 0.04
+
+
+def test_stressor_gate_rejects_insertion_regression_despite_zero_excess_deletion():
+    out = {
+        "stressors": {
+            "k2v2": {"stress_long": {"excess_del_rate": 0.0, "cer": 0.05}},
+            "parakeet": {
+                "stress_long": {"excess_del_rate": 0.0, "cer": MAX_CER + 0.01}
+            },
+        }
+    }
+    failures = validation_failures(out)
+    assert len(failures) == 1
+    assert failures[0].startswith("parakeet/stress_long CER")
 
 
 def test_stressor_manifest_retains_defect_era_reproduction():

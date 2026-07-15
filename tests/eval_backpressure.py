@@ -141,7 +141,7 @@ async def _run_paced(
                 }
             )
             await clock.sleep(len(chunk))
-        submit_audio_sentinel(audio_q)
+        await submit_audio_sentinel(audio_q)
 
     def fake_decode(_rec: object, _samples: np.ndarray) -> str:
         return ""

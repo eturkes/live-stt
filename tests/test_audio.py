@@ -295,7 +295,7 @@ def test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking():
         q: asyncio.Queue = asyncio.Queue(maxsize=4)
         for i in range(4):  # fill to capacity, no consumer
             q.put_nowait(i)
-        submit_audio_sentinel(q)
+        await submit_audio_sentinel(q)
         return q
 
     # wait_for must NOT fire: a regression to a blocking put would hang here.
@@ -305,3 +305,18 @@ def test_shutdown_sentinel_lands_on_full_audio_queue_without_blocking():
     assert items[-1] is None  # sentinel landed
     assert items.count(None) == 1  # exactly one sentinel
     assert 0 not in items  # oldest block evicted, newer ones (1,2,3) survive
+
+
+def test_shutdown_sentinel_follows_already_scheduled_capture():
+    async def scheduled_capture_then_sentinel():
+        q: asyncio.Queue = asyncio.Queue()
+        pcm = np.ones(16, dtype=np.float32)
+        # Match audio_callback's cross-thread scheduling surface exactly.
+        asyncio.get_running_loop().call_soon_threadsafe(q.put_nowait, pcm)
+        await submit_audio_sentinel(q)
+        return q, pcm
+
+    q, pcm = asyncio.run(scheduled_capture_then_sentinel())
+    assert q.get_nowait() is pcm
+    assert q.get_nowait() is None
+    assert q.empty()
