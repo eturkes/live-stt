@@ -39,12 +39,29 @@ ENGINE_DIRS = {
 # intra-sentence pauses must not.
 VAD_MIN_SILENCE_S = 0.5
 VAD_MIN_SPEECH_S = 0.25
+# sherpa's max is a soft cap: after this duration silero raises its speech
+# threshold and waits for an acoustic dip. Keep the upstream 20 s behavior
+# explicit; dip-less output is bounded for the recognizer by decode chunking.
+VAD_MAX_SPEECH_S = 20.0
 # Silero opens segments 0.2-0.7 s after true speech onset and sherpa exposes
 # no pad field, which clips leading syllables (こんにちは → はい). Re-slice
 # each segment from the ring buffer with this much lead-in; reaching back
 # into silence is harmless.
 VAD_PRE_PAD_S = 0.4
 RING_SECONDS = 60  # ring capacity; bounds VAD pre-pad re-slicing memory
+
+# Offline recognizers delete whole phrases on long continuous segments (M9.4).
+# Leave ordinary utterances on the exact single-decode path; split only >10 s
+# segments into balanced ~2 s views, moving each cut to a nearby 100 ms
+# low-energy window. A small overlap protects cut phonemes; exact transcript
+# overlap is removed after decoding. Corpus sweep: 180 ms/side was the joint
+# CER optimum for k2v2 + parakeet, not a VAD/endpointing parameter.
+DECODE_SPLIT_TRIGGER_S = 10.0
+DECODE_CHUNK_S = 2.0
+DECODE_SPLIT_SEARCH_S = 0.6
+DECODE_SPLIT_RMS_WINDOW_S = 0.1
+DECODE_CHUNK_OVERLAP_S = 0.18
+_DECODE_MERGE_MAX_CHARS = 8
 
 # Translation leg (T4.2 bench, D-011): Spark+low p50 0.99 s/turn; fallback
 # pair if Spark entitlement lapses: model "gpt-5.4-mini" + effort "none".
@@ -240,14 +257,14 @@ def load_recognizer(engine: str) -> sherpa_onnx.OfflineRecognizer:
     )
 
 
-def make_vad(max_speech_s: float | None = None) -> tuple[sherpa_onnx.VoiceActivityDetector, int]:
+def make_vad(
+    max_speech_s: float | None = VAD_MAX_SPEECH_S,
+) -> tuple[sherpa_onnx.VoiceActivityDetector, int]:
     """Returns (vad, window_size_in_samples).
 
-    max_speech_s overrides silero's soft cap (sherpa default 20 s: past it the
-    threshold rises and the utterance is cut at the next dip). Live + replay
-    callers pass nothing; the stressor build (tests/build_stressor.py) raises it
-    to run a control VAD with the cap effectively off, proving the cap is what
-    cuts a continuous stream mid-stream.
+    max_speech_s overrides silero's soft cap (past it the threshold rises and
+    the utterance is cut at the next dip). Live + replay use the explicit
+    VAD_MAX_SPEECH_S; the stressor build raises it for a cap-off control.
     """
     cfg = sherpa_onnx.VadModelConfig()
     cfg.silero_vad.model = str(VAD_MODEL)
@@ -266,6 +283,55 @@ def _decode(rec: sherpa_onnx.OfflineRecognizer, samples: np.ndarray) -> str:
     s.accept_waveform(SAMPLE_RATE, samples)
     rec.decode_stream(s)
     return s.result.text.strip()
+
+
+def _split_decode_segment(samples: np.ndarray) -> tuple[np.ndarray, ...]:
+    """Return overlapped low-energy decode views; preserve short input by identity."""
+    trigger = round(DECODE_SPLIT_TRIGGER_S * SAMPLE_RATE)
+    if len(samples) <= trigger:
+        return (samples,)
+
+    target = round(DECODE_CHUNK_S * SAMPLE_RATE)
+    count = (len(samples) + target - 1) // target
+    search = round(DECODE_SPLIT_SEARCH_S * SAMPLE_RATE)
+    rms_half = round(DECODE_SPLIT_RMS_WINDOW_S * SAMPLE_RATE) // 2
+
+    # Prefix sums make every moving-RMS comparison O(1). sqrt/window division
+    # are monotonic constants, so summed squares choose the same minimum.
+    power = np.square(samples, dtype=np.float64)
+    prefix = np.empty(len(samples) + 1, dtype=np.float64)
+    prefix[0] = 0.0
+    np.cumsum(power, out=prefix[1:])
+    cuts = []
+    for i in range(1, count):
+        nominal = round(i * len(samples) / count)
+        lo = max(rms_half, nominal - search)
+        hi = min(len(samples) - rms_half, nominal + search)
+        energies = (
+            prefix[lo + rms_half : hi + rms_half + 1]
+            - prefix[lo - rms_half : hi - rms_half + 1]
+        )
+        cuts.append(lo + int(np.argmin(energies)))
+
+    overlap = round(DECODE_CHUNK_OVERLAP_S * SAMPLE_RATE)
+    bounds = [0, *cuts, len(samples)]
+    return tuple(
+        samples[max(0, start - overlap) : min(len(samples), end + overlap)]
+        for start, end in zip(bounds, bounds[1:], strict=False)
+    )
+
+
+def _merge_chunk_text(parts: list[str]) -> str:
+    """Join chunk transcripts, removing only credible exact audio-overlap text."""
+    out = ""
+    for text in parts:
+        max_overlap = min(_DECODE_MERGE_MAX_CHARS, len(out), len(text))
+        overlap = next(
+            (n for n in range(max_overlap, 1, -1) if out.endswith(text[:n])),
+            0,
+        )
+        out += text[overlap:]
+    return out
 
 
 def check_models(engine: str) -> str | None:
@@ -613,8 +679,8 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
     `on_segment` is an optional instrumentation hook for the deterministic
     replay/regression path (replay.py). When set, it is called once per popped
     VAD segment as on_segment(start, n, seg_len, decode_s, text) — including
-    empty-text segments, so segmentation can be reported faithfully. The live
-    mic path leaves it None, so its behavior is unchanged.
+    empty-text segments and reporting internally chunked decode as one merged
+    segment. The live mic path leaves it None.
     """
     loop = asyncio.get_running_loop()
     buf = np.empty(0, dtype=np.float32)
@@ -642,7 +708,16 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
                 vad.pop()
                 seg = ring.slice(start - pad, start + n)
                 t_dec = time.perf_counter() if on_segment is not None else 0.0
-                text = await loop.run_in_executor(None, _decode, rec, seg)
+                chunks = _split_decode_segment(seg)
+                if len(chunks) == 1:
+                    # This is the ordinary path: same array object, one _decode
+                    # call, and no merge transform (M9.4 identity guarantee).
+                    text = await loop.run_in_executor(None, _decode, rec, seg)
+                else:
+                    parts = []
+                    for chunk in chunks:
+                        parts.append(await loop.run_in_executor(None, _decode, rec, chunk))
+                    text = _merge_chunk_text(parts)
                 if text:
                     seq += 1
                     emit_line("JA", seq, text, output_file)

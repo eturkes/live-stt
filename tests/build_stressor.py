@@ -2,8 +2,8 @@
 """Build the continuous-speech stressor corpus (M9.1). Deterministic, no network.
 
 Long pause-less Japanese speech is where the offline decoder deletes content
-wholesale (L-023, D-010) and silero's max_speech_duration soft cap (20 s default,
-unset by make_vad) cuts mid-stream. The short CV corpus (tests/real_clips.json)
+wholesale (L-023, D-010) and silero's max_speech_duration soft cap (20 s,
+explicit as VAD_MAX_SPEECH_S) cuts mid-stream. The short CV corpus (tests/real_clips.json)
 cannot exercise this -- every clip is one short sentence closing on its own
 silence. This tool synthesizes a genuinely continuous stressor from those real
 clips: silero-trim each to its speech extent, equal-power crossfade-join (~10 ms)
@@ -18,15 +18,16 @@ splittable gap -- the VAD then sees one long utterance and the soft cap fires.
 Excess-deletion methodology (the honest headline): the silero trim clips onsets
 (silero opens 0.2-0.7 s late), so a stressor's raw deletion count overstates the
 length effect. Each trimmed component is therefore decoded in isolation through
-the very same pipeline -- its per-component baseline D -- and the reported metric
-is EXCESS deletion = stressor D - sum(component baseline D) over the concatenated
-reference. Baseline and stressor share the identical trim + framing + decode
-path, so the excess isolates the length + segmentation effect. It is not a purely
-acoustic length isolate: any decode difference at a ~10 ms equal-power join rides
-along too, but that join is constant-power (no dip, no inserted silence) by
-design and the continuity check below confirms it creates no segmentation
-artifact -- so the residual join contribution is bounded and acoustically
-transparent. cer.py supplies normalize + S/D/I alignment.
+the very same pipeline -- its per-component baseline D -- and the reported
+metric is EXCESS deletion = stressor D - sum(component baseline D) over the
+concatenated reference. Since M9.4, this builder temporarily raises only the
+decode-split trigger so its manifest remains the reproducible before-fix control;
+tests/eval_cer.py scores the current shipped path. Baseline and stressor otherwise
+share identical trim + framing + worker decode, isolating length + segmentation.
+It is not a purely acoustic length isolate: any decode difference at a ~10 ms
+equal-power join rides along too, but that join is constant-power (no dip, no
+inserted silence) and the continuity check confirms no segmentation artifact.
+cer.py supplies normalize + S/D/I alignment.
 
 Acceptance is proven, not asserted loosely (see validate()):
   continuity -- every crossfade join offset lies INSIDE a VAD speech segment, so
@@ -55,15 +56,17 @@ import sys
 import tempfile
 import wave
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import live_stt  # noqa: E402
 import replay  # noqa: E402  (after sys.path injection)
 from cer import align, normalize  # noqa: E402
-from live_stt import SAMPLE_RATE, check_models, make_vad  # noqa: E402
+from live_stt import SAMPLE_RATE, VAD_MAX_SPEECH_S, check_models, make_vad  # noqa: E402
 
 CACHE = ROOT / "spike" / "backends" / "cache"
 REAL_CLIPS = ROOT / "tests" / "real_clips.json"
@@ -95,7 +98,9 @@ def load_component(cid: str) -> np.ndarray:
     return replay.load_wav_f32_16k(CACHE / f"{cid}.wav")
 
 
-def vad_segments(samples: np.ndarray, max_speech_s: float | None = None) -> list[tuple[int, int]]:
+def vad_segments(
+    samples: np.ndarray, max_speech_s: float = VAD_MAX_SPEECH_S
+) -> list[tuple[int, int]]:
     """[(start, length), ...] silero speech segments over `samples`, in samples.
 
     Feeds make_vad() exactly as worker() does (window frames, remainder to flush)
@@ -194,6 +199,12 @@ def decode_hyp(path: Path, engine: str) -> tuple[str, list[dict]]:
     return text, rep["segments"]
 
 
+def decode_unsplit_hyp(path: Path, engine: str) -> tuple[str, list[dict]]:
+    """Run the M9.1 before-fix control through worker with M9.4 splitting off."""
+    with mock.patch.object(live_stt, "DECODE_SPLIT_TRIGGER_S", CAP_OFF_S):
+        return decode_hyp(path, engine)
+
+
 def cycle_order(trimmed_dur: dict[str, float], target_s: float) -> list[str]:
     """Component ids cycled in COMPONENTS order until trimmed length >= target_s."""
     cycle_total = sum(trimmed_dur[c] for c in COMPONENTS)
@@ -236,7 +247,7 @@ def main() -> None:
             wav = Path(td) / f"{cid}.wav"
             write_wav(wav, frame(trimmed[cid], LEAD_S, TAIL_S))
             for engine in ENGINES:
-                hyp, _ = decode_hyp(wav, engine)
+                hyp, _ = decode_unsplit_hyp(wav, engine)
                 r = normalize(refs[cid])
                 s, d, ins = align(r, normalize(hyp))
                 baselines[cid][engine] = {"hyp": hyp, "N": len(r), "S": s, "D": d, "I": ins}
@@ -287,6 +298,7 @@ def main() -> None:
             "tail_s": TAIL_S,
             "excess_metric": "stressor D - sum(component baseline D), over concat ref chars",
             "excess_isolates": "length + segmentation (join is constant-power, no dip)",
+            "decode_control": "production worker with M9.4 chunking disabled (before-fix QC)",
             "continuity_proof": "every join_samples offset inside a VAD segment",
             "softcap_proof": "cap-on VAD segments > cap-off (control) segments",
         },
@@ -332,7 +344,7 @@ def validate(stressors: dict[str, dict], baselines: dict[str, dict]) -> tuple[bo
         n = len(ref_norm)
         per_engine: dict[str, dict] = {}
         for engine in ENGINES:
-            _, segs = decode_hyp(CACHE / f"{name}.wav", engine)
+            _, segs = decode_unsplit_hyp(CACHE / f"{name}.wav", engine)
             hyp = "".join(s["text"] for s in segs if s["text"])
             _, raw_d, _ = align(ref_norm, normalize(hyp))
             baseline_d = sum(baselines[c][engine]["D"] for c in order)

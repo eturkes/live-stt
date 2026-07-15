@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the committed CER + long-form viability baseline (M9.2a).
+"""Generate the committed CER + long-form viability baseline (M9.2a/M9.4).
 
 Scores the seven real Common Voice clips and both continuous-speech stressors
 with each supported engine, then reports decode RTF over synthetic continuous
@@ -8,6 +8,9 @@ crossfade, framing, and replay pipeline; its temporary WAVs are never committed.
 
 Requires both model sets and the gitignored replay corpus:
     uv run python tests/eval_cer.py
+
+The M9.4 shipped-config gate is default-engine excess deletion <=4% on each
+stressor. A miss prints every scored row but leaves the committed table intact.
 """
 
 from __future__ import annotations
@@ -47,6 +50,8 @@ REAL_CLIPS = TESTS / "real_clips.json"
 STRESSORS = TESTS / "stressor_clips.json"
 ENGINES = ("k2v2", "parakeet")
 LENGTHS_S = (5, 10, 20, 40)
+DEFAULT_ENGINE = "k2v2"
+MAX_EXCESS_DEL_RATE = 0.04
 
 
 def score_wav(ref: str, wav: Path, engine: str) -> dict:
@@ -147,9 +152,25 @@ def main() -> None:
                     f"segments={row['n_nonempty']}/{row['n_seg']}"
                 )
 
+    failures = [
+        f"{sid} excess deletion {row['excess_del_rate']:.1%} > "
+        f"{MAX_EXCESS_DEL_RATE:.1%}"
+        for sid, row in out["stressors"][DEFAULT_ENGINE].items()
+        if row["excess_del_rate"] > MAX_EXCESS_DEL_RATE
+    ]
+    if failures:
+        for failure in failures:
+            print(f"FAIL: {DEFAULT_ENGINE}/{failure}", file=sys.stderr)
+        print(f"not writing {BASELINE.relative_to(ROOT)}", file=sys.stderr)
+        sys.exit(1)
+
     BASELINE.write_text(
         json.dumps(out, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
+    )
+    print(
+        f"PASS: {DEFAULT_ENGINE} excess deletion <= {MAX_EXCESS_DEL_RATE:.1%} "
+        f"on {len(out['stressors'][DEFAULT_ENGINE])} stressors"
     )
     print(f"wrote {BASELINE.relative_to(ROOT)}")
 

@@ -7,7 +7,19 @@ import io
 
 import numpy as np
 
-from live_stt import RingBuffer, emit_line, resample
+from live_stt import (
+    DECODE_CHUNK_OVERLAP_S,
+    DECODE_CHUNK_S,
+    DECODE_SPLIT_RMS_WINDOW_S,
+    DECODE_SPLIT_SEARCH_S,
+    DECODE_SPLIT_TRIGGER_S,
+    SAMPLE_RATE,
+    RingBuffer,
+    _merge_chunk_text,
+    _split_decode_segment,
+    emit_line,
+    resample,
+)
 
 
 def test_resample_identity():
@@ -173,6 +185,47 @@ def test_ring_slice_spanning_wrap_point():
     r.append(np.arange(6, dtype=np.float32))   # fills 0..5
     r.append(np.arange(6, 12, dtype=np.float32))  # wraps: retained 4..11
     np.testing.assert_array_equal(r.slice(4, 12), np.arange(4, 12, dtype=np.float32))
+
+
+# --- Long-segment decode chunking (M9.4) ---
+
+
+def test_split_decode_segment_preserves_short_input_by_identity():
+    segment = np.zeros(round(DECODE_SPLIT_TRIGGER_S * SAMPLE_RATE), dtype=np.float32)
+    chunks = _split_decode_segment(segment)
+    assert len(chunks) == 1
+    assert chunks[0] is segment
+
+
+def test_split_decode_segment_uses_balanced_low_rms_cuts_and_overlap():
+    n = round((DECODE_SPLIT_TRIGGER_S + 0.1) * SAMPLE_RATE)
+    segment = np.ones(n, dtype=np.float32)
+    chunk_samples = round(DECODE_CHUNK_S * SAMPLE_RATE)
+    count = (n + chunk_samples - 1) // chunk_samples
+    rms_half = round(DECODE_SPLIT_RMS_WINDOW_S * SAMPLE_RATE) // 2
+    offset = round(0.25 * SAMPLE_RATE)
+    cuts = [round(i * n / count) + offset for i in range(1, count)]
+    assert offset < round(DECODE_SPLIT_SEARCH_S * SAMPLE_RATE)
+    for cut in cuts:
+        segment[cut - rms_half : cut + rms_half] = 0.0
+
+    chunks = _split_decode_segment(segment)
+    overlap = round(DECODE_CHUNK_OVERLAP_S * SAMPLE_RATE)
+    bounds = [0, *cuts, n]
+    expected_lengths = [
+        min(n, end + overlap) - max(0, start - overlap)
+        for start, end in zip(bounds, bounds[1:], strict=False)
+    ]
+    assert [len(chunk) for chunk in chunks] == expected_lengths
+    assert all(np.shares_memory(segment, chunk) for chunk in chunks)
+
+
+def test_merge_chunk_text_removes_only_plausible_exact_overlap():
+    assert _merge_chunk_text(["空が青い", "青いです"]) == "空が青いです"
+    # One repeated character can be real speech at the cut; retain it rather
+    # than guessing from too little evidence.
+    assert _merge_chunk_text(["時", "時です"]) == "時時です"
+    assert _merge_chunk_text(["そのまま"]) == "そのまま"
 
 
 # --- emit_line ---

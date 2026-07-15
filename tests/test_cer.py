@@ -73,15 +73,27 @@ def test_baseline_structure_and_provenance():
             )
 
 
-def test_stressor_excess_matches_validation_manifest():
+def test_stressor_excess_uses_component_baseline_and_meets_shipped_gate():
     for engine in ENGINES:
         for sid in STRESSOR_IDS:
             row = BASELINE["stressors"][engine][sid]
-            validation = STRESSOR_CLIPS["stressors"][sid]["validation"]["per_engine"][engine]
-            assert row["excess_D"] == validation["excess_D"]
-            assert row["excess_del_rate"] == validation["excess_rate"]
-            if engine == "k2v2":
-                assert row["excess_del_rate"] >= 0.10
+            order = STRESSOR_CLIPS["stressors"][sid]["order"]
+            baseline_d = sum(
+                STRESSOR_CLIPS["components"][cid]["baseline"][engine]["D"] for cid in order
+            )
+            assert row["excess_D"] == row["D"] - baseline_d
+            assert row["excess_del_rate"] == round(row["excess_D"] / row["N"], 4)
+            if engine == "k2v2":  # shipped default: M9.4 acceptance <=4% absolute
+                assert row["excess_del_rate"] <= 0.04
+
+
+def test_stressor_manifest_retains_defect_era_reproduction():
+    # The M9.1 manifest is the immutable before-fix construction/QC record;
+    # cer_baseline.json tracks the current production pipeline after M9.4.
+    assert "M9.4 chunking disabled" in STRESSOR_CLIPS["recipe"]["decode_control"]
+    for sid in STRESSOR_IDS:
+        validation = STRESSOR_CLIPS["stressors"][sid]["validation"]["per_engine"]["k2v2"]
+        assert validation["excess_rate"] >= 0.10
 
 
 def test_rtf_rows_have_valid_shape_and_long_form_output():
