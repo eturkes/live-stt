@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from cer import align, cer, normalize
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 BASELINE = json.loads((TESTS / "cer_baseline.json").read_text(encoding="utf-8"))
+LONG_FORM = json.loads((TESTS / "long_form.json").read_text(encoding="utf-8"))
 REAL_CLIPS = json.loads((TESTS / "real_clips.json").read_text(encoding="utf-8"))
 REPLAY_GOLDENS = json.loads((TESTS / "replay_goldens.json").read_text(encoding="utf-8"))
 STRESSOR_CLIPS = json.loads((TESTS / "stressor_clips.json").read_text(encoding="utf-8"))
@@ -21,6 +23,7 @@ RTF_LENGTHS = {"5", "10", "20", "40"}
 
 def test_normalize_fixed_vectors():
     assert normalize("Ａb, C！￥") == "abc"
+    assert normalize("a\r\n\tb") == "ab"
     assert normalize("空が青いです。.") == "空が青いです"
     assert align(normalize("七"), normalize("7")) == (1, 0, 0)
 
@@ -104,3 +107,52 @@ def test_rtf_rows_have_valid_shape_and_long_form_output():
             assert row["n_seg"] >= row["n_nonempty"] >= 0
             assert row["viable"] == (row["n_nonempty"] > 0)
         assert BASELINE["rtf_by_length"][engine]["40"]["viable"]
+
+
+def test_long_form_rows_recompute_from_committed_text():
+    ref = LONG_FORM["reference"]["text"]
+    for row in LONG_FORM["scores"].values():
+        assert row["ref"] == ref
+        counts = align(normalize(ref), normalize(row["hyp"]))
+        assert counts == (row["S"], row["D"], row["I"])
+        assert cer(ref, row["hyp"]) == row["cer"]
+        assert len(normalize(ref)) == row["N"]
+        assert row["D"] / row["N"] == row["del_rate"]
+        assert row["I"] / row["N"] == row["ins_rate"]
+
+
+def test_long_form_provenance_alignment_and_natural_endpointing():
+    source = LONG_FORM["source"]
+    build = LONG_FORM["build"]
+    reference = LONG_FORM["reference"]
+    vad = LONG_FORM["vad"]
+
+    assert set(LONG_FORM["scores"]) == ENGINES
+    assert source["id"] == "gongitsune_01"
+    assert source["license"].startswith("CC0-1.0")
+    for artifact in (source["audio"], source["alignment"], source["text"]):
+        assert artifact["url"].startswith("https://")
+        assert len(artifact["sha256"]) == 64
+
+    assert build["first_row"] == 2
+    assert build["last_row"] == 63
+    assert build["row_count"] == 62
+    assert build["aligned_end"] > build["aligned_start"] > 0
+    assert build["audio_s"] > 4 * 60
+    assert len(build["wav_sha256"]) == 64
+
+    ref_norm = normalize(reference["text"])
+    assert hashlib.sha256(ref_norm.encode()).hexdigest() == reference["normalized_sha256"]
+    automatic = normalize(reference["kokoro_alignment_text"])
+    counts = align(ref_norm, automatic)
+    check = reference["alignment_check"]
+    assert counts == (check["S"], check["D"], check["I"])
+    assert check["N"] == len(ref_norm)
+    assert check["cer"] == sum(counts) / len(ref_norm)
+    assert check["cer"] < 0.10
+
+    durations = vad["segment_durations_s"]
+    assert vad["n_segments"] == len(durations) > 1
+    assert vad["max_segment_s"] == max(durations)
+    assert vad["max_resliced_upper_bound_s"] <= vad["decode_split_trigger_s"]
+    assert vad["decode_split_candidates_upper_bound"] == 0

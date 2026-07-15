@@ -5,12 +5,13 @@ Shared eval primitive (sibling to replay.py). tests/build_stressor.py (M9.1)
 uses it to score excess deletion; the CER harness + its fixed-vector unit tests
 (M9.2) build on top. Pure stdlib, no third-party deps.
 
-normalize(): NFKC -> casefold -> drop Unicode categories P/S/Z/M (punctuation,
-symbols, separators incl. whitespace, combining marks). One aggressive recipe,
+normalize(): NFKC -> casefold -> drop Unicode whitespace + categories P/S/Z/M
+(punctuation, symbols, separators, combining marks). One aggressive recipe,
 mirroring kotoba-whisper / Whisper BasicTextNormalizer, so "空が青いです。." and
-"空が青いです" collapse identically. Numerals are NOT folded on purpose (七 vs 7
-scores as a substitution) -> the primary metric stays strict; a lenient
-numeral-folded figure, if ever wanted, is a separate report, never a silent one.
+"空が青いです" collapse identically. Explicit isspace() also removes control
+whitespace such as line breaks (category C, not Z). Numerals are NOT folded on
+purpose (七 vs 7 scores as a substitution) -> the primary metric stays strict; a
+lenient numeral-folded figure, if ever wanted, is separate, never silent.
 
 align(): edit distance with an explicit backtrace and a documented tie order.
 On an equal-cost tie the diagonal (match/substitute) is preferred over the
@@ -28,9 +29,11 @@ _DROP = frozenset("PSZM")  # Unicode major categories stripped before scoring
 
 
 def normalize(text: str) -> str:
-    """NFKC -> casefold -> drop punctuation/symbol/separator/mark characters."""
+    """NFKC -> casefold -> drop whitespace + punctuation/symbol/separator/mark."""
     folded = unicodedata.normalize("NFKC", text).casefold()
-    return "".join(c for c in folded if unicodedata.category(c)[0] not in _DROP)
+    return "".join(
+        c for c in folded if not c.isspace() and unicodedata.category(c)[0] not in _DROP
+    )
 
 
 def align(ref: str, hyp: str) -> tuple[int, int, int]:

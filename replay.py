@@ -85,18 +85,26 @@ async def _run(samples: np.ndarray, engine: str) -> list[dict]:
     rec = _recognizer(engine)
     vad, window = make_vad()
     audio_q: asyncio.Queue = asyncio.Queue()
-    # The whole clip as one chunk: worker re-buffers into window-sized frames
-    # internally, so chunking does not change VAD segmentation. None flushes.
-    audio_q.put_nowait(samples)
+    # Keep replay blocks within live AudioQueue's 2 s headroom. VAD framing is
+    # unchanged, while bounded blocks let the feeder copy completed segments
+    # from its 60 s ring before later long-form audio can evict them.
+    for start in range(0, len(samples), SAMPLE_RATE):
+        audio_q.put_nowait(samples[start : start + SAMPLE_RATE])
     audio_q.put_nowait(None)
     rows: list[dict] = []
+    state = State()
 
     def on_segment(start, n, seg_len, decode_s, text):
         rows.append(
             {"start": start, "n": n, "seg_len": seg_len, "decode_s": decode_s, "text": text}
         )
 
-    await worker(rec, vad, window, audio_q, State(), None, None, on_segment)
+    await worker(rec, vad, window, audio_q, state, None, None, on_segment)
+    # worker() intentionally converts a stage exception into session shutdown
+    # for the live app. Replay is an evaluator, so turn that signal back into a
+    # hard failure rather than committing a partial/empty transcript as golden.
+    if state.stopping:
+        raise RuntimeError("STT worker failed during replay")
     return rows
 
 

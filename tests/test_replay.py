@@ -14,9 +14,11 @@ Regenerate the goldens after an intentional pipeline change:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import wave
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -70,6 +72,42 @@ def test_load_wav_downmixes_stereo(tmp_path):
     a = replay.load_wav_f32_16k(p)
     assert a.dtype == np.float32 and len(a) == 1000
     assert abs(float(a.mean())) < 1e-3
+
+
+def test_run_feeds_long_audio_in_live_sized_blocks():
+    async def fake_worker(_rec, _vad, _window, audio_q, _state, *_args):
+        blocks = []
+        while True:
+            block = audio_q.get_nowait()
+            if block is None:
+                break
+            blocks.append(block)
+        seen.extend(blocks)
+
+    seen = []
+    samples = np.arange(2 * replay.SAMPLE_RATE + 7, dtype=np.float32)
+    with (
+        mock.patch.object(replay, "_recognizer", return_value=object()),
+        mock.patch.object(replay, "make_vad", return_value=(object(), 512)),
+        mock.patch.object(replay, "worker", fake_worker),
+    ):
+        assert asyncio.run(replay._run(samples, "k2v2")) == []
+
+    assert [len(block) for block in seen] == [replay.SAMPLE_RATE, replay.SAMPLE_RATE, 7]
+    assert np.array_equal(np.concatenate(seen), samples)
+
+
+def test_run_surfaces_worker_shutdown_as_evaluator_failure():
+    async def failed_worker(_rec, _vad, _window, _audio_q, state, *_args):
+        state.request_stop()
+
+    with (
+        mock.patch.object(replay, "_recognizer", return_value=object()),
+        mock.patch.object(replay, "make_vad", return_value=(object(), 512)),
+        mock.patch.object(replay, "worker", failed_worker),
+        pytest.raises(RuntimeError, match="worker failed during replay"),
+    ):
+        asyncio.run(replay._run(np.ones(1, dtype=np.float32), "k2v2"))
 
 
 # ---- models + cached corpus gated: golden regression ----
