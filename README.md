@@ -5,7 +5,7 @@ Real-time Japanese speech-to-text + English translation. **No API keys.**
 - **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) endpointing + [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) offline decode (reazonspeech-k2-v2 by default), CPU-only.
 - **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to JA-only.
 
-Each utterance prints as a numbered `JA n:` line the moment decoding ends (≤0.1 s after you stop speaking); its `EN n:` line follows when the translation turn completes (~1 s).
+Each short utterance typically prints as a numbered `JA n:` line about 0.1 s after endpointing; long pause-free blocks take proportionally longer because they use several decode passes. Its `EN n:` line follows when the translation turn completes (~1 s).
 
 ## Requirements
 
@@ -16,7 +16,7 @@ Each utterance prints as a numbered `JA n:` line the moment decoding ends (≤0.
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
   - macOS: `brew install portaudio`
 - ~800 MB of model weights in `models/` (one-time download, see below)
-- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.137 on `PATH`, authenticated against a ChatGPT plan entitled to `gpt-5.3-codex-spark` (`codex login` / `codex login --device-auth`)
+- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.137 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-5.3-codex-spark` (`codex login` / `codex login --device-auth`)
 
 ## Setup
 
@@ -29,6 +29,8 @@ codex login              # optional: enable the EN leg
 ### One tree, two environments
 
 The working tree is shared between the host OS, where live-mic sessions run (the mic and the lowest latency live there), and a dev container, where development and testing happen. Python venvs hard-code absolute paths and each side sees the tree at a different one, so each side keeps its own venv: `.venv` in the container (uv's default), `.venv-host` on the host. The committed `.envrc` exports `UV_PROJECT_ENVIRONMENT` to match; allow it once per machine (`direnv allow`). In shells without direnv, export the variable yourself before running `uv`.
+
+The EN leg is environment-local too: live-stt resolves `codex` from its own process `PATH`. For a host live-mic session, install the CLI and run `codex login` from the host; a container-only install or login does not enable translation on the host.
 
 ## Usage
 
@@ -58,6 +60,19 @@ Startup prints the translation status: `Translation: gpt-5.3-codex-spark via cod
 3. **Re-slice + queue.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) and copied into an 8-segment queue.
 4. **Decode.** a separate sequential consumer runs sherpa-onnx `OfflineRecognizer` in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores). Capture and VAD feeding continue during decode; sustained overload shows as `seg=`, then `q=` / `drop=` on the meter.
 5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
+
+### Long speech and long sessions
+
+Silero's 20 s `max_speech_duration` is a soft endpointing hint, not a hard cut: pause-free speech can remain one VAD segment beyond it. Segments up to 10 s keep the ordinary one-pass decode path. Longer segments are split internally into balanced ~2 s views, with each cut moved to a nearby low-energy window and 0.18 s of overlap protecting cut phonemes. Exact text overlap is removed, then the merged result is emitted as one `JA n:` line, so internal chunking does not create extra user-visible utterances.
+
+Capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
+
+The regression suite covers two distinct long-form shapes:
+
+- A 44.7 s genuinely continuous stressor forces the chunked path and CER-gates both engines. The same audio, paced as 20 ms callbacks with decode RTF 0.20, remains drop-free through the two-stage worker.
+- A 4:48 narration feeds the full file through production replay as 66 natural VAD segments; its longest pre-padded segment is 9.686 s, so it validates long-session ingestion and endpointing but not the >10 s chunker.
+
+This deterministic coverage stops at a 44.7 s pause-free segment; a single VAD segment that outlives the 60 s ring is outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.agent/memory.md` under **Smoke checklist**.
 
 ### JA → EN leg (Codex subscription)
 
@@ -96,7 +111,7 @@ live-stt/
 ├── live_stt.py              # main app (single file)
 ├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
-├── tests/                   # pytest suite + replay/CER/backpressure evaluators
+├── tests/                   # pytest suite + replay/CER/backpressure/long-form evaluators
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
@@ -116,7 +131,7 @@ uv run pytest                                 # run pure-function tests
 git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 ```
 
-Core tests cover audio primitives, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay/CER/backpressure cases use local models and the cached corpus when present, otherwise they skip cleanly.
+Core tests cover audio primitives, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay's model-gated golden cases skip cleanly when local weights or corpus files are absent. The standalone CER/backpressure/long-form evaluators require or fetch their declared inputs and fail instead of silently passing.
 
 The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync`. Run it once after cloning.
 
@@ -143,7 +158,9 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `NUM_THREADS` | 4 | onnxruntime intra-op threads |
 | `VAD_MIN_SILENCE_S` | 0.5 s | Silence that closes an utterance |
 | `VAD_MIN_SPEECH_S` | 0.25 s | Shorter blips discarded |
+| `VAD_MAX_SPEECH_S` | 20 s | Soft endpointing hint; dip-less speech may exceed it |
 | `VAD_PRE_PAD_S` | 0.4 s | Lead-in re-sliced from the ring (silero onset clipping fix) |
+| `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
 | `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.3-codex-spark` / `low` | Codex model+effort (fallback: `gpt-5.4-mini` / `none`) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
