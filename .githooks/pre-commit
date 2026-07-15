@@ -1,5 +1,5 @@
 #!/bin/sh
 # Run pure-function tests before each commit; abort on failure.
-# Bypass with `git commit --no-verify` (discouraged — see CLAUDE.md).
+# Bypass with `git commit --no-verify` only in an emergency; see .agent/memory.md D-007.
 set -e
 exec uv run pytest -q

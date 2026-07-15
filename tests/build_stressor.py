@@ -39,8 +39,7 @@ The full per-(stressor, engine) validation matrix + the generated-WAV sha256 are
 persisted into the manifest, so the committed numbers are reproducible and
 self-substantiating; a failing run writes nothing and exits nonzero.
 
-Outputs (deny-listed cache constructed here, never named on a command line; the
-manifest sits beside real_clips.json):
+Outputs (gitignored cache + manifest beside real_clips.json):
     spike/backends/cache/stress_long.wav   (>=35 s continuous)
     spike/backends/cache/stress_med.wav    (~20 s continuous)
     tests/stressor_clips.json              (refs + recipe + baselines + validation)
@@ -264,7 +263,10 @@ def main() -> None:
             "audio_sha256": sha256_file(CACHE / f"{name}.wav"),
             "join_samples": join_offsets([len(trimmed[c]) for c in order], xfade, lead),
         }
-        print(f"built {name}: {stressors[name]['audio_s']:.2f} s, {len(order)} components, peak {peak:.3f}")
+        print(
+            f"built {name}: {stressors[name]['audio_s']:.2f} s, "
+            f"{len(order)} components, peak {peak:.3f}"
+        )
 
     # 4. Validate BEFORE writing the manifest: a failing run must persist nothing.
     ok, validation = validate(stressors, baselines)

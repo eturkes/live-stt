@@ -14,9 +14,8 @@ Run when the pipeline's segmentation/decode behavior intentionally changes
 An engine whose weights are absent is skipped with a warning (the others still
 regenerate); rerun with that engine's models present to refresh its goldens.
 
-The bench WAVs live under the deny-listed spike/backends/cache/; this script's
-*runtime* reads are unaffected (D-008 amendment), and the deny-listed path is
-constructed here rather than passed on the command line. Requires models.
+The bench WAVs live under the gitignored spike/backends/cache/ and are read at
+runtime. Requires models.
 """
 
 from __future__ import annotations

@@ -3,8 +3,8 @@
 
 T5.3 provenance/regeneration tool. The replay corpus was Gemini-TTS synthetic;
 this adds *real* acoustics (real speakers, real mics, real prosody/onset through
-silero VAD) without a microphone — the agent cannot capture audio (L-004), but
-CLAUDE.md grants network access, so the clips are fetched from the web instead.
+silero VAD) without a microphone — the agent cannot capture audio (L-004), so
+the clips are fetched from the web instead.
 
 Source: japanese-asr/ja_asr.common_voice_8_0 — an ungated, viewer-enabled
 Parquet mirror of Mozilla Common Voice 8.0 Japanese (CC0 audio; crowd-sourced
@@ -14,8 +14,7 @@ decodes MP3 natively here — no ffmpeg). Each clip is downmixed to mono and
 resampled to 16 kHz via the project's own live_stt.resample for pipeline
 fidelity, then written as PCM16 WAV.
 
-The WAVs land in the deny-listed spike/backends/cache/; the path is constructed
-here and never passed on a command line (L-016). The (id, ja_ref, purpose)
+The WAVs land in the gitignored spike/backends/cache/. The (id, ja_ref, purpose)
 manifest is written to tests/real_clips.json, which gen_replay_goldens.py merges
 into its clip list. Row indices + the dataset revision are pinned for
 reproducibility; re-run to refresh:
