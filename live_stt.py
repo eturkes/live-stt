@@ -298,6 +298,22 @@ class State:
             self.stop_event.set()
 
 
+def enqueue_audio(audio_q: asyncio.Queue, state: State, pcm: np.ndarray) -> bool:
+    """Enqueue one captured block, counting saturation drops.
+
+    This is the shared live + paced-replay policy: fresh audio is accepted while
+    capacity remains; once full, the arriving block is dropped and surfaced via
+    ``state.dropped``. The return value is instrumentation for the deterministic
+    backpressure harness; the sounddevice callback does not need it.
+    """
+    try:
+        audio_q.put_nowait(pcm)
+    except asyncio.QueueFull:
+        state.dropped += 1
+        return False
+    return True
+
+
 def emit_line(tag, seq, text, output_file):
     """Display + persist one numbered event line (tag: "JA" or "EN").
 
@@ -705,13 +721,7 @@ async def run_session(args):
         # Copy: resample() returns a shared/reused (or strided-view) buffer, and
         # the queue defers consumption past the next callback.
         pcm = resample(mono, native_rate, SAMPLE_RATE).copy()
-        loop.call_soon_threadsafe(_enqueue, pcm)
-
-    def _enqueue(pcm):
-        try:
-            audio_q.put_nowait(pcm)
-        except asyncio.QueueFull:
-            state.dropped += 1
+        loop.call_soon_threadsafe(enqueue_audio, audio_q, state, pcm)
 
     _install_signal_handlers(state)
 
