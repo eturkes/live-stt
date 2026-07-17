@@ -120,10 +120,10 @@ live-stt/
 ├── SPIKE_REPORT.md          # historical: REST → Gemini Live decision (superseded)
 ├── SPIKE_REPORT_BACKENDS.md # historical: streaming-STT backend comparison
 ├── spike/                   # historical research notes + gitignored bench WAV corpus
-├── AGENTS.md                # canonical Codex instructions
-├── .agents/skills/          # repo-scoped Codex skills ($session-prompt)
-├── .codex/prompts/          # Codex workflow prompts
-└── .agent/                  # durable Codex memory + roadmap
+├── CLAUDE.md                # canonical Claude Code instructions
+├── .claude/                 # project settings + /session-prompt command
+├── .serena/                 # committed Serena/LSP project configuration
+└── .agent/                  # durable memory + roadmap + context gauge
 ```
 
 ### Development
@@ -181,7 +181,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 - Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/roadmap.md` § Deferred).
 - `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
 - Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window.
-- Codex is this project's sole development agent. See `AGENTS.md`, `.agents/skills/`, `.codex/prompts/`, and `.agent/` for its workflow and context.
+- Claude Code is this project's development agent. See `CLAUDE.md`, `.claude/`, `.serena/`, and `.agent/` for its workflow and context.
 
 ## License
 

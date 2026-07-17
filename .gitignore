@@ -25,6 +25,18 @@ spike/backends/cache/
 models/*
 !models/README.md
 
+# Claude Code per-user overrides (committed counterparts: .claude/settings.json, CLAUDE.md)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Headroom live-wrap marker (ephemeral: pid/port/env key; written per live session, removed on exit)
+.claude/.headroom_wrap_marker.json
+
+# .serena/ is committed as-is via its own .serena/.gitignore
+
+# Headroom tokensave code-graph state (regenerable via tokensave init/sync; deny-Read'd in .claude/settings.json)
+.tokensave/
+
 # Environment / secrets
 .env
 .env.*
