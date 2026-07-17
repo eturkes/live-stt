@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Model-neutral M10 ASR evaluator + expanded current-control baseline.
+"""Model-neutral M10 ASR evaluator + offline-candidate tournament.
 
 The default command validates the pinned corpus, evaluates both shipped controls
-in separate child processes, then atomically publishes:
+and both M10 offline candidates in separate child processes, then atomically publishes:
 
 - ignored, content-addressed per-clip JSONL under ``spike/backends/cache/``;
 - ``tests/model_baseline.json`` with deterministic aggregates/fingerprints;
@@ -31,19 +31,23 @@ import resource
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import wave
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path, PurePosixPath
 from statistics import median
 from typing import Any, Protocol
 
+import sherpa_onnx
+
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 sys.path[:0] = [str(TESTS), str(ROOT)]
 
+import fetch_eval_models as candidate_models  # noqa: E402
 from fetch_real_clips import (  # noqa: E402
     file_sha256,
     validate_cached_index,
@@ -71,7 +75,11 @@ from live_stt import (  # noqa: E402
     load_recognizer,
 )
 
-SCHEMA_VERSION = 1
+CANDIDATE_SPECS = candidate_models.CANDIDATE_SPECS
+candidate_provenance = candidate_models.provenance
+validate_candidate_model = candidate_models.validate_installed
+
+SCHEMA_VERSION = 2
 BASELINE = TESTS / "model_baseline.json"
 SHORT_CORPUS = TESTS / "short_corpus.json"
 REPLAY_GOLDENS = TESTS / "replay_goldens.json"
@@ -79,13 +87,16 @@ CER_BASELINE = TESTS / "cer_baseline.json"
 STRESSORS = TESTS / "stressor_clips.json"
 LONG_FORM = TESTS / "long_form.json"
 CACHE = ROOT / "spike" / "backends" / "cache"
-DETAILS_DIR = CACHE / "model_eval-v1"
+DETAILS_DIR = CACHE / "model_eval-v2"
 
 CONTROL_ENGINES = ("k2v2", "parakeet")
+OFFLINE_CANDIDATES = ("qwen3_asr", "cohere_transcribe")
+OFFLINE_MODELS = (*CONTROL_ENGINES, *OFFLINE_CANDIDATES)
 STRESSOR_IDS = ("stress_long", "stress_med")
 LONG_FORM_ID = "gongitsune_01"
 TAIL_EXEMPLARS = 10
 TIMING_RUNS = 3
+PROGRESS_ROWS = 25
 
 # Frozen before expanded-control scores. A candidate's content result and each
 # execution path's resource result are evaluated independently (M10 plan gate).
@@ -99,6 +110,7 @@ DISPLACEMENT_GATES = {
         "common_voice_relative_cer_improvement_min": 0.10,
         "fleurs_micro_cer_regression_max_abs": 0.01,
         "long_form_cer_regression_max_abs": 0.01,
+        "require_clean_decoder_diagnostics": True,
         "require_complete_run": True,
         "require_nonempty_run": True,
         "stressor_cer_max": 0.15,
@@ -120,7 +132,7 @@ METRIC_CONTRACT = {
     "worst_tail": "top 10 rows/source by exact CER descending, then case ID ascending",
 }
 
-MODEL_FILES = {
+CONTROL_MODEL_FILES = {
     "k2v2": (
         "encoder-epoch-99-avg-1.int8.onnx",
         "decoder-epoch-99-avg-1.onnx",
@@ -128,6 +140,11 @@ MODEL_FILES = {
         "tokens.txt",
     ),
     "parakeet": ("model.int8.onnx", "tokens.txt"),
+}
+
+NATIVE_DIAGNOSTIC_CODES = {
+    "Result is truncated. max_new_tokens": "generation_max_new_tokens",
+    "Truncating audio placeholders": "audio_context_truncated",
 }
 
 
@@ -168,12 +185,53 @@ class ASRAdapter(Protocol):
     def decode(self, case: EvalCase) -> DecodeObservation: ...
 
 
+def _native_diagnostic_code(message: str) -> str:
+    return next(
+        (code for marker, code in NATIVE_DIAGNOSTIC_CODES.items() if marker in message),
+        "native_stderr",
+    )
+
+
+def _decode_with_native_diagnostics(
+    decode: Callable[[], DecodeObservation],
+) -> tuple[DecodeObservation, tuple[str, ...]]:
+    """Capture C/C++ fd-2 output around one synchronous candidate decode."""
+    with tempfile.TemporaryFile() as captured:
+        saved_stderr = os.dup(2)
+        try:
+            os.dup2(captured.fileno(), 2)
+            observation = decode()
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved_stderr, 2)
+            os.close(saved_stderr)
+        captured.seek(0)
+        raw = captured.read()
+    if raw:
+        os.write(2, raw)
+    lines = tuple(line for line in raw.decode("utf-8", errors="replace").splitlines() if line)
+    return observation, lines
+
+
+def candidate_diagnostic_contract() -> dict:
+    source = "\n\n".join(
+        inspect.getsource(obj) for obj in (_native_diagnostic_code, _decode_with_native_diagnostics)
+    ).encode()
+    return {
+        "codes": NATIVE_DIAGNOSTIC_CODES,
+        "implementation_sha256": hashlib.sha256(source).hexdigest(),
+        "scope": (
+            "native fd-2 lines captured per candidate decode; content and timing kept distinct"
+        ),
+    }
+
+
 class SherpaOfflineAdapter:
-    """Current-control adapter: production VAD/ring/chunker + sherpa offline ASR."""
+    """Sherpa offline recognizer behind the exact production VAD/ring/chunker."""
 
     def __init__(self, engine: str):
         self.adapter_id = engine
-        self.recognizer: Any = load_recognizer(engine)
+        self.recognizer: Any = load_evaluator_recognizer(engine)
         model_config = self.recognizer.config.model_config
         if model_config.provider != "cpu":
             raise RuntimeError(
@@ -205,12 +263,7 @@ class SherpaOfflineAdapter:
                 "snip_edges": feat.snip_edges,
             },
             "model": model_fingerprint(self.adapter_id),
-            "recognizer_config": {
-                "decoding_method": cfg.decoding_method,
-                "model_type": model.model_type,
-                "num_threads": model.num_threads,
-                "provider": model.provider,
-            },
+            "recognizer_config": recognizer_config(self.adapter_id, cfg),
         }
 
     def decode(self, case: EvalCase) -> DecodeObservation:
@@ -242,6 +295,74 @@ class SherpaOfflineAdapter:
             decode_seconds=report["total_decode_s"],
             wall_seconds=wall_seconds,
         )
+
+
+def load_evaluator_recognizer(engine: str) -> sherpa_onnx.OfflineRecognizer:
+    """Construct controls through production; candidates remain evaluator-only."""
+    if engine in CONTROL_ENGINES:
+        return load_recognizer(engine)
+    spec = CANDIDATE_SPECS[engine]
+    model = validate_candidate_model(spec)
+    if engine == "qwen3_asr":
+        return sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
+            conv_frontend=str(model / "conv_frontend.onnx"),
+            encoder=str(model / "encoder.int8.onnx"),
+            decoder=str(model / "decoder.int8.onnx"),
+            tokenizer=str(model / "tokenizer"),
+            num_threads=NUM_THREADS,
+            sample_rate=SAMPLE_RATE,
+            feature_dim=128,
+            decoding_method="greedy_search",
+            debug=False,
+            provider="cpu",
+            max_total_len=512,
+            max_new_tokens=128,
+            temperature=1e-6,
+            top_p=0.8,
+            seed=42,
+            hotwords="",
+        )
+    return sherpa_onnx.OfflineRecognizer.from_cohere_transcribe(
+        encoder=str(model / "encoder.int8.onnx"),
+        decoder=str(model / "decoder.int8.onnx"),
+        tokens=str(model / "tokens.txt"),
+        num_threads=NUM_THREADS,
+        language="ja",
+        use_punct=True,
+        use_itn=True,
+        decoding_method="greedy_search",
+        debug=False,
+        provider="cpu",
+    )
+
+
+def recognizer_config(engine: str, cfg) -> dict:
+    model = cfg.model_config
+    output = {
+        "decoding_method": cfg.decoding_method,
+        "num_threads": model.num_threads,
+        "provider": model.provider,
+    }
+    if engine in CONTROL_ENGINES:
+        output["model_type"] = model.model_type
+    elif engine == "qwen3_asr":
+        qwen = model.qwen3_asr
+        output["qwen3_asr"] = {
+            "hotwords": qwen.hotwords,
+            "max_new_tokens": qwen.max_new_tokens,
+            "max_total_len": qwen.max_total_len,
+            "seed": qwen.seed,
+            "temperature": qwen.temperature,
+            "top_p": qwen.top_p,
+        }
+    else:
+        cohere = model.cohere_transcribe
+        output["cohere_transcribe"] = {
+            "language": cohere.language,
+            "use_itn": cohere.use_itn,
+            "use_punct": cohere.use_punct,
+        }
+    return output
 
 
 def _json_bytes(value: object, *, compact: bool = False) -> bytes:
@@ -432,7 +553,28 @@ def _expected_score(ref: str, hyp: str) -> tuple[int, int, int, int]:
     return len(normalized_ref), substitutions, deletions, insertions
 
 
-def _compatibility_row(engine: str, group: str, case: EvalCase, row: dict, expected: dict) -> dict:
+def _compatibility_output(row: dict) -> dict:
+    keys = (
+        "D",
+        "I",
+        "N",
+        "S",
+        "accepted_samples",
+        "cer",
+        "complete",
+        "duration_samples",
+        "eof_count",
+        "hyp",
+        "ref",
+    )
+    output = {key: row[key] for key in keys}
+    output["n_segments"] = len(row["segments"])
+    return output
+
+
+def _control_compatibility_row(
+    engine: str, group: str, case: EvalCase, row: dict, expected: dict
+) -> dict:
     if group == "short":
         golden = expected["goldens"][engine][case.case_id]
         expected_hyp = "".join(segment["text"] for segment in golden["segments"])
@@ -461,8 +603,7 @@ def _compatibility_row(engine: str, group: str, case: EvalCase, row: dict, expec
         if legacy["hyp"] != row["hyp"] or legacy_counts != observed_counts:
             raise RuntimeError(f"{engine}/{case.case_id}: legacy score drift")
 
-    output = {key: row[key] for key in ("D", "I", "N", "S", "cer", "hyp", "ref")}
-    output["n_segments"] = len(row["segments"])
+    output = _compatibility_output(row)
     if group == "stressors":
         if legacy is None:
             raise RuntimeError(f"{engine}/{case.case_id}: missing stressor baseline")
@@ -471,6 +612,7 @@ def _compatibility_row(engine: str, group: str, case: EvalCase, row: dict, expec
             expected["stressor_manifest"]["components"][component]["baseline"][engine]["D"]
             for component in order
         )
+        output["baseline_D"] = baseline_d
         output["excess_D"] = row["D"] - baseline_d
         output["excess_del_rate"] = round(output["excess_D"] / row["N"], 4)
         if (
@@ -478,6 +620,26 @@ def _compatibility_row(engine: str, group: str, case: EvalCase, row: dict, expec
             or output["excess_del_rate"] != legacy["excess_del_rate"]
         ):
             raise RuntimeError(f"{engine}/{case.case_id}: excess-deletion drift")
+    return output
+
+
+def _candidate_compatibility_row(
+    group: str,
+    case: EvalCase,
+    row: dict,
+    compatibility: Mapping[str, dict],
+    expected: dict,
+) -> dict:
+    output = _compatibility_output(row)
+    if group == "stressors":
+        order = expected["stressor_manifest"]["stressors"][case.case_id]["order"]
+        short = compatibility["short"]
+        if not set(order) <= short.keys():
+            raise RuntimeError(f"{case.case_id}: candidate stressor baselines are incomplete")
+        baseline_d = sum(short[component]["D"] for component in order)
+        output["baseline_D"] = baseline_d
+        output["excess_D"] = row["D"] - baseline_d
+        output["excess_del_rate"] = round(output["excess_D"] / row["N"], 4)
     return output
 
 
@@ -497,6 +659,9 @@ def validate_compatibility_snapshot(engine: str, snapshot: dict, expected: dict)
             row["hyp"] != hyp
             or row["ref"] != golden["ja_ref"]
             or row["n_segments"] != golden["n_segments"]
+            or row["accepted_samples"] != row["duration_samples"]
+            or row["complete"] is not True
+            or row["eof_count"] != 1
             or tuple(row[key] for key in ("N", "S", "D", "I")) != counts
         ):
             raise RuntimeError(f"{engine}/{case_id}: short compatibility snapshot drifted")
@@ -509,6 +674,8 @@ def validate_compatibility_snapshot(engine: str, snapshot: dict, expected: dict)
         keys = ("D", "I", "N", "S", "cer", "excess_D", "excess_del_rate", "hyp", "ref")
         if any(row[key] != legacy[key] for key in keys) or row["n_segments"] <= 0:
             raise RuntimeError(f"{engine}/{case_id}: stressor compatibility snapshot drifted")
+        if row["baseline_D"] + row["excess_D"] != row["D"]:
+            raise RuntimeError(f"{engine}/{case_id}: stressor baseline arithmetic drifted")
 
     legacy_long = expected["long_form"]["scores"][engine]
     if set(snapshot["long_form"]) != {LONG_FORM_ID}:
@@ -517,6 +684,133 @@ def validate_compatibility_snapshot(engine: str, snapshot: dict, expected: dict)
     keys = ("D", "I", "N", "S", "cer", "hyp", "ref")
     if any(long_row[key] != legacy_long[key] for key in keys) or long_row["n_segments"] <= 0:
         raise RuntimeError(f"{engine}: long-form compatibility snapshot drifted")
+
+    probes, _ = compatibility_cases()
+    expected_samples = {
+        case.case_id: case.duration_samples for cases in probes.values() for case in cases
+    }
+    for rows in snapshot.values():
+        for case_id, row in rows.items():
+            if (
+                row["accepted_samples"] != expected_samples[case_id]
+                or row["duration_samples"] != expected_samples[case_id]
+                or row["complete"] is not True
+                or row["eof_count"] != 1
+            ):
+                raise RuntimeError(f"{engine}/{case_id}: compatibility completion drifted")
+
+
+def validate_candidate_compatibility_snapshot(engine: str, snapshot: dict, expected: dict) -> None:
+    if set(snapshot) != {"short", "stressors", "long_form"}:
+        raise RuntimeError(f"{engine}: compatibility groups drifted")
+    probes, _ = compatibility_cases()
+    for group, cases in probes.items():
+        if set(snapshot[group]) != {case.case_id for case in cases}:
+            raise RuntimeError(f"{engine}: {group} compatibility IDs drifted")
+        for case in cases:
+            row = snapshot[group][case.case_id]
+            counts = _expected_score(case.reference, row["hyp"])
+            if (
+                row["ref"] != case.reference
+                or row["accepted_samples"] != case.duration_samples
+                or row["duration_samples"] != case.duration_samples
+                or row["complete"] is not True
+                or row["eof_count"] != 1
+                or not isinstance(row["n_segments"], int)
+                or row["n_segments"] < 0
+                or tuple(row[key] for key in ("N", "S", "D", "I")) != counts
+            ):
+                raise RuntimeError(f"{engine}/{case.case_id}: compatibility snapshot drifted")
+
+    short = snapshot["short"]
+    stressor_manifest = expected["stressor_manifest"]["stressors"]
+    for case_id, row in snapshot["stressors"].items():
+        baseline_d = sum(short[name]["D"] for name in stressor_manifest[case_id]["order"])
+        excess_d = row["D"] - baseline_d
+        if (
+            row["baseline_D"] != baseline_d
+            or row["excess_D"] != excess_d
+            or row["excess_del_rate"] != round(excess_d / row["N"], 4)
+        ):
+            raise RuntimeError(f"{engine}/{case_id}: candidate stressor baseline drifted")
+
+
+def _candidate_decode(
+    adapter: ASRAdapter,
+    case: EvalCase,
+    phase: str,
+    events: list[dict],
+) -> DecodeObservation:
+    observation, messages = _decode_with_native_diagnostics(lambda: adapter.decode(case))
+    events.extend(
+        {
+            "case_id": case.case_id,
+            "code": _native_diagnostic_code(message),
+            "message": message,
+            "phase": phase,
+        }
+        for message in messages
+    )
+    return observation
+
+
+def _is_content_diagnostic(event: Mapping[str, str]) -> bool:
+    return event["phase"] == "corpus" or event["phase"].startswith("compatibility/")
+
+
+def summarize_candidate_diagnostics(events: Sequence[dict]) -> dict:
+    content = [event for event in events if _is_content_diagnostic(event)]
+    return {
+        "content_event_case_ids": sorted({event["case_id"] for event in content}),
+        "content_events": content,
+        "contract": candidate_diagnostic_contract(),
+        "events": list(events),
+    }
+
+
+def candidate_diagnostic_phase_cases(
+    corpus_cases: Sequence[EvalCase], probes: Mapping[str, Sequence[EvalCase]]
+) -> dict[str, set[str]]:
+    benchmark_id = next(
+        case.case_id for case in probes["stressors"] if case.case_id == "stress_long"
+    )
+    phases = {
+        "corpus": {case.case_id for case in corpus_cases},
+        **{
+            f"compatibility/{group}": {case.case_id for case in cases}
+            for group, cases in probes.items()
+        },
+    }
+    phases.update(
+        {f"timing/post_warm/{index}": {benchmark_id} for index in range(1, TIMING_RUNS + 1)}
+    )
+    return phases
+
+
+def validate_candidate_diagnostics(
+    engine: str,
+    diagnostics: dict,
+    phase_cases: Mapping[str, set[str]] | None = None,
+) -> None:
+    if diagnostics.get("contract") != candidate_diagnostic_contract():
+        raise RuntimeError(f"{engine}: candidate diagnostic contract drifted")
+    events = diagnostics.get("events")
+    if not isinstance(events, list):
+        raise RuntimeError(f"{engine}: candidate diagnostics are malformed")
+    for event in events:
+        if not isinstance(event, dict) or set(event) != {"case_id", "code", "message", "phase"}:
+            raise RuntimeError(f"{engine}: candidate diagnostic event is malformed")
+        if not all(isinstance(event[key], str) and event[key] for key in event):
+            raise RuntimeError(f"{engine}: candidate diagnostic event is empty")
+        if event["code"] != _native_diagnostic_code(event["message"]):
+            raise RuntimeError(f"{engine}: candidate diagnostic code drifted")
+        if phase_cases is not None and event["case_id"] not in phase_cases.get(
+            event["phase"], set()
+        ):
+            raise RuntimeError(f"{engine}: candidate diagnostic phase/case drifted")
+    expected = summarize_candidate_diagnostics(events)
+    if diagnostics != expected:
+        raise RuntimeError(f"{engine}: candidate diagnostic summary drifted")
 
 
 def _artifact(path: Path) -> dict:
@@ -528,13 +822,23 @@ def _artifact(path: Path) -> dict:
 
 
 def model_fingerprint(engine: str) -> dict:
-    model_dir = ENGINE_DIRS[engine]
-    artifacts = [_artifact(model_dir / name) for name in MODEL_FILES[engine]]
-    return {
+    if engine in CONTROL_ENGINES:
+        model_dir = ENGINE_DIRS[engine]
+        artifacts = [_artifact(model_dir / name) for name in CONTROL_MODEL_FILES[engine]]
+        provenance = None
+    else:
+        spec = CANDIDATE_SPECS[engine]
+        model_dir = validate_candidate_model(spec)
+        artifacts = [_artifact(model_dir / artifact.path) for artifact in spec.artifacts]
+        provenance = candidate_provenance(spec)
+    output = {
         "artifacts": artifacts,
         "bytes": sum(row["bytes"] for row in artifacts),
         "directory": _relative(model_dir),
     }
+    if provenance is not None:
+        output["provenance"] = provenance
+    return output
 
 
 def _current_rss_mib() -> float:
@@ -606,6 +910,8 @@ def pipeline_fingerprint() -> dict:
             Transcript,
             DecodeObservation,
             SherpaOfflineAdapter,
+            load_evaluator_recognizer,
+            recognizer_config,
             _json_bytes,
             _duration_bucket,
             load_corpus_cases,
@@ -627,7 +933,13 @@ def pipeline_fingerprint() -> dict:
         },
         "evaluator_contract_sha256": _sha256_bytes(contract_source),
         "implementation": [
-            _artifact(ROOT / name) for name in ("cer.py", "live_stt.py", "replay.py")
+            _artifact(ROOT / name)
+            for name in (
+                "cer.py",
+                "live_stt.py",
+                "replay.py",
+                "tests/fetch_eval_models.py",
+            )
         ],
         "values": values,
         "vad_model": _artifact(VAD_MODEL),
@@ -792,6 +1104,11 @@ def content_verdict(candidate: dict, comparator: dict) -> dict:
             "observed": candidate["aggregates"]["completion"]["complete"],
             "pass": candidate["aggregates"]["completion"]["complete"] is True,
         },
+        "decoder_diagnostics": {
+            "case_ids": candidate["diagnostics"]["content_event_case_ids"],
+            "observed_events": len(candidate["diagnostics"]["content_events"]),
+            "pass": not candidate["diagnostics"]["content_events"],
+        },
         "nonempty_run": {
             "observed": (
                 candidate["aggregates"]["completion"]["rows"]
@@ -928,13 +1245,16 @@ def build_manifest(
     summaries: Mapping[str, dict],
     detail_paths: Mapping[str, Path],
 ) -> dict:
-    if set(summaries) != set(CONTROL_ENGINES) or set(detail_paths) != set(CONTROL_ENGINES):
-        raise RuntimeError("both current controls are required for the baseline")
+    if set(summaries) != set(OFFLINE_MODELS) or set(detail_paths) != set(OFFLINE_MODELS):
+        raise RuntimeError("both controls and both offline candidates are required")
     expected_inputs = evaluation_inputs(corpus_manifest)
-    _, compatibility_expected = compatibility_cases()
+    probes, compatibility_expected = compatibility_cases()
+    diagnostic_phase_cases = candidate_diagnostic_phase_cases(corpus_cases, probes)
     controls = {}
-    measurements = {}
-    for engine in CONTROL_ENGINES:
+    candidates = {}
+    control_measurements = {}
+    candidate_measurements = {}
+    for engine in OFFLINE_MODELS:
         summary = summaries[engine]
         if summary.get("engine") != engine or summary.get("schema_version") != SCHEMA_VERSION:
             raise RuntimeError(f"invalid child summary: {engine}")
@@ -942,7 +1262,15 @@ def build_manifest(
             raise RuntimeError(f"{engine}: child input fingerprint drift")
         if summary["adapter"]["model"] != model_fingerprint(engine):
             raise RuntimeError(f"{engine}: child model fingerprint drift")
-        validate_compatibility_snapshot(engine, summary["compatibility"], compatibility_expected)
+        if engine in CONTROL_ENGINES:
+            validate_compatibility_snapshot(
+                engine, summary["compatibility"], compatibility_expected
+            )
+        else:
+            validate_candidate_compatibility_snapshot(
+                engine, summary["compatibility"], compatibility_expected
+            )
+            validate_candidate_diagnostics(engine, summary["diagnostics"], diagnostic_phase_cases)
         detail = summary["details"]
         if detail["rows"] != len(corpus_cases):
             raise RuntimeError(f"{engine}: incomplete child row count")
@@ -950,7 +1278,7 @@ def build_manifest(
         aggregates = aggregate_rows(rows)
         if not aggregates["completion"]["complete"]:
             raise RuntimeError(f"{engine}: incomplete transcript contract")
-        controls[engine] = {
+        result = {
             "adapter": summary["adapter"],
             "aggregates": aggregates,
             "compatibility": summary["compatibility"],
@@ -959,19 +1287,33 @@ def build_manifest(
                 "sha256": detail["sha256"],
             },
         }
+        if engine in OFFLINE_CANDIDATES:
+            result["diagnostics"] = summary["diagnostics"]
+        destination = controls if engine in CONTROL_ENGINES else candidates
+        destination[engine] = result
         measurement = summary["measurements"]
         path = {
             "actual_execution_device": summary["adapter"]["actual_execution_device"],
             "post_warm_rtf": measurement["post_warm"]["median_decode_rtf"],
             "production_eligible": True,
         }
-        measurements[engine] = {
+        measurement_result = {
             **measurement,
             "resource_verdict": resource_verdict({"sherpa_cpu": path}),
         }
+        measurement_destination = (
+            control_measurements if engine in CONTROL_ENGINES else candidate_measurements
+        )
+        measurement_destination[engine] = measurement_result
+
+    comparator = select_comparator(controls)
+    comparator_result = controls[comparator["engine"]]
+    for candidate in candidates.values():
+        candidate["content_verdict"] = content_verdict(candidate, comparator_result)
 
     deterministic = {
-        "comparator": select_comparator(controls),
+        "candidates": candidates,
+        "comparator": comparator,
         "controls": controls,
         "corpus": _corpus_fingerprint(corpus_manifest),
         "displacement_gates": DISPLACEMENT_GATES,
@@ -982,7 +1324,8 @@ def build_manifest(
     return {
         "deterministic": deterministic,
         "measurements": {
-            "controls": measurements,
+            "candidates": candidate_measurements,
+            "controls": control_measurements,
             "excluded_from_deterministic_equality": True,
             "note": (
                 "Elapsed time and RSS vary; scored content and fingerprints live "
@@ -1003,7 +1346,7 @@ def install_evidence(
 ) -> None:
     """Install validated immutable details first, then atomically replace the manifest."""
     destinations = {}
-    for engine in CONTROL_ENGINES:
+    for engine in OFFLINE_MODELS:
         expected = summaries[engine]["details"]["sha256"]
         source = staged_details[engine]
         if file_sha256(source) != expected:
@@ -1019,14 +1362,24 @@ def install_evidence(
                 raise RuntimeError(f"content-addressed detail collision: {destination}")
         else:
             write_atomic(destination, [staged_details[engine].read_bytes()])
-        manifest["deterministic"]["controls"][engine]["details"]["path"] = _relative(destination)
+        group = "controls" if engine in CONTROL_ENGINES else "candidates"
+        manifest["deterministic"][group][engine]["details"]["path"] = _relative(destination)
     write_atomic(baseline, [_json_bytes(manifest)])
 
 
-def _benchmark(adapter: ASRAdapter, case: EvalCase, expected_hyp: str) -> dict:
+def _benchmark(
+    adapter: ASRAdapter,
+    case: EvalCase,
+    expected_hyp: str,
+    diagnostic_events: list[dict] | None = None,
+) -> dict:
     runs = []
     for index in range(1, TIMING_RUNS + 1):
-        observation = adapter.decode(case)
+        observation = (
+            adapter.decode(case)
+            if diagnostic_events is None
+            else _candidate_decode(adapter, case, f"timing/post_warm/{index}", diagnostic_events)
+        )
         if observation.content.hypothesis != expected_hyp or not observation.content.complete:
             raise RuntimeError(f"{adapter.adapter_id}: timing replay content drift at run {index}")
         audio_s = case.duration_samples / SAMPLE_RATE
@@ -1048,10 +1401,22 @@ def _benchmark(adapter: ASRAdapter, case: EvalCase, expected_hyp: str) -> dict:
     }
 
 
+def validate_model_available(engine: str) -> None:
+    if engine in CONTROL_ENGINES:
+        err = check_models(engine)
+        if err:
+            raise RuntimeError(f"{engine}: {err.splitlines()[0]}")
+        return
+    try:
+        validate_candidate_model(CANDIDATE_SPECS[engine])
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"{engine}: {exc}; run tests/fetch_eval_models.py to acquire exact artifacts"
+        ) from exc
+
+
 def run_worker(engine: str, details_path: Path, summary_path: Path) -> None:
-    err = check_models(engine)
-    if err:
-        raise RuntimeError(f"{engine}: {err.splitlines()[0]}")
+    validate_model_available(engine)
     corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=False)
     probes, expected = compatibility_cases()
 
@@ -1062,6 +1427,7 @@ def run_worker(engine: str, details_path: Path, summary_path: Path) -> None:
     rss_loaded = _current_rss_mib()
     peak_loaded = _peak_rss_mib()
     identity = adapter.identity()
+    diagnostic_events: list[dict] | None = [] if engine in OFFLINE_CANDIDATES else None
     print(
         f"{engine}: loaded {identity['model']['bytes'] / 1_000_000:.1f} MB model "
         f"in {cold_load_s:.3f}s; RSS={rss_loaded:.1f} MiB",
@@ -1071,17 +1437,26 @@ def run_worker(engine: str, details_path: Path, summary_path: Path) -> None:
     compatibility: dict[str, dict] = {group: {} for group in probes}
     for group, cases in probes.items():
         for case in cases:
-            row = _score(case, adapter.decode(case).content)
-            compatibility[group][case.case_id] = _compatibility_row(
-                engine, group, case, row, expected
+            observation = (
+                adapter.decode(case)
+                if diagnostic_events is None
+                else _candidate_decode(adapter, case, f"compatibility/{group}", diagnostic_events)
             )
-        print(f"{engine}: compatibility/{group} exact ({len(cases)} cases)", flush=True)
+            row = _score(case, observation.content)
+            if engine in CONTROL_ENGINES:
+                result = _control_compatibility_row(engine, group, case, row, expected)
+            else:
+                result = _candidate_compatibility_row(group, case, row, compatibility, expected)
+            compatibility[group][case.case_id] = result
+        status = "exact" if engine in CONTROL_ENGINES else "scored"
+        print(f"{engine}: compatibility/{group} {status} ({len(cases)} cases)", flush=True)
 
     benchmark_case = next(case for case in probes["stressors"] if case.case_id == "stress_long")
     post_warm = _benchmark(
         adapter,
         benchmark_case,
         compatibility["stressors"]["stress_long"]["hyp"],
+        diagnostic_events,
     )
     print(
         f"{engine}: post-warm median decode RTF={post_warm['median_decode_rtf']:.3f}",
@@ -1094,11 +1469,16 @@ def run_worker(engine: str, details_path: Path, summary_path: Path) -> None:
     def detail_chunks() -> Iterable[bytes]:
         nonlocal rows_written
         for index, case in enumerate(corpus_cases, 1):
-            row = _score(case, adapter.decode(case).content)
+            observation = (
+                adapter.decode(case)
+                if diagnostic_events is None
+                else _candidate_decode(adapter, case, "corpus", diagnostic_events)
+            )
+            row = _score(case, observation.content)
             data = _json_bytes(row, compact=True)
             digest.update(data)
             rows_written += 1
-            if index == 1 or index % 250 == 0 or index == len(corpus_cases):
+            if index == 1 or index % PROGRESS_ROWS == 0 or index == len(corpus_cases):
                 print(f"{engine}: corpus {index}/{len(corpus_cases)}", flush=True)
             yield data
 
@@ -1130,6 +1510,8 @@ def run_worker(engine: str, details_path: Path, summary_path: Path) -> None:
         "measurements": measurements,
         "schema_version": SCHEMA_VERSION,
     }
+    if diagnostic_events is not None:
+        summary["diagnostics"] = summarize_candidate_diagnostics(diagnostic_events)
     write_atomic(summary_path, [_json_bytes(summary)])
     print(
         f"{engine}: complete; detail={detail_sha256}; peak RSS="
@@ -1160,6 +1542,13 @@ def _reusable_child(
             or summary["details"]["rows"] != len(corpus_cases)
         ):
             raise RuntimeError("staged child fingerprint drift")
+        if engine in OFFLINE_CANDIDATES:
+            probes, _ = compatibility_cases()
+            validate_candidate_diagnostics(
+                engine,
+                summary["diagnostics"],
+                candidate_diagnostic_phase_cases(corpus_cases, probes),
+            )
         _detail_rows(detail_path, corpus_cases, summary["details"]["sha256"])
     except (KeyError, OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"{engine}: discard unusable staged child ({exc})", flush=True)
@@ -1202,12 +1591,44 @@ def _pipeline_reaggregate_compatible(previous: dict, current: dict) -> bool:
         for key, value in current.items()
         if key not in {"compatibility_inputs", "evaluator_contract_sha256"}
     }
-    return previous == legacy_current
+    if previous == legacy_current:
+        return True
+
+    # Acquisition/provenance code cannot alter cached decode rows once the exact
+    # installed artifact identity is independently rechecked below. Permit only
+    # that implementation entry to move; every worker/config/input hash stays exact.
+    acquisition_path = "tests/fetch_eval_models.py"
+
+    def without_acquisition(value: dict) -> dict:
+        return {
+            **value,
+            "implementation": [
+                row
+                for row in value.get("implementation", [])
+                if row.get("path") != acquisition_path
+            ],
+        }
+
+    previous_acquisition = [
+        row for row in previous.get("implementation", []) if row.get("path") == acquisition_path
+    ]
+    current_acquisition = [
+        row for row in current.get("implementation", []) if row.get("path") == acquisition_path
+    ]
+    return len(previous_acquisition) == len(current_acquisition) == 1 and without_acquisition(
+        previous
+    ) == without_acquisition(current)
+
+
+def _model_decode_identity(model: dict) -> dict:
+    return {key: model[key] for key in ("artifacts", "bytes", "directory")}
 
 
 def reaggregate_parent() -> None:
     """Rebuild aggregate logic from exact details when decode inputs are unchanged."""
     previous = _load_json(BASELINE)
+    if previous.get("schema_version") != SCHEMA_VERSION:
+        raise RuntimeError("aggregate-only refused: evaluator schema changed")
     deterministic = previous["deterministic"]
     corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=True)
     current = {
@@ -1226,24 +1647,30 @@ def reaggregate_parent() -> None:
 
     summaries = {}
     details = {}
-    for engine in CONTROL_ENGINES:
-        control = deterministic["controls"][engine]
-        if control["adapter"]["model"] != model_fingerprint(engine):
+    for engine in OFFLINE_MODELS:
+        group = "controls" if engine in CONTROL_ENGINES else "candidates"
+        result = deterministic[group][engine]
+        current_model = model_fingerprint(engine)
+        if _model_decode_identity(result["adapter"]["model"]) != _model_decode_identity(
+            current_model
+        ):
             raise RuntimeError(f"aggregate-only refused: {engine} model changed")
-        measurement = previous["measurements"]["controls"][engine]
+        measurement = previous["measurements"][group][engine]
         summaries[engine] = {
-            "adapter": control["adapter"],
-            "compatibility": control["compatibility"],
+            "adapter": {**result["adapter"], "model": current_model},
+            "compatibility": result["compatibility"],
             "details": {
-                "rows": control["details"]["rows"],
-                "sha256": control["details"]["sha256"],
+                "rows": result["details"]["rows"],
+                "sha256": result["details"]["sha256"],
             },
             "engine": engine,
             "inputs": evaluation_inputs(corpus_manifest),
             "measurements": _child_measurement(measurement),
             "schema_version": SCHEMA_VERSION,
         }
-        details[engine] = ROOT / control["details"]["path"]
+        if engine in OFFLINE_CANDIDATES:
+            summaries[engine]["diagnostics"] = result["diagnostics"]
+        details[engine] = ROOT / result["details"]["path"]
 
     rebuilt = build_manifest(corpus_manifest, corpus_cases, summaries, details)
     install_evidence(rebuilt, summaries, details)
@@ -1254,18 +1681,16 @@ def run_parent() -> None:
     print("validating pinned corpus PCM + index before isolated runs", flush=True)
     corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=True)
     compatibility_cases()  # fail before staging when any legacy probe input is absent
-    for engine in CONTROL_ENGINES:
-        err = check_models(engine)
-        if err:
-            raise RuntimeError(f"{engine}: {err.splitlines()[0]}")
+    for engine in OFFLINE_MODELS:
+        validate_model_available(engine)
 
-    staging = CACHE / "model_eval-v1.staging"
+    staging = CACHE / "model_eval-v2.staging"
     staging.mkdir(parents=True, exist_ok=True)
     summaries: dict[str, dict] = {}
     details: dict[str, Path] = {}
     installed = False
     try:
-        for engine in CONTROL_ENGINES:
+        for engine in OFFLINE_MODELS:
             detail = staging / f"{engine}.jsonl"
             summary = staging / f"{engine}.summary.json"
             reusable = _reusable_child(engine, summary, detail, corpus_manifest, corpus_cases)
@@ -1299,16 +1724,23 @@ def run_parent() -> None:
 
     comparator = manifest["deterministic"]["comparator"]
     print(
-        f"PASS: complete controls; Common Voice comparator={comparator['engine']} "
+        f"PASS: complete controls + offline candidates; comparator={comparator['engine']} "
         f"CER={comparator['micro_cer']:.2%}",
         flush=True,
     )
+    for engine, candidate in manifest["deterministic"]["candidates"].items():
+        resource = manifest["measurements"]["candidates"][engine]["resource_verdict"]
+        print(
+            f"{engine}: content_qualified={candidate['content_verdict']['qualified']} "
+            f"cpu_resource_qualified={resource['qualified']}",
+            flush=True,
+        )
     print(f"wrote {_relative(BASELINE)} + immutable ignored JSONL details", flush=True)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("--worker", choices=CONTROL_ENGINES, help=argparse.SUPPRESS)
+    parser.add_argument("--worker", choices=OFFLINE_MODELS, help=argparse.SUPPRESS)
     parser.add_argument("--details", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--summary", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(

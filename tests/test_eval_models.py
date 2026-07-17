@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,30 @@ from tests import eval_models as evaluator
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "tests" / "model_baseline.json"
+DETAIL_SHA256 = {
+    "cohere_transcribe": "48cf513841deec2265b8ced9a5b9dd5bec185b8b4919e7a7a7db6a59d6ffaec3",
+    "k2v2": "29f1de5a60fc76ba57c0c002d26748df616c29200ef3fec690e681307251950d",
+    "parakeet": "810f0f25e629b73bed69e0f6b5273220ae91148ccca1818e5a5a24318a8c9c76",
+    "qwen3_asr": "1fec91b3c38faa918075a3ed344efbbcb4ce69ec4d668966a54a4474260654fd",
+}
+CANDIDATE_OUTPUT_SHA256 = {
+    "cohere_transcribe": {
+        "aggregates": "9f148582aa903358f85664f385de9d5b0f6eb164c6d6fcbd37ed1b1e3249bbc1",
+        "compatibility": "2115db34ec2c2b604be4c7ae5496f0aa8e27da707573b4069cdaf4abb21192c6",
+    },
+    "qwen3_asr": {
+        "aggregates": "08e334469693a70d3926fb4d9f4a88c8aa64abd7744ac439310ee0e79690c07f",
+        "compatibility": "ea3c40b5051c564e44f9ca972e473238868b32ade92551224dc69c31eeb8897b",
+    },
+}
+QWEN_DIAGNOSTIC_CASE_IDS = [
+    "cv8-ja-test-001632",
+    "cv8-ja-test-003098",
+    "cv8-ja-test-004405",
+    "fleurs-ja-test-10710420115318518641",
+    "fleurs-ja-test-4343504618128851925",
+    "fleurs-ja-test-7887185863950876644",
+]
 
 
 def _row(
@@ -131,6 +156,7 @@ def _control(cv: float, fleurs: float, long_form: float, *, empty: int = 0) -> d
                 for case_id in evaluator.STRESSOR_IDS
             },
         },
+        "diagnostics": evaluator.summarize_candidate_diagnostics([]),
     }
 
 
@@ -161,6 +187,109 @@ def test_content_and_resource_verdicts_remain_independent():
     empty_run = copy.deepcopy(candidate)
     empty_run["aggregates"]["completion"]["empty_hypotheses"] = 5133
     assert evaluator.content_verdict(empty_run, comparator)["qualified"] is False
+
+    truncated = copy.deepcopy(candidate)
+    truncated["diagnostics"] = evaluator.summarize_candidate_diagnostics(
+        [
+            {
+                "case_id": "cv-case",
+                "code": "generation_max_new_tokens",
+                "message": "Result is truncated. max_new_tokens 128 is too small",
+                "phase": "corpus",
+            }
+        ]
+    )
+    verdict = evaluator.content_verdict(truncated, comparator)
+    assert verdict["checks"]["decoder_diagnostics"] == {
+        "case_ids": ["cv-case"],
+        "observed_events": 1,
+        "pass": False,
+    }
+    assert verdict["qualified"] is False
+
+
+def test_native_stderr_diagnostics_are_captured_classified_and_restored(capfd):
+    expected = evaluator.DecodeObservation(
+        content=evaluator.Transcript("", (), 0, 1, True),
+        decode_seconds=0.0,
+        wall_seconds=0.0,
+    )
+
+    def decode() -> evaluator.DecodeObservation:
+        os.write(2, b"Result is truncated. max_new_tokens 128 is too small\n")
+        return expected
+
+    observed, messages = evaluator._decode_with_native_diagnostics(decode)
+    os.write(2, b"after decode\n")
+
+    assert observed is expected
+    assert messages == ("Result is truncated. max_new_tokens 128 is too small",)
+    assert evaluator._native_diagnostic_code(messages[0]) == "generation_max_new_tokens"
+    assert capfd.readouterr().err.endswith("after decode\n")
+
+
+def test_candidate_diagnostic_summary_fails_closed_on_tampering():
+    events = [
+        {
+            "case_id": "case",
+            "code": "audio_context_truncated",
+            "message": "Truncating audio placeholders",
+            "phase": "compatibility/short",
+        },
+        {
+            "case_id": "stress_long",
+            "code": "native_stderr",
+            "message": "timing warning",
+            "phase": "timing/post_warm/1",
+        },
+    ]
+    summary = evaluator.summarize_candidate_diagnostics(events)
+    phase_cases = {
+        "compatibility/short": {"case"},
+        "timing/post_warm/1": {"stress_long"},
+    }
+
+    evaluator.validate_candidate_diagnostics("candidate", summary, phase_cases)
+    assert summary["content_event_case_ids"] == ["case"]
+    assert summary["content_events"] == events[:1]
+
+    corrupt = copy.deepcopy(summary)
+    corrupt["events"][0]["code"] = "native_stderr"
+    with pytest.raises(RuntimeError, match="diagnostic code drifted"):
+        evaluator.validate_candidate_diagnostics("candidate", corrupt, phase_cases)
+
+    corrupt = copy.deepcopy(summary)
+    corrupt["events"][0]["case_id"] = "not-a-real-case"
+    corrupt["content_events"][0]["case_id"] = "not-a-real-case"
+    corrupt["content_event_case_ids"] = ["not-a-real-case"]
+    with pytest.raises(RuntimeError, match="diagnostic phase/case drifted"):
+        evaluator.validate_candidate_diagnostics("candidate", corrupt, phase_cases)
+
+
+def test_candidate_stressor_baseline_uses_same_candidate_component_rows():
+    row = _row(
+        "stress",
+        "continuous_stressor",
+        n=100,
+        substitutions=1,
+        deletions=8,
+        insertions=0,
+        duration_s=10,
+    )
+    compatibility = {"short": {"a": {"D": 2}, "b": {"D": 1}}}
+    expected = {"stressor_manifest": {"stressors": {"stress": {"order": ["a", "b", "a"]}}}}
+
+    output = evaluator._candidate_compatibility_row(
+        "stressors",
+        evaluator.EvalCase("stress", "continuous_stressor", Path("x.wav"), "参照", 1),
+        row,
+        compatibility,
+        expected,
+    )
+
+    assert output["baseline_D"] == 5
+    assert output["excess_D"] == 3
+    assert output["excess_del_rate"] == 0.03
 
 
 def test_content_gate_uses_exact_counts_not_rounded_cer():
@@ -245,7 +374,7 @@ def test_install_hash_failure_preserves_existing_baseline(tmp_path):
     baseline.write_bytes(b"old\n")
     staged = {}
     summaries = {}
-    for engine in evaluator.CONTROL_ENGINES:
+    for engine in evaluator.OFFLINE_MODELS:
         path = tmp_path / f"{engine}.jsonl"
         path.write_bytes(engine.encode())
         staged[engine] = path
@@ -261,10 +390,46 @@ def test_install_hash_failure_preserves_existing_baseline(tmp_path):
     assert not (tmp_path / "details").exists()
 
 
+def test_aggregate_migration_allows_only_provenance_code_with_exact_model_artifacts():
+    implementation = [
+        {"path": "live_stt.py", "sha256": "live"},
+        {"path": "tests/fetch_eval_models.py", "sha256": "old"},
+    ]
+    previous = {"implementation": implementation, "values": {"threads": 4}}
+    current = copy.deepcopy(previous)
+    current["implementation"][1]["sha256"] = "new"
+
+    assert evaluator._pipeline_reaggregate_compatible(previous, current)
+
+    changed_decode = copy.deepcopy(current)
+    changed_decode["implementation"][0]["sha256"] = "changed"
+    assert not evaluator._pipeline_reaggregate_compatible(previous, changed_decode)
+
+    old_model = {
+        "artifacts": [{"path": "model.onnx", "sha256": "exact", "bytes": 1}],
+        "bytes": 1,
+        "directory": "models/candidate",
+        "provenance": {"lineage": "old"},
+    }
+    corrected_provenance = {**old_model, "provenance": {"lineage": "corrected"}}
+    assert evaluator._model_decode_identity(old_model) == evaluator._model_decode_identity(
+        corrected_provenance
+    )
+
+    changed_model = copy.deepcopy(corrected_provenance)
+    changed_model["artifacts"][0]["sha256"] = "changed"
+    assert evaluator._model_decode_identity(old_model) != evaluator._model_decode_identity(
+        changed_model
+    )
+
+
 def _committed_baseline() -> dict:
     if not BASELINE.exists():
-        pytest.skip("M10.3 control baseline not generated yet")
-    return json.loads(BASELINE.read_text(encoding="utf-8"))
+        pytest.skip("M10 model baseline not generated yet")
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    if baseline.get("schema_version") != evaluator.SCHEMA_VERSION:
+        pytest.skip("M10.4 tournament baseline not generated yet")
+    return baseline
 
 
 def test_committed_baseline_locks_gates_compatibility_and_measurement_separation():
@@ -274,12 +439,15 @@ def test_committed_baseline_locks_gates_compatibility_and_measurement_separation
     assert deterministic["displacement_gates"] == evaluator.DISPLACEMENT_GATES
     assert deterministic["metric_contract"] == evaluator.METRIC_CONTRACT
     assert set(deterministic["controls"]) == set(evaluator.CONTROL_ENGINES)
+    assert set(deterministic["candidates"]) == set(evaluator.OFFLINE_CANDIDATES)
     assert baseline["measurements"]["excluded_from_deterministic_equality"] is True
+    assert not set(evaluator.OFFLINE_CANDIDATES) & evaluator.ENGINE_DIRS.keys()
 
     goldens = json.loads(evaluator.REPLAY_GOLDENS.read_text(encoding="utf-8"))
     legacy_cer = json.loads(evaluator.CER_BASELINE.read_text(encoding="utf-8"))
     legacy_long = json.loads(evaluator.LONG_FORM.read_text(encoding="utf-8"))
     for engine, control in deterministic["controls"].items():
+        assert control["details"]["sha256"] == DETAIL_SHA256[engine]
         for case_id, golden in goldens[engine].items():
             row = control["compatibility"]["short"][case_id]
             assert row["hyp"] == "".join(segment["text"] for segment in golden["segments"])
@@ -307,6 +475,59 @@ def test_committed_baseline_locks_gates_compatibility_and_measurement_separation
         assert len(measurement["post_warm"]["runs"]) == evaluator.TIMING_RUNS
         assert measurement["device_memory_mib"] is None
         assert measurement["rss_mib"]["ru_maxrss_process"] > 0
+
+    comparator = deterministic["controls"][deterministic["comparator"]["engine"]]
+    for engine, candidate in deterministic["candidates"].items():
+        assert candidate["details"]["sha256"] == DETAIL_SHA256[engine]
+        for key, expected_sha256 in CANDIDATE_OUTPUT_SHA256[engine].items():
+            assert (
+                hashlib.sha256(evaluator._json_bytes(candidate[key], compact=True)).hexdigest()
+                == expected_sha256
+            )
+        assert candidate["content_verdict"] == evaluator.content_verdict(candidate, comparator)
+        assert candidate["content_verdict"]["qualified"] is False
+        evaluator.validate_candidate_diagnostics(engine, candidate["diagnostics"])
+        provenance = candidate["adapter"]["model"]["provenance"]
+        assert provenance["license"]["spdx"] == "Apache-2.0"
+        assert provenance["lineage"]["archive_build_revision"] is None
+        config = candidate["adapter"]["recognizer_config"]
+        if engine == "qwen3_asr":
+            qwen = config["qwen3_asr"]
+            assert {
+                key: qwen[key] for key in ("hotwords", "max_new_tokens", "max_total_len", "seed")
+            } == {
+                "hotwords": "",
+                "max_new_tokens": 128,
+                "max_total_len": 512,
+                "seed": 42,
+            }
+            assert qwen["temperature"] == pytest.approx(1e-6)
+            assert qwen["top_p"] == pytest.approx(0.8)
+        else:
+            assert config["cohere_transcribe"] == {
+                "language": "ja",
+                "use_itn": True,
+                "use_punct": True,
+            }
+        measurement = baseline["measurements"]["candidates"][engine]
+        assert measurement["resource_verdict"] == evaluator.resource_verdict(
+            {
+                "sherpa_cpu": {
+                    "actual_execution_device": "CPU",
+                    "post_warm_rtf": measurement["post_warm"]["median_decode_rtf"],
+                    "production_eligible": True,
+                }
+            }
+        )
+        assert measurement["resource_verdict"]["qualified"] is False
+    assert (
+        deterministic["candidates"]["qwen3_asr"]["diagnostics"]["content_event_case_ids"]
+        == QWEN_DIAGNOSTIC_CASE_IDS
+    )
+    assert (
+        deterministic["candidates"]["cohere_transcribe"]["diagnostics"]["content_event_case_ids"]
+        == []
+    )
     assert "compatibility_inputs" in deterministic["pipeline"]
     assert len(deterministic["pipeline"]["evaluator_contract_sha256"]) == 64
 
@@ -318,9 +539,10 @@ def test_ignored_details_hash_and_aggregates_rebuild_when_cache_is_present():
     except RuntimeError:
         pytest.skip("ignored M10 corpus cache absent")
 
-    for control in baseline["deterministic"]["controls"].values():
-        detail = ROOT / control["details"]["path"]
-        if not detail.exists():
-            pytest.skip("ignored M10 evaluator details absent")
-        rows = evaluator._detail_rows(detail, cases, control["details"]["sha256"])
-        assert evaluator.aggregate_rows(rows) == control["aggregates"]
+    for group in ("controls", "candidates"):
+        for result in baseline["deterministic"][group].values():
+            detail = ROOT / result["details"]["path"]
+            if not detail.exists():
+                pytest.skip("ignored M10 evaluator details absent")
+            rows = evaluator._detail_rows(detail, cases, result["details"]["sha256"])
+            assert evaluator.aggregate_rows(rows) == result["aggregates"]
