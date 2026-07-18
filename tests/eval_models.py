@@ -1239,14 +1239,34 @@ def _corpus_fingerprint(manifest: dict) -> dict:
     }
 
 
+def validate_evidence_model_set(
+    summaries: Mapping[str, dict],
+    detail_paths: Mapping[str, Path],
+    model_ids: Sequence[str],
+    *,
+    label: str,
+) -> tuple[str, ...]:
+    """Validate an exact ordered model set for any isolated evaluator."""
+    expected = tuple(model_ids)
+    if len(set(expected)) != len(expected):
+        raise RuntimeError(f"{label}: duplicate model IDs")
+    if set(summaries) != set(expected) or set(detail_paths) != set(expected):
+        raise RuntimeError(f"{label}: required model set is {list(expected)}")
+    return expected
+
+
 def build_manifest(
     corpus_manifest: dict,
     corpus_cases: Sequence[EvalCase],
     summaries: Mapping[str, dict],
     detail_paths: Mapping[str, Path],
 ) -> dict:
-    if set(summaries) != set(OFFLINE_MODELS) or set(detail_paths) != set(OFFLINE_MODELS):
-        raise RuntimeError("both controls and both offline candidates are required")
+    validate_evidence_model_set(
+        summaries,
+        detail_paths,
+        OFFLINE_MODELS,
+        label="offline evaluator",
+    )
     expected_inputs = evaluation_inputs(corpus_manifest)
     probes, compatibility_expected = compatibility_cases()
     diagnostic_phase_cases = candidate_diagnostic_phase_cases(corpus_cases, probes)
@@ -1336,6 +1356,40 @@ def build_manifest(
     }
 
 
+def install_content_addressed_details(
+    summaries: Mapping[str, dict],
+    staged_details: Mapping[str, Path],
+    model_ids: Sequence[str],
+    *,
+    details_dir: Path,
+) -> dict[str, Path]:
+    """Validate then install immutable detail files for any evaluator model set."""
+    models = validate_evidence_model_set(
+        summaries,
+        staged_details,
+        model_ids,
+        label="content-addressed evidence",
+    )
+    destinations: dict[str, Path] = {}
+    for model_id in models:
+        expected = summaries[model_id]["details"]["sha256"]
+        source = staged_details[model_id]
+        if file_sha256(source) != expected:
+            raise RuntimeError(f"{model_id}: staged detail hash changed before install")
+        destinations[model_id] = details_dir / f"{model_id}-{expected[:16]}.jsonl"
+
+    # All validation precedes writes. Interrupted installs can only leave an
+    # unreferenced immutable detail file; the tracked manifest is written last.
+    for model_id, destination in destinations.items():
+        expected = summaries[model_id]["details"]["sha256"]
+        if destination.exists():
+            if file_sha256(destination) != expected:
+                raise RuntimeError(f"content-addressed detail collision: {destination}")
+        else:
+            write_atomic(destination, [staged_details[model_id].read_bytes()])
+    return destinations
+
+
 def install_evidence(
     manifest: dict,
     summaries: Mapping[str, dict],
@@ -1345,23 +1399,13 @@ def install_evidence(
     details_dir: Path = DETAILS_DIR,
 ) -> None:
     """Install validated immutable details first, then atomically replace the manifest."""
-    destinations = {}
-    for engine in OFFLINE_MODELS:
-        expected = summaries[engine]["details"]["sha256"]
-        source = staged_details[engine]
-        if file_sha256(source) != expected:
-            raise RuntimeError(f"{engine}: staged detail hash changed before install")
-        destinations[engine] = details_dir / f"{engine}-{expected[:16]}.jsonl"
-
-    # All validation above precedes writes. Detail files are immutable/content-addressed;
-    # an interrupted final manifest write can only leave an unreferenced cache file.
+    destinations = install_content_addressed_details(
+        summaries,
+        staged_details,
+        OFFLINE_MODELS,
+        details_dir=details_dir,
+    )
     for engine, destination in destinations.items():
-        expected = summaries[engine]["details"]["sha256"]
-        if destination.exists():
-            if file_sha256(destination) != expected:
-                raise RuntimeError(f"content-addressed detail collision: {destination}")
-        else:
-            write_atomic(destination, [staged_details[engine].read_bytes()])
         group = "controls" if engine in CONTROL_ENGINES else "candidates"
         manifest["deterministic"][group][engine]["details"]["path"] = _relative(destination)
     write_atomic(baseline, [_json_bytes(manifest)])
@@ -1677,6 +1721,43 @@ def reaggregate_parent() -> None:
     print(f"wrote {_relative(BASELINE)} from exact cached details", flush=True)
 
 
+def run_isolated_workers(
+    model_ids: Sequence[str],
+    *,
+    staging: Path,
+    worker_script: Path,
+    reusable_child: Callable[[str, Path, Path], dict | None],
+) -> tuple[dict[str, dict], dict[str, Path]]:
+    """Run or resume fingerprint-matched evaluator children in model order."""
+    summaries: dict[str, dict] = {}
+    details: dict[str, Path] = {}
+    for model_id in model_ids:
+        detail = staging / f"{model_id}.jsonl"
+        summary = staging / f"{model_id}.summary.json"
+        reusable = reusable_child(model_id, summary, detail)
+        if reusable is None:
+            command = [
+                sys.executable,
+                "-u",
+                str(worker_script),
+                "--worker",
+                model_id,
+                "--details",
+                str(detail),
+                "--summary",
+                str(summary),
+            ]
+            completed = subprocess.run(command, cwd=ROOT, check=False)
+            if completed.returncode:
+                raise RuntimeError(f"isolated {model_id} evaluator exited {completed.returncode}")
+            reusable = _load_json(summary)
+        else:
+            print(f"{model_id}: reuse complete fingerprint-matched staged child", flush=True)
+        summaries[model_id] = reusable
+        details[model_id] = detail
+    return summaries, details
+
+
 def run_parent() -> None:
     print("validating pinned corpus PCM + index before isolated runs", flush=True)
     corpus_manifest, corpus_cases = load_corpus_cases(verify_pcm=True)
@@ -1686,35 +1767,18 @@ def run_parent() -> None:
 
     staging = CACHE / "model_eval-v2.staging"
     staging.mkdir(parents=True, exist_ok=True)
-    summaries: dict[str, dict] = {}
-    details: dict[str, Path] = {}
     installed = False
     try:
-        for engine in OFFLINE_MODELS:
-            detail = staging / f"{engine}.jsonl"
-            summary = staging / f"{engine}.summary.json"
-            reusable = _reusable_child(engine, summary, detail, corpus_manifest, corpus_cases)
-            if reusable is None:
-                command = [
-                    sys.executable,
-                    "-u",
-                    str(Path(__file__).resolve()),
-                    "--worker",
-                    engine,
-                    "--details",
-                    str(detail),
-                    "--summary",
-                    str(summary),
-                ]
-                completed = subprocess.run(command, cwd=ROOT, check=False)
-                if completed.returncode:
-                    raise RuntimeError(f"isolated {engine} evaluator exited {completed.returncode}")
-                reusable = _load_json(summary)
-            else:
-                print(f"{engine}: reuse complete fingerprint-matched staged child", flush=True)
-            summaries[engine] = reusable
-            details[engine] = detail
 
+        def reusable_child(engine: str, summary: Path, detail: Path) -> dict | None:
+            return _reusable_child(engine, summary, detail, corpus_manifest, corpus_cases)
+
+        summaries, details = run_isolated_workers(
+            OFFLINE_MODELS,
+            staging=staging,
+            worker_script=Path(__file__).resolve(),
+            reusable_child=reusable_child,
+        )
         manifest = build_manifest(corpus_manifest, corpus_cases, summaries, details)
         install_evidence(manifest, summaries, details)
         installed = True
