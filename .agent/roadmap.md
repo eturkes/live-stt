@@ -68,15 +68,15 @@ Streaming-tournament respec — banked machinery/run recipe (M10.5d respec 2026-
 - T1.4 ✓ Graceful shutdown — partial-turn flush in `finally`; Ctrl+C mid-utterance persists.
 - T2.1 ✓ Pure-function tests (`tests/test_audio.py`: resample/pcm16/emit).
 - T2.3 ✓ Structured logging — 5 stderr sites → `logger`; `_StderrFormatter` clears the meter line only on a TTY.
-- T3.1 ✓ Gemini Live API rewrite — superseded by D-009; history in `spike/gemini_live.md`.
-- T3.2 ✓ Long-session memory (resumption + context compression) — Gemini-era, superseded by D-009; history in `spike/gemini_live.md`.
+- T3.1 ✓ Gemini Live API rewrite — superseded by D-009; history in git (D-005).
+- T3.2 ✓ Long-session memory (resumption + context compression) — Gemini-era, superseded by D-009; history in git (D-005).
 - T-CLEANUP-001 ✓ Spike artifact audit (cache gitignored).
 - T-HOOK-001 ✓ `uv run pytest -q` pre-commit hook (`.githooks/`; `core.hooksPath`) → D-007.
 - T4.1 ✓ Local JA STT engine via spike bench — k2v2 primary, parakeet A/B; sherpa-onnx + silero VAD; TTFT ≤0.10s → D-010.
 - T4.2 ✓ Codex CLI install+auth+bench — Spark+low, tool features off, `developerInstructions`; p50 0.99s/turn → D-011.
 - T4.3 ✓ Rewrite `live_stt.py` around local STT (Gemini machinery removed) → L-004 smoke debt opened.
 - T4.4 ✓ Wire Codex translation into live loop (`CodexTranslator`, sequential turns, warm-up, JA-only degrade) → D-011.
-- T4.5 ✓ Cleanup — google-genai/python-dotenv removed; Gemini backend superseded by D-009; spike reports kept as history (now under `spike/`).
+- T4.5 ✓ Cleanup — google-genai/python-dotenv removed; Gemini backend superseded by D-009; spike reports since pruned (git history, D-005).
 - T5.1 ✓ Deterministic WAV replay (`replay.py` drives the production `worker` via `on_segment`) + golden regression → D-014, reproduces D-010 quirks; retired the drifted bench harness.
 - T5.2 ✓ Parakeet goldens — `replay_goldens.json` engine-first; tests parametrized per (engine, clip).
 - T5.3 ✓ Real-recorded JA corpus — 7 Common Voice 8.0 clips fetched over network (L-004 blocks mic, not download) → L-017, characterization goldens; 49 tests.
@@ -113,7 +113,7 @@ T7 screen: merge `submit`/`submit_sentinel` (deliberate drop-vs-must-land split)
 - M10 candidate-screen remainder: old multilingual streaming zipformer + SenseVoice lack current JA evidence against the shortlisted 2026 models; Moonshine-JA is compact (~62 MB) but its source card reports a nonstandard/unclear license and no persuasive JA evaluation; ReazonSpeech-k2-v2 2025 is JA-specialized but adds PyTorch/Transformers + remote custom model code instead of reusing sherpa. Re-open only if M10's shortlisted candidates all fail and the added provenance/runtime surface can buy a materially different hypothesis.
 
 ## Superseded
-- T-BACKENDS-001 — Backends spike, superseded by the T4 series (user ruled out metered API keys, removing Deepgram + OpenAI Realtime candidates). `spike/backends/SUMMARY.md` stands as history; its "populate keys" recommendation is void.
+- T-BACKENDS-001 — Backends spike, superseded by the T4 series (user ruled out metered API keys, removing Deepgram + OpenAI Realtime candidates). The backends spike report is pruned (git history, D-005); its "populate keys" recommendation is void.
 
 ## Out of scope (do not redebate)
 Config files / YAML / TOML for tunables (constants at the top of `live_stt.py` are the config surface) · multi-mic mixing · speaker diarization · web UI · auth / multi-user · metrics dashboards beyond the backlog/drop status counters · package split / multi-module layout (`.agent/memory.md` D-002).

@@ -117,7 +117,7 @@ live-stt/
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
-├── spike/                   # historical spike reports (Gemini Live, backends) + gitignored bench WAV corpus
+├── spike/                   # gitignored bench WAV corpus (D-014 replay/test); superseded spike docs pruned
 ├── CLAUDE.md                # canonical Claude Code instructions
 ├── .claude/                 # project settings + /session-prompt command
 ├── .serena/                 # committed Serena/LSP project configuration
