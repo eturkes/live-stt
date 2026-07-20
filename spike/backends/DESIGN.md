@@ -2,7 +2,7 @@
 
 **Scope:** Is there a meaningfully better backend (cheaper, faster, comparable JA quality) than the current Gemini Live path — enough to justify switching, or at least adding a `--backend` flag? Produce the empirical evidence a migration decision would need.
 
-**Baseline** (from `SPIKE_REPORT.md`, T3.1):
+**Baseline** (from `spike/gemini_live.md`, T3.1):
 - `gemini-3.1-flash-live-preview` via `client.aio.live.connect`
 - TTFT ≈ 1.02 s after utterance end (benchmark clip)
 - Total post-audio latency ≈ 2.9 s
