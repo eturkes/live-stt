@@ -34,8 +34,8 @@ CLAUDE.local.md
 
 # .serena/ is committed as-is via its own .serena/.gitignore
 
-# Headroom tokensave code-graph state (regenerable via tokensave init/sync; deny-Read'd in .claude/settings.json)
-.tokensave/
+# Session workspace: teammate roster/reports + staging trees (.claude/commands/session-prompt.md); nothing durable
+.scratch/
 
 # Environment / secrets
 .env
