@@ -69,9 +69,11 @@ DECODE_SPLIT_RMS_WINDOW_S = 0.1
 DECODE_CHUNK_OVERLAP_S = 0.18
 _DECODE_MERGE_MAX_CHARS = 8
 
-# Translation leg (T4.2 bench, D-011): Spark+low p50 0.99 s/turn; fallback
-# pair if Spark entitlement lapses: model "gpt-5.4-mini" + effort "none".
-TRANSLATE_MODEL = "gpt-5.3-codex-spark"
+# Translation leg (D-011): Luna+low won a 12-config × 1,110-turn tournament on
+# median latency (1.38 s/turn) with quality tied to every higher effort — this
+# task is too easy to spend a reasoning budget on, so raising effort only costs
+# time. Runner-up if Luna's entitlement lapses: "gpt-5.6-terra" + "medium".
+TRANSLATE_MODEL = "gpt-5.6-luna"
 TRANSLATE_EFFORT = "low"
 TRANSLATE_TIMEOUT_S = 15.0
 CODEX_CONTROL_TIMEOUT_S = 10  # initialize + thread/start; turns use TRANSLATE_TIMEOUT_S

@@ -18,7 +18,7 @@ Each short utterance typically prints as a numbered `JA n:` line about 0.1 s aft
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
   - macOS: `brew install portaudio`
 - ~800 MB of model weights in `models/` (one-time download, see below)
-- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.137 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-5.3-codex-spark` (`codex login` / `codex login --device-auth`)
+- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.137 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-5.6-luna` (`codex login` / `codex login --device-auth`)
 
 ## Setup
 
@@ -41,7 +41,7 @@ live-stt                          # transcribe + translate
 python live_stt.py                # equivalent
 ```
 
-Startup prints the translation status: `Translation: gpt-5.3-codex-spark via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (JA-only, see log)`, or `disabled (--no-translate)`.
+Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (JA-only, see log)`, or `disabled (--no-translate)`.
 
 ### CLI
 
@@ -168,7 +168,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAD_PRE_PAD_S` | 0.4 s | Lead-in re-sliced from the ring (silero onset clipping fix) |
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
-| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.3-codex-spark` / `low` | Codex model+effort (fallback: `gpt-5.4-mini` / `none`) |
+| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-terra` / `medium`) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → JA-only |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
