@@ -119,4 +119,7 @@ T7 screen: merge `submit`/`submit_sentinel` (deliberate drop-vs-must-land split)
 Config files / YAML / TOML for tunables (constants at the top of `live_stt.py` are the config surface) · multi-mic mixing · speaker diarization · web UI · auth / multi-user · metrics dashboards beyond the backlog/drop status counters · package split / multi-module layout (`.agent/memory.md` D-002).
 
 ## Decisions pending from user
-None. (Last resolved: translation leg → `gpt-5.6-luna`+`low`, user-approved on the measured tournament in D-011, superseding `gpt-5.3-codex-spark`+`low`.)
+- **Drug-name instruction line — ship or leave the translator prompt alone?** On the clinical corpus (D-011) Luna renders プレドニン (Predonine = prednisolone) as "prednisone" — a different molecule — in 8/9 runs; no config emits the generic unprompted. Adding one line to `TRANSLATOR_INSTRUCTIONS` (give the international generic name for Japanese brand-name drugs, keeping dose/unit/schedule exactly) fixed it 3/3 and improved バイアスピリン → "low-dose aspirin", costing ~+0.16 s median (n=18/arm, noisy). Evidence: `.scratch/codex_bench/drugname_probe.jsonl`.
+- **Invented patient gender — worth an instruction clause?** 3.5–12.3 % of clinical turns add he/his/Mr. where the Japanese states no sex (D-011). Untested as a prompt fix.
+
+(Last resolved: translation leg → `gpt-5.6-luna`+`low`, user-approved on the measured tournament in D-011 and re-confirmed on the clinical corpus, superseding `gpt-5.3-codex-spark`+`low`.)
