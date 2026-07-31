@@ -16,7 +16,7 @@ Sole carried-forward store: orientation, decisions (D-, cited by code), lessons 
 - Superseded-spike history (Gemini era + metered backends) lives in git + D-005; the live cloud→local rationale is D-009/D-010/D-011, not in-tree reports.
 - `pyproject.toml` — deps + tool config; read `uv.lock` only for dependency work.
 - `.githooks/pre-commit` — runs `uv run pytest -q` (D-007). `spike/` — only the gitignored + deny-listed bench corpus `cache/` (D-014); superseded-spike docs pruned (D-005).
-- `.agent/` — exactly `memory.md` (this), `roadmap.md` (plan/status), and `context.sh` (context gauge), D-004. `.claude/commands/session-prompt.md` is the Claude Code session entry (D-012). `.scratch/` — gitignored session workspace (teammate roster + reports + staging trees); nothing durable lives there.
+- `.agent/` — exactly `memory.md` (this), `roadmap.md` (plan/status), and `context-gauge.sh` (context gauge), D-004. `.claude/commands/session-prompt.md` is the Claude Code session entry (D-012). `.scratch/` — gitignored session workspace (teammate roster + reports + staging trees); nothing durable lives there.
 
 **Commands:**
 ```sh
@@ -41,7 +41,7 @@ uv run --with soundfile python tests/eval_long_form.py  # fetch/build/score pinn
 uv run python tests/eval_backpressure.py         # virtual-clock bounded/drop-free gate (silero + corpus)
 uv run --with soundfile==0.14.0 --with pyarrow==25.0.0 python tests/fetch_real_clips.py  # pinned full short corpus
 uvx pyright@1.1.410 --project . live_stt.py replay.py cer.py  # typecheck (uvx is self-contained; the ~/.local pyright is dangling)
-sh .agent/context.sh                             # live Claude Code context gauge (needs jq)
+sh .agent/context-gauge.sh                       # live Claude Code context gauge (needs jq)
 ```
 `sounddevice` dlopens system PortAudio when the live/device entry paths import it; without PortAudio those paths fail `OSError: PortAudio library not found` → `sudo apt-get install libportaudio2` (Debian). Offline import/pytest/evaluators intentionally avoid the binding. Confirm native libs by importing the binding directly, not `ldconfig -p` (L-010).
 
@@ -73,7 +73,7 @@ Per-layer venvs (host = live-mic runtime, lowest latency; container = agent dev/
 ADR-style, compact — active decisions only. When one is superseded, delete it and fold any still-live constraint into the successor; the prior record lives in git + `roadmap.md`.
 
 - **D-002 — Single-file `live_stt.py`.** No package/module split: one dev (agent), one user; splitting buys reuse/isolation we don't need and costs context per file. M9.5 revisited the ~1,000-line threshold: the feeder/decoder stages share config, state, replay hooks, and shutdown order, remain adjacent, and introduce no navigation incident → keep one file. Revisit on an actual navigation failure or a cohesive one-way subsystem boundary.
-- **D-004 — `.agent/` shape = the lean memory system.** Current shape: `memory.md` + `roadmap.md` + `context.sh`, all committed (a fresh clone reproduces durable context per `CLAUDE.md`'s long-horizon rule). *Resist re-expanding into per-topic files — the single memory file is the decision.*
+- **D-004 — `.agent/` shape = the lean memory system.** Current shape: `memory.md` + `roadmap.md` + `context-gauge.sh`, all committed (a fresh clone reproduces durable context per `CLAUDE.md`'s long-horizon rule). *Resist re-expanding into per-topic files — the single memory file is the decision.*
 - **D-005 — Superseded-spike docs pruned; the live rationale is the decision log, not in-tree reports.** The Gemini (T3.1) + metered-backends spike reports and the rejected `codex_ws/AGENTS.md` prompt-mechanism were removed from tree at user direction (2026-07-20); git history preserves them. They justified abandoned cloud branches — the actual cloud→local trail is D-009/D-010/D-011 + the roadmap ledger. Do not re-add spike reports for superseded work; record the decision here instead.
 - **D-006 — Don't refactor `live_stt.py` for "LLM-readability."** Its optimization comments encode irreplaceable rationale; denser naming saves ~30 tokens at every call-site's expense (L-001). Target a specific confusing line only on a real incident, never the whole file.
 - **D-007 — Pre-commit hook via `.githooks/` + `core.hooksPath`, not the `pre-commit` framework.** The hook is one line (`uv run pytest -q`); the framework adds schema + per-hook venv cache + network bootstrap for nothing at this scope. Each clone opts in once (`git config --local core.hooksPath .githooks`). `--no-verify` bypasses for emergencies. Revisit if the hook grows past one or two commands.
