@@ -1,6 +1,6 @@
 # Roadmap — live-stt
 
-Canonical plan + status. Pick the lowest-numbered OPEN unit; restate its acceptance criteria before coding. Trajectory: single-file tool, simplicity over completeness — no frameworks, no config, no premature abstraction. Milestone states: UNPLANNED · IN-PROGRESS · IMPLEMENTED · REVIEWED. Unit states: OPEN · BLOCKED · DONE. Ledger dispositions: DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED.
+Canonical plan + status. Pick the lowest-numbered OPEN unit; restate its acceptance criteria before coding. Trajectory: single-file tool, simplicity over completeness — no frameworks, no config, no premature abstraction. Milestone states: UNPLANNED · IN-PROGRESS · IMPLEMENTED · REVIEWED. Unit states: OPEN · BLOCKED · DONE. Ledger dispositions: DEFERRED · SUPERSEDED · OUT-OF-SCOPE · REJECTED. Context records `main=`/`impl=` = `.agent/context-gauge.sh` readings, `N% NK/240K`; `impl=` = the peak implementing teammate's high-water, so size units from it as an upper bound (M10.5a–d predate teammate resolution and record final-turn values, which understate peaks).
 
 ## Status
 - Milestone: **M10 evidence-backed Japanese ASR model/architecture tournament** — IN-PROGRESS (planned 2026-07-15).

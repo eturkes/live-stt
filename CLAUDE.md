@@ -1,7 +1,7 @@
 # Alignment
 
 ## Collaboration
-- Uncertain / needs planning / benefits from my input → stop + ask, as exhaustively as useful. Accuracy > completion. Chat = blockers + essentials; I'm technically proficient.
+- Material uncertainty / consequential planning choice / likely benefit from my input → stop + ask, as exhaustively as useful. Accuracy > completion. Chat = blockers + essentials; I'm technically proficient.
 - When discussion may improve the work, open one proactively: surface settled context, probe uncertainties, lend words to tacit/felt-but-unworded knowledge, tour unseen options/assumptions, and offer vocabulary, examples, counterexamples, tradeoffs + testable probes. One flexible lens among other topic-relevant lines of inquiry.
 - Stay objective; push back on or criticize my ideas when warranted — these are collaborations. Use deduction, first principles, scientific + Socratic methods for root causes; design experiments + benchmark liberally.
 - Failure is an accepted outcome even on long efforts — we can always restart from scratch. Explore relaxed + curious; creativity + innovation encouraged, and you're credited for your achievements.
@@ -15,10 +15,10 @@
 - Git: creds in the global gitconfig; standing permission for all local-repo commands, I handle remote. Close each cohesive piece of work with one scoped commit (scopedcommits.com) optimized for LLM parsing; defer mid-iteration to the next closing turn. Keep `.gitignore` current.
 
 ## Authoring
-- AI agents = the sole developers → optimize every file (code, docs, instructions) for LLM readability + token efficiency: write them dense, symbol-forward, human-sparse — telegraphic phrasing, `→`/`=` notation. Aggressively compress whatever you read, however works best. Prune unhelpful, implicit, obsolete, redundant content + structures whenever encountered.
-- State rules, facts + warnings plainly; omit + prune provenance — dates, verification/discovery events, origin stories.
+- AI agents = the sole developers → optimize every file (code, docs, instructions) for LLM readability + token efficiency: write them dense, symbol-forward, human-sparse — telegraphic phrasing, `→`/`=` notation. Aggressively compress retained context + authored text. Prune unhelpful, implicit, obsolete, redundant content + structures whenever encountered.
+- State rules, facts + warnings plainly. Prune process narration without durable value (verification/discovery dates, origin stories); preserve provenance required for reproducibility, attribution, auditability, or decisions.
 - Future-facing text, esp. prompts → state the desired action/target positively (`always`/`must`); counter the LLM "pink elephant" bias.
-- Instruction + slash-command files = yours to maintain → update any the moment it's improvable. Route durable guidance to the appropriate scope: global `~/.claude/CLAUDE.md` = project-independent env/tooling + machine-specific capabilities; per-project `CLAUDE.md` = generalized principles + config rules for working within projects; `.agent/memory.md` = cross-session/subagent project context adding value beyond code/docs/git history.
+- Instruction + slash-command files = yours to maintain → update any the moment it's improvable. Route durable guidance to the appropriate scope: global `~/.claude/CLAUDE.md` = project-independent env/tooling + machine-specific capabilities; per-project `CLAUDE.md` = project-scoped principles + config rules; `.agent/memory.md` = cross-session/subagent project context adding value beyond code/docs/git history.
 - UI/UX: unique fonts, cohesive colors/themes, style fitted to project + human audience. Human-facing text = natural + direct; code/comments optimize agent readability. For humans: hyphens, flexible enumeration, varied comparatives.
 
 ## Engineering
@@ -32,6 +32,6 @@
 
 ## Claude Code
 - `/session-prompt` evolves with the project: end-to-end executable when its task + gates are fully specified.
-- Context topology: every context (main session + subagents) auto-compacts at 240K, warning at 220K. One-window aim = ~200K, reserving ~40K for verification + closure. PLANNING + MILESTONE-REVIEW + user-requested tasks run past compaction across coherent checkpoints (a user-stated bound overrides); autonomous runs (WORK-UNIT) hold the one-window aim.
+- Context policy (thresholds + one-window aim: global `CLAUDE.md`): PLANNING + MILESTONE-REVIEW + user-requested tasks run past compaction across coherent checkpoints (a user-stated bound overrides); autonomous runs (WORK-UNIT) hold the one-window aim.
 - Read-exclusion set = paths whose read cost exceeds value; distinct from `.gitignore`. Sync both controls: `.serena/project.yml` `ignored_paths` for committed, non-gitignored paths; `.claude/settings.json` `permissions.deny` `Read()` for the full set because `Read`/`Bash` bypass `.gitignore`. Regenerable root-gitignored caches (`.serena/cache/`) → add only to `permissions.deny` (`git_ignore=true` already excludes them from Serena).
 - Deny-`Read()` globs = gitignore-style with silent match errors → verify every edit by Read-testing one required block + one required readable path. `dir/*/**` matches both `dir/child` and `dir/sub/deep` (`*` = one segment; `/**` = zero+); use `**/*.ext` for binary/dump trees + exact-path rules. Anchors: `/` = project root; `//` = fs root; bare name = any depth. Rules hot-reload. `Read()` denies also gate `Bash` inconsistently: commands naming a match (`grep`/`stat`/`jq`; piped `find`, while simple `find` rewrites to `rtk find`) block; `ls`/`wc`/`echo` and commands naming only a parent can pass. Static command-text check → deliberate inspection via a parent-recursive query or runtime indirection with the path inside code.

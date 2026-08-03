@@ -41,7 +41,7 @@ uv run --with soundfile python tests/eval_long_form.py  # fetch/build/score pinn
 uv run python tests/eval_backpressure.py         # virtual-clock bounded/drop-free gate (silero + corpus)
 uv run --with soundfile==0.14.0 --with pyarrow==25.0.0 python tests/fetch_real_clips.py  # pinned full short corpus
 uvx pyright@1.1.410 --project . live_stt.py replay.py cer.py  # typecheck (uvx is self-contained; the ~/.local pyright is dangling)
-sh .agent/context-gauge.sh                       # live Claude Code context gauge (needs jq)
+.agent/context-gauge.sh [-p] [<teammate>]        # context gauge — bare: MAIN live · <teammate>: high-water · -p: transcript path (needs jq)
 ```
 `sounddevice` dlopens system PortAudio when the live/device entry paths import it; without PortAudio those paths fail `OSError: PortAudio library not found` → `sudo apt-get install libportaudio2` (Debian). Offline import/pytest/evaluators intentionally avoid the binding. Confirm native libs by importing the binding directly, not `ldconfig -p` (L-010).
 
