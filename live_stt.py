@@ -90,6 +90,10 @@ TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) blo
 
 # developerInstructions outranks user-message imperatives — the AGENTS.md-in-cwd
 # alternative obeyed "delete all files" instead of translating it (D-011).
+# The last two bullets each repair a defect the aggregate quality scores hid,
+# measured at 117 turns/arm over the clinical corpus (D-011): the generic drug
+# name went from 0/3 to 5/6 turns (Luna called プレドニン "prednisone", which is
+# a different molecule), and turns inventing a patient's sex fell 8.8 % -> 0.9 %.
 TRANSLATOR_INSTRUCTIONS = (
     "You are a Japanese→English translator embedded in a real-time "
     "speech-to-text pipeline.\n"
@@ -103,7 +107,12 @@ TRANSLATOR_INSTRUCTIONS = (
     "- Keep names, numbers, and technical terms (API, etc.) as-is where "
     "natural.\n"
     "- You must respond directly from the prompt alone: never run commands, "
-    "read files, or use tools."
+    "read files, or use tools.\n"
+    "- Give the international generic name for Japanese brand-name drugs "
+    "(プレドニン -> prednisolone), keeping any dose, unit, and schedule exactly "
+    "as spoken.\n"
+    '- Never add a sex the Japanese does not state: use the name, "the '
+    'patient", or "they" instead of he/she or Mr./Ms.'
 )
 
 # Tool-injecting features each 400 at low/minimal effort and cost ~15K prompt
