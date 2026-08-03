@@ -373,3 +373,46 @@ def test_start_refuses_dead_server_after_warmup(monkeypatch):
         assert t.enabled is False
 
     asyncio.run(scenario())
+
+
+def test_new_thread_requests_service_tier_and_warns_when_not_applied(caplog):
+    # Every GPT call rides the thread thread/start opens -- warm-up, each caption,
+    # and each ~100-turn rotation -- so the tier is set once, here. Two ways this
+    # silently reverts to the account default: the param stops being sent, or the
+    # server drops an unrecognized tier (it answers null, never an error). Lock
+    # the outgoing request AND the echo check that makes the drop visible.
+    async def scenario():
+        reader = asyncio.StreamReader()
+        t = live_stt.CodexTranslator()
+        t._proc = _FakeProc(reader)  # type: ignore[assignment]
+        reader_task = asyncio.create_task(t._read_loop())
+
+        async def open_thread(rid: int, echo: dict) -> str:
+            async def feeder():
+                await _await_pending(t, rid)
+                reader.feed_data(_rpc_result(rid, {"thread": {"id": "th-1"}, **echo}))
+
+            feeder_task = asyncio.create_task(feeder())
+            tid = await asyncio.wait_for(t._new_thread(), timeout=3.0)
+            await feeder_task
+            return tid
+
+        with caplog.at_level(logging.WARNING, logger="live_stt"):
+            # Applied: the server echoes the tier back -> no warning.
+            assert await open_thread(1, {"serviceTier": live_stt.TRANSLATE_SERVICE_TIER}) == "th-1"
+            sent = json.loads(t._proc.stdin.writes[0])  # type: ignore[union-attr]
+            assert sent["method"] == "thread/start"
+            assert sent["params"]["serviceTier"] == live_stt.TRANSLATE_SERVICE_TIER
+            assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+            # Dropped: the server reports null -> one warning names the miss.
+            assert await open_thread(2, {"serviceTier": None}) == "th-1"
+
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(warnings) == 1
+        assert "service tier" in warnings[0].getMessage()
+
+        reader.feed_eof()
+        await reader_task
+
+    asyncio.run(scenario())

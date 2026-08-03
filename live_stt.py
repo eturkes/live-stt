@@ -75,6 +75,13 @@ _DECODE_MERGE_MAX_CHARS = 8
 # time. Runner-up if Luna's entitlement lapses: "gpt-5.6-terra" + "medium".
 TRANSLATE_MODEL = "gpt-5.6-luna"
 TRANSLATE_EFFORT = "low"
+# Codex's "Fast" tier (1.5x speed, increased usage) — set per thread so live-stt
+# gets it without touching ~/.codex/config.toml, where the global default stays
+# whatever the user picked. "priority" is the canonical id model/list advertises;
+# the CLI also accepts the display alias "fast" and normalizes it to this. An
+# unknown tier string is silently dropped (no tier at all, no error), so
+# _new_thread checks the echoed value instead of assuming it landed.
+TRANSLATE_SERVICE_TIER = "priority"
 TRANSLATE_TIMEOUT_S = 15.0
 CODEX_CONTROL_TIMEOUT_S = 10  # initialize + thread/start; turns use TRANSLATE_TIMEOUT_S
 TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> JA-only for the session
@@ -537,8 +544,18 @@ class CodexTranslator:
                 "ephemeral": True,
                 "personality": "none",
                 "developerInstructions": TRANSLATOR_INSTRUCTIONS,
+                "serviceTier": TRANSLATE_SERVICE_TIER,
             },
         )
+        # thread/start echoes the tier it actually applied; an unrecognized one
+        # comes back null and every turn quietly runs at the account default.
+        tier = resp.get("serviceTier")
+        if tier != TRANSLATE_SERVICE_TIER:
+            logger.warning(
+                "codex service tier %r not applied (server reports %r); translating anyway",
+                TRANSLATE_SERVICE_TIER,
+                tier,
+            )
         return resp["thread"]["id"] if "thread" in resp else resp["threadId"]
 
     async def _read_loop(self):

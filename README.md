@@ -78,7 +78,7 @@ This deterministic coverage stops at a 44.7 s pause-free segment; a single VAD s
 
 ### JA → EN leg (Codex subscription)
 
-`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so EN lines keep JA order. Disabling the tool features is the latency lever (see D-011). The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed).
+`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so EN lines keep JA order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed).
 
 Degradation, in order:
 
@@ -169,6 +169,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
 | `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-terra` / `medium`) |
+| `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → JA-only |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
@@ -178,7 +179,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 
 - Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/roadmap.md` § Deferred).
 - `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
-- Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window.
+- Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window. The "Fast" service tier trades quota for speed ("1.5x speed, increased usage"), so it burns that window faster than the per-turn token counts alone suggest; set `TRANSLATE_SERVICE_TIER = "default"` to drop back to the standard tier.
 - Claude Code is this project's development agent. See `CLAUDE.md`, `.claude/`, `.serena/`, and `.agent/` for its workflow and context.
 
 ## License
