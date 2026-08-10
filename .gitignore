@@ -34,7 +34,7 @@ CLAUDE.local.md
 
 # .serena/ is committed as-is via its own .serena/.gitignore
 
-# Session workspace: teammate roster/reports + staging trees (.claude/commands/session-prompt.md); nothing durable
+# Session workspace: teammate roster/reports + per-teammate git worktrees (.claude/commands/session-roadmap.md); nothing durable
 .scratch/
 
 # Environment / secrets

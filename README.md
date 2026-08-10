@@ -119,9 +119,9 @@ live-stt/
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
 ├── spike/                   # gitignored bench WAV corpus (D-014 replay/test); superseded spike docs pruned
 ├── CLAUDE.md                # canonical Claude Code instructions
-├── .claude/                 # project settings + /session-prompt command
+├── .claude/                 # project settings + session slash commands
 ├── .serena/                 # committed Serena/LSP project configuration
-└── .agent/                  # durable memory + roadmap + context gauge
+└── .agent/                  # durable memory + roadmap + polish register + context gauge
 ```
 
 ### Development
