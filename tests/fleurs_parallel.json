@@ -1,0 +1,99 @@
+{
+  "builder": {
+    "dependencies": {
+      "python": "3.14.5"
+    },
+    "script": "tests/fetch_fleurs_parallel.py"
+  },
+  "cache": {
+    "directory": "spike/backends/cache/fleurs_parallel-v1-19f0e7066cc246b5",
+    "index": "references.jsonl",
+    "index_sha256": "19f0e7066cc246b53f17c1172081c7b8b759bd31efdbee70e45d660ce44335c3",
+    "rows": 321
+  },
+  "inputs": {
+    "japanese_corpus_index": {
+      "fleurs_rows": 650,
+      "fleurs_unique_sentence_ids": 321,
+      "path": "spike/backends/cache/short_corpus-v1-98e0d8a40fbc2d6e/index.jsonl",
+      "rows": 5133,
+      "sha256": "98e0d8a40fbc2d6e819ddd8db22fd23c2d7f050ac2da5773ac207a1bd0a14d36",
+      "source_manifest": "tests/short_corpus.json"
+    }
+  },
+  "join": {
+    "covered_ja_sentence_ids": 321,
+    "en_rows_in_payload": 647,
+    "en_rows_joined": 592,
+    "en_unique_sentence_ids_in_payload": 350,
+    "fingerprints": {
+      "contract": "SHA-256 over UTF-8 field values concatenated without separators in ascending sentence_id order",
+      "en_normalized_sha256": "6dd68e7ffb0f7a6f53d01ffc550f591207533aab4325c3815eb55d62ef45e88a",
+      "en_reference_sha256": "cdb2ccf40710e6a9dfcf3d6639e651250465f13b2e3d145b1c9103904d6bd466"
+    },
+    "ja_rows_scanned": 650,
+    "ja_unique_sentence_ids": 321,
+    "missing_ja_sentence_ids": 0,
+    "recordings_per_sentence": {
+      "en_joined": {
+        "1": 50,
+        "2": 271
+      },
+      "en_payload": {
+        "1": 53,
+        "2": 297
+      },
+      "ja_corpus": {
+        "1": 98,
+        "2": 117,
+        "3": 106
+      }
+    }
+  },
+  "normalization": {
+    "field": "en_normalized",
+    "lowercase": "Python str.lower",
+    "order": [
+      "lowercase",
+      "punctuation removal",
+      "whitespace collapse"
+    ],
+    "punctuation": "remove every Unicode code point whose general category starts with P",
+    "whitespace": "split on Unicode whitespace, join tokens with one U+0020, and strip edges"
+  },
+  "schema_version": 1,
+  "sources": {
+    "fleurs_en_us": {
+      "attribution": "FLEURS authors and recording contributors; cite Conneau et al. (2022)",
+      "citation": "https://arxiv.org/abs/2205.12446",
+      "dataset": "google/fleurs",
+      "dataset_card": "https://huggingface.co/datasets/google/fleurs/blob/70bb2e84b976b7e960aa89f1c648e09c59f894dd/README.md",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "limitations": [
+        "read-speech translations are not an unseen production-speech proxy",
+        "valid English paraphrases can score poorly under exact string metrics",
+        "training or evaluation overlap with downstream models is unknown",
+        "reference text stays outside git in the ignored content-addressed cache; this manifest commits only provenance, statistics, and fingerprints"
+      ],
+      "payloads": [
+        {
+          "path": "data/en_us/test.tsv",
+          "sha256": "74c046239374deeb60fa63f258f907388093a32bcaa3140965f70ef05c79f7ca",
+          "size_bytes": 367864,
+          "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/test.tsv"
+        }
+      ],
+      "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd",
+      "source_identity": "en_us/test[0:647]",
+      "statistics": {
+        "recordings_per_sentence": {
+          "1": 53,
+          "2": 297
+        },
+        "rows": 647,
+        "unique_sentence_ids": 350
+      }
+    }
+  }
+}
