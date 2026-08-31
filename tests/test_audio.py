@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import io
 import subprocess
 import sys
+from datetime import datetime
 
 import numpy as np
 
@@ -16,12 +18,15 @@ from live_stt import (
     DECODE_SPLIT_SEARCH_S,
     DECODE_SPLIT_TRIGGER_S,
     SAMPLE_RATE,
+    TRANSCRIPT_DIR,
     RingBuffer,
+    TranscriptFile,
     _merge_chunk_text,
     _split_decode_segment,
     emit_line,
     resample,
     submit_audio_sentinel,
+    transcript_path,
 )
 
 
@@ -291,6 +296,54 @@ def test_emit_line_line_clear_gated_on_stdout_tty(monkeypatch, capsys):
     monkeypatch.setattr("live_stt._STDOUT_TTY", True)
     emit_line("JA", 2, "y", None)
     assert "\x1b[2K" in capsys.readouterr().out
+
+
+# --- transcript persistence (saving is on by default) ---
+
+
+def _save_args(**overrides):
+    return argparse.Namespace(**{"output": None, "no_save": False, **overrides})
+
+
+def test_transcript_path_defaults_to_timestamped_session_file():
+    path = transcript_path(_save_args())
+    assert path is not None
+    assert path.parent == TRANSCRIPT_DIR
+    assert path.suffix == ".txt"
+    # Sortable start time, no colons (keeps the name shell- and tool-friendly).
+    datetime.strptime(path.stem, "%Y-%m-%dT%H-%M-%S")
+
+
+def test_transcript_path_output_flag_overrides_default(tmp_path):
+    target = tmp_path / "sub" / "session.txt"
+    assert transcript_path(_save_args(output=str(target))) == target
+
+
+def test_transcript_path_none_when_saving_disabled():
+    assert transcript_path(_save_args(no_save=True)) is None
+
+
+def test_transcript_file_defers_creation_to_first_line(tmp_path):
+    # Default-on saving must not leave an empty file behind a session that
+    # decoded nothing; the parent directory is still made at construction.
+    path = tmp_path / "nested" / "session.txt"
+    f = TranscriptFile(path)
+    assert path.parent.is_dir()
+    assert not path.exists()
+    f.close()
+    assert not path.exists()
+
+
+def test_transcript_file_appends_and_flushes_each_event(tmp_path):
+    path = tmp_path / "session.txt"
+    path.write_text("[t] JA 1: 既存\n", encoding="utf-8")
+    f = TranscriptFile(path)
+    emit_line("JA", 2, "テスト", f)
+    # emit_line flushes per event, so a killed session keeps every landed line.
+    content = path.read_text(encoding="utf-8")
+    assert content.startswith("[t] JA 1: 既存\n")
+    assert "JA 2: テスト" in content
+    f.close()
 
 
 # --- shutdown worker-stop sentinel (T8.1, run_session finally) ---

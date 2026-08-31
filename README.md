@@ -49,9 +49,25 @@ Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-
 |---|---|---|
 | `--engine {k2v2,parakeet}` | `k2v2` | STT model (see `models/README.md`; selection rationale: `.agent/memory.md` D-010) |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
-| `-o`, `--output FILE` | none | Append lines to a text file (each prefixed with ISO-8601 timestamp) |
+| `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
+| `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
 | `--device N` | system default | Input device index (see `--list-devices`) |
 | `--list-devices` | off | Print audio devices and exit |
+
+### Saved transcripts
+
+live-stt saves every session by default. It writes one file per run to `transcripts/`, named by the start time, and prints that path at startup:
+
+```
+Transcript: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.txt
+
+[2026-08-31T13:40:58+09:00] JA 1: 今日はいい天気ですね
+[2026-08-31T13:41:00+09:00] EN 1: The weather is nice today.
+```
+
+Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so JA and EN pairs stay matched. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
+
+`transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
 ## How it works
 
@@ -113,6 +129,7 @@ live-stt/
 ├── live_stt.py              # main app (single file)
 ├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
+├── transcripts/             # saved sessions, one file per run (gitignored, created on first line)
 ├── tests/                   # pytest suite + corpus/replay/CER/backpressure/long-form evaluators
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config

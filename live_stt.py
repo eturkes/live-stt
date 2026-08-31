@@ -40,6 +40,11 @@ ENGINE_DIRS = {
     "k2v2": MODELS_DIR / "sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01",
     "parakeet": MODELS_DIR / "sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8",
 }
+# Sessions are saved by default so nothing is lost to a closed terminal: one
+# file per run, named by start time, in this gitignored directory. Per-session
+# files keep each file's `n` numbering self-consistent, which one shared append
+# log would interleave across runs. -o overrides the path; --no-save opts out.
+TRANSCRIPT_DIR = Path(__file__).resolve().parent / "transcripts"
 
 # VAD tuning (T4.1 bench, D-010): 2 s pauses must split utterances, sub-second
 # intra-sentence pauses must not.
@@ -454,6 +459,43 @@ async def submit_audio_sentinel(audio_q: asyncio.Queue) -> None:
                 audio_q.get_nowait()
             except asyncio.QueueEmpty:
                 pass
+
+
+def transcript_path(args):
+    """Resolve this session's transcript path; None when saving is off."""
+    if args.no_save:
+        return None
+    if args.output:
+        return Path(args.output)
+    return TRANSCRIPT_DIR / f"{datetime.now().astimezone():%Y-%m-%dT%H-%M-%S}.txt"
+
+
+class TranscriptFile:
+    """Append-mode writer that creates its file on the first line.
+
+    Saving is on by default, so eager creation would leave an empty file behind
+    every session that decoded nothing (device check, immediate Ctrl+C). The
+    parent directory is still made at startup, so a missing -o directory fails
+    there rather than mid-utterance.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self._f = None
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(self, text):
+        if self._f is None:
+            self._f = open(self.path, "a", encoding="utf-8")
+        self._f.write(text)
+
+    def flush(self):
+        if self._f is not None:
+            self._f.flush()
+
+    def close(self):
+        if self._f is not None:
+            self._f.close()
 
 
 def emit_line(tag, seq, text, output_file):
@@ -893,9 +935,12 @@ async def run_session(args):
     loop = asyncio.get_running_loop()
     audio_q: asyncio.Queue = AudioQueue()
 
-    output_file = open(args.output, "a", encoding="utf-8") if args.output else None
-    if output_file:
-        print(f"Writing transcriptions to: {args.output}")
+    output_path = transcript_path(args)
+    output_file = TranscriptFile(output_path) if output_path else None
+    if output_path:
+        print(f"Transcript: {output_path}")
+    else:
+        print("Transcript: not saved (--no-save)")
 
     translator = None
     if not args.no_translate:
@@ -1002,12 +1047,21 @@ def main():
         action="store_true",
         help="Transcribe only (skip the Codex translation leg).",
     )
-    parser.add_argument(
+    saving = parser.add_mutually_exclusive_group()
+    saving.add_argument(
         "-o",
         "--output",
         type=str,
         default=None,
-        help="Append transcriptions to a text file.",
+        help=(
+            "Append the transcript to this file "
+            f"(default: a new timestamped file in {TRANSCRIPT_DIR.name}/)."
+        ),
+    )
+    saving.add_argument(
+        "--no-save",
+        action="store_true",
+        help="Do not save the transcript to disk.",
     )
     parser.add_argument(
         "--device",

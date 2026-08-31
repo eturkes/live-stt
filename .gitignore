@@ -21,6 +21,9 @@ build/
 # Bench corpus WAVs (gitignored; the replay.py / test regression corpus, D-014)
 spike/backends/cache/
 
+# Saved sessions: one transcript file per run, written by default (TRANSCRIPT_DIR)
+transcripts/
+
 # Local STT model weights (download via models/README.md; large binaries)
 models/*
 !models/README.md
