@@ -4,9 +4,11 @@
 keys); translation rides the Codex subscription via a persistent
 `codex app-server` (D-011), degrading to JA-only when unavailable.
 
-Each utterance prints as a numbered `JA n:` line the moment decoding ends;
-its `EN n:` line follows when the translation turn completes (~1 s), so pairs
-stay unambiguous even when the next utterance lands first.
+Japanese appears on the status line while the speaker is still talking, as the
+streaming policy settles each piece (~2.5 s behind the voice). The numbered
+`JA n:` line lands once at the end of the utterance and its `EN n:` line follows
+when the translation turn completes (~1 s), so pairs stay unambiguous even when
+the next utterance lands first.
 """
 
 import argparse
@@ -14,6 +16,7 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 import signal
 import sys
 import time
@@ -23,6 +26,8 @@ from pathlib import Path
 
 import numpy as np
 import sherpa_onnx
+
+from streaming import Segment, StreamingProcessor
 
 SAMPLE_RATE = 16000  # VAD + recognizer rate; mic native rate is resampled to this
 METER_INTERVAL = 0.1
@@ -52,6 +57,13 @@ WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa
 ASR_DEVICE = "NPU"
 ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})
 OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
+# VAC (silero as a controller around the streaming policy). Waiting for a VAD
+# segment to close bounds first-caption latency by the utterance length, which on
+# pause-free speech measured 15.5 s median / 36.6 s max; re-decoding the utterance
+# every VAC_CHUNK_S and committing what two decodes agree on measured 2.5 s / 8.1 s
+# for the same audio. VAC_TRIM_S=8 was the best of {5, 8, 12} on CER.
+VAC_CHUNK_S = 1.0
+VAC_TRIM_S = 8.0
 # Sessions are saved by default so nothing is lost to a closed terminal: one
 # file per run, named by start time, in this gitignored directory. Per-session
 # files keep each file's `n` numbering self-consistent, which one shared append
@@ -327,6 +339,21 @@ class WhisperEngine:
     def decode(self, samples: np.ndarray) -> str:
         return "".join(self.generate(samples).texts).strip()
 
+    def decode_segments(self, samples: np.ndarray) -> tuple[str, list[Segment]]:
+        """Text plus its segment spans, which the streaming policy trims against."""
+        result = self.generate(samples, timestamps=True)
+        text = "".join(result.texts).strip()
+        segments = [
+            Segment(float(chunk.start_ts), float(chunk.end_ts), chunk.text)
+            for chunk in (getattr(result, "chunks", None) or [])
+        ]
+        # The trim rule walks segment text against the emitted prefix, so the two
+        # must be the same string; if the pipeline ever disagrees, drop the anchor
+        # rather than cut at a point that does not exist in the transcript.
+        if "".join(s.text for s in segments).strip() != text:
+            segments = []
+        return text, segments
+
 
 def load_recognizer(
     engine: str, device: str = ASR_DEVICE
@@ -453,6 +480,7 @@ class State:
         self.dropped = 0
         self.segment_queue_depth = 0
         self.max_segment_queue_depth = 0
+        self.partial = ""  # streaming caption still settling; the meter renders it
         self.stopping = False
         self.stop_event: asyncio.Event = None  # type: ignore[assignment]
 
@@ -1061,6 +1089,104 @@ async def _decode_segments(
             on_segment(start, n, len(seg), time.perf_counter() - t_dec, text)
 
 
+async def _vac_segments(
+    rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None, context=None
+):
+    """Silero-controlled streaming: partial captions during speech, one line at its end.
+
+    Speech-start opens a streaming buffer, every VAC_CHUNK_S of new audio re-decodes
+    it and commits what two decodes agree on, and speech-end flushes the unconfirmed
+    tail because at an utterance boundary nothing is left to confirm it against.
+
+    Committed text lands on the status line as it settles, so the reader sees it at
+    the measured 2.5 s lag; the numbered `JA n:` line and the single translation turn
+    still fire once per utterance, which keeps transcripts and JA/EN pairing intact
+    and keeps one utterance to one billable turn.
+    """
+    loop = asyncio.get_running_loop()
+    buf = np.empty(0, dtype=np.float32)
+    ring = RingBuffer(RING_SECONDS * SAMPLE_RATE)
+    pad = int(VAD_PRE_PAD_S * SAMPLE_RATE)
+    chunk_samples = int(VAC_CHUNK_S * SAMPLE_RATE)
+    processor: StreamingProcessor | None = None
+    speaking = False
+    pending = 0
+    consumed = 0  # absolute sample index of everything fed to the VAD
+    seq = 0
+    utterance = ""
+    utterance_start = 0
+    utterance_decode_s = 0.0
+
+    async def update(final: bool) -> None:
+        nonlocal utterance, utterance_decode_s
+        assert processor is not None
+        started = time.perf_counter()
+        commit, _ = await loop.run_in_executor(None, processor.process)
+        if final:
+            commit += processor.finish()
+        utterance_decode_s += time.perf_counter() - started
+        if commit:
+            utterance += commit
+            state.partial = utterance
+
+    async def finalize() -> None:
+        """Close the open utterance: flush its tail, then publish it once."""
+        nonlocal speaking, processor, pending, seq
+        await update(final=True)
+        if utterance:
+            seq += 1
+            emit_line("JA", seq, utterance, output_file)
+            if context is not None:
+                context.observe_ja(utterance)
+            if translator is not None:
+                translator.submit(seq, utterance)
+        if on_segment is not None:
+            n = consumed - utterance_start
+            on_segment(utterance_start, n, n, utterance_decode_s, utterance)
+        state.partial = ""
+        speaking = False
+        processor = None
+        pending = 0
+
+    while True:
+        chunk = await audio_q.get()
+        flush = chunk is None
+        if not flush:
+            buf = np.concatenate([buf, chunk]) if len(buf) else chunk
+        while len(buf) >= window or (flush and len(buf)):
+            block = buf[:window] if len(buf) >= window else buf
+            buf = buf[len(block) :]
+            vad.accept_waveform(block)
+            ring.append(block)
+            consumed += len(block)
+            detected = vad.is_speech_detected() and not flush
+            if detected and not speaking:
+                speaking = True
+                utterance_start = max(0, consumed - len(block) - pad)
+                processor = StreamingProcessor(
+                    decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S
+                )
+                processor.offset_s = utterance_start / SAMPLE_RATE
+                processor.insert_audio(ring.slice(utterance_start, consumed))
+                pending = consumed - utterance_start
+                utterance = ""
+                utterance_decode_s = 0.0
+            elif speaking:
+                processor.insert_audio(block)
+                pending += len(block)
+            if speaking and not detected:
+                await finalize()
+            elif speaking and pending >= chunk_samples:
+                await update(final=False)
+                pending = 0
+        if flush:
+            # An empty tail buffer skips the loop entirely, so a still-open
+            # utterance would otherwise never be published.
+            if speaking:
+                await finalize()
+            return
+
+
 async def worker(
     rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None, context=None
 ):
@@ -1072,6 +1198,13 @@ async def worker(
     """
     segment_q: asyncio.Queue = asyncio.Queue(maxsize=SEGMENT_QUEUE_MAX)
     try:
+        # The streaming policy trims its buffer against segment spans, so it runs
+        # only for engines that return them; sherpa keeps the VAD-segment path.
+        if hasattr(rec, "decode_segments"):
+            await _vac_segments(
+                rec, vad, window, audio_q, state, output_file, translator, on_segment, context
+            )
+            return
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(_feed_segments(vad, window, audio_q, segment_q, state))
             tasks.create_task(
@@ -1106,9 +1239,12 @@ async def meter(state, audio_q, translator=None):
             if translator and translator.dropped_translations
             else ""
         )
-        sys.stdout.write(
-            f"{_LINE_CLEAR} {audio_pending}{segment_pending}{dropped}{tdrop}"
-        )
+        status = f" {audio_pending}{segment_pending}{dropped}{tdrop}".rstrip()
+        # Tail-truncate the settling caption: it grows past the terminal width and
+        # a wrapped line would survive the next _LINE_CLEAR as residue.
+        room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
+        partial = state.partial[-room:] if room and state.partial else ""
+        sys.stdout.write(f"{_LINE_CLEAR}{status}{'   ' + partial if partial else ''}")
         sys.stdout.flush()
         await asyncio.sleep(METER_INTERVAL)
 
