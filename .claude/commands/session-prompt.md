@@ -1,8 +1,10 @@
-User-directed session: execute exactly the supplied task, with full project context loaded. Read `.agent/roadmap.md` + `.agent/memory.md` where present; roadmap MODE dispatch belongs to `/session-roadmap`, so this session's scope = the task alone.
+# Session prompt
 
-- The task runs MAIN-direct; teammates fan out on it. Machinery = session-roadmap rules throughout: execution map + roles, briefs, roster, worktree isolation, hygiene, verification, Close order, commit convention.
-- Update roadmap, memory + other files as needed for consistency with what the task changes; off-task improvements → `.agent/polish.md` entries, acceptance check written at deferral.
+Execute the supplied task exactly with full project context. State arrives attached: @.agent/roadmap.md @.agent/memory.md; an unexpanded path → `/session-roadmap`'s `ls .agent/` check. Roadmap MODE dispatch remains `/session-roadmap`-owned; this session's scope = supplied task.
+
+- Run the task MAIN-direct; teammates fan out on it. Machinery = session-roadmap execution map + roles, briefs, roster, worktree isolation, hygiene, verification, Close order + commit convention.
+- Keep roadmap, memory + related files consistent with task changes. Route adjacent improvements to `.agent/polish.md`, with an acceptance check written at deferral.
 - Context policy (project `CLAUDE.md`): user-requested tasks run past compaction across coherent checkpoints; a user-stated bound overrides.
-- Close: one scoped commit per cohesive piece; a read-only task closes without one.
+- Close: changed state ⇒ one scoped commit per cohesive piece; read-only result ⇒ read-only close.
 
 Task: $ARGUMENTS

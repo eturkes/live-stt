@@ -121,7 +121,7 @@ live-stt/
 ├── CLAUDE.md                # canonical Claude Code instructions
 ├── .claude/                 # project settings + session slash commands
 ├── .serena/                 # committed Serena/LSP project configuration
-└── .agent/                  # durable memory + roadmap + polish register + context gauge
+└── .agent/                  # durable memory + roadmap + polish register + closed-milestone archive
 ```
 
 ### Development
