@@ -2,7 +2,7 @@
 
 Real-time Japanese speech-to-text + English translation. **No API keys.**
 
-- **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) endpointing + [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) offline decode (reazonspeech-k2-v2 by default), CPU-only.
+- **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) large-v3-turbo (INT8) on the Intel NPU through OpenVINO. Japanese appears while you are still speaking, about 2.5 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
 - **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to JA-only.
 
 Each short utterance typically prints as a numbered `JA n:` line about 0.1 s after endpointing; long pause-free blocks take proportionally longer because they use several decode passes. Its `EN n:` line follows when the translation turn completes (~1 s).
@@ -47,7 +47,8 @@ Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-
 
 | Flag | Default | Description |
 |---|---|---|
-| `--engine {k2v2,parakeet}` | `k2v2` | STT model (see `models/README.md`; selection rationale: `.agent/memory.md` D-010) |
+| `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`; selection rationale: `.agent/memory.md` D-010) |
+| `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. `GPU` or `CPU` also enable session term biasing, which the NPU rejects. |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
 | `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
@@ -76,7 +77,7 @@ Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so 
 1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 2 seconds of PCM, independent of callback block size.
 2. **Endpoint.** a dedicated feeder drains capture into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
 3. **Re-slice + queue.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) and copied into an 8-segment queue.
-4. **Decode.** a separate sequential consumer runs sherpa-onnx `OfflineRecognizer` in a thread-pool executor (decode RTF ≈ 0.05 on 8 cores). Capture and VAD feeding continue during decode; sustained overload shows as `seg=`, then `q=` / `drop=` on the meter.
+4. **Decode.** For `--engine whisper`, silero controls a growing buffer: speech-start opens it, every second re-decodes it, and text is committed once two decodes agree (LocalAgreement-2). Committed text appears on the status line immediately; the numbered `JA n:` line lands at the end of the utterance. Decode RTF is 0.48-0.60 on the NPU. The sherpa engines instead decode each closed VAD segment (RTF ≈ 0.05 on 8 cores). Capture and VAD feeding continue during decode; sustained overload shows as `seg=`, then `q=` / `drop=` on the meter.
 5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
 ### Long speech and long sessions
