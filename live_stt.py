@@ -13,9 +13,11 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import signal
 import sys
 import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +75,17 @@ DECODE_SPLIT_SEARCH_S = 0.6
 DECODE_SPLIT_RMS_WINDOW_S = 0.1
 DECODE_CHUNK_OVERLAP_S = 0.18
 _DECODE_MERGE_MAX_CHARS = 8
+
+# Within-session context (D-015). The session's own captions teach it what is
+# being talked about; that picture conditions the recognizer prompt and the
+# translator, then dies with the process. Nothing is written to disk and nothing
+# carries into the next run.
+CONTEXT_TERM_SUPPORT = 3  # distinct un-prompted segments before a term is trusted
+CONTEXT_MAX_TERMS = 12  # Whisper keeps 223 prev-text tokens; spend them on the top terms
+CONTEXT_TERM_MEMORY = 40  # segments a candidate may wait for support before it is forgotten
+CONTEXT_TERM_LEASE = 60  # segments a trusted term keeps trust without un-prompted proof
+CONTEXT_PROMPT_MAX_CHARS = 160
+CONTEXT_PREV_CHARS = 200  # recent transcript carried as Whisper prev-text
 
 # Translation leg (D-011): Luna+low won a 12-config × 1,110-turn tournament on
 # median latency (1.38 s/turn) with quality tied to every higher effort — this
@@ -515,6 +528,130 @@ def emit_line(tag, seq, text, output_file):
         output_file.flush()
 
 
+# Japanese is unsegmented, so term candidates are script runs rather than words:
+# katakana (loanwords and most names), kanji compounds, and latin/alphanumeric
+# identifiers. Unrestricted n-grams over the same 81 caption lines yielded 9,613
+# candidates against 100 for runs, nearly all of them grammar fragments.
+_TERM_RUN = re.compile(r"[ァ-ヺー]{3,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-]+")
+
+
+class SessionContext:
+    """What this session is about, learned from its own captions (D-015).
+
+    A term becomes trusted after it recurs in CONTEXT_TERM_SUPPORT segments
+    whose recognizer prompt did not already contain it. That exclusion is the
+    whole safety property: conditioning on a mis-recognition reproduces it, and
+    without it the error would keep promoting itself on evidence it created.
+    """
+
+    def __init__(self, seed: str = ""):
+        self.seed = unicodedata.normalize("NFKC", seed).strip()
+        # The seed is user-authored, so it is trusted at once and never evicted;
+        # passive learning cannot know a name before its first mention.
+        self.seed_terms = list(dict.fromkeys(_TERM_RUN.findall(self.seed)))
+        self._support: dict[str, set[int]] = {}
+        self._learned: dict[str, int] = {}  # trusted term -> segment last proved
+        self._carried = ""  # recent transcript, replayed to the recognizer
+        self._seq = 0
+
+    def observe_ja(self, text: str, prompted: frozenset[str] = frozenset()) -> None:
+        """Fold one accepted caption into the session picture."""
+        self._seq += 1
+        for term in dict.fromkeys(_TERM_RUN.findall(text)):
+            if term in self.seed_terms:
+                continue
+            if term in prompted:
+                continue  # the prompt could have produced it, so it is not evidence
+            if term in self._learned:
+                self._learned[term] = self._seq
+            else:
+                seen = self._support.setdefault(term, set())
+                seen.add(self._seq)
+                if len(seen) >= CONTEXT_TERM_SUPPORT:
+                    del self._support[term]
+                    self._learned[term] = self._seq
+        # Trust is a lease, and only an un-prompted sighting renews it. A trusted
+        # term is normally in the prompt, so it expires on schedule and has to
+        # re-earn support unaided; without that, a term the prompt itself keeps
+        # producing would renew its own trust forever and never be dislodged.
+        self._learned = {
+            t: s for t, s in self._learned.items() if s > self._seq - CONTEXT_TERM_LEASE
+        }
+        cutoff = self._seq - CONTEXT_TERM_MEMORY
+        self._support = {t: s for t, s in self._support.items() if max(s) > cutoff}
+        while len(self._learned) > CONTEXT_MAX_TERMS:
+            del self._learned[min(self._learned, key=lambda t: self._learned[t])]
+        self._carried = (self._carried + text)[-CONTEXT_PREV_CHARS:]
+
+    def terms(self) -> list[str]:
+        """Trusted terms, seed first, then learned ones longest-first.
+
+        Length is the cheap proxy for the words a recognizer actually gets
+        wrong — loanwords, names, technical compounds — so a bounded prompt
+        spends its budget on those before ordinary vocabulary that happens to
+        recur. Recency breaks ties and drives eviction.
+        """
+        learned = sorted(self._learned, key=lambda t: (-len(t), -self._learned[t]))
+        return [*self.seed_terms, *learned]
+
+    def asr_prompt(self) -> tuple[str, frozenset[str]]:
+        """Recognizer conditioning text, plus every term it could have supplied.
+
+        The caller hands those terms back to observe_ja, which is how a prompted
+        term is stopped from counting as fresh evidence for itself.
+
+        Two measured properties, on the 4:48 narration through the production
+        frontend (large-v3-turbo INT8, GPU, k2v2 baseline 0.25380):
+        - carrying recent transcript is the dominant win, 0.24078 -> 0.20535,
+          and it beats handing Whisper the whole file at once (0.21041);
+        - the curated head goes LAST because Whisper keeps the final 223
+          prev-text tokens, so a head-first prompt drops exactly the terms it
+          was built to carry: 0.20463 head-first against 0.19884 head-last.
+        """
+        parts = []
+        budget = CONTEXT_PROMPT_MAX_CHARS
+        if self.seed:
+            parts.append(self.seed.rstrip("。.") + "。")
+            budget -= len(parts[0])
+        used = []
+        for term in self.terms():
+            # Seed terms are already spelled out in the seed sentence above;
+            # repeating them wastes budget and repetition is what makes a
+            # Whisper prompt loop.
+            if term in self.seed or budget < len(term) + 1:
+                continue
+            used.append(term)
+            budget -= len(term) + 1
+        if used:
+            parts.append("、".join(used) + "。")
+        # Prev-text can supply any term it spells, so it is discounted too:
+        # otherwise the recognizer's own last caption becomes evidence for
+        # itself. A term only earns support once it has fallen out of the
+        # window, which is what makes support mean "recurs across the session"
+        # rather than "the model just echoed the previous sentence".
+        prompted = frozenset(used) | frozenset(self.seed_terms)
+        prompted |= frozenset(_TERM_RUN.findall(self._carried))
+        return self._carried + "".join(parts), prompted
+
+    def translator_brief(self) -> str:
+        """Session context for the translator; empty until something is known.
+
+        Terms are listed rather than paired with a learned English rendering:
+        aligning a rendering from unaligned caption pairs is guesswork, while
+        repeating the same list every turn already holds a name to one spelling
+        across thread rotations.
+        """
+        lines = []
+        if self.seed:
+            lines.append(f"Topic of this session: {self.seed}")
+        if self.terms():
+            lines.append("Terms recurring in this session: " + ", ".join(self.terms()))
+        if not lines:
+            return ""
+        lines.append("Translate each of these the same way every time it occurs.")
+        return "\n".join(lines)
+
+
 class CodexTranslator:
     """JA→EN over a persistent `codex app-server` subprocess (D-011).
 
@@ -524,7 +661,8 @@ class CodexTranslator:
     TRANSLATE_MAX_FAILURES consecutive ones or if startup fails.
     """
 
-    def __init__(self):
+    def __init__(self, context: "SessionContext | None" = None):
+        self.context = context
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
         self._next_id = 0
@@ -832,7 +970,7 @@ async def _feed_segments(vad, window, audio_q, segment_q, state):
 
 
 async def _decode_segments(
-    rec, segment_q, state, output_file, translator=None, on_segment=None
+    rec, segment_q, state, output_file, translator=None, on_segment=None, context=None
 ):
     """Sequentially decode queued VAD segments and preserve emission order."""
     loop = asyncio.get_running_loop()
@@ -857,13 +995,21 @@ async def _decode_segments(
         if text:
             seq += 1
             emit_line("JA", seq, text, output_file)
+            if context is not None:
+                # sherpa decodes unconditioned, so every sighting is independent
+                # evidence. An engine that consumes asr_prompt() must hand the
+                # terms it was given back here, or the prompt's own output would
+                # count as support for itself.
+                context.observe_ja(text)
             if translator is not None:
                 translator.submit(seq, text)
         if on_segment is not None:
             on_segment(start, n, len(seg), time.perf_counter() - t_dec, text)
 
 
-async def worker(rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None):
+async def worker(
+    rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None, context=None
+):
     """Feed VAD and decode concurrently; a None audio sentinel drains both stages.
 
     ``on_segment`` retains replay's observation-only contract: one call per
@@ -876,7 +1022,7 @@ async def worker(rec, vad, window, audio_q, state, output_file, translator=None,
             tasks.create_task(_feed_segments(vad, window, audio_q, segment_q, state))
             tasks.create_task(
                 _decode_segments(
-                    rec, segment_q, state, output_file, translator, on_segment
+                    rec, segment_q, state, output_file, translator, on_segment, context
                 )
             )
     except Exception:
@@ -942,9 +1088,13 @@ async def run_session(args):
     else:
         print("Transcript: not saved (--no-save)")
 
+    context = SessionContext(getattr(args, "context", "") or "")
+    if context.seed:
+        print(f"Context: {context.seed}")
+
     translator = None
     if not args.no_translate:
-        t = CodexTranslator()
+        t = CodexTranslator(context)
         if await t.start():
             translator = t
             print(f"Translation: {TRANSLATE_MODEL} via codex app-server")
@@ -980,7 +1130,7 @@ async def run_session(args):
 
     meter_task = asyncio.create_task(meter(state, audio_q, translator))
     worker_task = asyncio.create_task(
-        worker(rec, vad, window, audio_q, state, output_file, translator)
+        worker(rec, vad, window, audio_q, state, output_file, translator, context=context)
     )
     translator_task = (
         asyncio.create_task(translator.run(output_file)) if translator else None
