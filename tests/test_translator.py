@@ -416,3 +416,55 @@ def test_new_thread_requests_service_tier_and_warns_when_not_applied(caplog):
         await reader_task
 
     asyncio.run(scenario())
+
+
+def test_glossary_rides_developer_instructions_not_the_turn_text():
+    # The turn text is declared translatable input, so a glossary sent there comes
+    # back translated instead of obeyed. developerInstructions outranks it.
+    ctx = live_stt.SessionContext("神経内科の申し送り")
+    for _ in range(live_stt.CONTEXT_TERM_SUPPORT):
+        ctx.observe_ja("プレドニンを投与しました")
+    t = live_stt.CodexTranslator(ctx)
+    instructions = t._instructions()
+    assert instructions.startswith(live_stt.TRANSLATOR_INSTRUCTIONS)
+    assert "プレドニン" in instructions and "神経内科" in instructions
+    assert t._brief == ctx.translator_brief()
+
+
+def test_instructions_are_unchanged_without_context():
+    t = live_stt.CodexTranslator()
+    assert t._instructions() == live_stt.TRANSLATOR_INSTRUCTIONS
+    assert t._brief == ""
+
+
+def test_new_terms_rotate_the_thread_so_the_glossary_reaches_the_model():
+    # Thread scope: a term learned at turn 5 must not wait out TRANSLATE_ROTATE_TURNS.
+    async def scenario():
+        ctx = live_stt.SessionContext()
+        t = live_stt.CodexTranslator(ctx)
+        t.enabled = True
+        t._thread_id = "th-1"
+        rotations = []
+
+        async def fake_new_thread():
+            rotations.append(t._instructions())
+            return "th-2"
+
+        async def fake_turn(ja):
+            return "ok"
+
+        t._new_thread = fake_new_thread  # type: ignore[method-assign]
+        t._turn = fake_turn  # type: ignore[method-assign]
+
+        assert await t._translate("こんにちは") == "ok"
+        assert rotations == []  # empty glossary, nothing to refresh
+
+        for _ in range(live_stt.CONTEXT_TERM_SUPPORT):
+            ctx.observe_ja("プレドニンを投与しました")
+        assert await t._translate("プレドニンです") == "ok"
+        assert len(rotations) == 1 and "プレドニン" in rotations[0]
+
+        assert await t._translate("もう一度") == "ok"
+        assert len(rotations) == 1  # unchanged glossary does not rotate again
+
+    asyncio.run(scenario())

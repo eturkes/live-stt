@@ -5,6 +5,7 @@ properties under test are the two that make it safe: output is append-only, and
 a trim never drops text that was not already emitted.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import live_stt  # noqa: E402
 from streaming import SAMPLE_RATE, Segment, StreamingProcessor, common_prefix  # noqa: E402
 
 
@@ -195,3 +197,107 @@ def test_missing_segments_disable_trimming_but_not_commits():
     assert commit == "あいうえお"
     assert when is None
     assert p.trims == 0
+
+
+# --- VAC loop -----------------------------------------------------------------
+# The loop that drives the policy in production: silero opens and closes the
+# buffer, commits land on the status line, and one numbered line plus one
+# translation turn fire per utterance. Stubbed VAD and recogniser keep it in
+# memory, which is what makes the flush path testable at all -- a tail buffer
+# shorter than one VAD window skips the inner loop entirely.
+
+
+class _StubVad:
+    """Speech is on while `script` says so, one entry per accepted window."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = 0
+
+    def accept_waveform(self, _block):
+        self.calls += 1
+
+    def is_speech_detected(self):
+        i = min(self.calls, len(self.script)) - 1
+        return self.script[i] if i >= 0 else False
+
+
+class _StubRec:
+    def __init__(self):
+        self.hotwords = ""
+        self.seen = []
+
+    def set_hotwords(self, terms):
+        self.hotwords = terms
+
+    def decode_segments(self, samples):
+        seconds = max(1, int(round(len(samples) / SAMPLE_RATE)))
+        text = TRANSCRIPT[:seconds]
+        self.seen.append(text)
+        return text, [Segment(0.0, float(seconds), text)]
+
+
+def _run_vac(script, window=1600):
+    """Drive _vac_segments over one utterance described by `script`."""
+    rec, vad = _StubRec(), _StubVad(script)
+    state = live_stt.State()
+    lines = []
+    q = asyncio.Queue()
+    for _ in script:
+        q.put_nowait(np.zeros(window, dtype=np.float32))
+    q.put_nowait(None)
+
+    async def scenario():
+        original = live_stt.emit_line
+        live_stt.emit_line = lambda tag, seq, text, f: lines.append((tag, seq, text))
+        try:
+            await live_stt._vac_segments(rec, vad, window, q, state, None)
+        finally:
+            live_stt.emit_line = original
+
+    asyncio.run(scenario())
+    return lines, state, rec
+
+
+def test_vac_emits_one_numbered_line_per_utterance():
+    lines, state, _ = _run_vac([True] * 40 + [False])
+    assert [tag for tag, _, _ in lines] == ["JA"]
+    assert lines[0][1] == 1
+    assert lines[0][2]
+    assert state.partial == ""  # cleared once the utterance is published
+
+
+def test_vac_publishes_an_utterance_still_open_at_flush():
+    """Speech running into end-of-audio must still be published (empty tail buffer)."""
+    lines, _, _ = _run_vac([True] * 40)
+    assert len(lines) == 1 and lines[0][2]
+
+
+def test_vac_stays_silent_when_no_speech_is_detected():
+    lines, state, rec = _run_vac([False] * 20)
+    assert lines == []
+    assert state.partial == ""
+    assert rec.seen == []
+
+
+def test_vac_reports_each_utterance_once_to_on_segment():
+    rec, vad = _StubRec(), _StubVad([True] * 30 + [False] * 5 + [True] * 30 + [False])
+    state = live_stt.State()
+    q = asyncio.Queue()
+    for _ in range(66):
+        q.put_nowait(np.zeros(1600, dtype=np.float32))
+    q.put_nowait(None)
+    seen = []
+
+    async def scenario():
+        original = live_stt.emit_line
+        live_stt.emit_line = lambda *a: None
+        try:
+            await live_stt._vac_segments(
+                rec, vad, 1600, q, state, None, on_segment=lambda *a: seen.append(a)
+            )
+        finally:
+            live_stt.emit_line = original
+
+    asyncio.run(scenario())
+    assert len(seen) == 2

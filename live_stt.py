@@ -107,7 +107,6 @@ CONTEXT_MAX_TERMS = 12  # Whisper keeps 223 prev-text tokens; spend them on the 
 CONTEXT_TERM_MEMORY = 40  # segments a candidate may wait for support before it is forgotten
 CONTEXT_TERM_LEASE = 60  # segments a trusted term keeps trust without un-prompted proof
 CONTEXT_PROMPT_MAX_CHARS = 160
-CONTEXT_PREV_CHARS = 200  # recent transcript carried as Whisper prev-text
 
 # Translation leg (D-011): Luna+low won a 12-config × 1,110-turn tournament on
 # median latency (1.38 s/turn) with quality tied to every higher effort — this
@@ -633,7 +632,6 @@ class SessionContext:
         self.seed_terms = list(dict.fromkeys(_TERM_RUN.findall(self.seed)))
         self._support: dict[str, set[int]] = {}
         self._learned: dict[str, int] = {}  # trusted term -> segment last proved
-        self._carried = ""  # recent transcript, replayed to the recognizer
         self._seq = 0
 
     def observe_ja(self, text: str, prompted: frozenset[str] = frozenset()) -> None:
@@ -663,7 +661,6 @@ class SessionContext:
         self._support = {t: s for t, s in self._support.items() if max(s) > cutoff}
         while len(self._learned) > CONTEXT_MAX_TERMS:
             del self._learned[min(self._learned, key=lambda t: self._learned[t])]
-        self._carried = (self._carried + text)[-CONTEXT_PREV_CHARS:]
 
     def terms(self) -> list[str]:
         """Trusted terms, seed first, then learned ones longest-first.
@@ -676,44 +673,26 @@ class SessionContext:
         learned = sorted(self._learned, key=lambda t: (-len(t), -self._learned[t]))
         return [*self.seed_terms, *learned]
 
-    def asr_prompt(self) -> tuple[str, frozenset[str]]:
-        """Recognizer conditioning text, plus every term it could have supplied.
+    def asr_hotwords(self) -> tuple[str, frozenset[str]]:
+        """Recognizer term list, plus every term it could have supplied.
 
-        The caller hands those terms back to observe_ja, which is how a prompted
+        The caller hands those terms back to observe_ja, which is how a biased
         term is stopped from counting as fresh evidence for itself.
 
-        Two measured properties, on the 4:48 narration through the production
-        frontend (large-v3-turbo INT8, GPU, k2v2 baseline 0.25380):
-        - carrying recent transcript is the dominant win, 0.24078 -> 0.20535,
-          and it beats handing Whisper the whole file at once (0.21041);
-        - the curated head goes LAST because Whisper keeps the final 223
-          prev-text tokens, so a head-first prompt drops exactly the terms it
-          was built to carry: 0.20463 head-first against 0.19884 head-last.
+        A TERM LIST, never running transcript. Both ride Whisper's <|startofprev|>
+        slot, but carrying recent captions there made the recogniser loop: CER
+        1.8919 on the pause-free clip against 0.1278 unconditioned, 2,126
+        insertions on 1,166 reference characters. The bounded list measured
+        0.2408 -> 0.1873 on the narration with no loop (I=53).
         """
-        parts = []
         budget = CONTEXT_PROMPT_MAX_CHARS
-        if self.seed:
-            parts.append(self.seed.rstrip("。.") + "。")
-            budget -= len(parts[0])
         used = []
         for term in self.terms():
-            # Seed terms are already spelled out in the seed sentence above;
-            # repeating them wastes budget and repetition is what makes a
-            # Whisper prompt loop.
-            if term in self.seed or budget < len(term) + 1:
+            if budget < len(term) + 1:
                 continue
             used.append(term)
             budget -= len(term) + 1
-        if used:
-            parts.append("、".join(used) + "。")
-        # Prev-text can supply any term it spells, so it is discounted too:
-        # otherwise the recognizer's own last caption becomes evidence for
-        # itself. A term only earns support once it has fallen out of the
-        # window, which is what makes support mean "recurs across the session"
-        # rather than "the model just echoed the previous sentence".
-        prompted = frozenset(used) | frozenset(self.seed_terms)
-        prompted |= frozenset(_TERM_RUN.findall(self._carried))
-        return self._carried + "".join(parts), prompted
+        return "、".join(used), frozenset(used)
 
     def translator_brief(self) -> str:
         """Session context for the translator; empty until something is known.
@@ -752,6 +731,7 @@ class CodexTranslator:
         self._notes: asyncio.Queue[dict] = asyncio.Queue()
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=TRANSLATE_QUEUE_MAX)
         self._thread_id: str | None = None
+        self._brief = ""  # glossary the live thread was started with
         self._turns = 0
         self._failures = 0
         self.dropped_translations = 0  # captions evicted under backlog (T8.5 tdrop=)
@@ -804,6 +784,18 @@ class CodexTranslator:
         self.enabled = True
         return True
 
+    def _instructions(self) -> str:
+        """Base instructions plus the session glossary, if anything is known yet.
+
+        The glossary rides developerInstructions rather than the turn text because
+        the turn text is declared translatable input: a brief sent there comes back
+        translated instead of obeyed, which is the failure the instructions were
+        hardened against. Thread scope is why a changed glossary rotates the thread.
+        """
+        brief = self.context.translator_brief() if self.context else ""
+        self._brief = brief
+        return f"{TRANSLATOR_INSTRUCTIONS}\n\n{brief}" if brief else TRANSLATOR_INSTRUCTIONS
+
     async def _new_thread(self) -> str:
         resp = await self._request(
             "thread/start",
@@ -814,7 +806,7 @@ class CodexTranslator:
                 "approvalPolicy": "never",
                 "ephemeral": True,
                 "personality": "none",
-                "developerInstructions": TRANSLATOR_INSTRUCTIONS,
+                "developerInstructions": self._instructions(),
                 "serviceTier": TRANSLATE_SERVICE_TIER,
             },
         )
@@ -929,7 +921,12 @@ class CodexTranslator:
         if not self.enabled:
             return ""
         try:
-            if self._turns and self._turns % TRANSLATE_ROTATE_TURNS == 0:
+            # A newly trusted term only reaches the model through a thread's
+            # developerInstructions, so a changed glossary rotates now rather than
+            # waiting out the turn cadence. Terms need CONTEXT_TERM_SUPPORT
+            # sightings and the list is capped, so this fires a handful of times.
+            stale = self.context is not None and self.context.translator_brief() != self._brief
+            if stale or (self._turns and self._turns % TRANSLATE_ROTATE_TURNS == 0):
                 self._thread_id = await asyncio.wait_for(
                     self._new_thread(), CODEX_CONTROL_TIMEOUT_S
                 )
@@ -1116,6 +1113,7 @@ async def _vac_segments(
     utterance = ""
     utterance_start = 0
     utterance_decode_s = 0.0
+    biased: frozenset[str] = frozenset()  # terms the model was actually given
 
     async def update(final: bool) -> None:
         nonlocal utterance, utterance_decode_s
@@ -1137,7 +1135,7 @@ async def _vac_segments(
             seq += 1
             emit_line("JA", seq, utterance, output_file)
             if context is not None:
-                context.observe_ja(utterance)
+                context.observe_ja(utterance, biased)
             if translator is not None:
                 translator.submit(seq, utterance)
         if on_segment is not None:
@@ -1162,6 +1160,14 @@ async def _vac_segments(
             detected = vad.is_speech_detected() and not flush
             if detected and not speaking:
                 speaking = True
+                # Bias this utterance toward what the session already recurs on.
+                # set_hotwords drops the list on devices that reject conditioning,
+                # so `biased` is whatever actually reached the model -- observe_ja
+                # discounts exactly those, and on the NPU discounts nothing.
+                if context is not None and hasattr(rec, "set_hotwords"):
+                    terms, offered = context.asr_hotwords()
+                    rec.set_hotwords(terms)
+                    biased = offered if rec.hotwords else frozenset()
                 utterance_start = max(0, consumed - len(block) - pad)
                 processor = StreamingProcessor(
                     decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S

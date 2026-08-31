@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from live_stt import (
     CONTEXT_MAX_TERMS,
-    CONTEXT_PREV_CHARS,
     CONTEXT_PROMPT_MAX_CHARS,
     CONTEXT_TERM_LEASE,
     CONTEXT_TERM_MEMORY,
@@ -37,9 +36,9 @@ def _see(ctx: SessionContext, term: str, times: int) -> None:
 
 
 def _see_prompted(ctx: SessionContext, term: str, times: int) -> None:
-    """Sight a term the way a conditioned recognizer would: prompt, then caption."""
+    """Sight a term the way a biased recognizer would: hotwords, then caption."""
     for _ in range(times):
-        _, prompted = ctx.asr_prompt()
+        _, prompted = ctx.asr_hotwords()
         ctx.observe_ja(f"{term}を投与しました", prompted)
 
 
@@ -119,60 +118,33 @@ def test_learned_pool_is_bounded_and_keeps_the_recent():
     assert "Term000" not in learned
 
 
-def test_prompt_stays_within_budget():
+def test_hotwords_stay_within_budget():
     ctx = SessionContext("これは" + "長い前置き" * 20)
     for i in range(CONTEXT_MAX_TERMS):
         _see(ctx, f"Candidate{i:03d}", CONTEXT_TERM_SUPPORT)
-    prompt, _ = ctx.asr_prompt()
-    assert len(prompt) <= CONTEXT_PREV_CHARS + CONTEXT_PROMPT_MAX_CHARS + len(ctx.seed) + 1
+    terms, _ = ctx.asr_hotwords()
+    assert len(terms) <= CONTEXT_PROMPT_MAX_CHARS
 
 
-def test_carried_transcript_is_bounded():
-    """A session runs for hours; the carry must not grow with the transcript."""
-    ctx = SessionContext()
-    for i in range(50):
-        ctx.observe_ja(f"患者{i:03d}番の血圧を測定して記録しました")
-    early = len(ctx.asr_prompt()[0])
-    for i in range(50, 400):
-        ctx.observe_ja(f"患者{i:03d}番の血圧を測定して記録しました")
-    assert len(ctx.asr_prompt()[0]) == early
-    assert early <= CONTEXT_PREV_CHARS + CONTEXT_PROMPT_MAX_CHARS
 
 
-def test_curated_head_goes_last():
-    """Whisper keeps the final 223 prev-text tokens, so the head must not lead."""
-    ctx = SessionContext(DEPT)
-    for _ in range(4):
-        ctx.observe_ja("血圧を測定しました")
-    prompt, _ = ctx.asr_prompt()
-    assert prompt.endswith("。")
-    assert prompt.index("血圧") < prompt.index(DEPT)
 
-
-def test_prev_text_terms_are_discounted():
-    """The carry channel is a prompt too: an echoed term is not fresh evidence."""
-    ctx = SessionContext()
-    for _ in range(CONTEXT_TERM_SUPPORT * 2):
-        _, prompted = ctx.asr_prompt()
-        ctx.observe_ja(f"{DRUG}を投与しました", prompted)
-    assert DRUG not in ctx.terms()
-
-
-def test_prompt_does_not_repeat_terms_already_in_the_seed():
-    """Repetition is what makes a Whisper prompt loop, so spend budget once."""
+def test_hotwords_list_each_term_once():
+    """Repetition is what makes a <|startofprev|> payload loop, so spend budget once."""
     ctx = SessionContext(f"{DEPT}の申し送り")
-    prompt, _ = ctx.asr_prompt()
-    assert prompt.count(DEPT) == 1
+    _see(ctx, DEPT, CONTEXT_TERM_SUPPORT)
+    terms, _ = ctx.asr_hotwords()
+    assert terms.count(DEPT) == 1
 
 
-def test_prompt_reports_the_terms_it_carries():
+def test_hotwords_report_the_terms_they_carry():
     """The returned set is what observe_ja needs to discount; it must be exact."""
     ctx = SessionContext(DEPT)
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
-    prompt, carried = ctx.asr_prompt()
-    assert carried == frozenset(ctx.terms())  # nothing trusted is left undeclared
-    assert DEPT in carried and DRUG in carried
-    assert all(term in prompt or term in ctx.seed for term in carried)
+    terms, biased = ctx.asr_hotwords()
+    assert biased == frozenset(ctx.terms())  # nothing trusted is left undeclared
+    assert DEPT in biased and DRUG in biased
+    assert all(term in terms for term in biased)
 
 
 def test_seed_is_nfkc_normalized():
@@ -183,7 +155,7 @@ def test_seed_is_nfkc_normalized():
 def test_empty_context_produces_nothing():
     ctx = SessionContext()
     assert ctx.terms() == []
-    assert ctx.asr_prompt() == ("", frozenset())
+    assert ctx.asr_hotwords() == ("", frozenset())
     assert ctx.translator_brief() == ""
 
 
