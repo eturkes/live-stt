@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Live Japanese speech-to-text with English translation. STT is fully local
-(silero VAD + sherpa-onnx decode, no API keys); translation rides the Codex
-subscription via a persistent `codex app-server` (D-011), degrading to
-JA-only when unavailable.
+(silero VAD + OpenVINO Whisper on the NPU, or a sherpa-onnx engine; no API
+keys); translation rides the Codex subscription via a persistent
+`codex app-server` (D-011), degrading to JA-only when unavailable.
 
 Each utterance prints as a numbered `JA n:` line the moment decoding ends;
 its `EN n:` line follows when the translation turn completes (~1 s), so pairs
@@ -41,7 +41,17 @@ VAD_MODEL = MODELS_DIR / "silero_vad.onnx"
 ENGINE_DIRS = {
     "k2v2": MODELS_DIR / "sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01",
     "parakeet": MODELS_DIR / "sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8",
+    "whisper": MODELS_DIR / "openvino/whisper-large-v3-turbo-int8-ov",
 }
+WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa-onnx
+# NPU is the default accelerator: unconditioned CER ties the GPU (long_form
+# 0.2321 vs 0.2292, retention 0.0686 vs 0.0695) at 1.7-2.1x real-time headroom.
+# Its one cost is that openvino.genai's StaticWhisperPipeline rejects BOTH text
+# conditioning parameters -- prompts of 1..200 chars all raise, 0 passes -- so
+# ASR_HOTWORDS_DEVICES gates the biasing channel rather than the device.
+ASR_DEVICE = "NPU"
+ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})
+OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
 # Sessions are saved by default so nothing is lost to a closed terminal: one
 # file per run, named by start time, in this gitignored directory. Per-session
 # files keep each file's `n` numbering self-consistent, which one shared append
@@ -281,8 +291,49 @@ class RingBuffer:
         return out
 
 
-def load_recognizer(engine: str) -> sherpa_onnx.OfflineRecognizer:
+class WhisperEngine:
+    """OpenVINO Whisper behind the same `decode(samples) -> str` contract as sherpa.
+
+    Owns `hotwords` because the term list rides the model's <|startofprev|> slot on
+    every 30 s window, so it is a decode argument rather than pipeline state. The
+    setter drops it on devices that reject conditioning, keeping the call site
+    device-agnostic.
+    """
+
+    def __init__(self, model_dir: Path, device: str = ASR_DEVICE):
+        import openvino_genai  # noqa: PLC0415  -- optional dep; sherpa engines skip it
+
+        self.device = device
+        self.supports_hotwords = device in ASR_HOTWORDS_DEVICES
+        self.hotwords = ""
+        OPENVINO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        self._pipeline = openvino_genai.WhisperPipeline(
+            str(model_dir), device, CACHE_DIR=str(OPENVINO_CACHE_DIR)
+        )
+
+    def set_hotwords(self, terms: str) -> None:
+        self.hotwords = terms if self.supports_hotwords else ""
+
+    def generate(self, samples: np.ndarray, *, timestamps: bool = False):
+        keywords = {"hotwords": self.hotwords} if self.hotwords else {}
+        return self._pipeline.generate(
+            samples,
+            language="<|ja|>",
+            task="transcribe",
+            return_timestamps=timestamps,
+            **keywords,
+        )
+
+    def decode(self, samples: np.ndarray) -> str:
+        return "".join(self.generate(samples).texts).strip()
+
+
+def load_recognizer(
+    engine: str, device: str = ASR_DEVICE
+) -> sherpa_onnx.OfflineRecognizer | WhisperEngine:
     d = ENGINE_DIRS[engine]
+    if engine in WHISPER_ENGINES:
+        return WhisperEngine(d, device)
     if engine == "k2v2":
         # int8 encoder + fp32 decoder/joiner ≈ fp32 CER (HILab table), RTF 0.054.
         return sherpa_onnx.OfflineRecognizer.from_transducer(
@@ -320,7 +371,9 @@ def make_vad(
     return sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60), window
 
 
-def _decode(rec: sherpa_onnx.OfflineRecognizer, samples: np.ndarray) -> str:
+def _decode(rec: sherpa_onnx.OfflineRecognizer | WhisperEngine, samples: np.ndarray) -> str:
+    if isinstance(rec, WhisperEngine):
+        return rec.decode(samples)
     s = rec.create_stream()
     s.accept_waveform(SAMPLE_RATE, samples)
     rec.decode_stream(s)
@@ -382,7 +435,8 @@ def check_models(engine: str) -> str | None:
     if not VAD_MODEL.exists():
         missing.append("silero_vad.onnx")
     d = ENGINE_DIRS[engine]
-    if not (d / "tokens.txt").exists():
+    marker = "openvino_encoder_model.xml" if engine in WHISPER_ENGINES else "tokens.txt"
+    if not (d / marker).exists():
         missing.append(d.name + "/")
     if not missing:
         return None
@@ -1065,7 +1119,7 @@ async def run_session(args):
     import sounddevice as sd
 
     print(f"Loading {args.engine} model...")
-    rec = load_recognizer(args.engine)
+    rec = load_recognizer(args.engine, getattr(args, "asr_device", ASR_DEVICE))
     vad, window = make_vad()
 
     dev_info = sd.query_devices(args.device, kind="input")
@@ -1189,13 +1243,33 @@ def main():
     parser.add_argument(
         "--engine",
         choices=sorted(ENGINE_DIRS),
-        default="k2v2",
-        help="Local STT engine (default: k2v2 = reazonspeech-k2-v2; see D-010).",
+        default="whisper",
+        help="Local STT engine (default: whisper = large-v3-turbo int8 on OpenVINO).",
+    )
+    parser.add_argument(
+        "--asr-device",
+        default=ASR_DEVICE,
+        help=(
+            f"OpenVINO device for --engine whisper (default: {ASR_DEVICE}). "
+            "GPU or CPU additionally enable session term biasing."
+        ),
     )
     parser.add_argument(
         "--no-translate",
         action="store_true",
         help="Transcribe only (skip the Codex translation leg).",
+    )
+    parser.add_argument(
+        "--context",
+        type=str,
+        default="",
+        metavar="TEXT",
+        help=(
+            "Tell the tool what this session is about, in Japanese. "
+            "Give the topic and any names that must be spelled correctly. "
+            "The tool also learns terms from its own captions. "
+            "It forgets all of this when the session ends."
+        ),
     )
     saving = parser.add_mutually_exclusive_group()
     saving.add_argument(
@@ -1237,7 +1311,8 @@ def main():
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Engine: {args.engine} (local sherpa-onnx, no network)")
+    backend = f"OpenVINO {args.asr_device}" if args.engine in WHISPER_ENGINES else "sherpa-onnx"
+    print(f"Engine: {args.engine} (local {backend}, no network)")
 
     try:
         asyncio.run(run_session(args))

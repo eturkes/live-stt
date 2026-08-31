@@ -23,6 +23,14 @@ dependencies = [
     "sherpa-onnx-core>=1.13.4",
 ]
 
+[project.optional-dependencies]
+# --engine whisper only. Intel accelerators need a matching runtime; this box
+# resolves both from the intel-accel install via an openvino-archive.pth entry.
+whisper = [
+    "openvino>=2026.3",
+    "openvino-genai>=2026.3",
+]
+
 [project.scripts]
 live-stt = "live_stt:main"
 
