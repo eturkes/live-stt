@@ -3063,6 +3063,7 @@
       "worst_tail": "top 10 rows/source by exact CER descending, then case ID ascending"
     },
     "pipeline": {
+      "asr_contract_sha256": "aff253181730b72354ca34042b18d1cc1e54f0b1f7931c1721d599f91c2192ed",
       "compatibility_inputs": {
         "manifests": [
           {
@@ -3194,23 +3195,8 @@
           }
         ]
       },
-      "evaluator_contract_sha256": "ae2aab95888ae651d57a96bf052d2f28154dea12be233341b383ab076fbbc8e6",
+      "evaluator_contract_sha256": "e053e0b26c8bd480ca9b3368f89d3e12a32799639f65bef7728913cde68e59a7",
       "implementation": [
-        {
-          "bytes": 3794,
-          "path": "cer.py",
-          "sha256": "2dd7c47ad28beb614b5305dbe784495d0c997e840b0820d27d000a8dca6a2bd7"
-        },
-        {
-          "bytes": 39802,
-          "path": "live_stt.py",
-          "sha256": "7a25cece8cf102e2c4d685ccb7bc848562d43bc1044890f15a404320331e08be"
-        },
-        {
-          "bytes": 7667,
-          "path": "replay.py",
-          "sha256": "469fb8c3b52eb455d73dfb40da99a2a65f3278c6af515f253bd408ce7a67e445"
-        },
         {
           "bytes": 16098,
           "path": "tests/fetch_eval_models.py",
@@ -3244,17 +3230,19 @@
         "machine": "x86_64",
         "system": "Linux"
       },
-      "kernel": "7.1.3-1-default",
       "packages": {
         "numpy": "2.4.6",
         "sherpa-onnx": "1.13.4",
         "sherpa-onnx-core": "1.13.4"
       },
+      "provenance": {
+        "kernel": "7.2.2-1-default",
+        "uv_lock_sha256": "ad30ddda34a6f54ee71f944531a486d30b4607baa6ad36c846f8e22d187618af"
+      },
       "python": {
         "implementation": "CPython",
         "version": "3.14.5"
-      },
-      "uv_lock_sha256": "e69f5123005848506a6185217a61941314a4e85ac431a61cda16305e7eb09661"
+      }
     }
   },
   "measurements": {

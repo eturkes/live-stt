@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from gate import PROD_FILES, steps
+from gate import PROD_FILES, Step, run, steps
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "gate.py"
@@ -29,7 +29,7 @@ INVENTORY = [
     ("pyright", True),
     ("pyright-tests", True),
     ("import", True),
-    ("aggregate-only", False),
+    ("aggregate-only", True),
 ]
 BLOCKING = [name for name, blocking in INVENTORY if blocking]
 
@@ -91,6 +91,9 @@ def seed(tmp: Path, step: str) -> list[str]:
         (tmp / "tests" / "seed.py").write_text('y: int = "s"\n')
     elif step == "import":
         (tmp / "live_stt.py").write_text('raise RuntimeError("seeded")\n')
+    elif step == "aggregate-only":
+        (tmp / "tests").mkdir()
+        (tmp / "tests" / "eval_models.py").write_text("raise SystemExit(1)\n")
     else:
         raise AssertionError(f"no seed for {step}")
     return []
@@ -105,10 +108,10 @@ def test_blocking_step_failure_fails_the_gate(step, tmp_path):
     assert f"gate FAILED: {step}" in done.stdout
 
 
-def test_non_blocking_step_failure_keeps_the_gate_green(tmp_path):
-    (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "eval_models.py").write_text("raise SystemExit(1)\n")
-    done = gate(tmp_path, "--only", "aggregate-only")
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert "FAIL (non-blocking) aggregate-only" in done.stdout
-    assert "gate passed" in done.stdout
+def test_non_blocking_runner_still_labels_and_tolerates_a_failure(capsys):
+    # M11.3 made every step blocking. The runner keeps the non-blocking branch for
+    # the next step that needs it, so the branch stays proved rather than dead.
+    assert not [name for name, blocking in INVENTORY if not blocking]
+    ok = run(Step("probe", False, [sys.executable, "-c", "raise SystemExit(1)"]), verbose=False)
+    assert ok is False
+    assert "FAIL (non-blocking) probe" in capsys.readouterr().out

@@ -17,8 +17,10 @@ Two steps are shaped by measured traps, not preference:
   clean and the repo converges file by file. The list is filtered to `*.py`
   because an explicitly-passed path with another extension is parsed as Python,
   which makes a `.json` argument exit 1 proposing Python layout.
-- `aggregate-only` is non-blocking and labelled. It is red on the carried-forward
-  whole-file pipeline-fingerprint defect, and hiding it would mask the rest.
+- `aggregate-only` rebuilds `tests/model_baseline.json` from cached details and
+  is blocking as of M11.3, which retired the whole-file pipeline fingerprint that
+  had kept it permanently red. It needs the gitignored pinned corpus and detail
+  cache, so it fails on a machine that has not acquired them.
 
 Every step runs with `PYTHONPATH` cleared: an inherited entry can shadow the
 installed OpenVINO wheel with a host build that cannot execute here, which
@@ -57,7 +59,7 @@ def steps(files: list[str]) -> list[Step]:
         Step("pyright", True, [*PYRIGHT, *PROD_FILES]),
         Step("pyright-tests", True, [*PYRIGHT, "tests/"]),
         Step("import", True, [sys.executable, "-c", "import live_stt"]),
-        Step("aggregate-only", False, [sys.executable, "tests/eval_models.py", "--aggregate-only"]),
+        Step("aggregate-only", True, [sys.executable, "tests/eval_models.py", "--aggregate-only"]),
     ]
 
 

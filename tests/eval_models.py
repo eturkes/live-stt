@@ -21,6 +21,7 @@ Run from the repository root after M10.2's corpus build:
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import importlib.metadata
 import inspect
@@ -883,14 +884,160 @@ def runtime_fingerprint() -> dict:
             "machine": platform.machine(),
             "system": platform.system(),
         },
-        "kernel": platform.release(),
         "packages": packages,
+        # Recorded, never compared. Neither the OS kernel nor a whole-lock hash
+        # participates in sherpa CPU decode, and gating on them refused rebuilds after
+        # a host kernel update and after M11.1 added OpenVINO to uv.lock -- the same
+        # whole-artifact defect `asr_contract_sha256` retires above. `packages` already
+        # pins every decode-relevant distribution, more precisely than the lock does.
+        "provenance": {
+            "kernel": platform.release(),
+            "uv_lock_sha256": file_sha256(ROOT / "uv.lock"),
+        },
         "python": {
             "implementation": platform.python_implementation(),
             "version": platform.python_version(),
         },
-        "uv_lock_sha256": file_sha256(ROOT / "uv.lock"),
     }
+
+
+# Keys in `runtime_fingerprint()` that record provenance instead of gating a rebuild.
+# The two bare names are the pre-M11.3 spelling, kept so an older baseline reduces to
+# the same comparable set instead of needing its own migration clause.
+_RUNTIME_PROVENANCE_KEYS = frozenset({"kernel", "provenance", "uv_lock_sha256"})
+
+
+def _comparable_runtime(value: dict) -> dict:
+    return {key: item for key, item in value.items() if key not in _RUNTIME_PROVENANCE_KEYS}
+
+
+# Names `replay.py` and this evaluator import from live_stt: the whole entry surface
+# of the sherpa offline row path. The contract is the AST closure over these, so a new
+# call enters the hash automatically.
+ASR_CONTRACT_SEEDS = (
+    "DECODE_CHUNK_OVERLAP_S",
+    "DECODE_CHUNK_S",
+    "DECODE_SPLIT_RMS_WINDOW_S",
+    "DECODE_SPLIT_SEARCH_S",
+    "DECODE_SPLIT_TRIGGER_S",
+    "ENGINE_DIRS",
+    "NUM_THREADS",
+    "RING_SECONDS",
+    "SAMPLE_RATE",
+    "State",
+    "VAD_MAX_SPEECH_S",
+    "VAD_MIN_SILENCE_S",
+    "VAD_MIN_SPEECH_S",
+    "VAD_MODEL",
+    "VAD_PRE_PAD_S",
+    "check_models",
+    "load_recognizer",
+    "make_vad",
+    "resample",
+    "worker",
+)
+
+# Reached from the seeds but excluded, each with the reason it cannot change a decoded
+# row. Inclusion is derived; exclusion is declared. `tests/test_eval_models.py` asserts
+# closure == contract | cuts, so a new call forces a decision here instead of silently
+# entering or escaping the hash. Whole-file hashing of live_stt.py was the M10-carried
+# defect: every unrelated production edit refused an aggregate-only rebuild (M11.3).
+ASR_CONTRACT_CUTS = {
+    "ASR_DEVICE": "whisper-only; reached through load_recognizer's WHISPER_ENGINES branch",
+    "ASR_HOTWORDS_DEVICES": "whisper-only; WhisperEngine capability gate",
+    "ENGINE_DIRS": "path map; the model bytes it points at are hashed by model_fingerprint",
+    "MODELS_DIR": "path root; see ENGINE_DIRS",
+    "OPENVINO_CACHE_DIR": "whisper-only; WhisperEngine compile cache",
+    "State": "counter bag (queue depth, drops, stop event) — measurement, never decoder input",
+    "VAC_CHUNK_S": "VAC-only cadence constant",
+    "VAC_TRIM_S": "VAC-only trim constant",
+    "VAD_MODEL": "path constant; the model bytes are hashed by pipeline['vad_model']",
+    "WHISPER_ENGINES": "whisper-only; selects the WhisperEngine branch",
+    "WhisperEngine": "whisper constructor; load_recognizer returns it only for WHISPER_ENGINES",
+    "_LINE_CLEAR": "terminal presentation",
+    "_STDOUT_TTY": "terminal presentation",
+    "_vac_segments": "VAC branch; worker enters it only for a recogniser exposing"
+    " decode_segments, which sherpa never does",
+    "check_models": "readiness preflight; raises or returns None, never reaches the decoder",
+    "emit_line": "presentation; evaluator rows arrive through replay.py's on_segment hook",
+    "logger": "logging handle",
+}
+
+
+def _live_stt_symbols() -> dict[str, str]:
+    """Top-level live_stt definitions by name, mapped to their exact source text."""
+    source = (ROOT / "live_stt.py").read_text(encoding="utf-8")
+    out: dict[str, str] = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names = [node.name]
+        elif isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+        else:
+            continue
+        segment = ast.get_source_segment(source, node)
+        if segment is not None:
+            out.update(dict.fromkeys(names, segment))
+    return out
+
+
+def asr_contract_closure(cut: bool = True) -> set[str]:
+    """Names reachable from the seeds, stopping at cuts when `cut` is set."""
+    symbols = _live_stt_symbols()
+    seen: set[str] = set()
+    stack = [name for name in ASR_CONTRACT_SEEDS if name in symbols]
+    while stack:
+        name = stack.pop()
+        if name in seen or (cut and name in ASR_CONTRACT_CUTS):
+            continue
+        seen.add(name)
+        for node in ast.walk(ast.parse(symbols[name])):
+            if isinstance(node, ast.Name) and node.id in symbols and node.id not in seen:
+                stack.append(node.id)
+    return seen
+
+
+def _structural_dump(source: str) -> str:
+    """Executable structure of `source`, with docstrings dropped.
+
+    `ast.dump` omits positions, so comments, blank lines, docstrings and `ruff format`
+    rewrapping cannot move the hash while every executed expression still can. A
+    whole-file byte hash conflated the two: M11.1's rewrap of one slice expression in
+    `_split_decode_segment` was a fingerprint change under bytes and is a no-op here.
+    """
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(node, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            if (
+                isinstance(body, list)
+                and body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                del body[0]
+    return ast.dump(tree)
+
+
+def asr_contract_source() -> bytes:
+    """Executable structure of everything that can change a decoded sherpa row.
+
+    The decode-reaching closure of live_stt, plus the scorer and the replay driver
+    whole -- each of those two files is dependency-scoped by construction.
+    """
+    symbols = _live_stt_symbols()
+    parts = [
+        f"live_stt.{name}\n{_structural_dump(symbols[name])}"
+        for name in sorted(asr_contract_closure())
+    ]
+    parts += [
+        f"{name}\n{_structural_dump((ROOT / name).read_text(encoding='utf-8'))}"
+        for name in ("cer.py", "replay.py")
+    ]
+    return "\n\n".join(parts).encode()
 
 
 def pipeline_fingerprint() -> dict:
@@ -936,16 +1083,13 @@ def pipeline_fingerprint() -> dict:
             ],
             "wavs": compatibility_wavs,
         },
+        "asr_contract_sha256": _sha256_bytes(asr_contract_source()),
         "evaluator_contract_sha256": _sha256_bytes(contract_source),
-        "implementation": [
-            _artifact(ROOT / name)
-            for name in (
-                "cer.py",
-                "live_stt.py",
-                "replay.py",
-                "tests/fetch_eval_models.py",
-            )
-        ],
+        # Only acquisition stays a whole-file byte hash; it has its own reaggregate
+        # clause. The scorer, the driver and live_stt's decode closure moved into
+        # `asr_contract_sha256` above, because whole-file bytes refused a rebuild after
+        # every unrelated edit -- the M10-carried defect M11.3 repairs.
+        "implementation": [_artifact(ROOT / "tests/fetch_eval_models.py")],
         "values": values,
         "vad_model": _artifact(VAD_MODEL),
     }
@@ -1664,9 +1808,73 @@ def _pipeline_reaggregate_compatible(previous: dict, current: dict) -> bool:
     current_acquisition = [
         row for row in current.get("implementation", []) if row.get("path") == acquisition_path
     ]
-    return len(previous_acquisition) == len(current_acquisition) == 1 and without_acquisition(
+    if len(previous_acquisition) == len(current_acquisition) == 1 and without_acquisition(
         previous
-    ) == without_acquisition(current)
+    ) == without_acquisition(current):
+        return True
+
+    return _asr_contract_migration_compatible(previous, current)
+
+
+# One-time M11.3 migration, pinned to exactly one prior fingerprint so it can never
+# waive a second transition. Evidence written before this commit byte-hashed whole files,
+# which every unrelated production edit invalidated. Each retired value is adjudicated:
+#
+#   live_stt.py  the defect itself. Its 42-symbol decode closure is 26 unchanged / 8
+#                changed / 2 new since e2a8d9c, and all 8 changes are additive
+#                whisper/VAC/context branches a sherpa recogniser never enters, or a
+#                `ruff format` rewrap. Behavioural proof the sherpa path is unchanged:
+#                tests/test_replay.py = 29 passed at HEAD on real k2v2 + parakeet models
+#                against committed byte-exact goldens.
+#   replay.py    `git diff e2a8d9c -- replay.py` is module docstring, one function
+#                docstring, and one argparse help string. No executable change.
+#   evaluator    `load_evaluator_recognizer` gained M11.1's pyright type guard, which
+#                raises for a WhisperEngine and returns the same object for both
+#                controls. Inert on every scored row.
+#
+# Replay from a clean base:
+#   git checkout e2a8d9c -- tests/model_baseline.json
+#   uv run --no-sync python tests/eval_models.py --aggregate-only
+_M11_3_RETIRED_IMPLEMENTATION = {
+    "cer.py": "2dd7c47ad28beb614b5305dbe784495d0c997e840b0820d27d000a8dca6a2bd7",
+    "live_stt.py": "7a25cece8cf102e2c4d685ccb7bc848562d43bc1044890f15a404320331e08be",
+    "replay.py": "469fb8c3b52eb455d73dfb40da99a2a65f3278c6af515f253bd408ce7a67e445",
+}
+_M11_3_RETIRED_EVALUATOR_CONTRACT = (
+    "ae2aab95888ae651d57a96bf052d2f28154dea12be233341b383ab076fbbc8e6"
+)
+
+
+def _asr_contract_migration_compatible(previous: dict, current: dict) -> bool:
+    if "asr_contract_sha256" in previous or "asr_contract_sha256" not in current:
+        return False
+    retired = {
+        row["path"]: row["sha256"]
+        for row in previous.get("implementation", [])
+        if row["path"] in _M11_3_RETIRED_IMPLEMENTATION
+    }
+    if retired != _M11_3_RETIRED_IMPLEMENTATION:
+        return False
+    if previous.get("evaluator_contract_sha256") != _M11_3_RETIRED_EVALUATOR_CONTRACT:
+        return False
+
+    # Everything the migration does not retire must still match exactly: the decode
+    # constants, the compatibility WAVs and manifests, the VAD model, and acquisition.
+    def survivors(value: dict) -> dict:
+        return {
+            **{
+                key: item
+                for key, item in value.items()
+                if key not in {"asr_contract_sha256", "evaluator_contract_sha256"}
+            },
+            "implementation": [
+                row
+                for row in value.get("implementation", [])
+                if row["path"] not in _M11_3_RETIRED_IMPLEMENTATION
+            ],
+        }
+
+    return survivors(previous) == survivors(current)
 
 
 def _model_decode_identity(model: dict) -> dict:
@@ -1686,11 +1894,12 @@ def reaggregate_parent() -> None:
         "runtime": runtime_fingerprint(),
     }
     for key, value in current.items():
-        matches = (
-            _pipeline_reaggregate_compatible(deterministic.get(key, {}), value)
-            if key == "pipeline"
-            else deterministic.get(key) == value
-        )
+        if key == "pipeline":
+            matches = _pipeline_reaggregate_compatible(deterministic.get(key, {}), value)
+        elif key == "runtime":
+            matches = _comparable_runtime(deterministic.get(key, {})) == _comparable_runtime(value)
+        else:
+            matches = deterministic.get(key) == value
         if not matches:
             raise RuntimeError(f"aggregate-only refused: {key} fingerprint changed")
 

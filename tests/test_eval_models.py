@@ -546,3 +546,168 @@ def test_ignored_details_hash_and_aggregates_rebuild_when_cache_is_present():
                 pytest.skip("ignored M10 evaluator details absent")
             rows = evaluator._detail_rows(detail, cases, result["details"]["sha256"])
             assert evaluator.aggregate_rows(rows) == result["aggregates"]
+
+
+# --- M11.3: the ASR contract fingerprint replaces whole-file live_stt.py hashing ---
+
+
+def _contract_tree(tmp_path: Path, edit=None) -> Path:
+    """A minimal ROOT holding the three contract sources, one optionally edited."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for name in ("live_stt.py", "cer.py", "replay.py"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        if edit is not None:
+            text = edit(name, text)
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+def _contract_sha(monkeypatch, root: Path) -> str:
+    monkeypatch.setattr(evaluator, "ROOT", root)
+    return hashlib.sha256(evaluator.asr_contract_source()).hexdigest()
+
+
+def _replacing(target: str, old: str, new: str):
+    def edit(name: str, text: str) -> str:
+        if name != target:
+            return text
+        assert text.count(old) == 1, f"{target}: {text.count(old)} matches for {old!r}"
+        return text.replace(old, new)
+
+    return edit
+
+
+def test_asr_contract_closure_is_derived_and_every_exclusion_is_declared():
+    # Inclusion is derived from the import seeds; exclusion is declared with a reason.
+    # A new call into live_stt must land in one set or the other, never silently.
+    reachable = evaluator.asr_contract_closure(cut=False)
+    contract = evaluator.asr_contract_closure(cut=True)
+    cuts = set(evaluator.ASR_CONTRACT_CUTS)
+
+    assert reachable == contract | cuts
+    assert not cuts - reachable, "declared cut is no longer reachable"
+    assert not contract & cuts
+    assert all(evaluator.ASR_CONTRACT_CUTS[name].strip() for name in cuts)
+
+
+def test_asr_contract_covers_the_decode_reaching_surface():
+    contract = evaluator.asr_contract_closure()
+    # The audio -> decoder-input path, plus the two constants that whole-file hashing
+    # was the only thing covering: neither appears in pipeline_fingerprint()["values"].
+    assert {
+        "RingBuffer",
+        "SEGMENT_QUEUE_MAX",
+        "_DECODE_MERGE_MAX_CHARS",
+        "_decode",
+        "_decode_segments",
+        "_feed_segments",
+        "_merge_chunk_text",
+        "_split_decode_segment",
+        "load_recognizer",
+        "make_vad",
+        "resample",
+        "worker",
+    } <= contract
+    values = evaluator.pipeline_fingerprint()["values"]
+    assert "segment_queue_max" not in values
+    assert "decode_merge_max_chars" not in values
+
+
+@pytest.mark.parametrize(
+    ("target", "old", "new"),
+    [
+        # The VAC branch and the whisper constructor are cut, so a sherpa row cannot
+        # see them; emit_line is presentation; the translator is outside the closure.
+        ("live_stt.py", "async def _vac_segments(", "async def _vac_segments(  # noqa: D103\n"),
+        ("live_stt.py", "class WhisperEngine:", "class WhisperEngine:\n    UNUSED = 1\n"),
+        ("live_stt.py", "def emit_line(", "def emit_line(  # noqa: D103\n"),
+        ("live_stt.py", "TRANSLATE_TIMEOUT_S = 15", "TRANSLATE_TIMEOUT_S = 16"),
+    ],
+)
+def test_irrelevant_live_stt_edits_leave_the_contract_unchanged(
+    monkeypatch, tmp_path, target, old, new
+):
+    base = _contract_sha(monkeypatch, _contract_tree(tmp_path / "base"))
+    edited = _contract_sha(
+        monkeypatch, _contract_tree(tmp_path / "edited", _replacing(target, old, new))
+    )
+    assert base == edited
+
+
+@pytest.mark.parametrize(
+    ("target", "old", "new"),
+    [
+        ("live_stt.py", "VAD_PRE_PAD_S = 0.4", "VAD_PRE_PAD_S = 0.5"),
+        ("live_stt.py", "_DECODE_MERGE_MAX_CHARS = ", "_DECODE_MERGE_MAX_CHARS = 1 + "),
+        ("live_stt.py", "def resample(", "def resample_renamed("),
+        ("cer.py", "def normalize(", "def normalize_renamed("),
+        ("replay.py", 'default="k2v2"', 'default="parakeet"'),
+    ],
+)
+def test_decode_input_edits_change_the_contract(monkeypatch, tmp_path, target, old, new):
+    base = _contract_sha(monkeypatch, _contract_tree(tmp_path / "base"))
+    edited = _contract_sha(
+        monkeypatch, _contract_tree(tmp_path / "edited", _replacing(target, old, new))
+    )
+    assert base != edited
+
+
+def test_contract_ignores_comments_docstrings_and_reformatting(monkeypatch, tmp_path):
+    # polish.md P-003 will run `ruff format` over cer.py; that must not requalify the
+    # evidence. Whole-file byte hashing could not tell a rewrap from a decode change.
+    def edit(name: str, text: str) -> str:
+        if name != "cer.py":
+            return text
+        return text.replace('"""', '"""Reworded first line.\n\n', 1) + "\n# trailing comment\n"
+
+    base = _contract_sha(monkeypatch, _contract_tree(tmp_path / "base"))
+    edited = _contract_sha(monkeypatch, _contract_tree(tmp_path / "edited", edit))
+    assert base == edited
+
+
+def test_committed_pipeline_block_carries_the_contract_and_no_whole_file_live_stt():
+    pipeline = _committed_baseline()["deterministic"]["pipeline"]
+    assert len(pipeline["asr_contract_sha256"]) == 64
+    assert (
+        pipeline["asr_contract_sha256"]
+        == hashlib.sha256(evaluator.asr_contract_source()).hexdigest()
+    )
+    assert [row["path"] for row in pipeline["implementation"]] == ["tests/fetch_eval_models.py"]
+
+
+def test_runtime_provenance_is_recorded_but_never_gates_a_rebuild():
+    runtime = evaluator.runtime_fingerprint()
+    assert set(runtime["provenance"]) == {"kernel", "uv_lock_sha256"}
+    # A host kernel bump and an unrelated uv.lock entry must not refuse a rebuild,
+    # while every decode-relevant package version still must.
+    moved = copy.deepcopy(runtime)
+    moved["provenance"]["kernel"] = "0.0.0-does-not-exist"
+    assert evaluator._comparable_runtime(moved) == evaluator._comparable_runtime(runtime)
+    # The pre-M11.3 spelling reduces to the same comparable set, so an older baseline
+    # needs no migration clause of its own.
+    legacy = {**evaluator._comparable_runtime(runtime), "kernel": "7.1.3-1-default"}
+    assert evaluator._comparable_runtime(legacy) == evaluator._comparable_runtime(runtime)
+    packaged = copy.deepcopy(runtime)
+    packaged["packages"]["sherpa-onnx"] = "0.0.0"
+    assert evaluator._comparable_runtime(packaged) != evaluator._comparable_runtime(runtime)
+
+
+def test_the_one_time_migration_is_pinned_to_exactly_one_prior_fingerprint():
+    current = evaluator.pipeline_fingerprint()
+    retired = [
+        {"bytes": 1, "path": path, "sha256": sha}
+        for path, sha in sorted(evaluator._M11_3_RETIRED_IMPLEMENTATION.items())
+    ]
+    previous = {
+        **{key: value for key, value in current.items() if key != "asr_contract_sha256"},
+        "evaluator_contract_sha256": evaluator._M11_3_RETIRED_EVALUATOR_CONTRACT,
+        "implementation": [*retired, *current["implementation"]],
+    }
+    assert evaluator._pipeline_reaggregate_compatible(previous, current)
+
+    # One wrong retired hash refuses: the clause cannot waive a second transition, and
+    # it cannot fire once the committed baseline already carries the contract.
+    wrong = copy.deepcopy(previous)
+    wrong["implementation"][0]["sha256"] = "0" * 64
+    assert not evaluator._pipeline_reaggregate_compatible(wrong, current)
+    assert not evaluator._pipeline_reaggregate_compatible(current, {**current, "x": 1})
