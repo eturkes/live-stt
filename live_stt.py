@@ -21,8 +21,10 @@ import signal
 import sys
 import time
 import unicodedata
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import SupportsFloat, cast
 
 import numpy as np
 import sherpa_onnx
@@ -328,7 +330,10 @@ class WhisperEngine:
     def generate(self, samples: np.ndarray, *, timestamps: bool = False):
         keywords = {"hotwords": self.hotwords} if self.hotwords else {}
         return self._pipeline.generate(
-            samples,
+            # The binding takes the array through the buffer protocol; its stub
+            # declares the narrower Sequence[SupportsFloat]. Converting for real
+            # would copy every sample of every decode into a Python list.
+            cast("Sequence[SupportsFloat]", samples),
             language="<|ja|>",
             task="transcribe",
             return_timestamps=timestamps,
@@ -429,8 +434,7 @@ def _split_decode_segment(samples: np.ndarray) -> tuple[np.ndarray, ...]:
         lo = max(rms_half, nominal - search)
         hi = min(len(samples) - rms_half, nominal + search)
         energies = (
-            prefix[lo + rms_half : hi + rms_half + 1]
-            - prefix[lo - rms_half : hi - rms_half + 1]
+            prefix[lo + rms_half : hi + rms_half + 1] - prefix[lo - rms_half : hi - rms_half + 1]
         )
         cuts.append(lo + int(np.argmin(energies)))
 
@@ -1105,8 +1109,10 @@ async def _vac_segments(
     ring = RingBuffer(RING_SECONDS * SAMPLE_RATE)
     pad = int(VAD_PRE_PAD_S * SAMPLE_RATE)
     chunk_samples = int(VAC_CHUNK_S * SAMPLE_RATE)
+    # An open utterance IS its processor: `processor is not None` is the whole
+    # speaking state, so no separate flag can drift out of sync with it (and the
+    # buffer's non-None-ness stays provable at every use site).
     processor: StreamingProcessor | None = None
-    speaking = False
     pending = 0
     consumed = 0  # absolute sample index of everything fed to the VAD
     seq = 0
@@ -1129,7 +1135,7 @@ async def _vac_segments(
 
     async def finalize() -> None:
         """Close the open utterance: flush its tail, then publish it once."""
-        nonlocal speaking, processor, pending, seq
+        nonlocal processor, pending, seq
         await update(final=True)
         if utterance:
             seq += 1
@@ -1142,7 +1148,6 @@ async def _vac_segments(
             n = consumed - utterance_start
             on_segment(utterance_start, n, n, utterance_decode_s, utterance)
         state.partial = ""
-        speaking = False
         processor = None
         pending = 0
 
@@ -1158,8 +1163,7 @@ async def _vac_segments(
             ring.append(block)
             consumed += len(block)
             detected = vad.is_speech_detected() and not flush
-            if detected and not speaking:
-                speaking = True
+            if detected and processor is None:
                 # Bias this utterance toward what the session already recurs on.
                 # set_hotwords drops the list on devices that reject conditioning,
                 # so `biased` is whatever actually reached the model -- observe_ja
@@ -1169,26 +1173,24 @@ async def _vac_segments(
                     rec.set_hotwords(terms)
                     biased = offered if rec.hotwords else frozenset()
                 utterance_start = max(0, consumed - len(block) - pad)
-                processor = StreamingProcessor(
-                    decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S
-                )
+                processor = StreamingProcessor(decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S)
                 processor.offset_s = utterance_start / SAMPLE_RATE
                 processor.insert_audio(ring.slice(utterance_start, consumed))
                 pending = consumed - utterance_start
                 utterance = ""
                 utterance_decode_s = 0.0
-            elif speaking:
+            elif processor is not None:
                 processor.insert_audio(block)
                 pending += len(block)
-            if speaking and not detected:
+            if processor is not None and not detected:
                 await finalize()
-            elif speaking and pending >= chunk_samples:
+            elif processor is not None and pending >= chunk_samples:
                 await update(final=False)
                 pending = 0
         if flush:
             # An empty tail buffer skips the loop entirely, so a still-open
             # utterance would otherwise never be published.
-            if speaking:
+            if processor is not None:
                 await finalize()
             return
 
@@ -1235,9 +1237,7 @@ async def meter(state, audio_q, translator=None):
     while not state.stopping:
         queued_samples = getattr(audio_q, "queued_samples", 0)
         audio_pending = f" q={queued_samples / SAMPLE_RATE:.2f}s" if queued_samples else ""
-        segment_pending = (
-            f" seg={state.segment_queue_depth}" if state.segment_queue_depth else ""
-        )
+        segment_pending = f" seg={state.segment_queue_depth}" if state.segment_queue_depth else ""
         dropped = f" drop={state.dropped}" if state.dropped else ""
         # tdrop= mirrors drop= for the translation backlog (shown only when >0).
         tdrop = (
@@ -1328,9 +1328,7 @@ async def run_session(args):
     worker_task = asyncio.create_task(
         worker(rec, vad, window, audio_q, state, output_file, translator, context=context)
     )
-    translator_task = (
-        asyncio.create_task(translator.run(output_file)) if translator else None
-    )
+    translator_task = asyncio.create_task(translator.run(output_file)) if translator else None
 
     try:
         stream.start()

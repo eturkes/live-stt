@@ -2,19 +2,28 @@
 """Deterministic WAV replay through the exact live-stt STT pipeline.
 
 Feeds a WAV file through `live_stt.worker` — the same VAD + RingBuffer pre-pad
-re-slice + sherpa-onnx decode loop the live mic uses — and reports per-segment
-segmentation, decode latency, and transcript. The translation leg is omitted
-(translator=None): this exercises and regression-tests the local STT half only.
+re-slice the live mic uses — and reports per-segment segmentation, decode
+latency, and transcript. `worker` dispatches on the recogniser, so the engine
+picks the path: `--engine whisper` drives the shipped VAC path (growing buffer,
+LocalAgreement-2 commits), the sherpa engines drive the VAD-segment path.
+The translation leg is omitted (translator=None): this exercises and
+regression-tests the local STT half only.
 
 This is a dev/regression tool, not part of the shipped app, so it is not a
 console-script entry point. Run it directly:
 
-    uv run python replay.py path/to.wav [--engine k2v2|parakeet] [--json]
+    uv run python replay.py path/to.wav [--engine k2v2|parakeet|whisper] [--json]
 
-Determinism: for a given WAV + engine, segment boundaries (start, n) and
+Clear PYTHONPATH for `--engine whisper` (`env -u PYTHONPATH uv run …`): an
+inherited entry can shadow the installed OpenVINO wheel with a host build that
+cannot execute here.
+
+Determinism: for a given WAV + sherpa engine, segment boundaries (start, n) and
 transcript text are reproducible (silero VAD + sherpa offline decode are
-deterministic on CPU). Decode latency / RTF are CPU-variable — reported for
-inspection, never used as a pass/fail signal (see tests/test_replay.py).
+deterministic on CPU), which is why the goldens key on those engines. Whisper on
+an accelerator is not covered by that claim. Decode latency / RTF are
+CPU-variable — reported for inspection, never used as a pass/fail signal (see
+tests/test_replay.py).
 """
 
 from __future__ import annotations
@@ -157,7 +166,11 @@ def replay_recognizer(path, rec, engine: str) -> dict:
 
 
 def replay_wav(path, engine: str = "k2v2") -> dict:
-    """Load a WAV and replay it through the engine-keyed production pipeline."""
+    """Load a WAV and replay it through the engine-keyed production pipeline.
+
+    Default matches the CLI's, not live-stt's: the goldens key on the
+    deterministic CPU engines.
+    """
     return replay_recognizer(path, _recognizer(engine), engine)
 
 
@@ -188,7 +201,11 @@ def main():
         "--engine",
         choices=sorted(ENGINE_DIRS),
         default="k2v2",
-        help="Local STT engine (default: k2v2; matches live-stt default).",
+        help=(
+            "Local STT engine. Default k2v2 -- NOT the live-stt default (that is "
+            "whisper); k2v2 is the deterministic CPU engine the goldens key on. "
+            "Pass --engine whisper to replay the shipped VAC path."
+        ),
     )
     ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
     args = ap.parse_args()

@@ -1,7 +1,7 @@
 [project]
 name = "live-stt"
 version = "0.1.0"
-description = "Live Japanese speech-to-text (local sherpa-onnx) with English translation via Codex"
+description = "Live Japanese speech-to-text (local Whisper on OpenVINO, sherpa-onnx fallback) with English translation via Codex"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0 WITH LLVM-exception"
@@ -9,7 +9,16 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Emir Turkes", email = "emir.turkes@eturkes.com" },
 ]
-keywords = ["speech-to-text", "transcription", "japanese", "translation", "sherpa-onnx", "codex"]
+keywords = [
+    "speech-to-text",
+    "transcription",
+    "japanese",
+    "translation",
+    "whisper",
+    "openvino",
+    "sherpa-onnx",
+    "codex",
+]
 classifiers = [
     "Environment :: Console",
     "Programming Language :: Python :: 3",
@@ -21,12 +30,14 @@ dependencies = [
     "numpy>=1.24",
     "sherpa-onnx>=1.13.4",
     "sherpa-onnx-core>=1.13.4",
-]
-
-[project.optional-dependencies]
-# --engine whisper only. Intel accelerators need a matching runtime; this box
-# resolves both from the intel-accel install via an openvino-archive.pth entry.
-whisper = [
+    # Whisper is the DEFAULT engine, so these are hard dependencies: as an extra
+    # they made `uv sync` produce a tool whose default `--engine whisper` raised
+    # ModuleNotFoundError. The extra also bought nothing -- `uv sync --extra
+    # whisper` downloaded 111,359,418 bytes against a hard-dependency `uv sync`
+    # at 111,372,191 bytes. Deployment is these PyPI wheels, not the host
+    # intel-accel archive an earlier comment here pointed at.
+    # Wheel-only, cp311-cp314, for macOS arm64 / manylinux x86_64 + aarch64 /
+    # Windows amd64, so those are the platforms this tool installs on at all.
     "openvino>=2026.3",
     "openvino-genai>=2026.3",
 ]
@@ -45,10 +56,21 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["live_stt.py"]
+# Both production modules: live_stt.py imports streaming, so a wheel without it
+# installs cleanly and then fails at import (an editable install hides this).
+only-include = ["live_stt.py", "streaming.py"]
 
 [tool.hatch.build.targets.sdist]
-include = ["live_stt.py", "README.md", ".agent/roadmap.md"]
+# Leading slash anchors each pattern to the project root. Unanchored, a bare
+# "README.md" matches at every depth and drags third-party copies out of any
+# venv sitting in the tree, which makes the member list depend on local state.
+include = [
+    "/live_stt.py",
+    "/streaming.py",
+    "/README.md",
+    "/models/README.md",
+    "/.agent/roadmap.md",
+]
 
 [tool.pyright]
 venvPath = "."

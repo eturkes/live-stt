@@ -300,7 +300,12 @@ class SherpaOfflineAdapter:
 def load_evaluator_recognizer(engine: str) -> sherpa_onnx.OfflineRecognizer:
     """Construct controls through production; candidates remain evaluator-only."""
     if engine in CONTROL_ENGINES:
-        return load_recognizer(engine)
+        rec = load_recognizer(engine)
+        # Production `load_recognizer` also builds the OpenVINO engine, which this
+        # evaluator cannot score: a WhisperEngine here is a mis-specified control.
+        if not isinstance(rec, sherpa_onnx.OfflineRecognizer):
+            raise TypeError(f"control engine {engine} is not a sherpa recognizer")
+        return rec
     spec = CANDIDATE_SPECS[engine]
     model = validate_candidate_model(spec)
     if engine == "qwen3_asr":

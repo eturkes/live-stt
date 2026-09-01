@@ -34,6 +34,7 @@ decoder prefix, and this pipeline exposes neither.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -58,6 +59,10 @@ class Segment:
     text: str
 
 
+# `WhisperEngine.decode_segments`; the trim rule needs the spans, not just text.
+Decoder = Callable[[np.ndarray], tuple[str, list[Segment]]]
+
+
 @dataclass
 class StreamingProcessor:
     """Growing-buffer processor: decode, agree, emit, trim.
@@ -68,7 +73,7 @@ class StreamingProcessor:
     carries the whole correctness burden.
     """
 
-    decode: object  # samples -> (text, [Segment, ...])
+    decode: Decoder
     buffer_trim_s: float = 8.0
     audio: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
     offset_s: float = 0.0

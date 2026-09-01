@@ -13,6 +13,12 @@ Each short utterance typically prints as a numbered `JA n:` line about 0.1 s aft
   `sherpa-onnx-core` ≥ 1.13.4; `uv sync --locked` reproduces the exact
   evaluator-qualified resolution (currently CPython 3.14.5 + sherpa 1.13.4).
 - Working microphone
+- OpenVINO for the default Whisper engine. `uv sync` installs it, because
+  `--engine whisper` is the default. OpenVINO ships wheels only for CPython
+  3.11 to 3.14 on macOS arm64, Linux x86_64 and aarch64, and Windows amd64.
+  If your shell sets `PYTHONPATH` to a different OpenVINO build, clear it
+  before you run live-stt. That entry hides the installed package, and the
+  import then fails with a confusing `AxisSet` error instead of a clear one.
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
