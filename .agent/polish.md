@@ -24,3 +24,5 @@ Row shape: `P-<n>` monotonic and never reused (pruning leaves gaps) · `pri` 1 =
 ## Spine flags
 
 (none)
+
+- **P-006 — Unify the resumable-JSONL writer across evaluators.** `tests/eval_vac.py` ports `tests/eval_streaming.py:656-846` (three journals, prefix reconciliation, paired fsync) with its own schema/validators, so the mechanism now lives in two places. `pri=med`. Acceptance: one shared writer parameterized by validators + row identity, both evaluators calling it, `streaming_baseline.json` and `vac_baseline.json` each rebuilding byte-identically under `--aggregate-only`, and the full gate green.

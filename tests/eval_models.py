@@ -964,11 +964,31 @@ ASR_CONTRACT_CUTS = {
 }
 
 
-def _live_stt_symbols() -> dict[str, str]:
-    """Top-level live_stt definitions by name, mapped to their exact source text."""
-    source = (ROOT / "live_stt.py").read_text(encoding="utf-8")
-    out: dict[str, str] = {}
+@dataclass(frozen=True)
+class ModuleSurface:
+    """One module's top-level definitions plus the `from X import Y` edges out of it."""
+
+    symbols: dict[str, str]
+    imports: dict[str, tuple[str, str]]
+
+
+def module_surface(path: Path) -> ModuleSurface:
+    """Top-level definitions by name → exact source text, and the module's import map."""
+    source = path.read_text(encoding="utf-8")
+    symbols: dict[str, str] = {}
+    imports: dict[str, tuple[str, str]] = {}
     for node in ast.parse(source).body:
+        if isinstance(node, ast.ImportFrom):
+            # Fail closed on the two forms a name-keyed import map cannot represent: a
+            # star import would drop the whole imported surface out of the closure
+            # silently, which is exactly the escape a derived contract exists to stop.
+            if node.level or node.module is None:
+                raise RuntimeError(f"{path.name}: relative import is not a contract edge")
+            if any(alias.name == "*" for alias in node.names):
+                raise RuntimeError(f"{path.name}: star import hides the contract surface")
+            imports.update(
+                {alias.asname or alias.name: (node.module, alias.name) for alias in node.names}
+            )
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             names = [node.name]
         elif isinstance(node, ast.Assign):
@@ -979,24 +999,63 @@ def _live_stt_symbols() -> dict[str, str]:
             continue
         segment = ast.get_source_segment(source, node)
         if segment is not None:
-            out.update(dict.fromkeys(names, segment))
-    return out
+            symbols.update(dict.fromkeys(names, segment))
+    return ModuleSurface(symbols, imports)
+
+
+def contract_closure(
+    surfaces: Mapping[str, ModuleSurface],
+    roots: Iterable[tuple[str, str]],
+    *,
+    cuts: Mapping[str, str] | frozenset[str] = frozenset(),
+    require: bool = False,
+) -> set[tuple[str, str]]:
+    """`(module, name)` reachable from `roots`, stopping at `cuts`.
+
+    Cross-module edges follow `from X import Y` only while X is in `surfaces`, which is
+    what keeps the sherpa contract single-module while the VAC contract spans
+    live_stt + streaming. `require` turns a missing root/dependency into an error rather
+    than a silent drop; the sherpa contract predates that check and keeps the old
+    skip so its hash cannot move (M11.3b P1.5).
+    """
+    seen: set[tuple[str, str]] = set()
+    stack = [key for key in roots if require or key[1] in surfaces[key[0]].symbols]
+    while stack:
+        key = stack.pop()
+        module, name = key
+        if key in seen or name in cuts:
+            continue
+        surface = surfaces[module]
+        if name not in surface.symbols:
+            raise RuntimeError(f"contract closure: {module}.{name} is not a top-level definition")
+        seen.add(key)
+        for node in ast.walk(ast.parse(surface.symbols[name])):
+            if not isinstance(node, ast.Name):
+                continue
+            target = (
+                (module, node.id) if node.id in surface.symbols else surface.imports.get(node.id)
+            )
+            if target is None or target[0] not in surfaces:
+                continue
+            if target[1] in surfaces[target[0]].symbols and target not in seen:
+                stack.append(target)
+    return seen
+
+
+def _live_stt_symbols() -> dict[str, str]:
+    """Top-level live_stt definitions by name, mapped to their exact source text."""
+    return module_surface(ROOT / "live_stt.py").symbols
 
 
 def asr_contract_closure(cut: bool = True) -> set[str]:
     """Names reachable from the seeds, stopping at cuts when `cut` is set."""
-    symbols = _live_stt_symbols()
-    seen: set[str] = set()
-    stack = [name for name in ASR_CONTRACT_SEEDS if name in symbols]
-    while stack:
-        name = stack.pop()
-        if name in seen or (cut and name in ASR_CONTRACT_CUTS):
-            continue
-        seen.add(name)
-        for node in ast.walk(ast.parse(symbols[name])):
-            if isinstance(node, ast.Name) and node.id in symbols and node.id not in seen:
-                stack.append(node.id)
-    return seen
+    surfaces = {"live_stt": module_surface(ROOT / "live_stt.py")}
+    closure = contract_closure(
+        surfaces,
+        [("live_stt", name) for name in ASR_CONTRACT_SEEDS],
+        cuts=ASR_CONTRACT_CUTS if cut else frozenset(),
+    )
+    return {name for _, name in closure}
 
 
 def _structural_dump(source: str) -> str:
