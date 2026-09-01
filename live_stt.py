@@ -478,6 +478,31 @@ def check_models(engine: str) -> str | None:
     )
 
 
+def check_device(engine: str, device: str = ASR_DEVICE) -> str | None:
+    """Returns an error message if `engine` cannot reach its accelerator, else None.
+
+    Sibling of check_models: that one preflights weights, this one preflights the
+    device. Without it an absent accelerator surfaces as an abort deep inside
+    OpenVINO on a missing NPU compiler loader, instead of a readable message.
+    Exact-name membership only -- an enumerated or AUTO spelling would certify a
+    different execution target than the caller asked for.
+    """
+    if engine not in WHISPER_ENGINES:
+        return None
+    try:
+        import openvino  # noqa: PLC0415  -- only the OpenVINO engines pay this import
+    except ImportError as exc:  # pragma: no cover - the wheel is a hard dependency
+        return f"OpenVINO is not importable: {exc}"
+    have = openvino.Core().available_devices
+    if device not in have:
+        return (
+            f"OpenVINO device {device!r} is unavailable (found {have}). "
+            "Check that the accelerator drivers are installed, and that PYTHONPATH "
+            "does not shadow the installed OpenVINO wheel."
+        )
+    return None
+
+
 class State:
     def __init__(self):
         self.dropped = 0
@@ -1446,7 +1471,7 @@ def main():
         print(sd.query_devices())
         return
 
-    err = check_models(args.engine)
+    err = check_models(args.engine) or check_device(args.engine, args.asr_device)
     if err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)

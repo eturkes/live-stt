@@ -4,9 +4,16 @@ Two tiers:
 - The WAV loader is model-independent and always runs.
 - The golden regression replays the cached bench clips through the real
   pipeline and asserts the deterministic surface (segment count + per-segment
-  transcript + boundary). It is gated on model weights AND the cached WAVs
-  (both gitignored), so it skips cleanly on a fresh clone. Decode latency is
-  never asserted — it is CPU-variable.
+  transcript + boundary). It is gated on model weights, the cached WAVs (both
+  gitignored) AND the accelerator, so it skips cleanly on a fresh clone and
+  under `gate.py`, which sources no accel farm. Decode latency is never
+  asserted — it is CPU-variable.
+
+The whisper row is an `ASR_DEVICE` artifact rather than a portable one, so it
+records the device it was produced on. That record is compared BEFORE any
+readiness probe: a golden that disagrees with the shipped constant is a stale
+committed artifact, which must fail on every box rather than skip on the ones
+without the hardware to notice.
 
 Regenerate the goldens after an intentional pipeline change:
     uv run python tests/gen_replay_goldens.py
@@ -24,14 +31,12 @@ import numpy as np
 import pytest
 
 import replay
-from live_stt import check_models
+from live_stt import ASR_DEVICE, WHISPER_ENGINES, check_device, check_models
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDENS = json.loads((ROOT / "tests" / "replay_goldens.json").read_text(encoding="utf-8"))
 # Flatten the engine-keyed goldens to (engine, clip_id) cases for parametrization.
-GOLDEN_CASES = sorted(
-    (engine, clip_id) for engine, clips in GOLDENS.items() for clip_id in clips
-)
+GOLDEN_CASES = sorted((engine, clip_id) for engine, clips in GOLDENS.items() for clip_id in clips)
 CACHE = ROOT / "spike" / "backends" / "cache"
 # 0.1 s: guards against segmentation-boundary drift without flaking on the
 # sub-sample float noise that ONNX ops can introduce across runs/machines.
@@ -47,6 +52,7 @@ def _write_wav(path: Path, data: np.ndarray, sr: int, nchan: int = 1):
 
 
 # ---- model-independent: the WAV loader ----
+
 
 def test_load_wav_resamples_to_16k(tmp_path):
     p = tmp_path / "a.wav"
@@ -112,15 +118,43 @@ def test_run_surfaces_worker_shutdown_as_evaluator_failure():
 
 # ---- models + cached corpus gated: golden regression ----
 
-def _resources_ready(engine: str, clip_id: str) -> bool:
-    return check_models(engine) is None and (CACHE / f"{clip_id}.wav").exists()
+
+def _stale_device(engine: str, golden: dict) -> str | None:
+    """Why this golden no longer describes what the engine would run, else None.
+
+    Hardware-free on purpose: a missing, null or foreign `device` means the
+    committed row was produced against a different target, which is wrong
+    everywhere and must not hide behind a skip on a box without the accelerator.
+    """
+    if engine not in WHISPER_ENGINES:
+        return None
+    stored = golden.get("device")
+    if stored != ASR_DEVICE:
+        return (
+            f"golden device {stored!r} != live_stt.ASR_DEVICE {ASR_DEVICE!r}: "
+            "regenerate with tests/gen_replay_goldens.py"
+        )
+    return None
+
+
+def _not_ready(engine: str, clip_id: str) -> str | None:
+    """Why this case cannot run here, else None."""
+    if err := check_models(engine):
+        return err.splitlines()[0]
+    if err := check_device(engine):
+        return err
+    if not (CACHE / f"{clip_id}.wav").exists():
+        return f"cached WAV for {clip_id!r} absent"
+    return None
 
 
 @pytest.mark.parametrize("engine,clip_id", GOLDEN_CASES)
 def test_replay_golden(engine, clip_id):
-    if not _resources_ready(engine, clip_id):
-        pytest.skip(f"models for {engine!r} or cached WAV for {clip_id!r} absent")
     golden = GOLDENS[engine][clip_id]
+    stale = _stale_device(engine, golden)
+    assert stale is None, stale
+    if reason := _not_ready(engine, clip_id):
+        pytest.skip(reason)
     report = replay.replay_wav(CACHE / f"{clip_id}.wav", engine)
     assert report["n_segments"] == golden["n_segments"]
     got, exp = report["segments"], golden["segments"]
@@ -128,3 +162,8 @@ def test_replay_golden(engine, clip_id):
     for g, e in zip(got, exp, strict=True):
         assert g["text"] == e["text"]
         assert abs(g["start"] - e["start"]) <= START_TOL
+        # `n` is the VAC utterance length: the one committed end-boundary signal,
+        # and the whole surface a trim/commit regression would move. The sherpa
+        # rows keep their original start-only assertion.
+        if engine in WHISPER_ENGINES:
+            assert abs(g["n"] - e["n"]) <= START_TOL

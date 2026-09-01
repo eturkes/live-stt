@@ -478,7 +478,9 @@ def compatibility_cases() -> tuple[dict[str, list[EvalCase]], dict]:
 
     short = []
     first_engine = CONTROL_ENGINES[0]
-    if set(goldens) != set(CONTROL_ENGINES):
+    # Subset, not equality: the golden matrix also carries accelerator-bound engines
+    # this evaluator never scores, and only the controls reach a case below.
+    if not set(CONTROL_ENGINES) <= set(goldens):
         raise RuntimeError("replay-golden controls drifted")
     for case_id, meta in goldens[first_engine].items():
         if any(goldens[engine][case_id]["ja_ref"] != meta["ja_ref"] for engine in CONTROL_ENGINES):
@@ -827,6 +829,22 @@ def _artifact(path: Path) -> dict:
     }
 
 
+def _replay_control_manifest() -> dict:
+    """Decode-scoped stand-in for the whole replay-goldens file.
+
+    The goldens are an engine x clip matrix, but only CONTROL_ENGINES rows reach a
+    compatibility case, so whole-file bytes would refuse a rebuild for every
+    accelerator-bound row the matrix gains while proving nothing extra (L-030).
+    """
+    goldens = _load_json(REPLAY_GOLDENS)
+    payload = _json_bytes({engine: goldens[engine] for engine in CONTROL_ENGINES})
+    return {
+        "bytes": len(payload),
+        "path": f"{_relative(REPLAY_GOLDENS)}#controls",
+        "sha256": _sha256_bytes(payload),
+    }
+
+
 def model_fingerprint(engine: str) -> dict:
     if engine in CONTROL_ENGINES:
         model_dir = ENGINE_DIRS[engine]
@@ -1138,7 +1156,10 @@ def pipeline_fingerprint() -> dict:
     return {
         "compatibility_inputs": {
             "manifests": [
-                _artifact(path) for path in (CER_BASELINE, LONG_FORM, REPLAY_GOLDENS, STRESSORS)
+                _artifact(CER_BASELINE),
+                _artifact(LONG_FORM),
+                _replay_control_manifest(),
+                _artifact(STRESSORS),
             ],
             "wavs": compatibility_wavs,
         },
@@ -1872,7 +1893,51 @@ def _pipeline_reaggregate_compatible(previous: dict, current: dict) -> bool:
     ) == without_acquisition(current):
         return True
 
-    return _asr_contract_migration_compatible(previous, current)
+    if _asr_contract_migration_compatible(previous, current):
+        return True
+    return _goldens_manifest_migration_compatible(previous, current)
+
+
+# One-time M11.3c migration, pinned to exactly one prior manifest row so it can never
+# waive a second transition. The replay goldens became an engine x clip MATRIX carrying
+# accelerator-bound rows this evaluator never scores, and whole-file bytes cannot tell a
+# whisper row from a control-reference edit -- the same false-refusal class the ASR
+# contract retired (L-030). Behavioural licence: `compatibility_cases()` reads
+# `goldens[first_engine]` and cross-checks CONTROL_ENGINES alone, so no non-control row
+# can reach a case, and the 24 control rows regenerate byte-identically at HEAD.
+_M11_3C_RETIRED_GOLDENS_MANIFEST = {
+    "bytes": 10673,
+    "path": "tests/replay_goldens.json",
+    "sha256": "35760b8303101f787e2071e2a8711e09ebd979c974d925832bf8717a64011fda",
+}
+
+
+def _goldens_manifest_migration_compatible(previous: dict, current: dict) -> bool:
+    def manifests(value: dict) -> list[dict]:
+        return value.get("compatibility_inputs", {}).get("manifests", [])
+
+    scoped_path = f"{_relative(REPLAY_GOLDENS)}#controls"
+    if _M11_3C_RETIRED_GOLDENS_MANIFEST not in manifests(previous):
+        return False
+    if any(row["path"] == scoped_path for row in manifests(previous)):
+        return False
+    if not any(row["path"] == scoped_path for row in manifests(current)):
+        return False
+
+    # Everything the migration does not retire must still match exactly, including
+    # every other manifest, the compatibility WAVs, and both contract hashes.
+    def survivors(value: dict) -> dict:
+        kept = [
+            row
+            for row in manifests(value)
+            if row != _M11_3C_RETIRED_GOLDENS_MANIFEST and row["path"] != scoped_path
+        ]
+        return {
+            **value,
+            "compatibility_inputs": {**value.get("compatibility_inputs", {}), "manifests": kept},
+        }
+
+    return survivors(previous) == survivors(current)
 
 
 # One-time M11.3 migration, pinned to exactly one prior fingerprint so it can never

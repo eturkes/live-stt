@@ -9,10 +9,22 @@ CPU-variable.
 Run when the pipeline's segmentation/decode behavior intentionally changes
 (e.g. VAD tuning, engine swap), then review the JSON diff before committing:
 
-    uv run python tests/gen_replay_goldens.py            # all engines (k2v2, parakeet)
+    uv run python tests/gen_replay_goldens.py
 
-An engine whose weights are absent is skipped with a warning (the others still
-regenerate); rerun with that engine's models present to refresh its goldens.
+MATRIX, not a product: the sherpa engines take every clip because their decode is
+CPU-deterministic and costs milliseconds, while whisper takes ONE clip because each
+of its rows is an accelerator-bound decode. `long` is that clip on measured VAC
+depth -- it drives 13 StreamingProcessor.process calls and commits 51 characters
+through LocalAgreement-2, where the shorter `greet` commits 0 and exercises the
+speech-end flush alone.
+
+A cell the local machine cannot run (absent weights, absent WAV, absent
+accelerator) carries its committed row forward instead of vanishing, because a
+whisper regeneration on a box with no NPU would otherwise silently delete the
+committed whisper row. Rows outside the matrix are dropped. Both are reported.
+
+For whisper, source the accel farm and clear PYTHONPATH first (see
+.agent/memory.md); without the farm the NPU aborts on a missing compiler loader.
 
 The bench WAVs live under the deny-listed spike/backends/cache/; this script's
 runtime reads are unaffected (L-016), and the path is constructed here rather
@@ -29,11 +41,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import replay  # noqa: E402  (after sys.path injection)
-from live_stt import check_models  # noqa: E402
+from live_stt import ASR_DEVICE, WHISPER_ENGINES, check_device, check_models  # noqa: E402
 
 CACHE = ROOT / "spike" / "backends" / "cache"
 GOLDENS = ROOT / "tests" / "replay_goldens.json"
-ENGINES = ["k2v2", "parakeet"]
+# The one whisper clip, chosen on measured VAC depth (see the module docstring).
+WHISPER_CLIPS = ["long"]
 
 # Ported from the retired spike/backends/scenarios.py — (id, ja_ref, purpose).
 # `purpose` documents the expected segmentation; the asserted values come from
@@ -73,38 +86,68 @@ def all_clips():
     return clips
 
 
+def matrix() -> dict[str, list[str]]:
+    """Engine -> the clip ids it snapshots. Explicit, never a Cartesian product.
+
+    Validated here rather than at use: an unknown or repeated id would otherwise
+    surface as a bare KeyError deep in the run, or as a silently overwritten row.
+    """
+    every = [cid for cid, _ref, _purpose in all_clips()]
+    cells = {"k2v2": every, "parakeet": every, "whisper": WHISPER_CLIPS}
+    for engine, cids in cells.items():
+        if unknown := [c for c in cids if c not in every]:
+            raise ValueError(f"matrix[{engine}]: unknown clip id(s) {unknown}; known: {every}")
+        if len(set(cids)) != len(cids):
+            raise ValueError(f"matrix[{engine}]: duplicate clip id(s) in {cids}")
+    return cells
+
+
 def main():
     if not CACHE.exists():
         print(f"cache dir absent: {CACHE}", file=sys.stderr)
         sys.exit(1)
+    meta = {cid: (ja_ref, purpose) for cid, ja_ref, purpose in all_clips()}
+    cells = matrix()
+    prior = json.loads(GOLDENS.read_text(encoding="utf-8")) if GOLDENS.exists() else {}
+    for engine, rows in prior.items():
+        for cid in rows:
+            if cid not in cells.get(engine, ()):
+                print(f"drop {engine}/{cid}: outside the matrix", file=sys.stderr)
     out: dict[str, dict] = {}
-    for engine in ENGINES:
-        err = check_models(engine)
-        if err:
-            print(f"skip engine {engine}: {err.splitlines()[0]}", file=sys.stderr)
-            continue
-        out[engine] = {}
-        for cid, ja_ref, purpose in all_clips():
+    for engine, cids in cells.items():
+        blocked = check_models(engine) or check_device(engine)
+        rows = {}
+        for cid in cids:
             wav = CACHE / f"{cid}.wav"
-            if not wav.exists():
-                print(f"skip {engine}/{cid}: {wav.name} absent", file=sys.stderr)
+            why = blocked or (None if wav.exists() else f"{wav.name} absent")
+            if why:
+                # Carry the committed row forward: a whisper regeneration on a box
+                # with no NPU must not silently delete the committed whisper row.
+                kept = prior.get(engine, {}).get(cid)
+                verb = "omit" if kept is None else "keep"
+                print(f"{verb} {engine}/{cid}: {why.splitlines()[0]}", file=sys.stderr)
+                if kept is not None:
+                    rows[cid] = kept
                 continue
             rep = replay.replay_wav(wav, engine)
-            out[engine][cid] = {
-                "ja_ref": ja_ref,
-                "purpose": purpose,
-                "n_segments": rep["n_segments"],
-                "segments": [
-                    {"start": s["start"], "n": s["n"], "text": s["text"]} for s in rep["segments"]
-                ],
-            }
+            ja_ref, purpose = meta[cid]
+            row: dict[str, object] = {"ja_ref": ja_ref, "purpose": purpose}
+            if engine in WHISPER_ENGINES:
+                row["device"] = ASR_DEVICE
+            row["n_segments"] = rep["n_segments"]
+            row["segments"] = [
+                {"start": s["start"], "n": s["n"], "text": s["text"]} for s in rep["segments"]
+            ]
+            rows[cid] = row
             texts = " | ".join(s["text"] for s in rep["segments"] if s["text"])
             print(
-                f"{engine}/{cid}: {rep['n_segments']} seg, "
-                f"rtf {rep['overall_rtf']:.3f} :: {texts}"
+                f"{engine}/{cid}: {rep['n_segments']} seg, rtf {rep['overall_rtf']:.3f} :: {texts}"
             )
+        if rows:
+            out[engine] = rows
     GOLDENS.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {GOLDENS.relative_to(ROOT)} ({len(out)} engines)")
+    n_rows = sum(len(r) for r in out.values())
+    print(f"wrote {GOLDENS.relative_to(ROOT)} ({len(out)} engines, {n_rows} rows)")
 
 
 if __name__ == "__main__":

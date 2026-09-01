@@ -3078,8 +3078,8 @@
           },
           {
             "bytes": 10673,
-            "path": "tests/replay_goldens.json",
-            "sha256": "35760b8303101f787e2071e2a8711e09ebd979c974d925832bf8717a64011fda"
+            "path": "tests/replay_goldens.json#controls",
+            "sha256": "f514502aa46f4eaf4e1e5ffc154cee149f6310f818d26f5d567fb5d8e251c9f6"
           },
           {
             "bytes": 7243,

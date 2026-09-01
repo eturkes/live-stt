@@ -20,8 +20,10 @@ cannot execute here.
 
 Determinism: for a given WAV + sherpa engine, segment boundaries (start, n) and
 transcript text are reproducible (silero VAD + sherpa offline decode are
-deterministic on CPU), which is why the goldens key on those engines. Whisper on
-an accelerator is not covered by that claim. Decode latency / RTF are
+deterministic on CPU), which is why the goldens key on every clip for those
+engines. Whisper reproduces per (clip, engine, DEVICE) -- measured on NPU, one
+committed clip -- so its golden row records the device it was produced on and is
+not a claim about whisper anywhere else. Decode latency / RTF are
 CPU-variable — reported for inspection, never used as a pass/fail signal (see
 tests/test_replay.py).
 """

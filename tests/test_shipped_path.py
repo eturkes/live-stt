@@ -697,7 +697,12 @@ def test_a_long_caption_is_tail_truncated_to_the_terminal_width(monkeypatch):
 
 
 def run_cli(monkeypatch, *argv):
-    """Run `main()` with the model preflight and the session stubbed out."""
+    """Run `main()` with both preflights and the session stubbed out.
+
+    `check_device` is stubbed alongside `check_models` because it is the sibling
+    preflight: unstubbed it probes the real accelerator, so these CLI tests would
+    pass or fail on whether the host running them happens to have an NPU.
+    """
     seen = {}
     monkeypatch.setattr(sys, "argv", ["live-stt", *argv])
 
@@ -705,10 +710,15 @@ def run_cli(monkeypatch, *argv):
         seen["preflight"] = engine
         return None
 
+    def check_device(engine, device=live_stt.ASR_DEVICE):
+        seen["device_preflight"] = (engine, device)
+        return None
+
     async def run_session(args):
         seen["args"] = args
 
     monkeypatch.setattr(live_stt, "check_models", check_models)
+    monkeypatch.setattr(live_stt, "check_device", check_device)
     monkeypatch.setattr(live_stt, "run_session", run_session)
     live_stt.main()
     return seen
@@ -726,6 +736,9 @@ def test_the_asr_device_flag_reaches_the_session_and_the_banner(monkeypatch, cap
 
     assert seen["args"].asr_device == "GPU"
     assert "local OpenVINO GPU" in capsys.readouterr().out
+    # The preflight must be asked about the REQUESTED device, or a run on an
+    # absent accelerator clears a check aimed at the default one.
+    assert seen["device_preflight"] == ("whisper", "GPU")
 
 
 def test_a_sherpa_engine_is_announced_as_sherpa_not_openvino(monkeypatch, capsys):
