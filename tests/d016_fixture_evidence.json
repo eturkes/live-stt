@@ -1,0 +1,19 @@
+{
+  "deterministic": {
+    "corpora": {
+      "demo": { "reference_chars": 120, "duration_s": 12.5 }
+    },
+    "arms": {
+      "demo_vac": { "cer": 0.0421, "I": 0, "segments": 3 }
+    }
+  },
+  "measurements": {
+    "arms": {
+      "demo_vac": { "lag_median_s": 2.101, "rtf": 0.512 }
+    }
+  },
+  "derived": {
+    "demo_rtf_range": [0.48, 0.6],
+    "demo_zero_metric": 0
+  }
+}

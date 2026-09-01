@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "claims": [
+    {
+      "id": "C1",
+      "claim": "demo corpus N=120 reference characters",
+      "claim_value": 120,
+      "metric": "reference_chars",
+      "corpus": null,
+      "arm": null,
+      "device": null,
+      "disposition": "absent",
+      "evaluator_key_path": null,
+      "replacement": null,
+      "legacy_source": { "status": "absent", "path": null, "key": null, "stored_value": null },
+      "note": "No producer artifact carries this value."
+    },
+    {
+      "id": "C2",
+      "claim": "demo VAC lag median 2.1 s",
+      "claim_value": 2.1,
+      "metric": "lag_median_s",
+      "corpus": null,
+      "arm": "vac",
+      "device": "NPU",
+      "disposition": "absent",
+      "evaluator_key_path": null,
+      "replacement": null,
+      "legacy_source": { "status": "absent", "path": null, "key": null, "stored_value": null },
+      "note": "No producer artifact carries this value."
+    },
+    {
+      "id": "C3",
+      "claim": "demo VAC insertions 0",
+      "claim_value": 0,
+      "metric": "insertions",
+      "corpus": null,
+      "arm": "vac",
+      "device": "NPU",
+      "disposition": "absent",
+      "evaluator_key_path": null,
+      "replacement": null,
+      "legacy_source": { "status": "absent", "path": null, "key": null, "stored_value": null },
+      "note": "No producer artifact carries this value."
+    },
+    {
+      "id": "C4",
+      "claim": "demo forfeits exactly one feature",
+      "claim_value": 1,
+      "metric": "forfeited_capability_classes",
+      "corpus": null,
+      "arm": null,
+      "device": "NPU",
+      "disposition": "absent",
+      "evaluator_key_path": null,
+      "replacement": null,
+      "legacy_source": { "status": "absent", "path": null, "key": null, "stored_value": null },
+      "note": "No producer artifact carries this value."
+    },
+    {
+      "id": "C5",
+      "claim": "demo superseded observation CER 0.8402",
+      "claim_value": 0.8402,
+      "metric": "cer",
+      "corpus": null,
+      "arm": "whole_file",
+      "device": "GPU",
+      "disposition": "absent",
+      "evaluator_key_path": null,
+      "replacement": null,
+      "legacy_source": { "status": "absent", "path": null, "key": null, "stored_value": null },
+      "note": "No producer artifact carries this value."
+    },
+    {
+      "id": "C6",
+      "claim": "demo host file mode is 400",
+      "claim_value": 400,
+      "metric": "file_mode",
+      "corpus": null,
+      "arm": null,
+      "device": null,
+      "disposition": "absent",
+      "evaluator_key_path": null,
+      "replacement": null,
+      "legacy_source": { "status": "absent", "path": null, "key": null, "stored_value": null },
+      "note": "No producer artifact carries this value."
+    }
+  ]
+}
