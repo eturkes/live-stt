@@ -13,18 +13,6 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-- **P-013 — `--context` is a shipped CLI flag with no README row.** `pri=3` `size=S`
-  - why: README's option table (`--engine`, `--asr-device`, `--no-translate`, `-o`, `--no-save`,
-    `--device`, `--list-devices`) skips `--context TEXT` entirely, and `--asr-device`'s row is the
-    only place "session term biasing" is named — so the one user-facing correction channel for a
-    mis-recognised name is undiscoverable from the doc. D-015's memory entry claimed README cited it;
-    that citation never existed and is now removed.
-  - evidence: `live_stt.py:1528` defines `--context`; `/usr/bin/rg -- '--context' README.md` is empty.
-  - acceptance: README's option table carries a `--context TEXT` row in ASD-STE100 register (L-021),
-    naming what the seed does (trusted at once, never evicted, reaches both the recogniser term list
-    and the translator glossary) without restating D-015's internals; `rg -- '--context' README.md`
-    is non-empty and `rg -nP '[\x{2013}\x{2014}]' README.md` stays clean.
-
 - **P-012 — Re-measure the EN rendering learner on ASR output, not clean text.** `pri=3` `size=M`
   - why: `observe_en` (D-015, shipped by P-002) keys a learned English spelling on the JA term the
     recogniser produced. Every P-002 arm ran on clean Aozora text, which is the learner's BEST case:

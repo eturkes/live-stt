@@ -58,6 +58,7 @@ Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-
 |---|---|---|
 | `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.agent/memory.md` D-016 (default), D-010 (sherpa pair) |
 | `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. `GPU` or `CPU` also enable session term biasing, which the NPU rejects. |
+| `--context TEXT` | empty | Japanese topic line for this session. Name anything that must be spelled correctly. The tool trusts these terms at once and keeps them for the whole run. It also learns recurring terms from its own captions, and gives both to the recognizer and to the translator. Everything is forgotten when the session ends. |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
 | `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
