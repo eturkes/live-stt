@@ -26,10 +26,18 @@ goes under Spine flags and to the user instead of running here.
     ≥3 sessions each) and pairings whose key never recurs. The learner stands as shipped if it still
     reduces the rendering count and dead pairings stay near zero; otherwise gate pairing on a term
     seen un-prompted since it was trusted.
-  - prerequisite (first cost of the row): no committed corpus has both audio and a proper noun in
-    ≥10 utterances — `tests/long_form.json`'s chapter-一 WAV puts 兵十 in 8. Under the NPU default the
-    recogniser ignores hotwords, so ASR output does not depend on the arm: one replay yields the
-    caption stream both arms then translate.
+  - **prerequisite, now measured against tree — this row is corpus acquisition first, and that is
+    why it outgrew `size=M`.** Neither committed WAV can carry it, and the shortfall is in CAPTIONS,
+    not sentences: VAC emits one caption per VAD utterance, so a pause-free clip collapses many
+    sentences into one. `retention_probe` is 8 utterances over 182.482 s (D-016(e), committed), so
+    its 松井/森永/フィリピン runs of 13/12/12 sentences land in at most 8 captions. `gongitsune_01.wav`
+    is paused narration whose captions are sentence-sized or larger, and 兵十 occupies 8 clean
+    sentences, so it cannot exceed 8 either (inference from the reference text, not a replay).
+    Acquiring 「ごん狐」 sections 二+ means new pinned audio + Kokoro alignment per section under
+    L-017, then one NPU replay. That replay is arm-independent: under the NPU default the recogniser
+    ignores hotwords, so one caption stream serves every arm.
+  - the honest cheap alternative is NOT available: injecting synthetic recognition noise into the
+    clean corpus measures the noise model, and realism is the whole question.
 
 ## Spine flags
 
