@@ -14,11 +14,18 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Status
 
-- Milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — **IMPLEMENTED**
+- Milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **IN-PROGRESS**
+  (M12.1 OPEN, M12.2 OPEN behind it). Opened by user decision on the P-012 register row, which
+  outgrew polish. `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English
+  spelling on the JA string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text —
+  the learner's best case. Live the key is a hypothesis, so two modes are unmeasured: **(a) dead
+  pairing** — a mis-recognised name pins a correct spelling to a key that never recurs; **(b) split
+  key** — the recogniser alternates JA forms of one name and each form carries its own rendering.
+- Previous milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — **IMPLEMENTED**
   (all units DONE). Both questions M11 opened are answered and both answers are green: the VAC
   branch does not drop audio in real time (M11.4, with a 1.25-1.75× reserve), and D-016's retention
-  CER is real (M11.5, 0.0583 reproduced exactly). Next = **PLANNING a new milestone**, since the
-  2026-09-02 posture retired judgment-review sessions (L-032, D-012).
+  CER is real (M11.5, 0.0583 reproduced exactly). Judgment-review sessions were retired on
+  2026-09-02 (L-032, D-012), so IMPLEMENTED is this project's terminal milestone state.
 - **M11's apparatus was cut on 2026-09-02** — 21,038 lines deleted across 20 files. Gone: the
   tournament stack (`eval_models`, `eval_streaming`, `fetch_eval_*`, their tests and baselines), the
   D-016 claim registry + validator + fixtures, the VAC evaluator (`eval_vac`, never produced an
@@ -49,9 +56,50 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Open (do these; lowest ID first)
 
-**None — M11 is IMPLEMENTED, every unit DONE.** The next session runs PLANNING for a new milestone.
-Judgment-review sessions were retired on 2026-09-02 (L-032, D-012), so IMPLEMENTED is this project's
-terminal milestone state: there is no ledger to resume and no MILESTONE-REVIEW to dispatch.
+**M12 sizing fact, measured from tree — read this before either unit.** `ASR_DEVICE = "NPU"` and
+`ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})`, so `WhisperEngine.set_hotwords` drops the list
+and `live_stt.py:1272` computes `biased = frozenset()` on every segment of a default run. Three
+consequences size this whole milestone. **The caption stream is arm-independent** — `SessionContext`
+cannot reach the recogniser on the shipped device, so ONE NPU replay serves every arm and every
+downstream arm is a CPU-only offline replay of that trace (the unlock M11.4 got from
+`vac_decode_trace.json`, applied again). **D-015's anti-feedback half is inert** — no sighting is
+ever prompted, so the lease never expires by prompting and degenerates to "expire 60 segments after
+the last sighting". **The learner's blast radius is the translator brief alone**, never the decode,
+so both failure modes are translation-quality questions and D-016's CER numbers cannot move.
+
+- **M12.1 — Record the shipped path's caption stream and census the target key. [OPEN]**
+  - inputs, all committed and on disk: `spike/backends/cache/gongitsune_01.wav` (288.521 s, sha256
+    pinned at `tests/long_form.json` `build.wav_sha256`, 66 VAD segments), whose reference carries
+    兵十 in 8 of 40 sentences. Seams exist — `replay.replay_recognizer(path, rec, engine, on_update)`
+    with `on_segment` per published caption and `on_update` per streaming update.
+  - acceptance: a committed trace recording per-caption text from a REAL NPU replay, hash-gating the
+    WAV against `long_form.json` before decoding the way `eval_retention.py` gates its probe; plus
+    the derived census for 兵十 — captions containing any form of it, distinct JA surface forms, and
+    which forms reach `CONTEXT_TERM_SUPPORT`=3 sightings in distinct segments.
+  - why this leads instead of corpus acquisition: the census is decisive on its own at N=8. If
+    whisper splits 兵十 across ≥3 forms and none reaches 3 sightings, the learner never fires for
+    that name, mode (b) is confirmed, and no arm matrix was needed. Prior evidence it may: the same
+    reference through the sherpa fallbacks yielded 標準/標十/兵重/氷/ヒュ/漂準/漂銃/銃/十
+    (`tests/long_form.json` `scores`). Whisper should be better; how much better is the measurement.
+  - cost: one NPU replay under the whisper prelude, ~4-6 min warm. Everything after it is free.
+- **M12.2 — Rule on the learner against that trace. [OPEN — needs M12.1]** Branch written now so the
+  next session does not re-derive it; pick by M12.1's census.
+  - **target holds one form across ≥10 captions** → run P-012's arm matrix offline off the trace
+    (learner on/off, 3 sessions each, real `CodexTranslator`, reps interleaved across arms per
+    L-026), counting distinct EN renderings per session and dead pairings. The learner stands as
+    shipped if renderings drop and dead pairings stay near zero.
+  - **target fragments below support** → the arm matrix has nothing to measure and the census IS the
+    result. Record it in D-015 and rule on P-012's named fix on its own merits: gating pairing on "a
+    term seen un-prompted since it was trusted" degenerates on NPU to a plain RECURRENCE gate, since
+    every sighting is un-prompted. That still blocks mode (a) — a key trusted at its 3rd sighting and
+    never seen again cannot pair — at the cost of one extra sighting per pairing.
+  - **target reaches support in 4-9 captions** → the discriminating statistic is dead pairings, not
+    rendering count. Report both and mark the rendering-count arm UNDERPOWERED; do not report its
+    null as a pass (P-002 already spent one null that way on 「走れメロス」).
+  - corpus acquisition — 「ごん狐」 sections 二+, meaning new pinned audio + Kokoro alignment per
+    section under L-017 — is **conditional on the first branch only** and is deliberately not funded
+    up front. Injecting synthetic recognition noise into clean text is not a substitute: it measures
+    the noise model, and realism is the whole question.
 
 ## Done (ID · outcome · decisions/lessons produced)
 
@@ -215,30 +263,32 @@ beyond the backlog/drop status counters · package split beyond `streaming.py` (
 contract fingerprints, claim registries, mutation matrices or per-unit review ledgers.
 
 Carried out of M11's standing scope boundary, still closed: engine/model selection (fixed by D-016) ·
-NPU applicability for the sherpa fallbacks · EN-rendering learning (`polish.md` P-002) · energy per
-watt (RAPL `energy_uj` is mode 400 `nobody:nogroup`, unreadable in-container even under sudo, so
-NPU-vs-GPU perf/W is a host measurement). D-016's declared limits also stand and are not
+NPU applicability for the sherpa fallbacks · energy per watt (RAPL `energy_uj` is mode 400
+`nobody:nogroup`, unreadable in-container even under sudo, so NPU-vs-GPU perf/W is a host
+measurement). **EN-rendering learning left this list by shipping** — it was out of M11's scope, not
+rejected, and `16a842b` landed `observe_en` (D-015); M12 now owns the follow-up question. D-016's declared limits also stand and are not
 re-litigated: the hotwords gain used an ORACLE term list drawn from the reference; long_form absolute
 CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference; one clip per corpus.
 
 ## Decisions pending from user
 
-**One open: what comes after M11.** M11.4's contingency (decouple VAC decode from `audio_q` draining)
-is closed — it came back green with a 1.25-1.75× reserve, so no redesign is due. With M11 IMPLEMENTED
-and its two questions answered, the shipped path is qualified as far as an agent can qualify it, and
-there is no planned scope left. Named options, user picks:
-(a) **`/session-polish`** — 6 open rows, no milestone needed, no user input required to start;
-    P-011 (per-character caption lag) is the one that would retire the last D-016 claim with no live
-    producer, and it needs no new NPU run.
-(b) **A live-mic validation pass** — the user-only debt is now the largest untested surface and only
-    the user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
+**None open — M12 is the funded plan and needs no further input to start.** The polish register is
+EMPTY (every row landed or was closed by ruling), so `/session-polish` has nothing to pick and M12.1
+is the next session's work. Standing options for after M12, none of them blocking:
+(a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
+    user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
     VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.
-(c) **A maintenance pass** (L-018) — dependency/CVE sweep, lock bumps, full gate, re-verify the codex
+(b) **A maintenance pass** (L-018) — dependency/CVE sweep, lock bumps, full gate, re-verify the codex
     leg.
-(d) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
+(c) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
     most of the obvious ones.
 
-(Last resolved: **assurance-apparatus scope** — measurement showed ~11,100 lines of apparatus
+(Last resolved: **the P-012 disposition** — the row asked whether `observe_en` survives real ASR
+output, and re-sizing it against tree showed it was a milestone wearing a `size=M` label. Offered
+(a) close it the way P-009 closed, accepting the learner with D-015's recorded clean-text limit, or
+(b) fund it as a roadmap unit; the user chose **(b)** on 2026-09-02, to be carried out in the next
+session, and authorized the two stale-line corrections in this file at the same time. Before that:
+**assurance-apparatus scope** — measurement showed ~11,100 lines of apparatus
 guarding a 2,108-line personal tool, and the session was blocked writing a third fingerprint-migration
 clause. Offered (a) cut provenance machinery, (b) additionally retire the M10 tournament stack and the
 VAC evaluator, or (c) unblock only and continue the 9-unit tail; the user chose **(b)** on 2026-09-02,
