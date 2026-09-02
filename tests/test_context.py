@@ -126,9 +126,6 @@ def test_hotwords_stay_within_budget():
     assert len(terms) <= CONTEXT_PROMPT_MAX_CHARS
 
 
-
-
-
 def test_hotwords_list_each_term_once():
     """Repetition is what makes a <|startofprev|> payload loop, so spend budget once."""
     ctx = SessionContext(f"{DEPT}の申し送り")

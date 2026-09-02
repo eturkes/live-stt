@@ -10,12 +10,10 @@ cannot be executed: four commits reported "gate passed" while the pyright step
 had silently been dropped from what was actually run, so the step set now lives
 here and `tests/test_gate.py` locks it.
 
-One step is shaped by a measured trap, not preference: `ruff-format` checks
-touched `*.py` files only. Repo-wide is still red on ten files carrying
-pre-existing wrapping drift, so a unit leaves its own files clean and the repo
-converges file by file. The list is filtered to `*.py` because an explicitly
-passed path with another extension is parsed as Python, which makes a `.json`
-argument exit 1 proposing Python layout.
+`ruff-format` checks the repository, not a touched-file list: passing paths
+explicitly is what made the step fragile, because a path with a non-Python
+extension is parsed as Python and a `.json` argument exits 1 proposing Python
+layout. Traversing a directory skips those extensions instead.
 
 Every step here is fast and hermetic. Model scoring is deliberately NOT a gate
 step: `tests/eval_cer.py` and `tests/eval_long_form.py` need gitignored weights
@@ -47,41 +45,21 @@ ENV = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
 class Step:
     name: str
     blocking: bool
-    argv: list[str]  # empty = nothing to check, which passes
+    argv: list[str]
 
 
-def steps(files: list[str]) -> list[Step]:
-    py = [f for f in files if f.endswith(".py")]
+def steps() -> list[Step]:
     return [
         Step("pytest", True, [sys.executable, "-m", "pytest", "-q"]),
         Step("ruff-check", True, [*RUFF, "check", "."]),
-        Step("ruff-format", True, [*RUFF, "format", "--check", *py] if py else []),
+        Step("ruff-format", True, [*RUFF, "format", "--check", "."]),
         Step("pyright", True, [*PYRIGHT, *PROD_FILES]),
         Step("pyright-tests", True, [*PYRIGHT, "tests/"]),
         Step("import", True, [sys.executable, "-c", "import live_stt"]),
     ]
 
 
-def touched_py() -> list[str]:
-    """Python files changed against HEAD, plus untracked ones.
-
-    Renames report their new path, which is the one that must be formatted.
-    """
-
-    def git(*args: str) -> list[str]:
-        out = subprocess.run(["git", *args], capture_output=True, text=True, env=ENV, check=False)
-        return out.stdout.split() if out.returncode == 0 else []
-
-    seen = dict.fromkeys(
-        git("diff", "--name-only", "HEAD") + git("ls-files", "--others", "--exclude-standard")
-    )
-    return [f for f in seen if f.endswith(".py") and os.path.exists(f)]
-
-
 def run(step: Step, verbose: bool) -> bool:
-    if not step.argv:
-        print(f"skip {step.name}: nothing to check", flush=True)
-        return True
     done = subprocess.run(step.argv, capture_output=True, text=True, env=ENV, check=False)
     ok = done.returncode == 0
     label = "pass" if ok else "FAIL"
@@ -95,19 +73,13 @@ def run(step: Step, verbose: bool) -> bool:
 
 
 def main() -> int:
-    names = [s.name for s in steps([])]
+    names = [s.name for s in steps()]
     ap = argparse.ArgumentParser(description="Run the project quality gate.")
     ap.add_argument("--only", choices=names, help="Run one step instead of all of them.")
-    ap.add_argument(
-        "--files",
-        nargs="*",
-        help="Override the touched-file list that the format step checks.",
-    )
     ap.add_argument("-v", "--verbose", action="store_true", help="Print output of every step.")
     args = ap.parse_args()
 
-    files = args.files if args.files is not None else touched_py()
-    selected = [s for s in steps(files) if args.only is None or s.name == args.only]
+    selected = [s for s in steps() if args.only is None or s.name == args.only]
     failed = [s.name for s in selected if not run(s, args.verbose) and s.blocking]
     if failed:
         print(f"gate FAILED: {', '.join(failed)}", flush=True)

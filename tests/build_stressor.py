@@ -300,8 +300,7 @@ def main() -> None:
             "tail_s": TAIL_S,
             "excess_metric": "stressor D - sum(component baseline D), over concat ref chars",
             "excess_includes": (
-                "length + segmentation + constant-power crossfade effects "
-                "(no inserted silence)"
+                "length + segmentation + constant-power crossfade effects (no inserted silence)"
             ),
             "decode_control": "production worker with M9.4 chunking disabled (before-fix QC)",
             "continuity_proof": "every join_samples offset inside a VAD segment",
@@ -339,9 +338,7 @@ def validate(stressors: dict[str, dict], baselines: dict[str, dict]) -> tuple[bo
         # Continuity = every join lies inside a NATURAL (cap-off) speech segment,
         # so no join is a VAD-splittable gap. Cap-off is the honest view: the soft
         # cap's own cut would otherwise masquerade as a "gap" near a join.
-        joins_inside = all(
-            any(s <= jc < s + length for (s, length) in segs_off) for jc in joins
-        )
+        joins_inside = all(any(s <= jc < s + length for (s, length) in segs_off) for jc in joins)
         soft_cap_fired = len(segs_on) > len(segs_off)
 
         order = meta["order"]

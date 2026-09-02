@@ -58,16 +58,12 @@ MANIFEST = TESTS / "long_form.json"
 WAV = CACHE / "gongitsune_01.wav"
 
 ALIGNMENT_URL = (
-    "https://github.com/kaiidams/Kokoro-Speech-Dataset/releases/download/1.3/"
-    "kokoro-speech-v1_3.zip"
+    "https://github.com/kaiidams/Kokoro-Speech-Dataset/releases/download/1.3/kokoro-speech-v1_3.zip"
 )
 ALIGNMENT_SHA256 = "5a4a290672016ebe70372ed3d47063f846d86e2b96aa9e9b9d35161670d9f666"
 ALIGNMENT_MEMBER = "gongitsune-by-nankichi-niimi.metadata.txt"
 
-AUDIO_URL = (
-    "https://archive.org/download/gongitsune_um_librivox/"
-    "gongitsune_01_niimi_64kb.mp3"
-)
+AUDIO_URL = "https://archive.org/download/gongitsune_um_librivox/gongitsune_01_niimi_64kb.mp3"
 AUDIO_SHA256 = "f2dd16a2e9400d54819f0967ccd77a7948b1437dcf739d702f792a3e933fc141"
 AUDIO_FILE = "gongitsune_01_niimi_64kb.mp3"
 AUDIO_SAMPLE_RATE = 22_050
@@ -124,10 +120,7 @@ def alignment_span(raw: bytes) -> tuple[int, int, str]:
         raise ValueError("Kokoro alignment row range is incomplete or reordered")
     if any(row[1] != AUDIO_FILE for row in selected):
         raise ValueError("Kokoro alignment row moved to an unexpected audio file")
-    if any(
-        left[3] != right[2]
-        for left, right in zip(selected, selected[1:], strict=False)
-    ):
+    if any(left[3] != right[2] for left, right in zip(selected, selected[1:], strict=False)):
         raise ValueError("Kokoro alignment rows are no longer sample-contiguous")
     if not selected[0][4].startswith("一 ") or not selected[-1][4].endswith("章 おわり"):
         raise ValueError("Kokoro alignment no longer brackets chapter 一")

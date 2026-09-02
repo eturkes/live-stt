@@ -96,9 +96,7 @@ def test_stressor_gate_rejects_insertion_regression_despite_zero_excess_deletion
     out = {
         "stressors": {
             "k2v2": {"stress_long": {"excess_del_rate": 0.0, "cer": 0.05}},
-            "parakeet": {
-                "stress_long": {"excess_del_rate": 0.0, "cer": MAX_CER + 0.01}
-            },
+            "parakeet": {"stress_long": {"excess_del_rate": 0.0, "cer": MAX_CER + 0.01}},
         }
     }
     failures = validation_failures(out)

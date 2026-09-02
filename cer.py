@@ -31,9 +31,7 @@ _DROP = frozenset("PSZM")  # Unicode major categories stripped before scoring
 def normalize(text: str) -> str:
     """NFKC -> casefold -> drop whitespace + punctuation/symbol/separator/mark."""
     folded = unicodedata.normalize("NFKC", text).casefold()
-    return "".join(
-        c for c in folded if not c.isspace() and unicodedata.category(c)[0] not in _DROP
-    )
+    return "".join(c for c in folded if not c.isspace() and unicodedata.category(c)[0] not in _DROP)
 
 
 def align(ref: str, hyp: str) -> tuple[int, int, int]:

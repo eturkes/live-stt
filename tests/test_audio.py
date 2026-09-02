@@ -163,18 +163,14 @@ def test_ring_wraparound_keeps_absolute_indexing():
         r.append(np.arange(i * 5, i * 5 + 5, dtype=np.float32))
     assert r.total == 25
     # The last 8 samples (17..24) are retained, absolute indices intact.
-    np.testing.assert_array_equal(
-        r.slice(17, 25), np.arange(17, 25, dtype=np.float32)
-    )
+    np.testing.assert_array_equal(r.slice(17, 25), np.arange(17, 25, dtype=np.float32))
 
 
 def test_ring_slice_clamps_to_retained_window():
     r = RingBuffer(8)
     r.append(np.arange(20, dtype=np.float32))
     # Samples 0..11 are gone; a slice reaching back returns only 12..15.
-    np.testing.assert_array_equal(
-        r.slice(0, 16), np.arange(12, 16, dtype=np.float32)
-    )
+    np.testing.assert_array_equal(r.slice(0, 16), np.arange(12, 16, dtype=np.float32))
 
 
 def test_ring_slice_clamps_negative_prepad():
@@ -201,7 +197,7 @@ def test_ring_append_larger_than_capacity():
 
 def test_ring_slice_spanning_wrap_point():
     r = RingBuffer(8)
-    r.append(np.arange(6, dtype=np.float32))   # fills 0..5
+    r.append(np.arange(6, dtype=np.float32))  # fills 0..5
     r.append(np.arange(6, 12, dtype=np.float32))  # wraps: retained 4..11
     np.testing.assert_array_equal(r.slice(4, 12), np.arange(4, 12, dtype=np.float32))
 

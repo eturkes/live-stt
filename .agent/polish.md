@@ -42,18 +42,6 @@ goes under Spine flags and to the user instead of running here.
     trace, and D-016's 2.483 s either reproduced within its own corpus or corrected in place naming
     the superseded value.
 
-- **P-003 — Converge the ten remaining `ruff format` files so the step can go repo-wide.** `pri=2`
-  `size=S`
-  - why: `gate.py`'s format step is per-touched-file because repo-wide is red. M11.1 measured the red
-    set and the recorded justification did not hold: all 19 pre-existing hunks across 11 files are
-    ruff joining wrapped expressions under `line-length = 100`, plus two blank-line fixes. No comment
-    content and no aligned table is at stake, so D-006/L-001 do not defend them. `live_stt.py`
-    converged in M11.1. Re-measure the file list first — the 2026-09-02 cut deleted several of the
-    originally-named files.
-  - acceptance: `python -m ruff format --check .` exits 0 repo-wide; the full gate stays green;
-    `gate.py`'s format step becomes `[*RUFF, "format", "--check", "."]` with the touched-file
-    machinery and its two tests deleted; no comment text changes in the diff.
-
 - **P-008 — Make `replay.py --engine whisper` fail cleanly on a farm-less box.** `pri=2` `size=S`
   - why: `main()` preflights with `check_models` + `check_device`, but the CLI still reaches OpenVINO
     and aborts inside it on a box with no accel farm sourced — the process dies in the native loader
