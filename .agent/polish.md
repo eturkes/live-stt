@@ -30,6 +30,10 @@ goes under Spine flags and to the user instead of running here.
   drop ⇒ this is spine work, so it moves to Spine flags and to the user rather than being fixed here.
   Evidence: `tests/caption_trace.json` (run A, committed); run B was scratch-only and is reproduced
   by rerunning `tests/build_caption_trace.py`.
+  Cheap sampling to claim: **M12.3 replays five more sections on the NPU anyway**, so whichever runs
+  first should record per-caption `decode_s` outliers as it goes — that turns this row's n=2 into
+  n=7 for free, and tells you whether the burst is per-run (once per replay regardless of length) or
+  per-unit-time. Run it before the paced replay and the acceptance check gets a real sample to pace.
 
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its
