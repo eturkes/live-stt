@@ -25,6 +25,23 @@ goes under Spine flags and to the user instead of running here.
     terminal width and status string, plus that an empty partial adds no separator while the status
     is nonempty; mutating the reserved width by one turns it red.
 
+- **P-011 — Measure per-character caption lag on the shipped path.** `pri=3` `size=M`
+  - why: D-016's 2.483 s median lag predates the `on_update` seam and was derived from an evaluator
+    that no longer exists. M11.4 built the seam and scoped itself to drop-freedom, so the lag number
+    is now the one D-016 claim with no live producer. The derivation below was worked out in M11.4
+    and must not be re-derived.
+  - method (fixed, do not re-derive): for each update set `end=commit_audio_s` and `start` = the
+    previous committed endpoint, spread `len(text)` characters uniformly at midpoints
+    `at_i = start + (end-start)*(i+0.5)/len(text)`, and record `lag_i = emit_s - at_i`. On replay
+    derive `emit_s` on the virtual audio clock as `now = max(now, buffer_end_s) + decode_s`. A final
+    update uses the utterance end as `commit_audio_s`. **Never estimate lag from final segments** —
+    that collapses every early VAC commit into one utterance-close event.
+  - evidence: `tests/vac_decode_trace.json` already carries `commit_audio_s`, `buffer_end_s`,
+    `decode_s` and the per-update commit for both pinned clips, so no new NPU run is needed.
+  - acceptance: median and max per-character lag reported for both pinned clips from the committed
+    trace, and D-016's 2.483 s either reproduced within its own corpus or corrected in place naming
+    the superseded value.
+
 - **P-003 — Converge the ten remaining `ruff format` files so the step can go repo-wide.** `pri=2`
   `size=S`
   - why: `gate.py`'s format step is per-touched-file because repo-wide is red. M11.1 measured the red

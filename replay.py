@@ -91,8 +91,12 @@ def load_wav_f32_16k(path: Path) -> np.ndarray:
     return np.ascontiguousarray(data, dtype=np.float32)
 
 
-async def _run_recognizer(samples: np.ndarray, rec) -> list[dict]:
-    """Drive the real worker() with an already-loaded offline recognizer."""
+async def _run_recognizer(samples: np.ndarray, rec, on_update=None) -> list[dict]:
+    """Drive the real worker() with an already-loaded offline recognizer.
+
+    ``on_update`` is forwarded untouched to `worker`; it fires per streaming
+    update on the VAC engines and never on the sherpa path.
+    """
     vad, window = make_vad()
     audio_q: asyncio.Queue = asyncio.Queue()
     # Keep replay blocks within live AudioQueue's 2 s headroom. VAD framing is
@@ -109,7 +113,7 @@ async def _run_recognizer(samples: np.ndarray, rec) -> list[dict]:
             {"start": start, "n": n, "seg_len": seg_len, "decode_s": decode_s, "text": text}
         )
 
-    await worker(rec, vad, window, audio_q, state, None, None, on_segment)
+    await worker(rec, vad, window, audio_q, state, None, None, on_segment, None, on_update)
     # worker() intentionally converts a stage exception into session shutdown
     # for the live app. Replay is an evaluator, so turn that signal back into a
     # hard failure rather than committing a partial/empty transcript as golden.
@@ -155,7 +159,7 @@ def build_report(engine: str, wav: str, samples: np.ndarray, rows: list[dict]) -
     }
 
 
-def replay_recognizer(path, rec, engine: str) -> dict:
+def replay_recognizer(path, rec, engine: str, on_update=None) -> dict:
     """Replay a WAV through the worker with an already-loaded recognizer.
 
     The real worker() prints its live `JA n:` lines via emit_line; capture that
@@ -163,7 +167,7 @@ def replay_recognizer(path, rec, engine: str) -> dict:
     """
     samples = load_wav_f32_16k(Path(path))
     with contextlib.redirect_stdout(io.StringIO()):
-        rows = asyncio.run(_run_recognizer(samples, rec))
+        rows = asyncio.run(_run_recognizer(samples, rec, on_update))
     return build_report(engine, str(path), samples, rows)
 
 

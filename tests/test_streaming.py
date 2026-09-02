@@ -157,9 +157,7 @@ def test_trim_is_lossless_across_repeated_cuts():
 
 
 def test_force_trim_past_hard_limit_counts_and_shrinks():
-    p = StreamingProcessor(
-        decode=scripted(("あ", segs((0.0, 1.0, "あ")))), buffer_trim_s=8.0
-    )
+    p = StreamingProcessor(decode=scripted(("あ", segs((0.0, 1.0, "あ")))), buffer_trim_s=8.0)
     p.insert_audio(audio(29.0))
     p.process()
     assert p.forced_trims == 1
@@ -301,3 +299,50 @@ def test_vac_reports_each_utterance_once_to_on_segment():
 
     asyncio.run(scenario())
     assert len(seen) == 2
+
+
+def test_vac_reports_each_decode_once_to_on_update():
+    """The M11.4 seam: one call per process(), in order, rebuilding the published line.
+
+    Recording by keyword pins the argument ORDER too, so a reordered signature
+    fails here instead of silently mislabelling a measured decode cost.
+    """
+    rec, vad = _StubRec(), _StubVad([True] * 30 + [False] * 5 + [True] * 30 + [False])
+    state = live_stt.State()
+    q = asyncio.Queue()
+    for _ in range(66):
+        q.put_nowait(np.zeros(1600, dtype=np.float32))
+    q.put_nowait(None)
+    lines, updates = [], []
+
+    def record(buffer_s, buffer_end_s, commit_audio_s, text, final, decode_s):
+        updates.append(
+            {
+                "buffer_s": buffer_s,
+                "buffer_end_s": buffer_end_s,
+                "commit_audio_s": commit_audio_s,
+                "text": text,
+                "final": final,
+                "decode_s": decode_s,
+            }
+        )
+
+    async def scenario():
+        original = live_stt.emit_line
+        live_stt.emit_line = lambda _tag, _seq, text, _f: lines.append(text)
+        try:
+            await live_stt._vac_segments(rec, vad, 1600, q, state, None, on_update=record)
+        finally:
+            live_stt.emit_line = original
+
+    asyncio.run(scenario())
+    assert len(updates) == len(rec.seen)  # exactly one per decode, never batched
+    finals = [i for i, u in enumerate(updates) if u["final"]]
+    assert len(finals) == len(lines) == 2  # one flush per utterance, and it is last
+    for line, start, end in zip(lines, [0, finals[0] + 1], finals, strict=True):
+        assert "".join(u["text"] for u in updates[start : end + 1]) == line
+    # buffer_end_s is the absolute audio clock, so it only advances; the buffer
+    # itself is a window on that clock, and cost is never negative.
+    pairs = zip(updates, updates[1:], strict=False)
+    assert all(a["buffer_end_s"] < b["buffer_end_s"] for a, b in pairs)
+    assert all(0 < u["buffer_s"] <= u["buffer_end_s"] and u["decode_s"] >= 0 for u in updates)

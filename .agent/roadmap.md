@@ -15,8 +15,7 @@ unit touches decode quality, a CER number the commit body records.
 ## Status
 
 - Milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — IN-PROGRESS.
-  **2 units remain, both OPEN**: M11.4 (VAC real-time drop-freedom) and M11.5 (the unsourced
-  retention CER). Next = **M11.4**.
+  **1 unit remains**: M11.5 (the unsourced retention CER). Next = **M11.5**.
 - **M11's apparatus was cut on 2026-09-02** — 21,038 lines deleted across 20 files. Gone: the
   tournament stack (`eval_models`, `eval_streaming`, `fetch_eval_*`, their tests and baselines), the
   D-016 claim registry + validator + fixtures, the VAC evaluator (`eval_vac`, never produced an
@@ -37,8 +36,9 @@ unit touches decode quality, a CER number the commit body records.
   fallback (D-010). Degrades to JA-only when codex is absent/failing.
 - Agent-covered: VAC buffer mechanics + the VAC loop over stubbed VAD/recogniser; `SessionContext`
   learning rules; the shipped CLI/routing surface; two-engine short goldens + CER stressors + 4:48
-  narration **on the sherpa fallback only**; deterministic 44.722 s paced backpressure **on the
-  sherpa fallback only**; shutdown/stage-failure/translation-degradation mechanics.
+  narration **on the sherpa fallback only**; deterministic paced backpressure on BOTH branches —
+  44.722 s at RTF 0.20 on the sherpa fallback, 44.722 s + 182.482 s at real per-update NPU cost on
+  the shipped VAC path (M11.4); shutdown/stage-failure/translation-degradation mechanics.
 - User-only debt: latency feel, `-o`, soak, sustained live cadence, Ctrl+C-mid-decode, and the whole
   VAC partial-caption cadence (`.agent/memory.md` § Smoke, L-004).
 
@@ -58,54 +58,7 @@ D-016's declared limits stand and are not re-litigated: the hotwords gain used a
 drawn from the reference; long_form absolute CER is inflated by period-vs-modern orthography in the
 「ごん狐」 reference; one clip per corpus.
 
-- **M11.4 — Does the VAC path drop audio in real time? [OPEN]**
-
-  The real-time guarantee does not cover the shipped branch. `tests/eval_backpressure.py:116-196`
-  forces legacy dispatch (`worker(object(), …)`), charges each decode `closed_segment × RTF` at
-  default RTF 0.20 (`:60-61`), and asserts a nonzero segment queue (`:253-268`). VAC has no segment
-  queue: it re-decodes an open, growing, trimmed buffer every 1 s and **awaits each decode inside the
-  coroutine draining `audio_q`** (`live_stt.py:1122`, `:1149-1187`, `:1196-1223`), so VAD feeding
-  pauses during decode while capture buffers into 2 s only (`live_stt.py:37`, `:492-518`).
-  `README.md:80` claims the opposite — "Capture and VAD feeding continue during decode." Aggregate
-  RTF 0.48-0.60 proves mean compute < real time, never bounded maximum blockage. Drop-freedom on the
-  shipped path is **unmeasured, not disproved**.
-
-  Three pieces, one unit, one commit:
-  1. **Observation seam.** Per-`StreamingProcessor.process` hook on `_vac_segments` carrying the
-     committed text, the commit audio endpoint that `live_stt.py:1155` (`commit, _ = await
-     loop.run_in_executor(...)`) discards, the buffer end, and the decode duration; passed through
-     `worker` and `replay.py` beside `on_segment` (D-014's sanctioned observation-hook precedent).
-     Fires exactly once per call, in order. Keep the deterministic fields separate from the measured
-     duration. This is now ~25 lines: the fingerprint that made it expensive is deleted.
-  2. **Real per-update decode costs.** Replay both pinned corpora through the shipped NPU path with
-     the seam attached and keep the ordered `(buffer_s, decode_s)` pairs. `.scratch/` holds only
-     three-repeat medians at 2/5/10/20/30 s, which cannot pace a 1 s cadence.
-  3. **Paced VAC scenario** in `tests/eval_backpressure.py`: a `decode_segments` recogniser, real
-     silero, production cadence and trim, executor interception selecting cost by current buffer
-     duration, and segment-queue depth asserted **exactly zero** in place of the legacy
-     `0 < depth <= SEGMENT_QUEUE_MAX`.
-
-  Acceptance: the 44.722 s stressor and the 182 s retention clip both run paced at 20 ms with
-  `state.dropped == 0`; a deliberately overloading trace produces a nonzero drop, proving the check
-  is not vacuously green; committed queue high-water and maximum-contiguous-decode bounds; report
-  `StreamingProcessor.forced_trims` (it already exists — a nonzero count means the trim rule failed
-  and discarded un-emitted audio, so surface it rather than asserting it away). Close by correcting
-  `README.md:80` to what was measured and updating § Smoke's VAC observables.
-
-  Red result — any dropped block, maximum contiguous decode reaching the 2.0 s queue headroom, or
-  backlog repeated sub-2 s updates cannot clear — **stops and reaches the user**: decoupling decode
-  from `audio_q` draining changes concurrency, buffer ownership, failure coupling and shutdown order,
-  and that redesign is the user's call, not a branch inside this unit.
-
-  Per-character lag definition, if lag is wanted alongside drop-freedom (derived, do not re-derive):
-  for each update set `end=commit_audio_s`, `start` = previous committed endpoint, spread
-  `len(text)` characters uniformly at midpoints `at_i = start + (end-start)*(i+0.5)/len(text)`, and
-  record `lag_i = emit_s - at_i`; on replay derive `emit_s` on the virtual audio clock as
-  `now = max(now, buffer_end_s) + decode_s`. A final update uses the utterance end as
-  `commit_audio_s`. Never estimate lag from final segments — that collapses every early VAC commit
-  into one utterance-close event.
-
-- **M11.5 — Is D-016's retention CER 0.0583 real? [OPEN; after M11.4]**
+- **M11.5 — Is D-016's retention CER 0.0583 real? [OPEN]**
 
   **The number is confirmed unsourced.** Every `.scratch/` JSON, MD and log was searched; nothing
   produces it, and only the planning reports repeat it. The search is credited by its positive
@@ -115,8 +68,7 @@ drawn from the reference; long_form absolute CER is inflated by period-vs-modern
 
   Re-derive it: replay `retention_probe.wav` through the shipped NPU/VAC path and score with `cer.py`
   against `tests/retention_probe.json`'s `probe.ja_ref`. Prior warm-cache timing puts one pass near
-  4.6 min. M11.4 precedes it because a decode/ingest redesign there would obsolete a number measured
-  before it.
+  4.6 min. M11.4 closed green with no ingest redesign, so nothing invalidates a number measured now.
 
   Acceptance: the retention CER and its `I` are re-measured from committed inputs and recorded in the
   commit body; D-016 in `.agent/memory.md` either keeps 0.0583 with the reproduction recorded beside
@@ -169,6 +121,36 @@ drawn from the reference; long_form absolute CER is inflated by period-vs-modern
   (`vac_baseline.json` was never written). The fingerprint's own record indicts it: three units in a
   row each had to hand-write a pinned migration clause to make a legitimate code change, and M11.3d
   was blocked outright because `replay.py` was hashed whole. Git holds the code.
+- **M11.4 — Does the VAC path drop audio in real time? [DONE] — no, with a 1.25-1.75× reserve.**
+  Three pieces, one commit. (1) `on_update` seam through `_vac_segments`/`worker`/`replay.py`: one
+  call per `StreamingProcessor.process`, in order, carrying `(buffer_s, buffer_end_s,
+  commit_audio_s, text, final, decode_s)` — five deterministic fields plus the one measured one, and
+  it is what recovers the commit audio endpoint `live_stt.py` discarded at `commit, _ = await …`.
+  (2) `tests/build_vac_trace.py` → `tests/vac_decode_trace.json`: real per-update NPU decode cost for
+  both pause-free clips, plus the hypothesis behind each. Storing the hypotheses is the unlock —
+  `StreamingProcessor` is a pure function of decode outputs and buffer lengths, so replaying them
+  reproduces the measured commit/trim trajectory with no model. (3) `eval_backpressure.py` VAC arm +
+  4 tests: a `decode_segments` trace recogniser, real silero, production cadence/trim, executor
+  interception charging each decode its recorded cost, and `max_segment_depth == 0` in place of the
+  legacy `0 < depth <= 8`. Five tests: the seam's exactly-once/in-order contract over the stubbed
+  VAD, both clips drop-free, and the two guards below.
+  **Result — 44.722 s stressor / 182.482 s retention, paced at 20 ms:** `dropped == 0`, `divergences
+  == 0` (44/44 and 180/180 updates on-trajectory), `forced_trims == 0`, segment queue 0, audio-queue
+  high-water **0.760 s / 1.060 s** of 2.000 s, longest contiguous decode **0.764 s / 1.006 s**, duty
+  0.544 / 0.642, buffer capped at 11.248 s by the trim rule. Contiguous == max single decode in both,
+  which proves one update fires per queue drain and updates never bunch.
+  **Two guards make that non-vacuous**, both committed tests: the same replay at ×4 decode cost
+  drops, and a series shifted by one update reports 44/44 divergences while still dropping nothing —
+  so the divergence counter, not the drop counter, is what certifies each cost was charged to the
+  buffer it was measured on. `SCALE_LADDER` reports the margin: dropping starts at ×1.5 (retention)
+  and ×2.0 (stressor).
+  **Honest limits.** Decode cost varies ~20 % run to run (max 0.949 → 0.764 s across two builds), so
+  the committed trace is one sample and the ladder is the margin around it. The retention queue
+  high-water drifts 0.84 → 1.06 s across the clip as mean decode rises 0.606 → 0.674 s; duty < 1 and
+  the 11.248 s buffer cap bound it, but the trend is real. Lag was not measured — the derivation is
+  parked as `polish.md` P-011. `README.md`'s "Capture and VAD feeding continue during decode" was
+  false for the shipped branch and is corrected to what was measured. Suite 207 → **212 tests /
+  14.8 s**; `main=94% 225K/240K`.
 - **T1–T8 · pre-milestone build-out [CLOSED].** `8ec8482..e3a654c`. Timestamped `-o` output,
   `--list-devices`/`--device`, partial-turn shutdown flush, structured logging, the `.githooks/`
   pytest hook (D-007), the sherpa-onnx + silero local STT leg replacing Gemini (D-009/D-010),

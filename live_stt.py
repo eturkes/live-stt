@@ -1116,7 +1116,16 @@ async def _decode_segments(
 
 
 async def _vac_segments(
-    rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None, context=None
+    rec,
+    vad,
+    window,
+    audio_q,
+    state,
+    output_file,
+    translator=None,
+    on_segment=None,
+    context=None,
+    on_update=None,
 ):
     """Silero-controlled streaming: partial captions during speech, one line at its end.
 
@@ -1149,14 +1158,21 @@ async def _vac_segments(
     async def update(final: bool) -> None:
         nonlocal utterance, utterance_decode_s
         assert processor is not None
+        # Read before the call: process() trims, and the cost of a decode is set
+        # by the buffer that decode actually saw.
+        buffer_s = len(processor.audio) / SAMPLE_RATE
+        buffer_end_s = processor.offset_s + buffer_s
         started = time.perf_counter()
-        commit, _ = await loop.run_in_executor(None, processor.process)
+        commit, commit_audio_s = await loop.run_in_executor(None, processor.process)
+        decode_s = time.perf_counter() - started
         if final:
             commit += processor.finish()
-        utterance_decode_s += time.perf_counter() - started
+        utterance_decode_s += decode_s
         if commit:
             utterance += commit
             state.partial = utterance
+        if on_update is not None:
+            on_update(buffer_s, buffer_end_s, commit_audio_s, commit, final, decode_s)
 
     async def finalize() -> None:
         """Close the open utterance: flush its tail, then publish it once."""
@@ -1221,13 +1237,31 @@ async def _vac_segments(
 
 
 async def worker(
-    rec, vad, window, audio_q, state, output_file, translator=None, on_segment=None, context=None
+    rec,
+    vad,
+    window,
+    audio_q,
+    state,
+    output_file,
+    translator=None,
+    on_segment=None,
+    context=None,
+    on_update=None,
 ):
     """Feed VAD and decode concurrently; a None audio sentinel drains both stages.
 
     ``on_segment`` retains replay's observation-only contract: one call per
     popped VAD segment as ``(start, n, seg_len, decode_s, text)``, including
     empty text and reporting internally chunked decode as one merged segment.
+
+    ``on_update`` is the same contract one level down and VAC-only: one call per
+    ``StreamingProcessor.process``, in order, as ``(buffer_s, buffer_end_s,
+    commit_audio_s, text, final, decode_s)``. It is what makes the streaming
+    branch measurable -- the commit's audio endpoint is the only honest latency
+    reference and the loop otherwise discards it, and the decoded buffer duration
+    is what sets each decode's cost. The first five fields are deterministic for
+    a given (clip, engine, device); ``decode_s`` alone is measured, so a consumer
+    can pin the former and report the latter.
     """
     segment_q: asyncio.Queue = asyncio.Queue(maxsize=SEGMENT_QUEUE_MAX)
     try:
@@ -1235,7 +1269,16 @@ async def worker(
         # only for engines that return them; sherpa keeps the VAD-segment path.
         if hasattr(rec, "decode_segments"):
             await _vac_segments(
-                rec, vad, window, audio_q, state, output_file, translator, on_segment, context
+                rec,
+                vad,
+                window,
+                audio_q,
+                state,
+                output_file,
+                translator,
+                on_segment,
+                context,
+                on_update,
             )
             return
         async with asyncio.TaskGroup() as tasks:

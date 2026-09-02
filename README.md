@@ -83,21 +83,24 @@ Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so 
 1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 2 seconds of PCM, independent of callback block size.
 2. **Endpoint.** a dedicated feeder drains capture into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
 3. **Re-slice + queue.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) and copied into an 8-segment queue.
-4. **Decode.** For `--engine whisper`, silero controls a growing buffer: speech-start opens it, every second re-decodes it, and text is committed once two decodes agree (LocalAgreement-2). Committed text appears on the status line immediately; the numbered `JA n:` line lands at the end of the utterance. Decode RTF is 0.48-0.60 on the NPU. The sherpa engines instead decode each closed VAD segment (RTF ≈ 0.05 on 8 cores). Capture and VAD feeding continue during decode; sustained overload shows as `seg=`, then `q=` / `drop=` on the meter.
+4. **Decode.** For `--engine whisper`, silero controls a growing buffer: speech-start opens it, every second re-decodes it, and text is committed once two decodes agree (LocalAgreement-2). Committed text appears on the status line immediately; the numbered `JA n:` line lands at the end of the utterance. Decode RTF is 0.48-0.60 on the NPU. The sherpa engines instead decode each closed VAD segment (RTF ≈ 0.05 on 8 cores).
+
+   The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture buffers into the 2 s queue meanwhile. Measured on the NPU, the longest single wait was 1.006 s over 182 s of pause-free speech, and nothing was dropped. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
 ### Long speech and long sessions
 
 Silero's 20 s `max_speech_duration` is a soft endpointing hint, not a hard cut: pause-free speech can remain one VAD segment beyond it. Segments up to 10 s keep the ordinary one-pass decode path. Longer segments are split internally into balanced ~2 s views, with each cut moved to a nearby low-energy window and 0.18 s of overlap protecting cut phonemes. Exact text overlap is removed, then the merged result is emitted as one `JA n:` line, so internal chunking does not create extra user-visible utterances.
 
-Capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
+On the sherpa engines, capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
 
-The regression suite covers two distinct long-form shapes:
+The regression suite covers three distinct long-form shapes:
 
 - A 44.7 s genuinely continuous stressor forces the chunked path and CER-gates both engines. The same audio, paced as 20 ms callbacks with decode RTF 0.20, remains drop-free through the two-stage worker.
+- The shipped whisper path is paced on real NPU decode costs, one per streaming update, recorded from both pause-free clips. Both replays drop nothing: the queue peaks at 0.760 s and 1.060 s of the 2 s headroom, and no trim discards un-emitted audio. The same replays drop once every decode is slowed by 1.5x, which is the margin the measurement leaves.
 - A 4:48 narration feeds the full file through production replay as 66 natural VAD segments; its longest pre-padded segment is 9.686 s, so it validates long-session ingestion and endpointing but not the >10 s chunker.
 
-This deterministic coverage stops at a 44.7 s pause-free segment; a single VAD segment that outlives the 60 s ring is outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.agent/memory.md` under **Smoke checklist**.
+Deterministic coverage now reaches 182 s of pause-free audio on the shipped path and 44.7 s on the sherpa path. A VAD segment that outlives the 60 s ring stays outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.agent/memory.md` under **Smoke checklist**.
 
 ### JA → EN leg (Codex subscription)
 
