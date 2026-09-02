@@ -13,23 +13,6 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-- **P-011 — Measure per-character caption lag on the shipped path.** `pri=3` `size=M`
-  - why: D-016's 2.483 s median lag predates the `on_update` seam and was derived from an evaluator
-    that no longer exists. M11.4 built the seam and scoped itself to drop-freedom, so the lag number
-    is now the one D-016 claim with no live producer. The derivation below was worked out in M11.4
-    and must not be re-derived.
-  - method (fixed, do not re-derive): for each update set `end=commit_audio_s` and `start` = the
-    previous committed endpoint, spread `len(text)` characters uniformly at midpoints
-    `at_i = start + (end-start)*(i+0.5)/len(text)`, and record `lag_i = emit_s - at_i`. On replay
-    derive `emit_s` on the virtual audio clock as `now = max(now, buffer_end_s) + decode_s`. A final
-    update uses the utterance end as `commit_audio_s`. **Never estimate lag from final segments** —
-    that collapses every early VAC commit into one utterance-close event.
-  - evidence: `tests/vac_decode_trace.json` already carries `commit_audio_s`, `buffer_end_s`,
-    `decode_s` and the per-update commit for both pinned clips, so no new NPU run is needed.
-  - acceptance: median and max per-character lag reported for both pinned clips from the committed
-    trace, and D-016's 2.483 s either reproduced within its own corpus or corrected in place naming
-    the superseded value.
-
 - **P-009 — Rule on the VAC repetition artifact pinned in the `whisper/long` golden.** `pri=3`
   `size=M`
   - why: the committed row's second utterance carries a real LocalAgreement-2 repetition —
