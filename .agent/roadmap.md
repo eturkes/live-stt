@@ -14,8 +14,11 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Status
 
-- Milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — IN-PROGRESS.
-  **1 unit remains**: M11.5 (the unsourced retention CER). Next = **M11.5**.
+- Milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — **IMPLEMENTED**
+  (all units DONE). Both questions M11 opened are answered and both answers are green: the VAC
+  branch does not drop audio in real time (M11.4, with a 1.25-1.75× reserve), and D-016's retention
+  CER is real (M11.5, 0.0583 reproduced exactly). Next = **PLANNING a new milestone**, since the
+  2026-09-02 posture retired judgment-review sessions (L-032, D-012).
 - **M11's apparatus was cut on 2026-09-02** — 21,038 lines deleted across 20 files. Gone: the
   tournament stack (`eval_models`, `eval_streaming`, `fetch_eval_*`, their tests and baselines), the
   D-016 claim registry + validator + fixtures, the VAC evaluator (`eval_vac`, never produced an
@@ -36,7 +39,9 @@ unit touches decode quality, a CER number the commit body records.
   fallback (D-010). Degrades to JA-only when codex is absent/failing.
 - Agent-covered: VAC buffer mechanics + the VAC loop over stubbed VAD/recogniser; `SessionContext`
   learning rules; the shipped CLI/routing surface; two-engine short goldens + CER stressors + 4:48
-  narration **on the sherpa fallback only**; deterministic paced backpressure on BOTH branches —
+  narration **on the sherpa fallback only**, plus the shipped path's one accuracy gate (M11.5
+  `eval_retention.py`, 182 s pause-free, CER 0.0583 on NPU); deterministic paced backpressure on
+  BOTH branches —
   44.722 s at RTF 0.20 on the sherpa fallback, 44.722 s + 182.482 s at real per-update NPU cost on
   the shipped VAC path (M11.4); shutdown/stage-failure/translation-degradation mechanics.
 - User-only debt: latency feel, `-o`, soak, sustained live cadence, Ctrl+C-mid-decode, and the whole
@@ -44,41 +49,9 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Open (do these; lowest ID first)
 
-### M11 — production-qualify the shipped whisper+VAC+NPU path
-
-Outcome: answer the two questions that decide whether the shipped default path is trustworthy. M10
-chose the engine; D-016 shipped it. What is missing is (a) proof the VAC branch does not drop audio
-in real time, and (b) a real number behind D-016's headline retention CER.
-
-Standing scope boundary — do not reopen: engine/model selection (fixed by D-016); NPU applicability
-for the sherpa fallbacks; EN-rendering learning (`polish.md` P-002); energy per watt (RAPL
-`energy_uj` is mode 400 `nobody:nogroup`, unreadable in-container even under sudo).
-
-D-016's declared limits stand and are not re-litigated: the hotwords gain used an ORACLE term list
-drawn from the reference; long_form absolute CER is inflated by period-vs-modern orthography in the
-「ごん狐」 reference; one clip per corpus.
-
-- **M11.5 — Is D-016's retention CER 0.0583 real? [OPEN]**
-
-  **The number is confirmed unsourced.** Every `.scratch/` JSON, MD and log was searched; nothing
-  produces it, and only the planning reports repeat it. The search is credited by its positive
-  control, which did find `0.0686106346483705` in `.scratch/policy_retention_vac_npu.json` (`I=12`).
-  Both the headline retention improvement (0.1587 → 0.0583) and the append-only-`emitted` fix's
-  claimed effect (`I` 12 → 0, CER 0.0686 → 0.0583) rest on it.
-
-  Re-derive it: replay `retention_probe.wav` through the shipped NPU/VAC path and score with `cer.py`
-  against `tests/retention_probe.json`'s `probe.ja_ref`. Prior warm-cache timing puts one pass near
-  4.6 min. M11.4 closed green with no ingest redesign, so nothing invalidates a number measured now.
-
-  Acceptance: the retention CER and its `I` are re-measured from committed inputs and recorded in the
-  commit body; D-016 in `.agent/memory.md` either keeps 0.0583 with the reproduction recorded beside
-  it, or is corrected in place naming the superseded value. A divergence is an explicit correction,
-  never a silent rewrite. Placement evidence is recorded as an exact-target inference, not
-  `EXECUTION_DEVICES`: the shipped `openvino_genai.WhisperPipeline` exposes no compiled model, so
-  record `requested_device="NPU"` plus the successful exact-target decode and the API limitation.
-  Close by realigning `README.md` and `models/README.md` onto the shipped path — install command,
-  whisper model acquisition, VAC cadence, partial captions, and removal of every retired k2v2/VAD
-  default claim; `grep -nP '[\x{2013}\x{2014}]' README.md` stays clean (L-021).
+**None — M11 is IMPLEMENTED, every unit DONE.** The next session runs PLANNING for a new milestone.
+Judgment-review sessions were retired on 2026-09-02 (L-032, D-012), so IMPLEMENTED is this project's
+terminal milestone state: there is no ledger to resume and no MILESTONE-REVIEW to dispatch.
 
 ## Done (ID · outcome · decisions/lessons produced)
 
@@ -151,6 +124,33 @@ drawn from the reference; long_form absolute CER is inflated by period-vs-modern
   parked as `polish.md` P-011. `README.md`'s "Capture and VAD feeding continue during decode" was
   false for the shipped branch and is corrected to what was measured. Suite 207 → **212 tests /
   14.8 s**; `main=94% 225K/240K`.
+- **M11.5 — Is D-016's retention CER 0.0583 real? [DONE] — yes, exactly.** The number reproduced to
+  four decimals from committed inputs, so nothing in D-016 is superseded. **CER 0.0583** (S=33, D=35,
+  **I=0**, N=1166, hyp 1131 chars) over the 182.482 s pause-free probe on the shipped whisper/VAC
+  path. Both claims that rested on it hold: the headline retention improvement (0.1587 → 0.0583) and
+  the append-only-`emitted` fix's `I` 12 → 0.
+  The fix for "unsourced" is a producing artifact, not another loose figure: **`tests/eval_retention.py`**
+  (on-demand, never a gate step, ~4 min warm) hash-gates the probe WAV against `retention_probe.json`
+  before decoding — so a published number is always bound to the pinned input, not to whatever sits
+  in the ignored cache — then replays through the real VAC path and scores with `cer.py`.
+  **Placement is an exact-target inference, not a readback**, as the acceptance required:
+  `openvino_genai.WhisperPipeline` wraps its compiled model without exposing it, so there is no
+  `EXECUTION_DEVICES` to query; the run establishes `requested_device="NPU"` plus a successful decode,
+  and `check_device` admits exact names only (an `AUTO:` spelling would relocate silently).
+  **One honest divergence, recorded not smoothed:** decode 111.9 s / 182.482 s = **RTF 0.613**, just
+  above D-016's recorded 0.48-0.60. It sits inside M11.4's measured ~20 % run-to-run decode variance,
+  so the band is widened to **0.48-0.61** (headroom 1.6-2.1×) in D-016(e) and in `README.md` rather
+  than left to read as a miss. 8 VAD utterances over the pause-free clip, matching D-016(a)'s 8.
+  Docs realigned onto the shipped path: `models/README.md` rewritten (it still named k2v2 the default
+  and never mentioned whisper or OpenVINO at all) with the verified `hf download` acquisition,
+  per-engine sizes, and the regenerable compile cache; `README.md` lost its retired sherpa-cadence
+  claims — the headline "~0.1 s after endpointing" is the VAD-segment rule, replaced by the VAC
+  cadence + partial captions — and gained the status-line/partial-caption description, the
+  `VAC_CHUNK_S`/`VAC_TRIM_S`/`ASR_DEVICE` constants, `gate.py` + the four evaluators, and correct
+  sherpa-only scoping on the 8-segment queue and the >10 s chunker. `grep -nP '[\x{2013}\x{2014}]'
+  README.md` clean (rc=1, positive control fires). Suite unchanged at **212 passed / 1 skipped /
+  14.9 s** — the evaluator adds no tests by design. Gate 6/6. `main=65% 155K/240K`; no teammates
+  funded (the measurement is script-derivable, the docs judgment-bearing), so `mate=` n/a.
 - **T1–T8 · pre-milestone build-out [CLOSED].** `8ec8482..e3a654c`. Timestamped `-o` output,
   `--list-devices`/`--device`, partial-turn shutdown flush, structured logging, the `.githooks/`
   pytest hook (D-007), the sherpa-onnx + silero local STT leg replacing Gemini (D-009/D-010),
@@ -214,10 +214,29 @@ surface) · multi-mic mixing · speaker diarization · web UI · auth / multi-us
 beyond the backlog/drop status counters · package split beyond `streaming.py` (D-002) · reintroducing
 contract fingerprints, claim registries, mutation matrices or per-unit review ledgers.
 
+Carried out of M11's standing scope boundary, still closed: engine/model selection (fixed by D-016) ·
+NPU applicability for the sherpa fallbacks · EN-rendering learning (`polish.md` P-002) · energy per
+watt (RAPL `energy_uj` is mode 400 `nobody:nogroup`, unreadable in-container even under sudo, so
+NPU-vs-GPU perf/W is a host measurement). D-016's declared limits also stand and are not
+re-litigated: the hotwords gain used an ORACLE term list drawn from the reference; long_form absolute
+CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference; one clip per corpus.
+
 ## Decisions pending from user
 
-**None open.** M11.4 raises the next one if it comes back red: whether to decouple VAC decode from
-`audio_q` draining.
+**One open: what comes after M11.** M11.4's contingency (decouple VAC decode from `audio_q` draining)
+is closed — it came back green with a 1.25-1.75× reserve, so no redesign is due. With M11 IMPLEMENTED
+and its two questions answered, the shipped path is qualified as far as an agent can qualify it, and
+there is no planned scope left. Named options, user picks:
+(a) **`/session-polish`** — 6 open rows, no milestone needed, no user input required to start;
+    P-011 (per-character caption lag) is the one that would retire the last D-016 claim with no live
+    producer, and it needs no new NPU run.
+(b) **A live-mic validation pass** — the user-only debt is now the largest untested surface and only
+    the user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
+    VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.
+(c) **A maintenance pass** (L-018) — dependency/CVE sweep, lock bumps, full gate, re-verify the codex
+    leg.
+(d) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
+    most of the obvious ones.
 
 (Last resolved: **assurance-apparatus scope** — measurement showed ~11,100 lines of apparatus
 guarding a 2,108-line personal tool, and the session was blocked writing a third fingerprint-migration

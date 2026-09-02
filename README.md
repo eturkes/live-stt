@@ -5,32 +5,35 @@ Real-time Japanese speech-to-text + English translation. **No API keys.**
 - **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) large-v3-turbo (INT8) on the Intel NPU through OpenVINO. Japanese appears while you are still speaking, about 2.5 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
 - **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to JA-only.
 
-Each short utterance typically prints as a numbered `JA n:` line about 0.1 s after endpointing; long pause-free blocks take proportionally longer because they use several decode passes. Its `EN n:` line follows when the translation turn completes (~1 s).
+On the default engine, Japanese builds on the status line while you speak. The numbered `JA n:` line lands when you stop, and its `EN n:` line follows about 1 s later. The sherpa engines show no partial text: they wait for the pause, then print `JA n:` about 0.6 s after you stop.
 
 ## Requirements
 
-- Python ≥ 3.11. The supported sherpa runtime floor is `sherpa-onnx` +
-  `sherpa-onnx-core` ≥ 1.13.4; `uv sync --locked` reproduces the exact
-  evaluator-qualified resolution (currently CPython 3.14.5 + sherpa 1.13.4).
+- Python ≥ 3.11. `uv sync --locked` reproduces the exact qualified resolution
+  (currently CPython 3.14.5).
 - Working microphone
-- OpenVINO for the default Whisper engine. `uv sync` installs it, because
-  `--engine whisper` is the default. OpenVINO ships wheels only for CPython
-  3.11 to 3.14 on macOS arm64, Linux x86_64 and aarch64, and Windows amd64.
-  If your shell sets `PYTHONPATH` to a different OpenVINO build, clear it
-  before you run live-stt. That entry hides the installed package, and the
-  import then fails with a confusing `AxisSet` error instead of a clear one.
+- An OpenVINO device for the default Whisper engine. `uv sync` installs
+  OpenVINO as a hard dependency. The default device is the Intel NPU; pass
+  `--asr-device GPU` or `--asr-device CPU` to use another one. OpenVINO ships
+  wheels only for CPython 3.11 to 3.14 on macOS arm64, Linux x86_64 and
+  aarch64, and Windows amd64. If your shell sets `PYTHONPATH` to a different
+  OpenVINO build, clear it before you run live-stt. That entry hides the
+  installed package, and the import then fails with a confusing `AxisSet`
+  error instead of a clear one.
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
   - macOS: `brew install portaudio`
-- ~800 MB of model weights in `models/` (one-time download, see below)
+- ~790 MB of model weights in `models/` for the default engine (one-time
+  download, see below). Each sherpa fallback engine adds its own weights, and
+  needs `sherpa-onnx` + `sherpa-onnx-core` ≥ 1.13.4.
 - *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.137 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-5.6-luna` (`codex login` / `codex login --device-auth`)
 
 ## Setup
 
 ```sh
-uv sync --locked         # install the exact evaluator-qualified Python deps
-cat models/README.md     # download model weights (curl commands inside)
+uv sync --locked         # install the exact qualified Python deps, OpenVINO included
+                         # then download model weights: see models/README.md
 codex login              # optional: enable the EN leg
 ```
 
@@ -53,7 +56,7 @@ Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-
 
 | Flag | Default | Description |
 |---|---|---|
-| `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`; selection rationale: `.agent/memory.md` D-010) |
+| `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.agent/memory.md` D-016 (default), D-010 (sherpa pair) |
 | `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. `GPU` or `CPU` also enable session term biasing, which the NPU rejects. |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
@@ -81,18 +84,20 @@ Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so 
 ### Audio → JA pipeline (all local)
 
 1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 2 seconds of PCM, independent of callback block size.
-2. **Endpoint.** a dedicated feeder drains capture into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
-3. **Re-slice + queue.** silero opens segments 0.2-0.7 s late, clipping leading syllables; each segment is re-sliced from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) and copied into an 8-segment queue.
-4. **Decode.** For `--engine whisper`, silero controls a growing buffer: speech-start opens it, every second re-decodes it, and text is committed once two decodes agree (LocalAgreement-2). Committed text appears on the status line immediately; the numbered `JA n:` line lands at the end of the utterance. Decode RTF is 0.48-0.60 on the NPU. The sherpa engines instead decode each closed VAD segment (RTF ≈ 0.05 on 8 cores).
+2. **Endpoint.** Capture drains into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
+3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables. Both engine paths re-slice from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) to recover the lead-in. The sherpa path then copies each closed segment into an 8-segment queue; the whisper path has no such queue.
+4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). Committed text appears on the status line as it lands and is never rewritten; the numbered `JA n:` line follows at the end of the utterance. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 11.2 s on the measured clips. Decode RTF is 0.48-0.61 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture buffers into the 2 s queue meanwhile. Measured on the NPU, the longest single wait was 1.006 s over 182 s of pause-free speech, and nothing was dropped. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
 ### Long speech and long sessions
 
-Silero's 20 s `max_speech_duration` is a soft endpointing hint, not a hard cut: pause-free speech can remain one VAD segment beyond it. Segments up to 10 s keep the ordinary one-pass decode path. Longer segments are split internally into balanced ~2 s views, with each cut moved to a nearby low-energy window and 0.18 s of overlap protecting cut phonemes. Exact text overlap is removed, then the merged result is emitted as one `JA n:` line, so internal chunking does not create extra user-visible utterances.
+Silero's 20 s `max_speech_duration` is a soft endpointing hint, not a hard cut: pause-free speech can remain one VAD segment beyond it. Offline decoders drop content wholesale once a single segment passes roughly 15-20 s, so each engine path bounds what it hands the model.
 
-On the sherpa engines, capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
+The sherpa engines bound it after the fact. Segments up to 10 s keep the ordinary one-pass decode path. Longer segments are split internally into balanced ~2 s views, with each cut moved to a nearby low-energy window and 0.18 s of overlap protecting cut phonemes. Exact text overlap is removed, then the merged result is emitted as one `JA n:` line, so internal chunking does not create extra user-visible utterances. Capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
+
+The whisper path bounds it by construction and never uses that splitter: the streaming buffer is trimmed against fully-decoded spans as it goes, so the model always sees a bounded buffer rather than one long closed segment.
 
 The regression suite covers three distinct long-form shapes:
 
@@ -122,11 +127,13 @@ Runtime warnings/errors go to stderr via Python `logging`. On a terminal each me
 ```
 JA 1: こんにちは、今日はいい天気ですね。
 EN 1: Hello, the weather is nice today.
-  q=0.02s seg=1
+  q=0.02s   では次の議題に
 ```
 
+The last line is the status line. It rewrites itself in place and holds two things: the backlog counters, then the partial caption of the utterance you are still speaking. Only the default engine produces that caption. Committed characters never change once they appear, so the caption only grows until the utterance ends and becomes the next `JA n:` line. A long caption is truncated from the left to fit the terminal. The whole status line is written only to a terminal, so a redirected stdout stays clean.
+
 - `q=Ns`: captured audio waiting for VAD, measured in seconds (appears when non-zero)
-- `seg=N`: completed utterances waiting for sequential decode (appears when non-zero)
+- `seg=N`: completed utterances waiting for sequential decode (sherpa engines only; appears when non-zero)
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
 - `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
 
@@ -137,10 +144,13 @@ Numbered lines tie JA/EN pairs together even when the next utterance's JA prints
 ```
 live-stt/
 ├── live_stt.py              # main app (single file)
+├── streaming.py             # streaming hypothesis buffer for the default engine
 ├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
+├── cer.py                   # character-error-rate scorer shared by the evaluators
+├── gate.py                  # the quality gate (dev tool, not shipped in the wheel)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
 ├── transcripts/             # saved sessions, one file per run (gitignored, created on first line)
-├── tests/                   # pytest suite + corpus/replay/CER/backpressure/long-form evaluators
+├── tests/                   # pytest suite + corpus/replay/CER/backpressure/long-form/retention evaluators
 ├── .githooks/               # project-local git hooks (pre-commit: pytest)
 ├── pyproject.toml           # deps, entry point, ruff/pytest config
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
@@ -154,24 +164,41 @@ live-stt/
 ### Development
 
 ```sh
-uv run pytest                                 # run pure-function tests
+uv run python gate.py                         # the quality gate (tests, lint, format, typecheck, import)
+uv run pytest                                 # just the test suite
 git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 ```
 
-Core tests cover audio primitives, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay's model-gated golden cases skip cleanly when local weights or corpus files are absent. The standalone CER/backpressure/long-form evaluators require or fetch their declared inputs and fail instead of silently passing.
+`gate.py` owns the exact step set, so the gate cannot be shortened by describing it differently. Every step is fast and hermetic: it needs no weights, no accelerator, and no network. Run one step with `--only NAME`.
+
+Core tests cover audio primitives, the streaming buffer, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay's model-gated golden cases skip cleanly when local weights, the accelerator, or corpus files are absent.
+
+The evaluators under `tests/` are separate and deliberately outside the gate: they need the gitignored weights and minutes of compute. Run one when a decode or streaming change puts its number in question.
+
+```sh
+uv run python tests/eval_cer.py               # 2-engine CER + RTF over the short corpus and stressors
+uv run python tests/eval_long_form.py         # both engines over a pinned 4:48 narration
+uv run python tests/eval_backpressure.py      # paced replay: bounded queues, drop-free
+uv run python tests/eval_retention.py         # shipped path over 182 s of pause-free speech
+```
+
+Each one requires or fetches its declared inputs and fails instead of silently passing. `eval_retention.py` additionally checks the probe WAV against its committed hash first, so its number always belongs to the pinned input.
 
 The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks the commit on failure. The `core.hooksPath` setup is per-clone and not auto-applied by `uv sync`. Run it once after cloning.
 
 #### Regression testing (WAV replay)
 
-`replay.py` feeds a WAV through the **exact** live STT pipeline (VAD + `RingBuffer` + sherpa decode, no mic or translation) and reports per-segment segmentation, decode latency + RTF, and transcript:
+`replay.py` feeds a WAV through the **exact** live STT pipeline (VAD + `RingBuffer` + decode, no mic or translation) and reports per-segment segmentation, decode latency + RTF, and transcript. The engine you pass picks the path, exactly as it does live: `--engine whisper` drives the shipped streaming path, the sherpa engines drive the closed-segment path.
 
 ```sh
-uv run python replay.py path/to.wav --engine k2v2   # human-readable report
+uv run python replay.py path/to.wav                 # human-readable report
+uv run python replay.py path/to.wav --engine whisper  # the shipped streaming path
 uv run python replay.py path/to.wav --json          # machine-readable
 ```
 
-`tests/test_replay.py` replays the cached corpus (synthetic bench + seven real Common Voice clips) and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline). Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`.
+Note that `replay.py` defaults to `--engine k2v2`, which is **not** live-stt's default. The goldens key on the deterministic CPU engines, so that is the default the tool inherits.
+
+`tests/test_replay.py` replays the cached corpus and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline), currently 25 rows. Most rows cover the sherpa engines, which reproduce on any CPU. One row covers the whisper path and records the device it was produced on (`NPU`), because that path reproduces per device rather than everywhere. Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights, the accelerator, or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`.
 
 `tests/fetch_real_clips.py` also builds the complete pinned Japanese evaluation corpus: all 4,483 Common Voice 8 test recordings (CC0-1.0) and all 650 FLEURS test recordings (CC-BY-4.0). Verified sources, 16 kHz PCM, and the detailed index stay in the gitignored cache; `tests/short_corpus.json` commits only provenance, distributions, and fingerprints. The command is exact because decoder drift must produce an explicit corpus requalification:
 
@@ -193,7 +220,10 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAD_MIN_SPEECH_S` | 0.25 s | Shorter blips discarded |
 | `VAD_MAX_SPEECH_S` | 20 s | Soft endpointing hint; dip-less speech may exceed it |
 | `VAD_PRE_PAD_S` | 0.4 s | Lead-in re-sliced from the ring (silero onset clipping fix) |
-| `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits |
+| `ASR_DEVICE` | `NPU` | OpenVINO device for the default engine (`--asr-device` overrides) |
+| `VAC_CHUNK_S` | 1 s | New audio between streaming re-decodes (default engine) |
+| `VAC_TRIM_S` | 8 s | Past this, the streaming buffer commits finished spans and trims them away |
+| `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits (sherpa engines) |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
 | `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-terra` / `medium`) |
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
