@@ -116,6 +116,48 @@ def test_run_surfaces_worker_shutdown_as_evaluator_failure():
         asyncio.run(replay._run(np.ones(1, dtype=np.float32), "k2v2"))
 
 
+def test_the_cli_preflights_the_accelerator_before_loading_an_engine(monkeypatch, tmp_path, capsys):
+    """Without this, `--engine whisper` on a farm-less box fails ten frames deep
+    in openvino_genai on a missing NPU compiler loader. The engine stub proves
+    the exit happens before any of that, so the test needs no accelerator."""
+
+    def unreachable(*_args, **_kw):
+        raise AssertionError("the engine must not load once the preflight has failed")
+
+    wav = tmp_path / "clip.wav"
+    _write_wav(wav, np.zeros(16000), 16000)
+    monkeypatch.setattr(replay, "check_models", lambda engine: None)
+    monkeypatch.setattr(replay, "check_device", lambda engine: f"{engine}: device unavailable")
+    monkeypatch.setattr(replay, "replay_wav", unreachable)
+    monkeypatch.setattr("sys.argv", ["replay.py", str(wav), "--engine", "whisper"])
+
+    with pytest.raises(SystemExit) as exited:
+        replay.main()
+
+    assert exited.value.code == 1
+    assert "Error: whisper: device unavailable" in capsys.readouterr().err
+
+
+def test_the_cli_reports_a_missing_wav_without_probing_the_accelerator(
+    monkeypatch, tmp_path, capsys
+):
+    """Ordering: the argument check is free, check_device imports OpenVINO."""
+
+    def unreachable(*_args, **_kw):
+        raise AssertionError("a bad path must not cost an OpenVINO import")
+
+    monkeypatch.setattr(replay, "check_device", unreachable)
+    monkeypatch.setattr(
+        "sys.argv", ["replay.py", str(tmp_path / "absent.wav"), "--engine", "whisper"]
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        replay.main()
+
+    assert exited.value.code == 1
+    assert "no such WAV" in capsys.readouterr().err
+
+
 # ---- models + cached corpus gated: golden regression ----
 
 

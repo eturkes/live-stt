@@ -45,6 +45,7 @@ from live_stt import (
     ENGINE_DIRS,
     SAMPLE_RATE,
     State,
+    check_device,
     check_models,
     load_recognizer,
     make_vad,
@@ -216,13 +217,18 @@ def main():
     ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
     args = ap.parse_args()
 
-    err = check_models(args.engine)
-    if err:
-        print(f"Error: {err}", file=sys.stderr)
-        sys.exit(1)
     path = Path(args.wav)
     if not path.exists():
         print(f"Error: no such WAV: {path}", file=sys.stderr)
+        sys.exit(1)
+    # check_device rides with check_models because without it `--engine whisper`
+    # on a box with no accel farm reaches openvino_genai and fails with a
+    # ten-line native traceback about a missing NPU compiler loader. The
+    # argument check runs first: it costs nothing, while check_device imports
+    # OpenVINO and enumerates devices.
+    err = check_models(args.engine) or check_device(args.engine)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
 
     report = replay_wav(path, args.engine)

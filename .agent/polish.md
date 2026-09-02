@@ -30,15 +30,6 @@ goes under Spine flags and to the user instead of running here.
     trace, and D-016's 2.483 s either reproduced within its own corpus or corrected in place naming
     the superseded value.
 
-- **P-008 — Make `replay.py --engine whisper` fail cleanly on a farm-less box.** `pri=2` `size=S`
-  - why: `main()` preflights with `check_models` + `check_device`, but the CLI still reaches OpenVINO
-    and aborts inside it on a box with no accel farm sourced — the process dies in the native loader
-    rather than returning the preflight's message. The test path is already clean (`_not_ready`
-    skips), so this is the CLI surface alone, and it is the surface a human runs by hand.
-  - acceptance: `uv run python replay.py <wav> --engine whisper` on a farm-less box exits nonzero
-    with the `check_device` message on stderr and no native abort; the same command with the farm
-    sourced still replays; a test asserts the farm-less exit path without requiring hardware.
-
 - **P-009 — Rule on the VAC repetition artifact pinned in the `whisper/long` golden.** `pri=3`
   `size=M`
   - why: the committed row's second utterance carries a real LocalAgreement-2 repetition —
