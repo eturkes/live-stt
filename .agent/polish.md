@@ -62,22 +62,34 @@ goes under Spine flags and to the user instead of running here.
     each time it fires. Separate the two cases before applying any cut, and re-measure retention CER
     on every arm. Both directions change shipped decode output ⇒ roadmap unit, not polish.
 
-- **P-002 — Decide whether the session context should learn EN renderings, not just JA terms.**
-  `pri=3` `size=M`
-  - why: `SessionContext` (D-015) holds a JA term list and tells the translator to render each one
-    consistently, but never learns *which* EN rendering a term received. A first-draft `observe_en`
-    pairing JA terms with capitalized EN runs was cut before shipping: aligning a rendering out of
-    unaligned JA/EN caption pairs is guesswork, its capitalization and title heuristics were
-    untestable, and no failure mode was named that the plain term list does not already prevent.
-    Repeating the term list every turn already pins a name to one spelling across thread rotations,
-    so the learner has to beat that, not beat nothing.
-  - evidence: `live_stt.py` `SessionContext.translator_brief` carries the term list and the
-    consistency instruction; the cut is why it lists terms unpaired.
-  - acceptance: on a JA corpus with a proper noun recurring across ≥10 turns, count distinct EN
-    renderings of that noun per session with and without the learner. The learner ships only if it
-    strictly reduces the distinct-rendering count on a corpus it was not tuned on, and a paired
-    judged comparison on the same items shows no adequacy regression against the current brief.
-    Either arm failing keeps the term list unpaired and closes this row.
+- **P-013 — `--context` is a shipped CLI flag with no README row.** `pri=3` `size=S`
+  - why: README's option table (`--engine`, `--asr-device`, `--no-translate`, `-o`, `--no-save`,
+    `--device`, `--list-devices`) skips `--context TEXT` entirely, and `--asr-device`'s row is the
+    only place "session term biasing" is named — so the one user-facing correction channel for a
+    mis-recognised name is undiscoverable from the doc. D-015's memory entry claimed README cited it;
+    that citation never existed and is now removed.
+  - evidence: `live_stt.py:1528` defines `--context`; `/usr/bin/rg -- '--context' README.md` is empty.
+  - acceptance: README's option table carries a `--context TEXT` row in ASD-STE100 register (L-021),
+    naming what the seed does (trusted at once, never evicted, reaches both the recogniser term list
+    and the translator glossary) without restating D-015's internals; `rg -- '--context' README.md`
+    is non-empty and `rg -nP '[\x{2013}\x{2014}]' README.md` stays clean.
+
+- **P-012 — Re-measure the EN rendering learner on ASR output, not clean text.** `pri=3` `size=M`
+  - why: `observe_en` (D-015, shipped by P-002) keys a learned English spelling on the JA term the
+    recogniser produced. Every P-002 arm ran on clean Aozora text, which is the learner's BEST case:
+    live, a mis-recognised name pairs a correct spelling to a wrong key, and the key never recurs, so
+    the pairing is dead weight — or worse, the recogniser alternates two spellings of one name and
+    each keeps its own rendering. Neither was measured.
+  - evidence: `live_stt.py` `SessionContext.observe_en` pairs on `t in ja` against the caption text;
+    `CodexTranslator.run` feeds it the accepted caption, recognition errors included.
+  - acceptance: replay a WAV corpus through the shipped whisper/VAC path so the JA carries real
+    recognition errors, then count both distinct EN renderings per session (with/without the learner,
+    ≥3 sessions each) and pairings whose key never recurs. The learner stands as shipped if it still
+    reduces the rendering count and dead pairings stay near zero; otherwise gate pairing on a term
+    seen un-prompted since it was trusted.
+  - prerequisite (first cost of the row): no committed corpus has both audio and a proper noun in
+    ≥10 utterances — `tests/long_form.json`'s chapter-一 WAV puts 兵十 in 8. The Kokoro alignment
+    covers the whole recording, so extending the build past section 一 is the cheap route.
 
 ## Spine flags
 

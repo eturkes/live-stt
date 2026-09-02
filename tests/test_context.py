@@ -18,6 +18,7 @@ object knows nothing.
 from __future__ import annotations
 
 from live_stt import (
+    CONTEXT_EN_SUPPORT,
     CONTEXT_MAX_TERMS,
     CONTEXT_PROMPT_MAX_CHARS,
     CONTEXT_TERM_LEASE,
@@ -28,6 +29,14 @@ from live_stt import (
 
 DRUG = "プレドニン"
 DEPT = "神経内科"
+ONLY_DRUG = f"{DRUG}です"  # one trusted term; "投与" in _see's sentence is a second
+RENDERED = "The nurse gave Predonine at eight."
+
+
+def _pair(ctx: SessionContext, times: int, en: str = RENDERED) -> None:
+    for _ in range(times):
+        ctx.observe_ja(ONLY_DRUG)
+        ctx.observe_en(ONLY_DRUG, en)
 
 
 def _see(ctx: SessionContext, term: str, times: int) -> None:
@@ -176,3 +185,66 @@ def test_translator_brief_names_the_terms_once_known():
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
     brief = ctx.translator_brief()
     assert DEPT in brief and DRUG in brief
+
+
+def test_rendering_reaches_the_brief_only_at_its_support_threshold():
+    """The term list says which names matter; the rendering says how to spell them."""
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT - 1)
+    assert f"{DRUG} = Predonine" not in ctx.translator_brief()
+    _pair(ctx, 1)
+    assert f"{DRUG} = Predonine" in ctx.translator_brief()
+
+
+def test_disagreeing_renderings_never_reach_support():
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    for spelling in ("Predonine", "Prednisolone", "Predonin", "Prednisone"):
+        _pair(ctx, 1, f"The nurse gave {spelling} at eight.")
+    assert ctx.renderings == {}
+
+
+def test_an_ambiguous_turn_is_not_evidence():
+    """Two trusted terms or two proper nouns leave the alignment a guess."""
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)  # trusts both プレドニン and 投与
+    for _ in range(CONTEXT_EN_SUPPORT * 2):
+        ctx.observe_ja(f"{DRUG}を投与しました")
+        ctx.observe_en(f"{DRUG}を投与しました", RENDERED)
+        ctx.observe_en(ONLY_DRUG, "The nurse gave Predonine to Tanaka.")
+    assert ctx.renderings == {}
+
+
+def test_a_sentence_opening_capital_is_not_a_name():
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT * 2, "Predonine was given at eight.")
+    assert ctx.renderings == {}
+
+
+def test_a_possessive_folds_to_the_bare_name():
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT, "We raised Predonine’s dose today.")
+    assert ctx.renderings[DRUG] == "Predonine"
+
+
+def test_a_rendering_expires_with_the_term_that_carries_it():
+    """Bounds both dicts: a spelling is only ever read for a term the brief lists."""
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT)
+    assert DRUG in ctx.renderings
+    _see_prompted(ctx, DRUG, CONTEXT_TERM_LEASE)
+    assert DRUG not in ctx.terms()
+    assert ctx.renderings == {}
+
+
+def test_untranslated_captions_teach_nothing():
+    """JA-only degradation (D-009) must not feed an empty rendering into the brief."""
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT * 2, "")
+    assert ctx.renderings == {}
+    assert " = " not in ctx.translator_brief()

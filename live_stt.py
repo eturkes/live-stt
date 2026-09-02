@@ -109,6 +109,7 @@ CONTEXT_MAX_TERMS = 12  # Whisper keeps 223 prev-text tokens; spend them on the 
 CONTEXT_TERM_MEMORY = 40  # segments a candidate may wait for support before it is forgotten
 CONTEXT_TERM_LEASE = 60  # segments a trusted term keeps trust without un-prompted proof
 CONTEXT_PROMPT_MAX_CHARS = 160
+CONTEXT_EN_SUPPORT = 2  # agreeing turns before a learned English rendering is briefed
 
 # Translation leg (D-011): Luna+low won a 12-config × 1,110-turn tournament on
 # median latency (1.38 s/turn) with quality tied to every higher effort — this
@@ -644,6 +645,29 @@ def emit_line(tag, seq, text, output_file):
 # candidates against 100 for runs, nearly all of them grammar fragments.
 _TERM_RUN = re.compile(r"[ァ-ヺー]{3,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-]+")
 
+# A proper noun is what stays capitalized mid-sentence; a sentence's first word is
+# capitalized by convention and so is never evidence. That positional rule produced
+# the same pairings as a 90-word function-word lexicon over 1,260 recorded turns,
+# so the lexicon buys nothing.
+_EN_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+_EN_WORD = re.compile(r"[A-Za-zÀ-ſ'’-]+")
+_EN_NAME = re.compile(r"[A-Z][A-Za-zÀ-ſ'’-]*(?:\s+[A-Z][A-Za-zÀ-ſ'’-]*)*")
+_EN_POSSESSIVE = re.compile(r"[’']s$")
+
+
+def _en_names(text: str) -> list[str]:
+    """Proper nouns in one English caption, possessives folded to the bare name."""
+    names = []
+    for sentence in _EN_SENTENCE.split(text):
+        first = _EN_WORD.search(sentence)
+        if first:
+            names += [
+                _EN_POSSESSIVE.sub("", match.group())
+                for match in _EN_NAME.finditer(sentence)
+                if match.start() >= first.end()
+            ]
+    return names
+
 
 class SessionContext:
     """What this session is about, learned from its own captions (D-015).
@@ -661,6 +685,8 @@ class SessionContext:
         self.seed_terms = list(dict.fromkeys(_TERM_RUN.findall(self.seed)))
         self._support: dict[str, set[int]] = {}
         self._learned: dict[str, int] = {}  # trusted term -> segment last proved
+        self._en_support: dict[str, dict[str, int]] = {}
+        self.renderings: dict[str, str] = {}  # trusted term -> its English spelling
         self._seq = 0
 
     def observe_ja(self, text: str, prompted: frozenset[str] = frozenset()) -> None:
@@ -690,6 +716,33 @@ class SessionContext:
         self._support = {t: s for t, s in self._support.items() if max(s) > cutoff}
         while len(self._learned) > CONTEXT_MAX_TERMS:
             del self._learned[min(self._learned, key=lambda t: self._learned[t])]
+        # A rendering is only ever read for a term the brief still lists, so trust in
+        # the spelling expires with trust in the term. That is also what bounds both
+        # dicts over a multi-hour session.
+        kept = set(self._learned) | set(self.seed_terms)
+        self._en_support = {t: s for t, s in self._en_support.items() if t in kept}
+        self.renderings = {t: r for t, r in self.renderings.items() if t in kept}
+
+    def observe_en(self, ja: str, en: str) -> None:
+        """Pair one caption's trusted term with the English it was rendered as.
+
+        Aligning a rendering out of unaligned caption pairs is guesswork, so evidence
+        is taken only from the turn where the alignment is forced: exactly one still
+        unpaired trusted term in the Japanese, exactly one proper noun in the English.
+
+        The unpaired list names a term without saying how to spell it, and every
+        glossary change rotates the thread whose own history was holding the spelling
+        (D-011) — measured over three sessions of the same 140-caption narration, the
+        unpaired brief gave 4/5/3 distinct spellings of one name against 1/1/1 here.
+        """
+        terms = [t for t in self.terms() if t in ja and t not in self.renderings]
+        names = list(dict.fromkeys(_en_names(en)))
+        if len(terms) != 1 or len(names) != 1:
+            return
+        support = self._en_support.setdefault(terms[0], {})
+        support[names[0]] = support.get(names[0], 0) + 1
+        if support[names[0]] >= CONTEXT_EN_SUPPORT:
+            self.renderings[terms[0]] = names[0]
 
     def terms(self) -> list[str]:
         """Trusted terms, seed first, then learned ones longest-first.
@@ -726,16 +779,18 @@ class SessionContext:
     def translator_brief(self) -> str:
         """Session context for the translator; empty until something is known.
 
-        Terms are listed rather than paired with a learned English rendering:
-        aligning a rendering from unaligned caption pairs is guesswork, while
-        repeating the same list every turn already holds a name to one spelling
-        across thread rotations.
+        A term carries its learned English spelling once observe_en has one, because
+        the list alone cannot hold a name to one spelling: it says which names matter,
+        not how to write them.
         """
         lines = []
         if self.seed:
             lines.append(f"Topic of this session: {self.seed}")
         if self.terms():
-            lines.append("Terms recurring in this session: " + ", ".join(self.terms()))
+            listed = [
+                f"{t} = {self.renderings[t]}" if t in self.renderings else t for t in self.terms()
+            ]
+            lines.append("Terms recurring in this session: " + ", ".join(listed))
         if not lines:
             return ""
         lines.append("Translate each of these the same way every time it occurs.")
@@ -945,6 +1000,8 @@ class CodexTranslator:
             en = await self._translate(ja)
             if en:
                 emit_line("EN", seq, en, output_file)
+                if self.context is not None:
+                    self.context.observe_en(ja, en)
 
     async def _translate(self, ja: str) -> str:
         if not self.enabled:
