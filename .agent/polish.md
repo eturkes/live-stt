@@ -13,18 +13,6 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-- **P-010 — Pin the meter's status-line width arithmetic.** `pri=2` `size=S`
-  - why: `live_stt.py`'s `meter` reserves 3 columns for the separator between the status counters and
-    the settling caption (`room = max(0, (columns - 1) - len(status) - 3)`, then `'   ' + partial`).
-    Changing that 3 to a 4 leaves the whole suite green, so the exact remaining-width arithmetic is
-    unpinned and an off-by-one that silently eats a caption character would ship. `tests/
-    test_shipped_path.py` proves only that a fitting partial is retained and a long one is
-    tail-truncated. Harvested from M11.2's review table (row R25) before that ledger was deleted; it
-    is the one finding in 119 enumerated rows that named live code with no committed fix.
-  - acceptance: a test asserts the exact rendered body and the maximal tail length for a fixed
-    terminal width and status string, plus that an empty partial adds no separator while the status
-    is nonempty; mutating the reserved width by one turns it red.
-
 - **P-011 — Measure per-character caption lag on the shipped path.** `pri=3` `size=M`
   - why: D-016's 2.483 s median lag predates the `on_update` seam and was derived from an evaluator
     that no longer exists. M11.4 built the seam and scoped itself to drop-freedom, so the lag number

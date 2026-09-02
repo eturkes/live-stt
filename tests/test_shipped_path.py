@@ -680,17 +680,41 @@ def test_the_meter_hides_a_translator_with_no_dropped_turns(monkeypatch):
     assert "tdrop" not in run_meter(monkeypatch, state, translator=translator)[0]
 
 
-def test_a_long_caption_is_tail_truncated_to_the_terminal_width(monkeypatch):
-    """A wrapped line survives the next line-clear as residue, so it must fit."""
+def test_a_long_caption_is_tail_truncated_to_the_exact_remaining_width(monkeypatch):
+    """A wrapped line survives the next line-clear as residue, so the body must fit.
+
+    Pinned as literal bytes rather than a bound: `room` reserves the separator's
+    width and the write spends it, so the two constants must move together. A
+    bound (`len(body) <= columns - 1`) stays green when the reserve grows by one
+    and silently eats a caption character.
+    """
     state = live_stt.State()
     state.partial = "".join(str(i % 10) for i in range(200))
     state.dropped = 4
 
     written = run_meter(monkeypatch, state, columns=40)[0]
 
-    body = written[len(live_stt._LINE_CLEAR) :]
-    assert len(body) <= 39
-    assert state.partial.endswith(body[-10:])  # the newest characters, not the oldest
+    # 8 status + 3 separator + 28 newest caption characters = 39, one column
+    # short of 40 because writing the last column wraps the line.
+    assert written == f"{live_stt._LINE_CLEAR}  drop=4   2345678901234567890123456789"
+    assert len(written) - len(live_stt._LINE_CLEAR) == 39
+
+
+def test_a_status_without_a_caption_writes_no_separator(monkeypatch):
+    state = live_stt.State()
+    state.dropped = 4
+
+    assert run_meter(monkeypatch, state)[0] == f"{live_stt._LINE_CLEAR}  drop=4"
+
+
+def test_a_status_filling_the_line_drops_the_caption_whole(monkeypatch):
+    """`room` hitting 0 must suppress the caption: `partial[-0:]` is the WHOLE
+    string, so the truthiness guard is what stops a full-width wrap."""
+    state = live_stt.State()
+    state.partial = "".join(str(i % 10) for i in range(200))
+    state.dropped = 4
+
+    assert run_meter(monkeypatch, state, columns=12)[0] == f"{live_stt._LINE_CLEAR}  drop=4"
 
 
 # --- CLI flags (P1 defaults, mutual exclusion) --------------------------------
