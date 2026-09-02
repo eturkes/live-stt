@@ -1,42 +1,82 @@
 # Polish — live-stt
 
-Deferred-perfection register. `/session-polish` is its sole consumer: pick by `pri`, size-fit the remaining window, run one item at a time under the gate identity in `memory.md`, prune the row in the commit that lands it. Off-spine improvements are born here at deferral time with the acceptance check written while the evidence is fresh (`CLAUDE.md` Engineering). Milestone/unit state stays in `roadmap.md`; nothing here gates a milestone. Scope = out-of-contract items alone: a unit's own check-set rows are review debt and belong to MILESTONE-REVIEW's committed ledger `.agent/review-m<m>.md`, which gates REVIEWED, so they are never parked here.
+Deferred-perfection register. `/session-polish` is its sole consumer: pick by `pri`, size-fit the
+remaining window, run one item at a time under the gate identity in `memory.md`, prune the row in the
+commit that lands it. Off-spine improvements are born here at deferral time with the acceptance check
+written while the evidence is fresh. Milestone/unit state stays in `roadmap.md`; nothing here gates a
+milestone.
 
-Row shape: `P-<n>` monotonic and never reused (pruning leaves gaps) · `pri` 1 = do first … 3 = whenever · `size` S ≈ ≤15 % of a window, M ≈ ≤35 %, L = the session · `tier` = the assurance tier the item runs inside, which it never raises. An item whose evidence pointer or acceptance check stops holding takes `stale(<why>)` in place and waits for the next `/session-roadmap` session to re-rule it. A finding that implies spine work goes under Spine flags and to the user instead of running here.
+Row shape: `P-<n>` monotonic and never reused (pruning leaves gaps) · `pri` 1 = do first … 3 =
+whenever · `size` S ≈ ≤15 % of a window, M ≈ ≤35 %, L = the session. An item whose evidence pointer
+or acceptance check stops holding takes `stale(<why>)` in place. A finding that implies spine work
+goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-- **P-005 — Port the per-session context census out of `.scratch/`.** `pri=3` `size=S` `tier=docs`
-  - why: `.scratch/cost_archaeology.py` produced the measured basis for L-031 and for M11's whole unit split, and `.scratch/` is gitignored, so the tool backing a durable sizing claim cannot rerun from committed state (`CLAUDE.md` Engineering). It reads Claude Code transcripts under `~/.claude/projects/<project>/`, computes per-session turns, peak usage, output tokens and tool mix, and lists each session's subagents. Nothing else in the repo measures this, and every future PLANNING session wants it.
-  - evidence: `.scratch/cost_archaeology.py`; `.scratch/m11-cost-model.md` holds its M11 output; `.agent/memory.md` L-031 cites both.
-  - acceptance: the script lives at a committed path outside `tests/` (it tests nothing), runs with no argument to census the current project, and exits nonzero with a clear message when the transcript directory is absent; `.agent/memory.md` L-031 and this row's pointer are updated to the committed path; `python gate.py` stays green.
+- **P-010 — Pin the meter's status-line width arithmetic.** `pri=2` `size=S`
+  - why: `live_stt.py`'s `meter` reserves 3 columns for the separator between the status counters and
+    the settling caption (`room = max(0, (columns - 1) - len(status) - 3)`, then `'   ' + partial`).
+    Changing that 3 to a 4 leaves the whole suite green, so the exact remaining-width arithmetic is
+    unpinned and an off-by-one that silently eats a caption character would ship. `tests/
+    test_shipped_path.py` proves only that a fitting partial is retained and a long one is
+    tail-truncated. Harvested from M11.2's review table (row R25) before that ledger was deleted; it
+    is the one finding in 119 enumerated rows that named live code with no committed fix.
+  - acceptance: a test asserts the exact rendered body and the maximal tail length for a fixed
+    terminal width and status string, plus that an empty partial adds no separator while the status
+    is nonempty; mutating the reserved width by one turns it red.
 
-- **P-003 — Converge the ten remaining `ruff format` files so the step can go repo-wide.** `pri=2` `size=S` `tier=docs`
-  - why: `gate.py`'s format step is per-touched-file because repo-wide is red. M11.1 measured the red set and the recorded justification did not hold: all 19 pre-existing hunks across 11 files are ruff joining wrapped expressions under `line-length = 100`, plus two blank-line fixes. No comment content and no aligned table is at stake, so D-006/L-001 do not defend them. `live_stt.py` converged in M11.1; ten files remain (`cer.py`, `tests/build_stressor.py`, `tests/eval_long_form.py`, `tests/gen_replay_goldens.py`, `tests/test_audio.py`, `tests/test_backpressure.py`, `tests/test_cer.py`, `tests/test_context.py`, `tests/test_replay.py`, `tests/test_streaming.py`). Per-touched-file works but leaves the gate unable to answer "is the repo clean?" in one command.
-  - evidence: `python -m ruff format --diff .` at M11.1 = 19 hunks, all rewrapping; `.agent/memory.md` § Gate identity carries the corrected rationale.
-  - acceptance: `python -m ruff format --check .` exits 0 repo-wide; the full gate stays green; `gate.py`'s format step becomes `[*RUFF, "format", "--check", "."]` with the touched-file machinery and its two tests deleted; no comment text changes in the diff (`git diff -U0 | grep '^[-+].*#'` shows only rewrapped code lines).
+- **P-003 — Converge the ten remaining `ruff format` files so the step can go repo-wide.** `pri=2`
+  `size=S`
+  - why: `gate.py`'s format step is per-touched-file because repo-wide is red. M11.1 measured the red
+    set and the recorded justification did not hold: all 19 pre-existing hunks across 11 files are
+    ruff joining wrapped expressions under `line-length = 100`, plus two blank-line fixes. No comment
+    content and no aligned table is at stake, so D-006/L-001 do not defend them. `live_stt.py`
+    converged in M11.1. Re-measure the file list first — the 2026-09-02 cut deleted several of the
+    originally-named files.
+  - acceptance: `python -m ruff format --check .` exits 0 repo-wide; the full gate stays green;
+    `gate.py`'s format step becomes `[*RUFF, "format", "--check", "."]` with the touched-file
+    machinery and its two tests deleted; no comment text changes in the diff.
 
-- **P-002 — Decide whether the session context should learn EN renderings, not just JA terms.** `pri=3` `size=M` `tier=kernel`
-  - why: `SessionContext` (D-015) holds a JA term list and tells the translator to render each one consistently, but it never learns *which* EN rendering a term received. A first-draft `observe_en` that paired JA terms with capitalized EN runs was cut before it shipped: aligning a rendering out of unaligned JA/EN caption pairs is guesswork, the capitalization and title heuristics it needed were untestable, and no concrete failure mode was named that the plain term list does not already prevent. Repeating the same term list every turn already pins a name to one spelling across thread rotations, so the learner has to beat that, not beat nothing.
-  - evidence: `live_stt.py` `SessionContext.translator_brief` carries the term list and the consistency instruction; the cut is why it lists terms unpaired.
-  - acceptance: on a JA corpus with a proper noun recurring across ≥10 turns, count distinct EN renderings of that noun per session with and without the learner. The learner ships only if it strictly reduces the distinct-rendering count on a corpus it was not tuned on, AND `tests/eval_translation.py` adequacy shows no regression against the current brief judged paired on the same items. Either arm failing keeps the term list unpaired and closes this row.
+- **P-008 — Make `replay.py --engine whisper` fail cleanly on a farm-less box.** `pri=2` `size=S`
+  - why: `main()` preflights with `check_models` + `check_device`, but the CLI still reaches OpenVINO
+    and aborts inside it on a box with no accel farm sourced — the process dies in the native loader
+    rather than returning the preflight's message. The test path is already clean (`_not_ready`
+    skips), so this is the CLI surface alone, and it is the surface a human runs by hand.
+  - acceptance: `uv run python replay.py <wav> --engine whisper` on a farm-less box exits nonzero
+    with the `check_device` message on stderr and no native abort; the same command with the farm
+    sourced still replays; a test asserts the farm-less exit path without requiring hardware.
 
-- **P-006 — Unify the resumable-JSONL writer across evaluators.** `tests/eval_vac.py` ports `tests/eval_streaming.py:656-846` (three journals, prefix reconciliation, paired fsync) with its own schema/validators, so the mechanism now lives in two places. `pri=med`. Acceptance: one shared writer parameterized by validators + row identity, both evaluators calling it, `streaming_baseline.json` and `vac_baseline.json` each rebuilding byte-identically under `--aggregate-only`, and the full gate green.
+- **P-009 — Rule on the VAC repetition artifact pinned in the `whisper/long` golden.** `pri=3`
+  `size=M`
+  - why: the committed row's second utterance carries a real LocalAgreement-2 repetition —
+    `…ジェミニAPIに送ってに送って、…`. M11.3c characterized it and deliberately did not fix it (D-014
+    makes goldens characterization snapshots; pinning is what makes a future commit-policy change
+    visible), so the golden asserts a known-wrong transcript as correct. Right for a snapshot, wrong
+    as an end state: nothing distinguishes "this artifact is still here" from "this artifact is
+    intended". `forced_trims == 0` on the probe clips, so it is not a trim effect.
+  - evidence: `tests/replay_goldens.json` `whisper/long` segment 2; `streaming.py`'s
+    `common_prefix`/`_trim` commit path.
+  - acceptance: a named root cause for the duplication in the LocalAgreement-2 commit path, then
+    either a fix that removes it with `tests/eval_cer.py` showing no CER regression and the golden
+    regenerated, or a written ruling that it is inherent to the policy, recorded beside the golden
+    row so the next reader does not re-derive it. Deciding either way closes the row.
 
-- **P-007 — Narrow `asr_contract_sha256` to the two files still hashed whole.** `pri=2` `size=M` `tier=kernel`
-  - why: L-030's remaining half. `replay.py` and `cer.py` enter `asr_contract_sha256` as whole-file bytes, so any edit to either — an import, a comment, a docstring — moves a hash that is supposed to track ASR contract semantics. M11.3c hit this directly: adding one import to `replay.py` moved M11.3b's frozen `aff253181730…` to `78aca313…`, and the unit had to AST-freeze `replay.py` (docstring-only edits, proven inert because `_structural_dump` strips docstrings) to ship. The freeze is a workaround holding the symptom still; the cause is the whole-file hash. `live_stt.py` and `streaming.py` already went structural.
-  - evidence: `tests/eval_models.py` `asr_contract_sha256` construction; the M11.3b→M11.3c hash move recorded in `.agent/contracts/m11u3c.md` D-E; `.agent/memory.md` L-030.
-  - acceptance: `replay.py` and `cer.py` contribute through `_structural_dump` like the other two; adding a comment, an import alias and a docstring line to each leaves the hash fixed, while renaming a function or changing a literal moves it (both directions demonstrated by a committed test); the AST-freeze note on `replay.py` is deleted; the pinned migration clauses in `tests/eval_models.py` gain the one clause this rebase needs; `python gate.py` green.
-
-- **P-008 — Make `replay.py --engine whisper` fail cleanly on a farm-less box.** `pri=2` `size=S` `tier=docs`
-  - why: `main()` preflights with `check_models` + `check_device`, but the CLI still reaches OpenVINO and aborts inside it on a box with no accel farm sourced — the process dies in the native loader rather than returning the preflight's message. The test path is already clean (`_not_ready` skips), so this is the CLI surface alone, and it is the surface a human runs by hand.
-  - evidence: `replay.py` `main()`; the farm-sourcing requirement is documented in `.agent/memory.md` and in `tests/gen_replay_goldens.py`'s docstring.
-  - acceptance: `uv run python replay.py <wav> --engine whisper` on a farm-less box exits nonzero with the `check_device` message on stderr and no native abort; the same command with the farm sourced still replays; a test asserts the farm-less exit path without requiring hardware.
-
-- **P-009 — Rule on the VAC repetition artifact pinned in the `whisper/long` golden.** `pri=3` `size=M` `tier=kernel`
-  - why: the committed row's second utterance carries a real LocalAgreement-2 repetition — `…ジェミニAPIに送ってに送って、…`. M11.3c characterized it and explicitly did not fix it (D-014 makes goldens characterization snapshots; pinning is what makes a future commit-policy change visible), so the golden now asserts a known-wrong transcript as correct. That is the right call for a snapshot and the wrong end state for the product: nothing currently distinguishes "this artifact is still here" from "this artifact is intended".
-  - evidence: `.agent/contracts/m11u3c.md` probe-corpus seed, `long` row; `tests/replay_goldens.json` `whisper/long` segment 2; `forced_trims == 0` on all five probe clips, so the repetition is not a trim effect.
-  - acceptance: a named root cause for the duplication in the LocalAgreement-2 commit path, then either a fix that removes it with `tests/eval_vac.py` showing no adequacy regression and the golden regenerated, or a written ruling that it is inherent to the policy, recorded beside the golden row so the next reader does not re-derive it. Deciding either way closes the row.
+- **P-002 — Decide whether the session context should learn EN renderings, not just JA terms.**
+  `pri=3` `size=M`
+  - why: `SessionContext` (D-015) holds a JA term list and tells the translator to render each one
+    consistently, but never learns *which* EN rendering a term received. A first-draft `observe_en`
+    pairing JA terms with capitalized EN runs was cut before shipping: aligning a rendering out of
+    unaligned JA/EN caption pairs is guesswork, its capitalization and title heuristics were
+    untestable, and no failure mode was named that the plain term list does not already prevent.
+    Repeating the term list every turn already pins a name to one spelling across thread rotations,
+    so the learner has to beat that, not beat nothing.
+  - evidence: `live_stt.py` `SessionContext.translator_brief` carries the term list and the
+    consistency instruction; the cut is why it lists terms unpaired.
+  - acceptance: on a JA corpus with a proper noun recurring across ≥10 turns, count distinct EN
+    renderings of that noun per session with and without the learner. The learner ships only if it
+    strictly reduces the distinct-rendering count on a corpus it was not tuned on, and a paired
+    judged comparison on the same items shows no adequacy regression against the current brief.
+    Either arm failing keeps the term list unpaired and closes this row.
 
 ## Spine flags
 

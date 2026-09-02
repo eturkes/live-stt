@@ -29,7 +29,6 @@ INVENTORY = [
     ("pyright", True),
     ("pyright-tests", True),
     ("import", True),
-    ("aggregate-only", True),
 ]
 BLOCKING = [name for name, blocking in INVENTORY if blocking]
 
@@ -91,9 +90,6 @@ def seed(tmp: Path, step: str) -> list[str]:
         (tmp / "tests" / "seed.py").write_text('y: int = "s"\n')
     elif step == "import":
         (tmp / "live_stt.py").write_text('raise RuntimeError("seeded")\n')
-    elif step == "aggregate-only":
-        (tmp / "tests").mkdir()
-        (tmp / "tests" / "eval_models.py").write_text("raise SystemExit(1)\n")
     else:
         raise AssertionError(f"no seed for {step}")
     return []

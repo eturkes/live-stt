@@ -10,17 +10,17 @@ cannot be executed: four commits reported "gate passed" while the pyright step
 had silently been dropped from what was actually run, so the step set now lives
 here and `tests/test_gate.py` locks it.
 
-Two steps are shaped by measured traps, not preference:
+One step is shaped by a measured trap, not preference: `ruff-format` checks
+touched `*.py` files only. Repo-wide is still red on ten files carrying
+pre-existing wrapping drift, so a unit leaves its own files clean and the repo
+converges file by file. The list is filtered to `*.py` because an explicitly
+passed path with another extension is parsed as Python, which makes a `.json`
+argument exit 1 proposing Python layout.
 
-- `ruff-format` checks touched `*.py` files only. Repo-wide is still red on ten
-  files carrying pre-existing wrapping drift, so a unit leaves its own files
-  clean and the repo converges file by file. The list is filtered to `*.py`
-  because an explicitly-passed path with another extension is parsed as Python,
-  which makes a `.json` argument exit 1 proposing Python layout.
-- `aggregate-only` rebuilds `tests/model_baseline.json` from cached details and
-  is blocking as of M11.3, which retired the whole-file pipeline fingerprint that
-  had kept it permanently red. It needs the gitignored pinned corpus and detail
-  cache, so it fails on a machine that has not acquired them.
+Every step here is fast and hermetic. Model scoring is deliberately NOT a gate
+step: `tests/eval_cer.py` and `tests/eval_long_form.py` need gitignored weights
+and minutes of compute, so they run on demand when a decode change raises an
+accuracy question, not on every commit.
 
 Every step runs with `PYTHONPATH` cleared: an inherited entry can shadow the
 installed OpenVINO wheel with a host build that cannot execute here, which
@@ -59,7 +59,6 @@ def steps(files: list[str]) -> list[Step]:
         Step("pyright", True, [*PYRIGHT, *PROD_FILES]),
         Step("pyright-tests", True, [*PYRIGHT, "tests/"]),
         Step("import", True, [sys.executable, "-c", "import live_stt"]),
-        Step("aggregate-only", True, [sys.executable, "tests/eval_models.py", "--aggregate-only"]),
     ]
 
 
