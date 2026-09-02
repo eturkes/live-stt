@@ -174,13 +174,15 @@ git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 
 Core tests cover audio primitives, the streaming buffer, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay's model-gated golden cases skip cleanly when local weights, the accelerator, or corpus files are absent.
 
-The evaluators under `tests/` are separate and deliberately outside the gate: they need the gitignored weights and minutes of compute. Run one when a decode or streaming change puts its number in question.
+The evaluators under `tests/` are separate and deliberately outside the gate. Run one when a decode or streaming change puts its number in question. The first four need the gitignored weights and minutes of compute. The last two replay a committed trace instead, so they need no weights and no accelerator and finish in a second.
 
 ```sh
 uv run python tests/eval_cer.py               # 2-engine CER + RTF over the short corpus and stressors
 uv run python tests/eval_long_form.py         # both engines over a pinned 4:48 narration
 uv run python tests/eval_backpressure.py      # paced replay: bounded queues, drop-free
 uv run python tests/eval_retention.py         # shipped path over 182 s of pause-free speech
+uv run python tests/eval_vac_lag.py           # per-character caption lag of the streaming path
+uv run python tests/eval_term_census.py       # what the recognizer gives session context as a key
 ```
 
 Each one requires or fetches its declared inputs and fails instead of silently passing. `eval_retention.py` additionally checks the probe WAV against its committed hash first, so its number always belongs to the pinned input.

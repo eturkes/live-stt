@@ -13,12 +13,13 @@ whitespace such as line breaks (category C, not Z). Numerals are NOT folded on
 purpose (七 vs 7 scores as a substitution) -> the primary metric stays strict; a
 lenient numeral-folded figure, if ever wanted, is separate, never silent.
 
-align(): edit distance with an explicit backtrace and a documented tie order.
-On an equal-cost tie the diagonal (match/substitute) is preferred over the
-delete/insert L-shape, so a transposition (ab <-> ba) scores as two
-substitutions rather than a delete + an insert. This keeps deletions -- the
-headline "missed content" signal for long-form collapse -- from being inflated
-by reorderings. Returns (S, D, I) counts.
+alignment(): edit distance with an explicit backtrace and a documented tie
+order, returned as (ref index, hyp index) pairs. On an equal-cost tie the
+diagonal (match/substitute) is preferred over the delete/insert L-shape, so a
+transposition (ab <-> ba) scores as two substitutions rather than a delete + an
+insert. This keeps deletions -- the headline "missed content" signal for
+long-form collapse -- from being inflated by reorderings. align() counts those
+pairs into (S, D, I).
 """
 
 from __future__ import annotations
@@ -34,13 +35,14 @@ def normalize(text: str) -> str:
     return "".join(c for c in folded if not c.isspace() and unicodedata.category(c)[0] not in _DROP)
 
 
-def align(ref: str, hyp: str) -> tuple[int, int, int]:
-    """Align `hyp` to `ref`, returning (substitutions, deletions, insertions).
+def alignment(ref: str, hyp: str) -> list[tuple[int | None, int | None]]:
+    """Align `hyp` to `ref` as (ref index, hyp index) pairs, in reading order.
 
-    Deletion = a ref character absent from hyp (dropped content -- the headline
-    for long-form collapse). Insertion = a hyp character with no ref counterpart
-    (hallucination/duplication). Substitution = a mismatched pair. Inputs are
-    taken as-is; callers normalize() first.
+    A pair carries None on the side its move consumes nothing from: (i, None) is
+    a deletion, (None, j) an insertion, (i, j) a match or substitution. align()
+    counts these; callers that need WHERE a reference span landed rather than
+    what it cost read them directly (M12.1's term census reads the hypothesis at
+    each occurrence of a name), which is why one DP serves both.
 
     The DP records one move per cell, preferring the diagonal on cost ties so a
     transposition counts as substitutions, not delete+insert (keeps D honest).
@@ -69,20 +71,40 @@ def align(ref: str, hyp: str) -> tuple[int, int, int]:
                 best, mv = add, 2
             cost[i][j] = best
             move[i][j] = mv
-    s = d = ins = 0
+    pairs: list[tuple[int | None, int | None]] = []
     i, j = m, n
     while i > 0 or j > 0:
         mv = move[i][j]
         if mv == 0:
-            s += ref[i - 1] != hyp[j - 1]
+            pairs.append((i - 1, j - 1))
             i -= 1
             j -= 1
         elif mv == 1:
-            d += 1
+            pairs.append((i - 1, None))
             i -= 1
         else:
-            ins += 1
+            pairs.append((None, j - 1))
             j -= 1
+    pairs.reverse()
+    return pairs
+
+
+def align(ref: str, hyp: str) -> tuple[int, int, int]:
+    """Align `hyp` to `ref`, returning (substitutions, deletions, insertions).
+
+    Deletion = a ref character absent from hyp (dropped content -- the headline
+    for long-form collapse). Insertion = a hyp character with no ref counterpart
+    (hallucination/duplication). Substitution = a mismatched pair. Inputs are
+    taken as-is; callers normalize() first.
+    """
+    s = d = ins = 0
+    for i, j in alignment(ref, hyp):
+        if i is None:
+            ins += 1
+        elif j is None:
+            d += 1
+        else:
+            s += ref[i] != hyp[j]
     return s, d, ins
 
 
