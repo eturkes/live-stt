@@ -52,7 +52,9 @@ goes under Spine flags and to the user instead of running here.
       on `whisper/long` (`…ジェミニAPIに送って、日本語の…`, tail intact). **Retention CER 0.0583 →
       0.0635**: N=1166, S=33, **D 35 → 41**, I=0, hyp 1131 → 1125 chars. Retention carries no
       duplication (I=0 in both arms) ⇒ there the cut only costs. Code + test + regenerated golden on
-      branch `wt/p009-attempt` @ `bd37bf7`.
+      branch `attempt/p009-audio-time-cut` @ `bd37bf7` — keep it; it is the only copy.
+  - **ruled by user: leave the artifact.** The golden keeps pinning the duplication as a
+    characterization snapshot (D-014). Do not re-attempt without a funded roadmap unit.
   - **what a third attempt must solve first:** `reanchored` cannot separate a genuine re-spelling
     from ordinary span jitter. P-011 measured 6 of 157 commits moving backward, median 0.084 s / max
     0.452 s, while the real re-spelling moved ~0.7 s — so a detector that fires on any backward move
