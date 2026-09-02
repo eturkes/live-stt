@@ -40,10 +40,25 @@ goes under Spine flags and to the user instead of running here.
   - evidence: `tests/replay_goldens.json` `whisper/long` segment 2; `streaming.py` `process()`
     (`stable`/`self.emitted = text[:stable]`) and `finish()`.
   - acceptance (unchanged, fix branch only): a fix that removes the duplication with
-    `tests/eval_cer.py` showing no CER regression and the golden regenerated. Untried direction, NOT
-    validated: anchor the commit boundary in audio time (`commit_audio_s` already exists) rather than
-    character count, or keep the published text as its own accumulator instead of a hypothesis
-    prefix. Both change shipped decode output ⇒ roadmap unit, not polish.
+    `tests/eval_cer.py` showing no CER regression and the golden regenerated.
+  - **tried + rejected, both measured on NPU — do not re-run either as-is:**
+    - v1, guard `commit` on `text.startswith(self.emitted)`: duplication gone, but `_trim` fires only
+      on a nonempty commit ⇒ trimming starves. `max_buffer` 11.248 → 23.9/25.5 s, retention decode
+      117 → 210 s on 182 s of audio = **RTF 1.15, above real time**. Unshippable.
+    - v2, audio-time cut at `finish()`: `emitted_s` = furthest published audio time (monotone),
+      `reanchored` set when `commit_audio_s < emitted_s`, cut at `max(start, _index_at_time(…))`.
+      `process()` left byte-identical, so trim behaviour and per-update cost are untouched — the
+      M11.4 backpressure arm reproduces the committed trace at `divergences == 0`. Duplication gone
+      on `whisper/long` (`…ジェミニAPIに送って、日本語の…`, tail intact). **Retention CER 0.0583 →
+      0.0635**: N=1166, S=33, **D 35 → 41**, I=0, hyp 1131 → 1125 chars. Retention carries no
+      duplication (I=0 in both arms) ⇒ there the cut only costs. Code + test + regenerated golden on
+      branch `wt/p009-attempt` @ `bd37bf7`.
+  - **what a third attempt must solve first:** `reanchored` cannot separate a genuine re-spelling
+    from ordinary span jitter. P-011 measured 6 of 157 commits moving backward, median 0.084 s / max
+    0.452 s, while the real re-spelling moved ~0.7 s — so a detector that fires on any backward move
+    drops characters clip-wide, and `_index_at_time`'s `round()` interpolation can cut one early
+    each time it fires. Separate the two cases before applying any cut, and re-measure retention CER
+    on every arm. Both directions change shipped decode output ⇒ roadmap unit, not polish.
 
 - **P-002 — Decide whether the session context should learn EN renderings, not just JA terms.**
   `pri=3` `size=M`
@@ -69,4 +84,6 @@ goes under Spine flags and to the user instead of running here.
   of `long.wav` (13 updates, 0 trims) shows `process()` rewriting the 23-character record from
   `…ジェミニAPIに送って` to `…、Gemini API` at update `[12]`, after which `finish()` flushes
   `に送って、…` a second time — reproducing `whisper/long` segment 2 exactly. Live decode output, so
-  a fix needs a CER re-measurement and a golden regeneration. Full derivation in P-009.
+  a fix needs a CER re-measurement and a golden regeneration. Two fixes were built and measured;
+  both cost more than the artifact (v1 RTF 1.15, v2 retention CER 0.0583 → 0.0635) and neither
+  shipped. Full derivation + both measurements in P-009; user rules on funding a third attempt.
