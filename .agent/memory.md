@@ -94,7 +94,9 @@ Format step is **repo-wide and green**; the touched-file machinery (`touched_py`
   length effect (890 characters of real speech = 8.1 s) and not all repetition (a 3-character
   meaningful unit ×111 = 4.7 s). `TRANSLATE_TIMEOUT_S`=15 is the only container, so each occurrence
   costs 15 s plus one of `TRANSLATE_MAX_FAILURES`=3, and the recogniser fix does not remove it. The
-  probe inputs are literals, so it reruns with no artifact.
+  probe inputs are literals, so it reruns with no artifact. Mitigation = `roadmap.md` **M13.1**, a
+  degeneracy screen in `CodexTranslator.submit` (before the queue ⇒ `_failures` untouched by
+  construction); a LENGTH cap is refuted by 890 real characters at 8.1 s and `中央の`×111 at 4.7 s.
 - The EN leg needs `codex` on the PATH of the machine *running* live-stt; installs/logins are per-machine, user-only, and a container login does not carry over. Both layers have it now — host installed + EN confirmed live there (second smoke, 2026-07-02).
 
 ## Decisions (D-002 … D-014)

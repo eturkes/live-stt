@@ -107,15 +107,8 @@ why/evidence/acceptance whole. Do not re-file it here.
   permanent for the session costs every later turn on a 1-3 h soak target (`memory.md` § Smoke), and
   single runaways at n=130 and n=138 translated fine, so the failures that trip it can be transient.
 
-- **The translator generates without terminating on a long single-character run — a SECOND defect,
-  and it is on our side of D-011.** Session 2 (`transcripts/2026-09-03T16-07-24.txt` + `stt.log`)
-  measured it through the real `CodexTranslator` on a fresh thread, `_turn` bounded at 120 s instead
-  of the shipped 15 s: `"あ" + "は"*(N-1)` costs 2.5 s at N=20 and 2.2 s at N=60, then **>120 s at
-  N=160, 333, 445 and 890**. Length is not the cause — 890 characters of real speech concatenated
-  from the same session cost 8.1 s, and M13's other runaway (`'中央の'`×111, 333 chars) cost 4.7 s. So
-  `TRANSLATE_TIMEOUT_S`=15 is the only thing containing an unbounded generation, and every
-  occurrence spends 15 s of wall time plus a strike. **Fixing the recogniser removes the trigger but
-  not this**: any degenerate caption from any source still lands it, which is the argument for a
-  caption-side degeneracy screen before `submit`. A length cap is refuted by both controls above.
-  Do not act before M13 plans — the screen belongs to whichever side M13 rules on, and its
-  parameters (unit length, repeat count) are exactly what M13's own screen already computes.
+- **The translator's unbounded generation was FLAGGED and is now FUNDED — it left this register the
+  same day.** Session 2 measured it as a second, independent defect (`"あ" + "は"*(N-1)` >120 s at
+  N≥160 while 890 real characters cost 8.1 s), the user ruled on 2026-09-03 that the mitigation goes
+  first, and it is now **`roadmap.md` M13.1**, which owns its seam, calibration probe, corpus check
+  and acceptance whole. Do not re-file it here.
