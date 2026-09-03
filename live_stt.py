@@ -130,6 +130,16 @@ TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> JA-only for the session
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
 TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) block
 
+# A degenerate decode repeats one short unit without end, and that stops the model
+# TERMINATING: measured through the real app-server, fresh thread per turn, 30 s
+# bound — "あ"+"は"*n never finished at 120 characters and every unit up to 5
+# characters stalled at 480, while 480 characters of real speech cost 7.0 s. So the
+# screen is repetition, never length; 中央の×80 (240 characters) translated in 10.8 s.
+# 40 is five times the longest repetition any real caption in tree carries
+# (ポンポンポンポン) and three times under the shortest measured stall.
+TRANSLATE_REPEAT_MAX_CHARS = 40
+TRANSLATE_REPEAT_UNIT_CHARS = 8  # a longer unit is a repeated phrase, not a decode loop
+
 # developerInstructions outranks user-message imperatives — the AGENTS.md-in-cwd
 # alternative obeyed "delete all files" instead of translating it (D-011).
 # The last two bullets each repair a defect the aggregate quality scores hid,
@@ -802,6 +812,28 @@ class SessionContext:
         return "\n".join(lines)
 
 
+def repeat_span(text: str) -> int:
+    """Longest adjacent repetition of one short unit, in characters.
+
+    Scan each unit length once, then skip past the run just found: a run starting
+    inside it can only be shorter, and the first start that can reach further is
+    one character before its end.
+    """
+    best = 0
+    n = len(text)
+    for size in range(1, TRANSLATE_REPEAT_UNIT_CHARS + 1):
+        i = 0
+        while i + size <= n:
+            unit = text[i : i + size]
+            end = i + size
+            while end + size <= n and text[end : end + size] == unit:
+                end += size
+            if end > i + size:  # a single occurrence is not a repetition
+                best = max(best, end - i)
+            i = end - size + 1  # >= i + 1, so the scan always advances
+    return best
+
+
 class CodexTranslator:
     """JA→EN over a persistent `codex app-server` subprocess (D-011).
 
@@ -824,6 +856,7 @@ class CodexTranslator:
         self._turns = 0
         self._failures = 0
         self.dropped_translations = 0  # captions evicted under backlog (T8.5 tdrop=)
+        self.degenerate_captions = 0  # captions declined as repetition (M13.1 tskip=)
         self.enabled = False
 
     async def start(self) -> bool:
@@ -971,6 +1004,22 @@ class CodexTranslator:
 
     def submit(self, seq: int, ja: str):
         if not self.enabled:
+            return
+        span = repeat_span(ja)
+        if span >= TRANSLATE_REPEAT_MAX_CHARS:
+            # The model never terminates on this input, so translating it would
+            # cost TRANSLATE_TIMEOUT_S and one of TRANSLATE_MAX_FAILURES strikes;
+            # three such captions in a row took a whole session permanently
+            # JA-only. Declining ahead of the queue is what keeps _failures
+            # untouched by construction. The JA line still prints and is still
+            # saved — the caption is evidence of what was heard.
+            self.degenerate_captions += 1
+            logger.warning(
+                "caption %d not translated: %d of %d characters are one repeated unit",
+                seq,
+                span,
+                len(ja),
+            )
             return
         try:
             self.queue.put_nowait((seq, ja))
@@ -1375,7 +1424,15 @@ async def meter(state, audio_q, translator=None):
             if translator and translator.dropped_translations
             else ""
         )
-        status = f" {audio_pending}{segment_pending}{dropped}{tdrop}".rstrip()
+        # tskip= counts captions declined as repetition (M13.1). Kept out of
+        # tdrop=, which means translation fell BEHIND: merging a content decision
+        # into a backpressure counter corrupts every soak reading of the backlog.
+        tskip = (
+            f" tskip={translator.degenerate_captions}"
+            if translator and translator.degenerate_captions
+            else ""
+        )
+        status = f" {audio_pending}{segment_pending}{dropped}{tdrop}{tskip}".rstrip()
         # Tail-truncate the settling caption: it grows past the terminal width and
         # a wrapped line would survive the next _LINE_CLEAR as residue.
         room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)

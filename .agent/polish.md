@@ -112,3 +112,18 @@ why/evidence/acceptance whole. Do not re-file it here.
   N≥160 while 890 real characters cost 8.1 s), the user ruled on 2026-09-03 that the mitigation goes
   first, and it is now **`roadmap.md` M13.1**, which owns its seam, calibration probe, corpus check
   and acceptance whole. Do not re-file it here.
+
+- **P-018 · A declined caption still teaches the recogniser-side learner.** `pri 3` · `size S`.
+  M13.1's screen sits at the TRANSLATOR seam (`live_stt.py:1005`), and both producers fold the
+  caption into `SessionContext` first: `observe_ja` at `live_stt.py:1296` (VAC) and `:1222`
+  (sherpa) run before `translator.submit` at `:1298` / `:1224`. A runaway therefore contributes one
+  sighting of every `_TERM_RUN` candidate it contains (`dict.fromkeys` dedupes within a caption), so
+  `CONTEXT_TERM_SUPPORT`=3 runaways repeating one unit would promote that unit and brief the
+  translator on a decode artifact. Latent, not measured: the observed runaways repeat DIFFERENT
+  units, so none promoted. Evidence: session 2 n=22 = `中央の`×111 (中央 is a valid 2-character kanji
+  candidate); session 1 carries 次は / 私は / 副部 / クラブ / アーメン across five captions.
+  Acceptance: a caption the screen declines contributes no candidate — `repeat_span(text) >=
+  TRANSLATE_REPEAT_MAX_CHARS` short-circuits `observe_ja` at both call sites; lock with
+  `CONTEXT_TERM_SUPPORT` identical runaways leaving `terms()` empty while an ordinary caption still
+  promotes, and neutralize each guard (L-022). Decide first whether the screen belongs in the
+  producers rather than in `submit`, since M13's recogniser units may want the same predicate.

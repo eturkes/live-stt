@@ -663,7 +663,7 @@ def test_the_meter_shows_each_backlog_counter_only_when_it_is_nonzero(monkeypatc
     audio_q.put_nowait(np.zeros(SAMPLE_RATE // 2, dtype=np.float32))
     state.segment_queue_depth = 3
     state.dropped = 2
-    translator = types.SimpleNamespace(dropped_translations=5)
+    translator = types.SimpleNamespace(dropped_translations=5, degenerate_captions=1)
 
     written = run_meter(monkeypatch, state, audio_q, translator)[0]
 
@@ -671,13 +671,29 @@ def test_the_meter_shows_each_backlog_counter_only_when_it_is_nonzero(monkeypatc
     assert "seg=3" in written
     assert "drop=2" in written
     assert "tdrop=5" in written
+    assert "tskip=1" in written
 
 
 def test_the_meter_hides_a_translator_with_no_dropped_turns(monkeypatch):
     state = live_stt.State()
-    translator = types.SimpleNamespace(dropped_translations=0)
+    translator = types.SimpleNamespace(dropped_translations=0, degenerate_captions=0)
 
-    assert "tdrop" not in run_meter(monkeypatch, state, translator=translator)[0]
+    written = run_meter(monkeypatch, state, translator=translator)[0]
+
+    assert "tdrop" not in written
+    assert "tskip" not in written
+
+
+def test_the_meter_separates_declined_captions_from_backlog_drops(monkeypatch):
+    """tdrop= means translation fell behind and tskip= means a caption was
+    declined as repetition (M13.1); one soak reading must never carry the other."""
+    state = live_stt.State()
+    translator = types.SimpleNamespace(dropped_translations=0, degenerate_captions=4)
+
+    written = run_meter(monkeypatch, state, translator=translator)[0]
+
+    assert "tskip=4" in written
+    assert "tdrop" not in written
 
 
 def test_a_long_caption_is_tail_truncated_to_the_exact_remaining_width(monkeypatch):

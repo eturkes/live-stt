@@ -2,11 +2,11 @@
 
 The happy-path live turn needs a real `codex app-server` + auth and stays a
 user smoke (L-004). What is locked here is the failure surface a refactor can
-silently break: 3-strike session disable, backlog eviction, and the `_read_loop`
+silently break: 3-strike session disable, backlog eviction, the `_read_loop`
 dispatch/EOF branches plus its oversized-line/broken-transport guard (the sole
-non-local input boundary, T6-hardened). All in memory — fake stdio over an
-asyncio.StreamReader, `asyncio.run` per test, no subprocess, no mic, no new
-dependency.
+non-local input boundary, T6-hardened), and M13.1's degeneracy screen. All in
+memory — fake stdio over an asyncio.StreamReader, `asyncio.run` per test, no
+subprocess, no mic, no new dependency.
 """
 
 from __future__ import annotations
@@ -14,10 +14,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 
 import pytest
 
 import live_stt
+
+TESTS = Path(__file__).resolve().parent
 
 
 class _FakeStdin:
@@ -468,3 +471,138 @@ def test_new_terms_rotate_the_thread_so_the_glossary_reaches_the_model():
         assert len(rotations) == 1  # unchanged glossary does not rotate again
 
     asyncio.run(scenario())
+
+
+# --- M13.1: decline a degenerate caption before it reaches the translator ----
+
+
+def _runaway(unit: str, span: int) -> str:
+    """One leading あ, then `unit` repeated to `span` — the measured shape."""
+    return ("あ" + unit * (span // len(unit) + 1))[:span]
+
+
+def _real_japanese() -> list[str]:
+    """Every real caption committed in tree: 215 NPU captions + each golden text."""
+    trace = json.loads((TESTS / "caption_trace.json").read_text(encoding="utf-8"))
+    texts = [c["text"] for c in trace["captions"]]
+    goldens = json.loads((TESTS / "replay_goldens.json").read_text(encoding="utf-8"))
+    for clips in goldens.values():
+        for row in clips.values():
+            texts += [seg["text"] for seg in row["segments"]] + [row["ja_ref"]]
+    return texts
+
+
+def test_a_degenerate_caption_never_reaches_a_turn():
+    # The screen sits in submit(), BEFORE the queue, so a declined caption cannot
+    # reach _turn and cannot touch _failures — that placement is the whole unit.
+    # Locked with it: the JA-side learner never keys a rendering on a runaway
+    # (observe_en runs only on a translated block), and the eviction counter the
+    # meter reads as backpressure stays untouched by a content decision.
+    async def scenario():
+        ctx = live_stt.SessionContext()
+        t = live_stt.CodexTranslator(ctx)
+        t.enabled = True
+        t._thread_id = "th-1"
+        turns, paired = [], []
+
+        async def fake_turn(ja):
+            turns.append(ja)
+            return "Gon set out for Hyoju's house."
+
+        t._turn = fake_turn  # type: ignore[assignment]
+        ctx.observe_en = lambda ja, en: paired.append(ja)  # type: ignore[method-assign]
+
+        real = "ごんは兵十のうちへ出かけました。"
+        t.submit(1, real)
+        t.submit(2, _runaway("は", 480))
+
+        assert t.queue.qsize() == 1  # only the ordinary caption was enqueued
+        assert t.degenerate_captions == 1
+        assert t.dropped_translations == 0  # a content decision, never backpressure
+
+        t.submit_sentinel()
+        await t.run(None)
+
+        assert turns == [real]  # the runaway never entered a turn
+        assert paired == [real]  # nor observe_en (D-015)
+
+    asyncio.run(scenario())
+
+
+def test_a_runaway_streak_leaves_the_translation_leg_alive():
+    # What killed session 1: n=195/196/197 were three consecutive runaways, so
+    # three consecutive TimeoutErrors hit TRANSLATE_MAX_FAILURES and the last 47
+    # turns of a 41-minute session were JA-only. Declining ahead of the queue
+    # means a streak of any length costs no strike at all.
+    t = live_stt.CodexTranslator()
+    t.enabled = True
+    streak = live_stt.TRANSLATE_MAX_FAILURES + 1
+
+    for seq in range(streak):
+        t.submit(seq, _runaway("次は、", 444))
+
+    assert t.queue.empty()
+    assert t.enabled is True
+    assert t._failures == 0
+    assert t.degenerate_captions == streak
+
+
+def test_a_declined_caption_names_its_reason_once(caplog):
+    # The JA line still prints and is still saved (the caption is evidence of what
+    # was heard), so the missing EN needs a reason on stderr — session 2's whole
+    # stderr was one `translation failed ()`, an empty TimeoutError str().
+    t = live_stt.CodexTranslator()
+    t.enabled = True
+
+    with caplog.at_level(logging.WARNING, logger="live_stt"):
+        t.submit(43, _runaway("は", 890))
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    message = warnings[0].getMessage()
+    assert "43" in message  # which caption lost its EN line
+    assert "889 of 890" in message  # and how much of it was one repeated unit
+
+
+@pytest.mark.parametrize(
+    "unit,span",
+    [
+        ("は", 120),  # smallest measured stall: 30 s bound, fresh thread per turn
+        ("は", 240),
+        ("は", 480),
+        ("中央の", 480),
+        ("クラブの", 480),
+        ("アーメンの", 480),
+        ("は", 890),  # session 2 n=43, the observed maximum caption
+        ("次は、", 444),  # session 1 n=196, first of the three that killed the leg
+        ("中央の", 333),  # session 2 n=22
+    ],
+)
+def test_every_caption_measured_to_stall_the_translator_is_declined(unit, span):
+    assert live_stt.repeat_span(_runaway(unit, span)) >= live_stt.TRANSLATE_REPEAT_MAX_CHARS
+
+
+def test_the_screen_flags_no_real_caption():
+    # The false-positive side, hardware-free and rerunnable from committed state:
+    # across every real Japanese caption in tree the longest adjacent repetition
+    # is 8 characters (ポンポンポンポン, an onomatopoeia the story itself uses),
+    # five times under the threshold.
+    spans = {text: live_stt.repeat_span(text) for text in _real_japanese()}
+
+    assert max(spans.values()) == 8
+    assert not [t for t, s in spans.items() if s >= live_stt.TRANSLATE_REPEAT_MAX_CHARS]
+
+
+def test_the_threshold_is_a_boundary_and_the_unit_bound_is_real():
+    # Two constants decide every verdict above, so pin each at its own edge.
+    # A unit longer than TRANSLATE_REPEAT_UNIT_CHARS is a repeated PHRASE — a
+    # speaker saying the same thing twice — while a decode loop repeats something
+    # short, so the bound is what keeps a person out of the screen.
+    limit = live_stt.TRANSLATE_REPEAT_MAX_CHARS
+    unit = live_stt.TRANSLATE_REPEAT_UNIT_CHARS
+
+    assert live_stt.repeat_span("ごんは兵十のうちへ出かけました。") == 0  # a span, not a length
+    assert live_stt.repeat_span("あ" * (limit - 1)) == limit - 1
+    assert live_stt.repeat_span("あ" * limit) == limit
+    assert live_stt.repeat_span(("あいうえおかきくけこ"[:unit]) * 5) >= limit
+    assert live_stt.repeat_span(("あいうえおかきくけこ"[: unit + 1]) * 5) < limit

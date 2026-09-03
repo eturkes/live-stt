@@ -112,9 +112,12 @@ Deterministic coverage now reaches 182 s of pause-free audio on the shipped path
 
 `CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so EN lines keep JA order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed). Two of those instructions target defects measured on clinical Japanese: Japanese brand-name drugs come back as the international generic (プレドニン as prednisolone, not the different molecule "prednisone") with the dose and schedule untouched, and the English never invents a patient's sex the Japanese did not state.
 
+A caption that is one short unit repeated over and over is declined before it is queued. The recognizer produces such a caption on laughter or room tone, and the model then generates without ever stopping: a run of one character never finished a turn at 120 characters, while 480 characters of real speech took 7 s. The declined caption still prints and is still saved, because it is the record of what was heard. Only its translation is skipped. One warning names the reason, and the meter counts it as `tskip=`. The rule is repetition, not length: a caption is declined when 40 or more of its characters are one unit of at most 8 characters, repeated back to back.
+
 Degradation, in order:
 
 - codex CLI missing / init fails → session runs JA-only from the start.
+- A caption that repeats one short unit for 40 characters or more → not translated, and no failure is counted.
 - A turn exceeds 15 s → it's aborted and skipped; 3 consecutive failures → JA-only for the rest of the session.
 - Backlog over 50 utterances → oldest dropped.
 - The thread is rotated every 100 turns to keep the cached prompt prefix small.
@@ -137,6 +140,7 @@ The last line is the status line. It rewrites itself in place and holds two thin
 - `seg=N`: completed utterances waiting for sequential decode (sherpa engines only; appears when non-zero)
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
 - `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
+- `tskip=N`: captions declined as repetition loops and not translated (appears once non-zero)
 
 Numbered lines tie JA/EN pairs together even when the next utterance's JA prints before the previous EN arrives.
 
@@ -234,6 +238,8 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → JA-only |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
 | `TRANSLATE_QUEUE_MAX` | 50 | Translation backlog cap (drop-oldest) |
+| `TRANSLATE_REPEAT_MAX_CHARS` | 40 | Repetition span that declines a caption before it is queued |
+| `TRANSLATE_REPEAT_UNIT_CHARS` | 8 | Longest repeated unit that screen counts as a decode loop |
 
 ## Notes
 

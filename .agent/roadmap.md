@@ -15,15 +15,21 @@ unit touches decode quality, a CER number the commit body records.
 ## Status
 
 - Milestone: **M13 the shipped pipeline degenerates on live audio** — **IN-PROGRESS**, and the next
-  milestone by user direction. Two real-world sessions, both flagged:
+  milestone by user direction. **M13.1 is DONE and no unit is OPEN**, so the next session's mode is
+  PLANNING for M13's recogniser scope — which is **BLOCKED on a standing precondition: a retained
+  WAV of laughter / throat-clearing / room tone** (`## Decisions pending from user`). Evidence
+  unchanged ⇒ read-only close, and run M12.5 or a standing option instead. Two real-world sessions,
+  both flagged:
   session 1 = 9 captions that are 76-100 % one short unit repeated 33-148 times (341-517 chars);
   session 2 = 2 more, new max **890 chars** against a caption p50 of 17. No committed artifact
   reproduces it. **Session 2 also converted the EN-leg failure from inference to measurement, and
-  it is a SECOND defect** — a long single-character run makes the TRANSLATOR generate without
-  terminating (>120 s against `TRANSLATE_TIMEOUT_S`=15), while 890 chars of real speech costs 8.1 s.
-  **The user funded the translator defect first: `M13.1` in `## Open` is OPEN, fully specified and
-  cold-start executable.** The recogniser side remains UNPLANNED and needs audio before it can be
-  planned; evidence + the probe table → `## Open`.
+  it is a SECOND defect** — a repeated short unit makes the TRANSLATOR generate without terminating
+  (measured again at 25 turns in M13.1), while 480 chars of real speech costs 7.0 s.
+  **M13.1 shipped that mitigation on 2026-09-03 and is DONE**: a degeneracy screen in
+  `CodexTranslator.submit` declines the caption before the queue, so the EN leg survives any streak
+  of runaways. **The recogniser side is the whole remaining milestone and is still UNPLANNED** — it
+  needs audio before it can be planned, and the next ask is a short retained WAV of laughter,
+  throat-clearing and room tone (session 2's n=43 is laughter after the longest speech gap).
 - Parked milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **PARKED**
   (M12.1-M12.4 DONE; M12.5 OPEN, parked not cancelled — a defect in the shipped default engine's
   live output outranks a learner-quality question, and M12.5 resumes unchanged because it replays a
@@ -82,10 +88,11 @@ unit touches decode quality, a CER number the commit body records.
 
 - **M13 — The shipped pipeline degenerates on live audio: the recogniser emits repetition loops and
   the translator never terminates on them. [IN-PROGRESS]**
-  Next by user direction. **Two independent defects, and the user funded the translator one first
-  (2026-09-03)** — M13.1 below is fully specified and executable from a cold start. The RECOGNISER
+  Next by user direction. **Two independent defects. The translator one was funded first and
+  M13.1 shipped it (see `## Done`), so the EN leg no longer dies on a runaway.** The RECOGNISER
   side stays **UNPLANNED** and still needs its own planning session before any code: the two
-  hypotheses below take different fixes and the corpus does not exist yet.
+  hypotheses below take different fixes and the corpus does not exist yet. **Planning is blocked on
+  audio, not on a decision** — the ask is a short retained WAV, not a transcript.
   **The measurement** — `transcripts/2026-09-03T14-03-43.txt` (gitignored, 241 captions / 193
   translations / ~41 min). Screen each caption for its longest adjacent repeated substring (unit
   ≥2 chars, ≥3 repeats, span ≥12 chars): **12 captions flagged, 9 of them 76-100 % repeat** — n=196
@@ -104,6 +111,10 @@ unit touches decode quality, a CER number the commit body records.
   permanent JA-only for the last 47 turns. The one earlier isolated EN gap, n=144, is also a
   runaway. Single runaways at n=130 and n=138 did translate, so one is survivable and three in a
   row are not. The translator behaved as D-009/D-011 design; the recogniser is the fault.
+  **M13.1 has since shipped, so this specific kill path is closed:** a caption repeating one short
+  unit for ≥40 characters is declined before the translation queue, which costs an EN line and no
+  strike, so no streak of runaways can disable the leg again. Every runaway named above is declined
+  by the shipped screen. What remains is the recogniser emitting them at all.
 
   **SESSION 2 reproduces the mode and measures the translator side (`transcripts/2026-09-03T16-07-24.txt`,
   gitignored, 195 captions / 194 translations / 37 min, plus the user-captured `stt.log`).** Same
@@ -165,61 +176,6 @@ unit touches decode quality, a CER number the commit body records.
   silences `q=`/`seg=`/`drop=` entirely and no redirection captures them. A run's backlog evidence
   is therefore unobtainable today without a code change — size that into any evidence request.
 
-- **M13.1 — Decline a degenerate caption before it reaches the translator. [OPEN]**
-  Funded by the user on 2026-09-03, ahead of the recogniser work, and written to be executable from
-  a cold start: defect, seam, calibration, corpus and acceptance are all below. `est 90K` →
-  **cal 150K** at ratio 1.67 ⇒ one window with reserve. No hardware; needs `codex` for the
-  calibration probe alone.
-  **Why it is its own unit and not a symptom.** The translator hangs on input the recogniser should
-  never have produced, but the fixes are independent and this one is measured: `"あ" + "は"*(N-1)`
-  does not finish a turn in 120 s at N=160/333/445/890, while 890 characters of real speech cost
-  8.1 s and a 3-character meaningful unit repeated 111× costs 4.7 s. So a recogniser fix removes
-  this trigger and leaves the defect intact for any other source. This unit makes the EN leg survive
-  a degenerate caption; M13's remaining units decide why one is emitted.
-  **The seam is `CodexTranslator.submit` (`live_stt.py:972`), one site, and the choice is
-  load-bearing.** Both producers submit through it — `worker` (`live_stt.py:1175`, sherpa path) and
-  `finalize` (`live_stt.py:1249`, VAC path) — and it sits BEFORE the queue, so a declined caption
-  never reaches `_turn` and `_failures` is untouched **by construction**, which is the whole point of
-  the unit. Two consequences to assert rather than assume: the numbered `JA n:` line still prints and
-  is still saved (the caption is evidence of what was heard, and the recogniser units need it), and
-  `run()`'s `observe_en(ja, en)` never sees the degenerate string, so D-015's learner cannot key a
-  rendering on a runaway.
-  **Calibrate the threshold, do not guess it — the probe is the unit's first measurement.** Through
-  the real `CodexTranslator`, fresh thread, `_turn` under a **30 s** bound (shipped timeout is 15 s,
-  so >30 s is "hangs" and the bound is what caps the matrix): ≥4 repeated units × spans
-  60/120/240/480 characters, control real speech interleaved at matched spans (L-026, and
-  `_abort_turn()` after every over-bound turn or the next turns inherit the stall). Minimum unit set,
-  all observed live: `は` (1 char), `中央の` (3, known safe at 333), `クラブの` (4), `アーメンの` (5).
-  **Write them as literals** — never read the gitignored transcripts, so the probe reruns from
-  committed state. ~16 degenerate turns, worst case ~8 min. The matrix decides the screen's shape:
-  if only 1-character units hang, the rule is "longest run of one character ≥ N"; if longer units
-  hang at larger spans, it is M13's general screen with a span threshold.
-  **The false-positive side is already committed and hardware-free.** The screen must flag **0** of
-  `tests/caption_trace.json`'s 215 real NPU captions — M13's own negative control — and 0 of the
-  replay goldens' texts. That check reruns from committed state and belongs in `tests/`. The window
-  is wide: real captions carry runs up to ~6 identical characters (session 2 n=116, `お`×6,
-  translated in 6 s), 60 is measured safe and 160 measured fatal, so any threshold in ~20-60 clears
-  both sides — the corpus check picks it, not taste.
-  **What the user sees:** one WARNING naming the reason, plus a **dedicated counter surfaced on the
-  meter**. Do NOT reuse `dropped_translations`/`tdrop=`: `memory.md` § Soak defines it as
-  "translation fell behind", a backpressure signal, and this is a content decision — merging them
-  corrupts a soak reading. The transcript marker belongs to **P-015**, which this unit does not
-  absorb; land both together only if the window allows, since they share one diagnosability gap.
-  **Acceptance.** `python gate.py` 6/6 with the suite grown, plus locks in `tests/test_translator.py`
-  on the in-memory `FakeProc`/`StreamReader`: (1) a degenerate caption is not enqueued and `_turn` is
-  never entered; (2) an ordinary caption is enqueued unchanged; (3) `TRANSLATE_MAX_FAILURES`+1
-  consecutive degenerate captions leave `enabled` True and `_failures` 0 — the EN leg survives what
-  killed session 1; (4) the new counter increments while `dropped_translations` does not; (5)
-  `observe_en` never sees a declined caption; (6) the corpus lock above; (7) a positive lock on the
-  measured hanging literals. Every new predicate proved non-vacuous by neutralization (L-022).
-  Record the probe matrix in the commit body — it is the only producer of the threshold.
-  **Out of scope, named so it is not redebated here:** the recogniser fix (M13's remaining units), a
-  transcript marker (P-015), the meter-capture gap (P-016), and any LENGTH cap — refuted twice over,
-  by 890 real characters at 8.1 s and by `中央の`×111 at 4.7 s.
-  **Verdict:** the screen ships with a corpus-calibrated threshold and the survival lock ⇒ the EN
-  leg no longer dies on a runaway, and M13's recogniser side is then free to be planned on audio
-  rather than on urgency.
-
 **M12 sizing fact, measured from tree, then confirmed by the M12.1 run — read it before M12.4/M12.5.**
 `tests/caption_trace.json` records `hotwords_reachable: false`. `ASR_DEVICE = "NPU"` and
 `ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})`, so `WhisperEngine.set_hotwords` drops the list
@@ -265,6 +221,51 @@ could have overturned it, not for the one-character change that followed. Apply 
     supplied, and M12 closes on that.
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M13.1 — Decline a degenerate caption before it reaches the translator. [DONE] — SHIPPED: the
+  EN leg now survives what killed session 1, and the threshold is corpus-picked, not guessed.**
+  `repeat_span()` + a screen in `CodexTranslator.submit` (`live_stt.py:1005`), 26 production lines.
+  A caption is declined when its longest adjacent repetition of a unit ≤`TRANSLATE_REPEAT_UNIT_CHARS`
+  =8 reaches `TRANSLATE_REPEAT_MAX_CHARS`=40. The seam is BEFORE the queue, so `_turn`, `_failures`
+  and `observe_en` are untouched **by construction**; the numbered `JA n:` line still prints and is
+  still saved, one WARNING names the caption and how much of it repeats, and the meter gained a
+  dedicated `tskip=` (kept out of `tdrop=`, which means translation fell behind).
+  **The calibration matrix, 25 turns through the real app-server (`tests/eval_translate_repeat.py`, inputs
+  are literals + the committed trace, so it reruns with no artifact):** fresh thread per turn, 30 s
+  bound, real-speech canary after every degenerate turn — **every canary healthy at 2.8-7.0 s**, so
+  every row is credible.
+
+  | chars | real speech | `は` | `中央の` | `クラブの` | `アーメンの` |
+  |---|---|---|---|---|---|
+  | 20 | 2.9 s | 2.9 s | 3.4 s | 2.7 s | 3.2 s |
+  | 60 | 3.9 s | 3.4 s | 4.8 s | 2.9 s | 3.5 s |
+  | 120 | 5.2 s | **HANG** | 5.4 s | 6.4 s | 3.3 s |
+  | 240 | 6.0 s | **HANG** | 10.8 s (2465 EN chars) | 4.6 s | 5.0 s |
+  | 480 | 7.0 s (1059 EN chars) | **HANG** | **HANG** | **HANG** | **HANG** |
+
+  So the defect is **not single characters only** — every unit up to 5 characters stalls at 480 —
+  and it is **not length**: 480 characters of real speech cost 7.0 s. That killed the "longest run
+  of one character" rule the plan offered as the cheaper option, and the general screen ships.
+  **v1 of the probe was thrown away and it is why the harness carries canaries:** on ONE shared
+  thread a stalled turn made a later CONTROL hang, and `は`×60 read as fatal where a fresh thread
+  measures 3.4 s. `_abort_turn`'s interrupt + drain is not enough for a stall (L-026 extended).
+  **The false-positive side is committed, hardware-free and wide:** over every real caption in tree
+  — 215 NPU captions + all 25 replay goldens' texts + 6.9 K characters of Aozora reference — the
+  longest adjacent repetition is **8** (`ポンポンポンポン`, the story's own onomatopoeia), five times
+  under the threshold, against a smallest measured stall of 120. The **unit bound is what keeps a
+  person out**: widened to 20 characters the screen starts seeing a speaker repeat a PHRASE
+  (`、うなぎが食べたい`×2 = 18 chars, caption 108).
+  Suite 241 → **256 passed / 1 skipped / 16.4 s** (14 translator locks + 1 meter lock). Gate 6/6.
+  All 7 new predicates proved non-vacuous by neutralization (L-022): removing the screen reds 3,
+  merging the counter into `tdrop` reds 2, a threshold past the measured stall reds 13, one below
+  the real corpus reds 1, widening the unit bound reds 2, counting a single occurrence as a
+  repetition reds 1, dropping the meter counter reds 2 — baseline and post-restore both 77 passed.
+  **The first neutralization matrix was WRONG and the fix is now L-022:** three mutants reported a
+  copy of one earlier red set, because CPython reuses a `.pyc` when two edits a second apart change
+  the module by the same byte count. `main=88% 212K/240K` against `est 90K → cal 150K` ⇒ 2.36 on the
+  raw estimate, 1.41 on the calibrated one; no teammates funded.
+  Out of contract, registered not fixed: **P-018** — `observe_ja` still sees a declined caption, so
+  three runaways repeating one unit could promote a decode artifact into the term list.
 
 - **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [DONE] — SHIPPED at 2: the floor was hiding the
   one name in the story and guarding a slot ordinary vocabulary does not occupy.** One production
@@ -588,12 +589,17 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open — the next session runs `M13.1` and needs no further input.** It is OPEN in `## Open`,
-fully specified, and cold-start executable: seam, calibration probe, corpus check, acceptance and
-out-of-scope list are all written. **The user ruled on 2026-09-03 that the translator mitigation
-goes first**, ahead of the recogniser work, after session 2 measured the translator as a second and
-independent defect. M13's recogniser side stays UNPLANNED and is blocked on audio, not on a decision
-— when M13.1 lands, the next ask is a short retained WAV of laughter, throat-clearing and room tone.
+**One open, and it is an EVIDENCE request, not a design call: M13's recogniser side needs audio
+before it can be planned.** M13.1 shipped the translator mitigation, so nothing else in M13 is
+executable — the two hypotheses take different fixes and no committed clip reproduces the defect.
+**The ask: a short retained WAV (any length, a minute is plenty) of laughter, throat-clearing,
+room tone and a few seconds of silence, recorded on the live-stt mic.** Session 2 named the trigger
+— n=43 is laughter (`あははは…`) after the neighbourhood's longest speech gap, and n=22's loop
+follows a 13 s gap — so this is a far smaller ask than "capture a 40-minute session and hope". A
+transcript cannot substitute: audio is the only thing that separates hypothesis (a) an unbounded
+decode from (b) VAC ratifying the loop. Without it M13 cannot open its next unit, and the standing
+options below (a live-mic validation pass, a maintenance pass, a new capability milestone) or M12.5
+are what a session would run instead.
 M13 parks M12.5, which resumes unchanged whenever M13 closes. Two M12 things to know without acting
 on them.
 (1) M12.3's screen makes a falsifiable prediction that M12.5 settles in ~2
@@ -614,7 +620,8 @@ whenever. Standing options for after M12, none of them blocking:
 (c) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
     most of the obvious ones.
 
-(Last resolved: **M12's remaining scope** — M12.1's census answered M12's two named modes without a
+(Last resolved: **which M13 defect goes first** — the user ruled the translator mitigation ahead of
+the recogniser work on 2026-09-03, and M13.1 shipped it the same day. Before that: **M12's remaining scope** — M12.1's census answered M12's two named modes without a
 translator turn, leaving the question of what to fund next. Offered (a) run the arm matrix as
 scoped on the 67-caption clip, (b) close M12 on the census and rule on P-012's fix on its merits, or
 (c) acquire a longer corpus first, which is the only route to a dead-pairing test that can return
