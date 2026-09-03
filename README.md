@@ -104,7 +104,7 @@ The regression suite covers three distinct long-form shapes:
 
 - A 44.7 s genuinely continuous stressor forces the chunked path and CER-gates both engines. The same audio, paced as 20 ms callbacks with decode RTF 0.20, remains drop-free through the two-stage worker.
 - The shipped whisper path is paced on real NPU decode costs, one per streaming update, recorded from both pause-free clips. Both replays drop nothing: the queue peaks at 0.760 s and 1.060 s of the 2 s headroom, and no trim discards un-emitted audio. The same replays drop once every decode is slowed by 1.5x, which is the margin the measurement leaves.
-- A 4:48 narration feeds the full file through production replay as 66 natural VAD segments; its longest pre-padded segment is 9.686 s, so it validates long-session ingestion and endpointing but not the >10 s chunker.
+- A 14:08 narration in six pinned sections feeds each full file through production replay. The six sections give 213 natural VAD segments, and the longest pre-padded segment of any of them is 9.686 s. The corpus therefore validates long-session ingestion and endpointing, but not the >10 s chunker.
 
 Deterministic coverage now reaches 182 s of pause-free audio on the shipped path and 44.7 s on the sherpa path. A VAD segment that outlives the 60 s ring stays outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.agent/memory.md` under **Smoke checklist**.
 
@@ -178,7 +178,7 @@ The evaluators under `tests/` are separate and deliberately outside the gate. Ru
 
 ```sh
 uv run python tests/eval_cer.py               # 2-engine CER + RTF over the short corpus and stressors
-uv run python tests/eval_long_form.py         # both engines over a pinned 4:48 narration
+uv run --with soundfile python tests/eval_long_form.py  # build the pinned 14:08 narration (--score adds CER)
 uv run python tests/eval_backpressure.py      # paced replay: bounded queues, drop-free
 uv run python tests/eval_retention.py         # shipped path over 182 s of pause-free speech
 uv run python tests/eval_vac_lag.py           # per-character caption lag of the streaming path

@@ -124,49 +124,67 @@ def test_rtf_rows_have_valid_shape_and_long_form_output():
 
 
 def test_long_form_rows_recompute_from_committed_text():
-    ref = LONG_FORM["reference"]["text"]
-    for row in LONG_FORM["scores"].values():
-        assert row["ref"] == ref
-        counts = align(normalize(ref), normalize(row["hyp"]))
-        assert counts == (row["S"], row["D"], row["I"])
-        assert cer(ref, row["hyp"]) == row["cer"]
-        assert len(normalize(ref)) == row["N"]
-        assert row["D"] / row["N"] == row["del_rate"]
-        assert row["I"] / row["N"] == row["ins_rate"]
+    scored = [s for s in LONG_FORM["sections"].values() if "scores" in s]
+    assert scored, "the long-form manifest records no scored section"
+    for section in scored:
+        ref = section["reference"]["text"]
+        assert set(section["scores"]) == ENGINES
+        for row in section["scores"].values():
+            assert row["ref"] == ref
+            counts = align(normalize(ref), normalize(row["hyp"]))
+            assert counts == (row["S"], row["D"], row["I"])
+            assert cer(ref, row["hyp"]) == row["cer"]
+            assert len(normalize(ref)) == row["N"]
+            assert row["D"] / row["N"] == row["del_rate"]
+            assert row["I"] / row["N"] == row["ins_rate"]
 
 
 def test_long_form_provenance_alignment_and_natural_endpointing():
     source = LONG_FORM["source"]
-    build = LONG_FORM["build"]
-    reference = LONG_FORM["reference"]
-    vad = LONG_FORM["vad"]
+    sections = LONG_FORM["sections"]
 
-    assert set(LONG_FORM["scores"]) == ENGINES
-    assert source["id"] == "gongitsune_01"
     assert source["license"].startswith("CC0-1.0")
-    for artifact in (source["audio"], source["alignment"], source["text"]):
+    for artifact in (source["alignment"], source["text"]):
         assert artifact["url"].startswith("https://")
         assert len(artifact["sha256"]) == 64
+    assert sorted(sections) == [f"{n:02d}" for n in range(1, 7)]
+    assert sum(s["build"]["audio_s"] for s in sections.values()) > 14 * 60
 
-    assert build["first_row"] == 2
-    assert build["last_row"] == 63
-    assert build["row_count"] == 62
-    assert build["aligned_end"] > build["aligned_start"] > 0
-    assert build["audio_s"] > 4 * 60
-    assert len(build["wav_sha256"]) == 64
+    for key, section in sections.items():
+        build, reference, vad = section["build"], section["reference"], section["vad"]
+        assert section["id"] == f"gongitsune_{key}"
+        assert section["audio"]["url"].endswith(f"gongitsune_{key}_niimi_64kb.mp3")
+        assert len(section["audio"]["sha256"]) == 64
+        assert build["aligned_end"] > build["aligned_start"] > 0
+        assert build["row_count"] == build["last_row"] - build["first_row"] + 1
+        assert len(build["wav_sha256"]) == 64
 
-    ref_norm = normalize(reference["text"])
-    assert hashlib.sha256(ref_norm.encode()).hexdigest() == reference["normalized_sha256"]
-    automatic = normalize(reference["kokoro_alignment_text"])
-    counts = align(ref_norm, automatic)
-    check = reference["alignment_check"]
-    assert counts == (check["S"], check["D"], check["I"])
-    assert check["N"] == len(ref_norm)
-    assert check["cer"] == sum(counts) / len(ref_norm)
-    assert check["cer"] < 0.10
+        ref_norm = normalize(reference["text"])
+        assert hashlib.sha256(ref_norm.encode()).hexdigest() == reference["normalized_sha256"]
+        counts = align(ref_norm, normalize(reference["kokoro_alignment_text"]))
+        check = reference["alignment_check"]
+        assert counts == (check["S"], check["D"], check["I"])
+        assert check["N"] == len(ref_norm)
+        assert check["cer"] == sum(counts) / len(ref_norm)
+        # Narration Kokoro left unaligned is the only licence for disagreement
+        # above the flat surface budget; anything else is a bad extraction.
+        span = build["aligned_end"] - build["aligned_start"]
+        assert check["cer"] <= 0.10 + build["unaligned_samples"] / span
 
-    durations = vad["segment_durations_s"]
-    assert vad["n_segments"] == len(durations) > 1
-    assert vad["max_segment_s"] == max(durations)
-    assert vad["max_resliced_upper_bound_s"] <= vad["decode_split_trigger_s"]
-    assert vad["decode_split_candidates_upper_bound"] == 0
+        durations = vad["segment_durations_s"]
+        assert vad["n_segments"] == len(durations) > 1
+        assert vad["max_segment_s"] == max(durations)
+        assert vad["max_resliced_upper_bound_s"] <= vad["decode_split_trigger_s"]
+        assert vad["decode_split_candidates_upper_bound"] == 0
+
+
+def test_long_form_sections_partition_the_alignment():
+    # Row 1 is the separately spoken title/author, so narration starts at 2 and
+    # the six sections must tile the rest -- a gap or overlap means a section was
+    # cropped from the wrong rows.
+    ranges = sorted(
+        (s["build"]["first_row"], s["build"]["last_row"]) for s in LONG_FORM["sections"].values()
+    )
+    assert ranges[0][0] == 2
+    for (_, previous_last), (next_first, _) in zip(ranges, ranges[1:], strict=False):
+        assert next_first == previous_last + 1

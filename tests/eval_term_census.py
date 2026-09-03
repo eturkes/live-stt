@@ -170,10 +170,27 @@ def learner(captions: list[dict]) -> dict:
     }
 
 
+def pinned_section(manifest: dict, wav: str) -> dict:
+    """The corpus section a trace was built from, located by its own WAV path.
+
+    Naming the section here rather than fixing one keeps the census bound to
+    whichever section the trace records, so a trace and its reference can never
+    come from different chapters of the narration.
+    """
+    for section in manifest["sections"].values():
+        if section["build"]["wav"] == wav:
+            return section
+    raise SystemExit(
+        f"trace WAV {wav} is not a pinned corpus section\n"
+        "rebuild the corpus: uv run --with soundfile python tests/eval_long_form.py"
+    )
+
+
 def run(term: str) -> dict:
     trace = json.loads(TRACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    pinned = manifest["build"]["wav_sha256"]
+    section = pinned_section(manifest, trace["source"]["wav"])
+    pinned = section["build"]["wav_sha256"]
     if trace["source"]["wav_sha256"] != pinned:
         raise SystemExit(
             f"trace was built from a different WAV\n  trace:  "
@@ -190,7 +207,7 @@ def run(term: str) -> dict:
             "n_captions": len(captions),
         },
         "support_threshold": CONTEXT_TERM_SUPPORT,
-        **census(term, manifest["reference"]["text"], captions),
+        **census(term, section["reference"]["text"], captions),
     }
     result["learner"] = learner(captions)
     result["target_forms_trusted"] = [

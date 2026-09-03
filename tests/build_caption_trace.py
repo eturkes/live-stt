@@ -51,11 +51,12 @@ from live_stt import (  # noqa: E402
 MANIFEST = TESTS / "long_form.json"
 OUT = TESTS / "caption_trace.json"
 ENGINE = "whisper"
+SECTION = "01"
 
 
 def build(device: str) -> dict:
     """Decode the pinned narration on `device` and return the caption trace."""
-    build_meta = json.loads(MANIFEST.read_text(encoding="utf-8"))["build"]
+    build_meta = json.loads(MANIFEST.read_text(encoding="utf-8"))["sections"][SECTION]["build"]
     wav = ROOT / build_meta["wav"]
     if not wav.exists():
         raise SystemExit(

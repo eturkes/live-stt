@@ -15,8 +15,8 @@ unit touches decode quality, a CER number the commit body records.
 ## Status
 
 - Milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **IN-PROGRESS**
-  (M12.1 DONE; M12.2 OPEN, M12.3-M12.5 behind it). Opened by user decision on the P-012 register
-  row, which outgrew polish.
+  (M12.1, M12.2 DONE; M12.3 OPEN, M12.4-M12.5 behind it). Opened by user decision on the P-012
+  register row, which outgrew polish.
   `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English spelling on the JA
   string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text — the learner's best
   case. Live the key is a hypothesis, so two modes were unmeasured: **(a) dead pairing** — a
@@ -79,11 +79,9 @@ so both failure modes are translation-quality questions and D-016's CER numbers 
 all five remaining sections; the candidate-floor finding gets its own unit).** M12.1 answered M12's
 two named modes without spending a translator turn, so what is left needs a longer stream, and the
 expensive half is now conditional on a free screen. Three corrections the ruling rests on:
-- **Acquisition is parameterization, not a new pipeline.** The pinned Kokoro alignment covers the
-  WHOLE book (section 一 is rows 2-63 of it) and the pinned Aozora text is the whole story, so a new
-  section needs one 64 kbps MP3, the alignment rows already pinned, a slice and a hash. Sections
-  二〜六 exist as sibling files at the pinned archive item (probed: HTTP 206; `_07` = 404, so the
-  story is six sections). `tests/eval_long_form.py` hardcodes chapter 01 in ~5 constants.
+- **Acquisition is parameterization, not a new pipeline.** Confirmed by M12.2: the pinned Kokoro
+  alignment covers the whole book, one MP3 per section, and the pinned Aozora text is the whole
+  story. `_07` = 404 and Aozora carries no 七 heading, so the story is six sections.
 - **A dead pairing is screenable offline.** It is "a trusted key acquires a rendering, then stops
   recurring". Whether a key stops recurring is a property of the caption stream alone, and so are
   the pairing openings gating whether a rendering could have been acquired ⇒ the translator is
@@ -94,24 +92,27 @@ expensive half is now conditional on a free screen. Three corrections the ruling
   its own window is unknown until the traces exist. Second route the same screen catches free: a
   persistent name whose SPELLING drifts mid-story (標柱 → 標準) strands a pairing just as well.
 
-Sizing is uncalibrated: M12.1 is the milestone's only actual (`main=77% 184K/240K`) and it built its
-machinery from scratch, so the units below reuse it and are sized against it directly.
+Sizing is calibrated on two actuals: M12.1 `main=77% 184K/240K` against no estimate, M12.2
+`main=78% 187K/240K` against `est 140K` ⇒ ratio **1.34**. Apply it to the raw estimates below.
 
-- **M12.2 — Acquire 「ごん狐」 二〜六 into the pinned corpus. [OPEN]** est 140K.
-  - acceptance: `tests/eval_long_form.py` parameterized by chapter (row range discovered from the
-    already-pinned alignment member, never hand-copied); one pinned WAV + sha256 + row range per
-    section in `long_form.json`; the existing chapter-一 row reproduces byte-identically, proving the
-    parameterization did not move the artifact M12.1 measured on.
-  - guard: acquisition follows L-017 — verify size + SHA-256 on fresh AND cached paths, stage before
-    installing, commit the compact fingerprint last.
-- **M12.3 — Record the full story and screen it for dead pairings. [BLOCKED — needs M12.2]** est 120K.
-  - acceptance: one `build_caption_trace.py` trace per section (~5 min NPU each, ~350-400 captions
-    over ~25-30 min total), replayed as ONE continuous session stream; `eval_term_census.py` extended
-    to report per trusted term — caption trusted at, last sighting, captions surviving after it,
-    pairing openings before it went quiet — and to name every term meeting the dead-pairing shape.
-  - verdict: zero candidates over six sections IS the result (the mode does not occur at 6× the
+- **M12.3 — Record the full story and screen it for dead pairings. [OPEN]** est 120K → cal 161K,
+  so split at the seam if the screen outgrows the trace run: **(a)** six NPU traces + the continuous
+  replay, **(b)** the census extension that screens them.
+  - **sizing facts M12.2 measured, replacing this unit's planning estimates.** The corpus is
+    **848.351 s = 14:08**, not the ~25-30 min assumed, and it holds **213 VAD segments**. M12.1's
+    section-一 rate (67 captions / 288.521 s) projects **~197-213 captions**, roughly half the
+    planned 350-400, and one NPU pass costs ~14 min wall at M12.1's measured ~0.99 wall-RTF, not
+    ~30. Per-section audio: 288.521 / 166.210 / 142.526 / 109.902 / 64.274 / 76.918 s.
+  - **the mode is now reachable, which it was not on the 67-caption clip.** `CONTEXT_TERM_LEASE` is
+    60 segments and the continuous stream is ~200+, so a lease can expire for the first time; that
+    is the whole reason the corpus was acquired.
+  - acceptance: one `build_caption_trace.py` trace per section, replayed as ONE continuous session
+    stream; `eval_term_census.py` extended to report per trusted term — caption trusted at, last
+    sighting, captions surviving after it, pairing openings before it went quiet — and to name every
+    term meeting the dead-pairing shape.
+  - verdict: zero candidates over six sections IS the result (the mode does not occur at 2.94× the
     audio ⇒ P-012's fix is unnecessary, and M12.5 never runs); ≥1 candidate unblocks M12.5.
-- **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [BLOCKED — needs M12.3]** est 80K.
+- **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [BLOCKED — needs M12.3]** est 80K → cal 107K.
   - why: M12.1 found ごん recognised correctly 15 times of 16 and invisible in every one, because the
     floor is 3 katakana characters and ゴン is 2. The learner spends its whole capacity on the names
     it got wrong.
@@ -120,12 +121,45 @@ machinery from scratch, so the units below reuse it and are sized against it dir
     then rule with that number in hand. The floor exists to keep common 2-character katakana out of
     the term list, so a change ships only if the admitted set is dominated by names.
 - **M12.5 — CONDITIONAL: translator arms on the confirmed candidates. [BLOCKED — needs M12.3 ≥1]**
-  est 150K. P-012's arm matrix (learner on/off, 3 sessions each, real `CodexTranslator`, reps
+  est 150K → cal 201K, over one window ⇒ split at the arm boundary when it opens. P-012's arm matrix (learner on/off, 3 sessions each, real `CodexTranslator`, reps
   interleaved across arms per L-026) run only on the terms M12.3 named, to confirm a rendering was
   really acquired before the key died. Mark any null UNDERPOWERED rather than reporting it as a pass
   (P-002 already spent one null that way on 「走れメロス」).
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M12.2 — Acquire 「ごん狐」 二〜六 into the pinned corpus. [DONE] — the whole story is pinned, and
+  section 一 reproduced bit-for-bit through the parameterization.** `tests/long_form.json` went
+  1 section → **6**, 288.521 s → **848.351 s (14:08, 2.94×)**, 66 → **213 VAD segments**, 30 KB →
+  62 KB, schema `{source, sections{"01".."06"}}` keyed by the zero-padded number that is also the
+  `id`, the WAV name and the MP3 suffix.
+  **No row number survives in the script**, which is what the acceptance asked for: a section's range
+  comes from grouping the alignment on its own audio-file column, its title/author announcement row
+  from matching that text, and its spoken heading / `章おわり` from reading the aligned text — so
+  sections 三/五 correctly get no heading and no chapter-end marker (the reader does not speak them
+  there), and a re-released alignment fails a check instead of mis-cropping. Three structural
+  cross-checks replace the old hand-written constants: sections must be 1..N, row ids consecutive
+  within a section, and the six ranges must tile rows 2..178 with no gap or overlap (`test_cer.py`).
+  **The finding that forced a design change: Kokoro leaves 4-10 s of narration UNALIGNED inside four
+  of the six sections** (三 4.574 s, 四 4.191 s, 五 9.532 s, 六 6.954 s), so M9.6's "rows must be
+  sample-contiguous" rule would have rejected them. A hole is unaligned audio inside one continuous
+  crop, never a splice, and the Aozora reference covers it — what the hole shortens is the
+  *automatic* text, so `alignment_check` now spends the unaligned FRACTION of the span as budget over
+  the flat 0.10 surface allowance. Every section passes with margin (surface disagreement S+I alone
+  is 0.015-0.077 everywhere); align_cer 0.0513 / 0.0773 / 0.0766 / 0.0852 / 0.1893 / 0.1425.
+  **Reproduction, not carry-forward.** Section 一's `build` (11/11 keys incl. `wav_sha256`
+  `a70d7443…`), `reference` (4/4 incl. `normalized_sha256` and the N=1383 S=36 D=1 I=34 check) and
+  `vad` (7/7) blocks came out identical to `HEAD`, and re-running `--score` re-derived both sherpa
+  rows byte-identically (k2v2 CER 0.25380, parakeet 0.23572) rather than copying them. M12.1's term
+  census reruns unchanged end to end — 8/8 occurrences, same two trusted errors, same openings.
+  **L-017 exercised on all three paths**, each producing the same WAV: valid cache (no network),
+  fresh download, and a deliberately truncated cache entry that re-fetches. Downloads are now cached
+  and staged (`.part` → rename), so a rebuild costs no network and a torn write cannot install.
+  Scoring is `--score`-only and a section keeps its rows exactly while its WAV + reference hashes
+  hold, which is what lets acquisition rerun without paying for a decode; only `01` carries scores,
+  because sherpa CER on five more sections of a non-default fallback answers nothing M12 asks.
+  Suite 228 → **229 passed / 1 skipped / 17.3 s**; gate 6/6. `main=78% 187K/240K` against
+  `est 140K` ⇒ calibration ratio **1.34**; no teammates funded.
 
 - **M12.1 — What does the shipped path actually give the learner as a key? [DONE] — a
   mis-recognition, and it hides the one name that matters.** `tests/build_caption_trace.py` →
@@ -326,7 +360,7 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open — M12.2 is the funded plan and needs no further input to start.** The polish register
+**None open — M12.3 is the funded plan and needs no further input to start.** The polish register
 holds one row (**P-014**, the NPU decode-stall bursts M12.1 measured), pickable by `/session-polish`
 whenever. Standing options for after M12, none of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
