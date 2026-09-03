@@ -14,8 +14,15 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Status
 
-- Milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **IN-PROGRESS**
-  (M12.1-M12.4 DONE; M12.5 OPEN and unblocked by M12.3's two candidates). Opened by
+- Milestone: **M13 the shipped recogniser emits degenerate repetition loops on live audio** —
+  **UNPLANNED**, and the next milestone by user direction. The first real-world run produced
+  **9 captions that are 76-100 % one short unit repeated 33-148 times**, 341-517 characters against
+  a caption p50 of 15, and three of them took the EN leg down for the rest of the session. No
+  committed artifact reproduces it. Plan it before touching code; evidence → `## Open`.
+- Parked milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **PARKED**
+  (M12.1-M12.4 DONE; M12.5 OPEN, parked not cancelled — a defect in the shipped default engine's
+  live output outranks a learner-quality question, and M12.5 resumes unchanged because it replays a
+  committed trace that screens clean). Opened by
   user decision on the P-012 register row, which outgrew polish.
   `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English spelling on the JA
   string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text — the learner's best
@@ -68,6 +75,46 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Open (do these; lowest ID first)
 
+- **M13 — The shipped recogniser emits degenerate repetition loops on live audio. [UNPLANNED]**
+  Next by user direction. It needs a planning session before any code: the two hypotheses below
+  take different fixes and the corpus does not exist yet.
+  **The measurement** — `transcripts/2026-09-03T14-03-43.txt` (gitignored, 241 captions / 193
+  translations / ~41 min). Screen each caption for its longest adjacent repeated substring (unit
+  ≥2 chars, ≥3 repeats, span ≥12 chars): **12 captions flagged, 9 of them 76-100 % repeat** — n=196
+  `'次は、'`×148 filling 444 of 444 chars, n=224 `'、私は'`×148 of 517, n=138 `'副部の'`×109, n=144
+  `'クラブの'`×109, n=195 `'私は、'`×98, n=130 `'アーメンの'`×88, n=240 `'中学院の'`×72, n=227×33.
+  Caption length p50 **15**, p90 92, **max 517**. Three captions are `ご視聴ありがとうございました` /
+  `ありがとうございました` — whisper's canonical Japanese hallucination on non-speech — so some of
+  these fire on silence or room tone, not on speech.
+  **The negative control is committed and clean.** The same screen over `tests/caption_trace.json`
+  (215 NPU captions, whole 「ごん狐」 story, shipped VAC path) flags **0**; max caption length **69**
+  against the live 517, p90 33 against 92. **Nothing in tree reproduces this** — every pinned clip
+  is clean continuous narration. Live audio is not retained, so that session is evidence, not a
+  repro, and acquiring a triggering corpus is the milestone's first real cost.
+  **It is what took the EN leg down.** EN flowed through n=194 on short captions; n=195/196/197 are
+  **three consecutive runaways** (341/444/86 chars) = exactly `TRANSLATE_MAX_FAILURES`=3 ⇒
+  permanent JA-only for the last 47 turns. The one earlier isolated EN gap, n=144, is also a
+  runaway. Single runaways at n=130 and n=138 did translate, so one is survivable and three in a
+  row are not. The translator behaved as D-009/D-011 design; the recogniser is the fault.
+  **Do not confuse this with P-009** (`memory.md`, CLOSED by user ruling, do not re-derive or
+  re-fix): that is a 4-character re-spelling duplication from `streaming.py`'s `emitted`
+  bookkeeping, measured at 0 trims. This is decoder degeneration two to three orders of magnitude
+  larger, and a fix for one is not a fix for the other.
+  **Two hypotheses, different fixes, separate them first.** (a) **Nothing bounds a degenerate
+  decode** — `WhisperEngine.generate` (`live_stt.py:331`) passes only `language`, `task`,
+  `return_timestamps` and optional `hotwords`, so on this build `repetition_penalty`=1.0,
+  `no_repeat_ngram_size`=SIZE_MAX and `max_new_tokens`=SIZE_MAX are all effectively off and a 1-2 s
+  buffer may emit 517 characters. (b) **VAC ratifies the loop** — LocalAgreement-2 commits the
+  common prefix of two consecutive decodes, and two degenerate decodes of one buffer agree on the
+  repeated prefix, so `streaming.py` cannot separate "stable because correct" from "stable because
+  degenerate".
+  **Named unknowns for the plan:** whether the NPU `StaticWhisperPipeline` HONORS those three knobs
+  (it already refuses `initial_prompt` and `hotwords`, so assume nothing and measure); how to
+  acquire audio that triggers it, since the trigger looks like silence, room tone or non-speech;
+  and whether a `streaming.py`-side degeneracy reject, running the screen above on a hypothesis
+  before it is committed, is cheaper and more portable than a decode-side knob. Prefer whichever
+  the fresh session can gate without hardware.
+
 **M12 sizing fact, measured from tree, then confirmed by the M12.1 run — read it before M12.4/M12.5.**
 `tests/caption_trace.json` records `hotwords_reachable: false`. `ASR_DEVICE = "NPU"` and
 `ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})`, so `WhisperEngine.set_hotwords` drops the list
@@ -86,7 +133,8 @@ Sizing is calibrated on four actuals: M12.1 `main=77% 184K/240K` against no esti
 M12.4 is the outlier and says why: a unit whose deliverable is a RULING pays for the evidence that
 could have overturned it, not for the one-character change that followed. Apply 1.67 below.
 
-- **M12.5 — Confirm M12.3's two dead pairings against the real translator. [OPEN]** est 150K →
+- **M12.5 — Confirm M12.3's two dead pairings against the real translator. [PARKED behind M13]**
+  est 150K →
   cal 250K at the new ratio ⇒ over one window twice over, so split at the arm boundary.
   - **the candidates, both by lapsed lease:** 鼻腔 (trusted@48, paired@50, **0 sightings ever used
     the rendering**, expired@110, 165 published captions of session left) and イワシ (trusted@123,
@@ -435,8 +483,10 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open — M12.5 is the last M12 unit and needs no further input to start.** Two things to know
-without acting on them. (1) M12.3's screen makes a falsifiable prediction that M12.5 settles in ~2
+**None open — M13 is the next milestone and opens in PLANNING with no further input needed.** The
+user directed it after the first real-world run; `## Open` carries its evidence whole. It parks
+M12.5, which resumes unchanged whenever M13 closes. Two M12 things to know without acting on them.
+(1) M12.3's screen makes a falsifiable prediction that M12.5 settles in ~2
 translator turns — both dead-pairing candidates are ordinary nouns in English, and `observe_en`
 pairs only on a proper noun, so the live outcome is probably that neither pairing exists at all.
 That would close M12 on a structural refutation rather than on P-012's fix, and M12.4's ゴン is now

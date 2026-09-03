@@ -51,8 +51,10 @@ goes under Spine flags and to the user instead of running here.
   therefore carries the loss with no cause, and a session cannot be diagnosed after the terminal
   scrollback is gone. Evidence: `transcripts/2026-09-03T14-03-43.txt` (gitignored, 434 lines) =
   **241 `JA` lines against 193 `EN`**; `EN` stops after n=194 and never returns (47 consecutive
-  JA-only turns to the end), plus one isolated gap at n=144 consistent with a single failed or
-  evicted turn. Which of the two paths fired is unrecoverable.
+  JA-only turns to the end), plus one isolated gap at n=144. Which path fired was recovered only by
+  reading the JA side — n=195/196/197 are three consecutive M13 runaway captions, so it was the
+  3-strike branch. That inference needed the caption shapes and does not generalize; a marker line
+  would have said so directly.
   Acceptance: a run that trips either path writes one marker line into the transcript naming the
   path; `tests/test_translator.py`'s in-memory `FakeProc`/`StreamReader` locks prove the marker
   lands exactly once on the 3-strike path, once on the EOF path, and never repeats after the flip.
@@ -64,10 +66,11 @@ why/evidence/acceptance whole. Do not re-file it here.
 
 ## Spine flags
 
-- **The EN leg died permanently 194 turns into the first real-world session and never recovered.**
-  Same evidence as P-015: 47 consecutive JA-only turns closed a 41-minute run, ~20 % of the session's
-  captions. D-009 makes JA-only a hard degrade guarantee, so the tool behaved as designed; what is
-  unmeasured is whether a 3-strike disable that is permanent for the session is the right policy on
-  a multi-hour target (`memory.md` § Smoke soaks for 1-3 h). Blocked on P-015: the cause is
-  stderr-only and this session's scrollback is gone, so the next live run must capture stderr or
-  land the marker first. User decision — fund a diagnosis unit, or leave it until it recurs.
+- **The EN leg died permanently 194 turns into the first real-world session.** CAUSE FOUND and it is
+  upstream: n=195/196/197 are three consecutive M13 runaway captions (341/444/86 chars) = exactly
+  `TRANSLATE_MAX_FAILURES`=3. The translator behaved as D-009/D-011 design, so **`roadmap.md` M13
+  owns the fix** and no diagnosis unit is needed here. What survives as an open policy question,
+  and only as one: a 3-strike disable that is permanent for the session costs every later turn on a
+  1-3 h soak target (`memory.md` § Smoke), and single runaways at n=130 and n=138 translated fine,
+  so the failures that trip it can be transient. Do not act on this before M13 lands — fixing the
+  recogniser may remove the trigger entirely.
