@@ -15,8 +15,8 @@ unit touches decode quality, a CER number the commit body records.
 ## Status
 
 - Milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **IN-PROGRESS**
-  (M12.1, M12.2 DONE; M12.3 OPEN, M12.4-M12.5 behind it). Opened by user decision on the P-012
-  register row, which outgrew polish.
+  (M12.1-M12.3 DONE; M12.4 OPEN, M12.5 OPEN and unblocked by M12.3's two candidates). Opened by
+  user decision on the P-012 register row, which outgrew polish.
   `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English spelling on the JA
   string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text — the learner's best
   case. Live the key is a hypothesis, so two modes were unmeasured: **(a) dead pairing** — a
@@ -27,7 +27,10 @@ unit touches decode quality, a CER number the commit body records.
   cannot expire). What the census found instead is a **third mode P-012 never named — the learner
   stabilises a WRONG key**: both terms it trusts all session are mis-recognitions, while the
   correctly-recognised protagonist ゴン sits below `_TERM_RUN`'s 3-character katakana floor and is
-  invisible to it. M12.2 now measures whether that helps or harms the English.
+  invisible to it. **M12.3 then made (a) reachable and it fires: 2 dead pairings over the whole
+  story** (鼻腔, イワシ), both by lapsed lease, one of them paired on its very last sighting. The
+  shape is real; whether either pairing is real needs one translator turn per candidate (M12.5),
+  because a rendering exists only where the English supplies a proper noun.
 - Previous milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — **IMPLEMENTED**
   (all units DONE). Both questions M11 opened are answered and both answers are green: the VAC
   branch does not drop audio in real time (M11.4, with a 1.25-1.75× reserve), and D-016's retention
@@ -63,7 +66,7 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Open (do these; lowest ID first)
 
-**M12 sizing fact, measured from tree, then confirmed by the M12.1 run — read it before M12.3/M12.5.**
+**M12 sizing fact, measured from tree, then confirmed by the M12.1 run — read it before M12.4/M12.5.**
 `tests/caption_trace.json` records `hotwords_reachable: false`. `ASR_DEVICE = "NPU"` and
 `ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})`, so `WhisperEngine.set_hotwords` drops the list
 and `live_stt.py:1272` computes `biased = frozenset()` on every segment of a default run. Three
@@ -75,58 +78,81 @@ ever prompted, so the lease never expires by prompting and degenerates to "expir
 the last sighting". **The learner's blast radius is the translator brief alone**, never the decode,
 so both failure modes are translation-quality questions and D-016's CER numbers cannot move.
 
-**M12.2-M12.5 replace the single planned M12.2 (user ruling 2026-09-03: acquire the corpus first,
-all five remaining sections; the candidate-floor finding gets its own unit).** M12.1 answered M12's
-two named modes without spending a translator turn, so what is left needs a longer stream, and the
-expensive half is now conditional on a free screen. Three corrections the ruling rests on:
-- **Acquisition is parameterization, not a new pipeline.** Confirmed by M12.2: the pinned Kokoro
-  alignment covers the whole book, one MP3 per section, and the pinned Aozora text is the whole
-  story. `_07` = 404 and Aozora carries no 七 heading, so the story is six sections.
-- **A dead pairing is screenable offline.** It is "a trusted key acquires a rendering, then stops
-  recurring". Whether a key stops recurring is a property of the caption stream alone, and so are
-  the pairing openings gating whether a rendering could have been acquired ⇒ the translator is
-  needed only to CONFIRM a candidate the screen already found.
-- **The corpus may not contain the phenomenon, and that is a result.** Both central names persist to
-  the last page; the candidates are the minor characters — 茂平/中山 (section 一 only), 弥助/新兵衛
-  (funeral scene), 加助 (sections 四〜五, absent from the ending) — and whether any recurs 3× inside
-  its own window is unknown until the traces exist. Second route the same screen catches free: a
-  persistent name whose SPELLING drifts mid-story (標柱 → 標準) strands a pairing just as well.
+Sizing is calibrated on three actuals: M12.1 `main=77% 184K/240K` against no estimate, M12.2
+`main=78% 187K/240K` against `est 140K` (1.34), M12.3 `main=77% 184K/240K` against `est 120K`
+(1.53) ⇒ ratio **1.43**, spread 1.34-1.53. Apply it to the raw estimates below.
 
-Sizing is calibrated on two actuals: M12.1 `main=77% 184K/240K` against no estimate, M12.2
-`main=78% 187K/240K` against `est 140K` ⇒ ratio **1.34**. Apply it to the raw estimates below.
-
-- **M12.3 — Record the full story and screen it for dead pairings. [OPEN]** est 120K → cal 161K,
-  so split at the seam if the screen outgrows the trace run: **(a)** six NPU traces + the continuous
-  replay, **(b)** the census extension that screens them.
-  - **sizing facts M12.2 measured, replacing this unit's planning estimates.** The corpus is
-    **848.351 s = 14:08**, not the ~25-30 min assumed, and it holds **213 VAD segments**. M12.1's
-    section-一 rate (67 captions / 288.521 s) projects **~197-213 captions**, roughly half the
-    planned 350-400, and one NPU pass costs ~14 min wall at M12.1's measured ~0.99 wall-RTF, not
-    ~30. Per-section audio: 288.521 / 166.210 / 142.526 / 109.902 / 64.274 / 76.918 s.
-  - **the mode is now reachable, which it was not on the 67-caption clip.** `CONTEXT_TERM_LEASE` is
-    60 segments and the continuous stream is ~200+, so a lease can expire for the first time; that
-    is the whole reason the corpus was acquired.
-  - acceptance: one `build_caption_trace.py` trace per section, replayed as ONE continuous session
-    stream; `eval_term_census.py` extended to report per trusted term — caption trusted at, last
-    sighting, captions surviving after it, pairing openings before it went quiet — and to name every
-    term meeting the dead-pairing shape.
-  - verdict: zero candidates over six sections IS the result (the mode does not occur at 2.94× the
-    audio ⇒ P-012's fix is unnecessary, and M12.5 never runs); ≥1 candidate unblocks M12.5.
-- **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [BLOCKED — needs M12.3]** est 80K → cal 107K.
+- **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [OPEN]** est 80K → cal 114K.
   - why: M12.1 found ごん recognised correctly 15 times of 16 and invisible in every one, because the
     floor is 3 katakana characters and ゴン is 2. The learner spends its whole capacity on the names
     it got wrong.
-  - acceptance: over the full-story traces, count what a 2-character floor would ADMIT — candidate
-    count, how many reach support, and how many of those are ordinary vocabulary rather than names —
-    then rule with that number in hand. The floor exists to keep common 2-character katakana out of
-    the term list, so a change ships only if the admitted set is dominated by names.
-- **M12.5 — CONDITIONAL: translator arms on the confirmed candidates. [BLOCKED — needs M12.3 ≥1]**
-  est 150K → cal 201K, over one window ⇒ split at the arm boundary when it opens. P-012's arm matrix (learner on/off, 3 sessions each, real `CodexTranslator`, reps
-  interleaved across arms per L-026) run only on the terms M12.3 named, to confirm a rendering was
-  really acquired before the key died. Mark any null UNDERPOWERED rather than reporting it as a pass
-  (P-002 already spent one null that way on 「走れメロス」).
+  - **what M12.3 added to the case.** Over the whole story the learner opens 7 trust episodes and
+    only 2 keys trace back to a name (標柱 = 兵十, カスケ = 加助). The other 5 are ordinary
+    vocabulary — 鼻腔, イワシ, 物置, 二人, 神様 — so the floor is not merely hiding one protagonist;
+    the learner spends 5 of 7 slots on words no glossary needs.
+  - acceptance: over the six full-story traces, count what a 2-character floor would ADMIT —
+    candidate count, how many reach support, and how many of those are ordinary vocabulary rather
+    than names — then rule with that number in hand. The floor exists to keep common 2-character
+    katakana out of the term list, so a change ships only if the admitted set is dominated by names.
+- **M12.5 — Confirm M12.3's two dead pairings against the real translator. [OPEN]** est 150K →
+  cal 215K ⇒ over one window, so split at the arm boundary.
+  - **the candidates, both by lapsed lease:** 鼻腔 (trusted@48, paired@50, **0 sightings ever used
+    the rendering**, expired@110, 165 published captions of session left) and イワシ (trusted@123,
+    paired@125, 2 sightings used it, expired@194, 81 captions left).
+  - **the one thing the screen could not decide, so it is this unit's first measurement.**
+    `observe_en` acquires a rendering only where the English caption carries a proper noun — a
+    capitalized run that is not sentence-initial — and the screen supplied one by construction, at
+    the learner's best case. Both candidates are ORDINARY NOUNS in English (鼻腔 → "nasal cavity",
+    イワシ → "sardine"), so the predicted live outcome is that NEITHER pairs. Establish that with
+    ~2 turns before funding any arm matrix: it is a structural refutation, not an underpowered null.
+  - then, only if a pairing is real: P-012's arm matrix (learner on/off, 3 sessions each, real
+    `CodexTranslator`, reps interleaved across arms per L-026) on those terms alone. Mark a null
+    there UNDERPOWERED rather than reporting it as a pass (P-002 already spent one null that way on
+    「走れメロス」).
+  - verdict: a rendering that is really acquired and then dies ⇒ P-012's fix is warranted; no
+    pairing on either candidate ⇒ the mode needs a NAME to go quiet, which this corpus never
+    supplied, and M12 closes on that.
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M12.3 — Record the full story and screen it for dead pairings. [DONE] — the mode is real: 2 dead
+  pairings over 215 captions, and neither is a name.** `build_caption_trace.py` now decodes every
+  pinned section in one pass and numbers the captions continuously: **215 captions / 848.350 s /
+  6 sections**, decode 427.9 s, RTF 0.504, `hotwords_reachable: false`. One decode per section is
+  faithful because nothing on the shipped path carries state between utterances (D-016(c) deleted
+  prev-text, the NPU refuses prompts), so the only cross-section state is the learner's and it lives
+  downstream — which is exactly what makes `CONTEXT_TERM_LEASE`=60 reachable at 215 captions.
+  **Determinism reproduced a third time:** section 01's 67 captions came back byte-identical to
+  M12.1's committed trace in BOTH text and VAD boundaries.
+  **The screen (`eval_term_census.py`) models trust as EPISODES** — one term's whole lifetime,
+  promoted → sighted → paired → expired — because `renderings` is discarded with its term, so an
+  episode is exactly one chance to acquire a spelling and lose it. It reports per episode: trusted
+  at, sightings, last sighting, published captions surviving after it, pairing openings (and how
+  many landed before it went quiet), paired at, sightings that used the rendering, expiry + whether
+  the lease lapsed or capacity evicted it. The English side is simulated at the learner's BEST case
+  through the REAL `observe_en`, fed a unique letters-only proper noun per term; that also keeps the
+  gate honest, since a paired term stops blocking its neighbours' openings.
+  **Result — 7 trust episodes, 2 DEAD PAIRINGS, 0 evictions** (`CONTEXT_MAX_TERMS`=12 never binds at
+  ≤5 live). 鼻腔 paired@50 on its very last sighting, 0 sightings used it, expired@110, 165 captions
+  of session left; イワシ paired@125, 2 sightings used it, expired@194, 81 left. **The roadmap's own
+  predicted candidate missed by 27 captions:** 加助 → カスケ goes quiet at caption 182 and its lease
+  would have lapsed at 242, past the story's 215.
+  **Two report defects the longer stream exposed and this fixed.** `reaches_support` counts sightings
+  anywhere in the story, but the learner also has to hold a candidate for `CONTEXT_TERM_MEMORY`=40
+  segments — 標準 is sighted in 5 captions [48, 100, 112, 182, 195] and is **never trusted**, because
+  no three fall inside one 40-caption window. The form view now carries the replay's verdict
+  (`trusted`) instead of implying support. Second: openings saturate at `CONTEXT_EN_SUPPORT`, since
+  a paired term leaves the gate — so the count answers "could a rendering be acquired", never "how
+  much evidence was available", and `sightings_after_paired` carries the latter.
+  Alignment is per section, not over the concatenated story: it keeps every occurrence inside the
+  audio it was read from and holds the DP at six small matrices instead of one ~4.9k × 4.5k. 兵十:
+  38 reference occurrences, 38 located, 0 dropped, 6 distinct forms, only 標柱 trusted.
+  Suite 229 → **235 passed / 1 skipped / 14.2 s** (6 new locks: the dead-pairing shape at its
+  sharpest, a key still being said, a key that goes quiet unpaired, eviction-vs-lease, per-section
+  merging, placeholder distinctness). Both new predicates proved non-vacuous by neutralization
+  (L-022): dropping the paired requirement fails 2 tests, calling every expiry a lease fails 1.
+  Gate 6/6. Cost: one 6-section NPU pass ≈ 8 min. `main=77% 184K/240K` against `est 120K` ⇒ 1.53;
+  no teammates funded — the screen is script-derivable.
 
 - **M12.2 — Acquire 「ごん狐」 二〜六 into the pinned corpus. [DONE] — the whole story is pinned, and
   section 一 reproduced bit-for-bit through the parameterization.** `tests/long_form.json` went
@@ -360,8 +386,12 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open — M12.3 is the funded plan and needs no further input to start.** The polish register
-holds one row (**P-014**, the NPU decode-stall bursts M12.1 measured), pickable by `/session-polish`
+**None open — M12.4 is next and needs no further input to start.** One thing to know without acting
+on it: M12.3's screen makes a falsifiable prediction that M12.5 will settle in ~2 translator turns —
+both dead-pairing candidates are ordinary nouns in English, and `observe_en` pairs only on a proper
+noun, so the live outcome is probably that neither pairing exists at all. That would close M12 on a
+structural refutation rather than on P-012's fix. The polish register holds one row (**P-014**, the
+NPU decode-stall bursts, now with M12.3's 6-section counter-sample), pickable by `/session-polish`
 whenever. Standing options for after M12, none of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
     user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole

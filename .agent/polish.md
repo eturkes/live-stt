@@ -30,10 +30,19 @@ goes under Spine flags and to the user instead of running here.
   drop ⇒ this is spine work, so it moves to Spine flags and to the user rather than being fixed here.
   Evidence: `tests/caption_trace.json` (run A, committed); run B was scratch-only and is reproduced
   by rerunning `tests/build_caption_trace.py`.
-  Cheap sampling to claim: **M12.3 replays five more sections on the NPU anyway**, so whichever runs
-  first should record per-caption `decode_s` outliers as it goes — that turns this row's n=2 into
-  n=7 for free, and tells you whether the burst is per-run (once per replay regardless of length) or
-  per-unit-time. Run it before the paced replay and the acceptance check gets a real sample to pace.
+  **M12.3's free sample says the burst is neither per-run nor per-unit-time — it did not happen.**
+  One continuous 6-section pass (215 captions, 848.350 s of audio, ~4.4× the wall clock of one M12.1
+  replay) carried **zero stalls**: max decode 7.42 s on a 9.84 s utterance, only 4 captions over 5 s.
+  Section 01 alone reproduces the comparison exactly, same clip and device: decode sum **284.7 s →
+  135.3 s**, p50 **2.890 → 1.702 s**, max **55.74 → 7.42 s**, RTF **0.99 → 0.469**. So M12.1's run
+  was not a clean baseline plus a burst — its ordinary captions were ~1.7× slow too, which points at
+  contention/thermal state across the whole replay rather than at an NPU scheduling event, and puts
+  M12.1's RTF far outside D-016's measured 0.48-0.61 band while this run sits inside it.
+  Consequence for the acceptance: the paced replay cannot be built on a stall that will not
+  reproduce on demand. Either reproduce the elevated-cost state first and characterize what causes
+  it, or re-scope this row to "worst observed decode vs `AUDIO_HEADROOM_S`" and close it on the
+  `SCALE_LADDER` margin M11.4 already measured. Evidence: `tests/caption_trace.json` @ M12.3 (n=215,
+  clean) vs the same file at `f25cfb5` (n=67, one burst).
 
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its

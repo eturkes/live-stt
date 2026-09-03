@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
-"""Census one reference name across the shipped path's caption stream (M12.1).
+"""Census the shipped path's caption stream for what the learner keys on (M12.1, M12.3).
 
 D-015's `observe_en` keys a learned English spelling on the JA string the
-RECOGNISER produced, so the key is a hypothesis, not the name. Two failure modes
-follow, and both are decided by how the recogniser spells one recurring name:
-a **split key** (the recogniser alternates forms, each carrying its own
-rendering) and a **dead pairing** (a mis-recognised form pins a correct spelling
-to a key that never recurs).
-
-This derives the deciding statistic from `caption_trace.json` alone -- no model,
-no accelerator, no audio, under a second -- the way `eval_vac_lag.py` derives
+RECOGNISER produced, so the key is a hypothesis, not the name. Two questions
+follow and this answers both from `caption_trace.json` alone -- no model, no
+accelerator, no audio, under a second -- the way `eval_vac_lag.py` derives
 caption lag, so a fresh clone can rerun it:
 
     uv run python tests/eval_term_census.py [--term 兵十] [--json]
 
-Method. The reference and the captions are aligned character by character with
-the shipped scorer (`cer.alignment`, one DP, one tie order), so each occurrence
-of the term is located in the hypothesis by the alignment rather than by
-searching for forms someone guessed in advance. Each aligned position is then
-widened to the `_TERM_RUN` candidate that covers it, because a candidate is
-exactly what the learner sees: a form that is not one -- a lone kanji, a run
-below the length floor -- can never reach support, however often it recurs.
+**How one name is recognised** (M12.1, `--term`). The reference and the captions
+are aligned character by character with the shipped scorer (`cer.alignment`, one
+DP, one tie order), so each occurrence is located in the hypothesis by the
+alignment rather than by searching for forms someone guessed in advance. Each
+aligned position is then widened to the `_TERM_RUN` candidate that covers it,
+because a candidate is exactly what the learner sees: a form that is not one --
+a lone kanji, a run below the length floor -- can never reach support, however
+often it recurs. Alignment runs per section, so an occurrence is always matched
+inside the audio it was read from.
 
-Support is then counted by replaying the captions through a real `SessionContext`
+**Whether a pairing dies** (M12.3, always). A dead pairing is a trusted key that
+acquires an English rendering and then stops recurring: its trust lapses, the
+rendering is discarded with it, and the translator is left to re-invent a
+spelling it was already told. Whether a key stops recurring is a property of the
+caption stream alone, so the screen below finds every candidate offline and a
+translator arm is needed only to confirm one.
+
+Support is counted by replaying the captions through a real `SessionContext`
 with an empty `prompted` set. That set is empty in production too on the shipped
 device: `ASR_HOTWORDS_DEVICES` excludes "NPU", so no sighting is ever prompted
 and D-015's anti-feedback exclusion discounts nothing.
@@ -43,6 +47,7 @@ from cer import alignment, normalize  # noqa: E402
 from live_stt import (  # noqa: E402
     _TERM_RUN,
     CONTEXT_EN_SUPPORT,
+    CONTEXT_TERM_LEASE,
     CONTEXT_TERM_SUPPORT,
     SessionContext,
 )
@@ -89,8 +94,31 @@ def _candidate_at(text: str, offsets: list[int]) -> str | None:
     return None
 
 
+def _summary(occurrences: list[dict]) -> dict:
+    """Fold located occurrences into the per-form view the learner acts on."""
+    forms: dict[str, list[int]] = {}
+    for row in occurrences:
+        if row["form"] is not None:
+            forms.setdefault(row["form"], []).append(row["caption"])
+    return {
+        "occurrences": occurrences,
+        "forms": [
+            {
+                "form": form,
+                "captions": sorted(set(seen)),
+                "n_captions": len(set(seen)),
+                "reaches_support": len(set(seen)) >= CONTEXT_TERM_SUPPORT,
+            }
+            for form, seen in sorted(forms.items(), key=lambda kv: -len(set(kv[1])))
+        ],
+        "n_occurrences": len(occurrences),
+        "n_recognized_as_candidate": sum(1 for r in occurrences if r["form"] is not None),
+        "n_dropped": sum(1 for r in occurrences if r["caption"] is None),
+    }
+
+
 def census(term: str, ref_text: str, captions: list[dict]) -> dict:
-    """Locate every reference occurrence of `term` in the caption stream."""
+    """Locate every reference occurrence of `term` in one section's captions."""
     ref_norm, _ = norm_map(ref_text)
     hyp_norm, provenance = hyp_map(captions)
     by_idx = {c["idx"]: c["text"] for c in captions}
@@ -118,101 +146,178 @@ def census(term: str, ref_text: str, captions: list[dict]) -> dict:
             row["context"] = text[lead : offsets[-1] + 1 + CONTEXT_CHARS]
         occurrences.append(row)
         start = ref_norm.find(term_norm, start + 1)
+    return _summary(occurrences)
 
-    forms: dict[str, list[int]] = {}
-    for row in occurrences:
-        if row["form"] is not None:
-            forms.setdefault(row["form"], []).append(row["caption"])
-    return {
-        "occurrences": occurrences,
-        "forms": [
-            {
-                "form": form,
-                "captions": sorted(set(seen)),
-                "n_captions": len(set(seen)),
-                "reaches_support": len(set(seen)) >= CONTEXT_TERM_SUPPORT,
-            }
-            for form, seen in sorted(forms.items(), key=lambda kv: -len(set(kv[1])))
-        ],
-        "n_occurrences": len(occurrences),
-        "n_recognized_as_candidate": sum(1 for r in occurrences if r["form"] is not None),
-        "n_dropped": sum(1 for r in occurrences if r["caption"] is None),
-    }
+
+def story_census(term: str, sections: list[tuple[str, str, list[dict]]]) -> dict:
+    """Census `term` across the whole story, one alignment per section."""
+    occurrences = []
+    for key, ref_text, captions in sections:
+        occurrences += [
+            {"section": key, **row} for row in census(term, ref_text, captions)["occurrences"]
+        ]
+    return _summary(occurrences)
+
+
+def _placeholder(n: int) -> str:
+    """A unique capitalized proper noun for the nth term the screen pairs.
+
+    Letters only: `_EN_NAME` stops at a digit, so a numbered placeholder would
+    collapse to one shared spelling and let two terms confirm each other.
+    """
+    letters, k = "", n + 1
+    while k:
+        k, remainder = divmod(k - 1, 26)
+        letters = chr(ord("a") + remainder) + letters
+    return "N" + letters
 
 
 def learner(captions: list[dict]) -> dict:
-    """Replay the caption stream through SessionContext; report what it trusts.
+    """Replay the caption stream through SessionContext; report every trust episode.
 
-    `openings` counts observe_en's JA-side gate -- captions where exactly one
-    trusted term is still unpaired -- because a term with fewer than
-    CONTEXT_EN_SUPPORT of them can never acquire a rendering however well it is
-    recognised. The real call runs a translator turn later, on a state that can
-    only hold more terms, so these are upper bounds.
+    An episode is one term's whole trust lifetime -- promoted, sighted, paired,
+    expired. That is the unit because `renderings` is discarded with the term it
+    belongs to, so an episode is exactly one chance to acquire an English
+    spelling and lose it, and a term re-earning support later starts over.
+
+    The English side is simulated at the learner's BEST case: every pairing
+    opening is answered through the real `observe_en` with an agreeing proper
+    noun, so a rendering unobtainable even here is not one a translator could
+    strand. Simulating it is also what keeps the gate's state true -- a paired
+    term stops blocking its neighbours' openings, which a never-pairing replay
+    would hide.
     """
     context = SessionContext()
-    first_trusted: dict[str, int] = {}
-    openings: dict[str, list[int]] = {}
+    episodes: list[dict] = []
+    live: dict[str, dict] = {}
+    names: dict[str, str] = {}
+    seq = 0
     for caption in captions:
-        if not caption["text"]:
+        text = caption["text"]
+        if not text:
             continue  # production observes published utterances only
-        context.observe_ja(caption["text"])
-        for term in context.terms():
-            first_trusted.setdefault(term, caption["idx"])
-        unpaired = [t for t in context.terms() if t in caption["text"]]
-        if len(unpaired) == 1:
-            openings.setdefault(unpaired[0], []).append(caption["idx"])
+        seq += 1
+        idx = caption["idx"]
+        context.observe_ja(text)
+        trusted = context.terms()
+        for term in trusted:
+            if term not in live:
+                live[term] = {
+                    "term": term,
+                    "trusted_at": idx,
+                    "n_sightings": 0,
+                    "last_sighting": idx,
+                    "last_sighting_seq": seq,
+                    "openings": [],
+                    "paired_at": None,
+                    "sightings_after_paired": 0,
+                    "expired_at": None,
+                    "mechanism": None,
+                }
+                episodes.append(live[term])
+        for term in [t for t in live if t not in trusted]:
+            episode = live.pop(term)
+            episode["expired_at"] = idx
+            # Only the lease and CONTEXT_MAX_TERMS drop a trusted term, and the
+            # two are separable from outside: the lease fires exactly
+            # CONTEXT_TERM_LEASE published captions after the last sighting, so
+            # anything earlier is the capacity bound evicting the stalest term.
+            episode["mechanism"] = (
+                "lease" if seq - episode["last_sighting_seq"] >= CONTEXT_TERM_LEASE else "eviction"
+            )
+        # The lease renews on a CANDIDATE sighting, which is what observe_ja
+        # folds in, while observe_en's gate is a plain substring of the caption:
+        # a term swallowed by a longer kanji run opens a pairing without
+        # renewing its own trust.
+        for term in set(_TERM_RUN.findall(text)) & live.keys():
+            live[term]["n_sightings"] += 1
+            live[term]["last_sighting"] = idx
+            live[term]["last_sighting_seq"] = seq
+            if live[term]["paired_at"] is not None:
+                live[term]["sightings_after_paired"] += 1
+        # observe_en's own gate. A paired term drops out of it, so an episode
+        # records at most CONTEXT_EN_SUPPORT openings: the count answers "could a
+        # rendering be acquired", never "how much evidence was available".
+        unpaired = [t for t in trusted if t in text and t not in context.renderings]
+        if len(unpaired) == 1 and unpaired[0] in live:
+            episode = live[unpaired[0]]
+            episode["openings"].append(idx)
+            names.setdefault(unpaired[0], _placeholder(len(names)))
+            context.observe_en(text, f"the story mentions {names[unpaired[0]]}.")
+            if unpaired[0] in context.renderings and episode["paired_at"] is None:
+                episode["paired_at"] = idx
+    for episode in episodes:
+        # Everything the dead-pairing verdict rests on, in the lease's own unit:
+        # how much session was left to spend after the key went quiet, and how
+        # many chances to pair it had while it was still being said.
+        episode["published_after"] = seq - episode["last_sighting_seq"]
+        episode["openings_before_quiet"] = sum(
+            1 for i in episode["openings"] if i <= episode["last_sighting"]
+        )
+        episode["dead_pairing"] = (
+            episode["paired_at"] is not None and episode["expired_at"] is not None
+        )
     return {
-        "n_published": sum(1 for c in captions if c["text"]),
-        "first_trusted": first_trusted,
-        "trusted_at_end": context.terms(),
+        "n_published": seq,
+        "lease": CONTEXT_TERM_LEASE,
         "en_support": CONTEXT_EN_SUPPORT,
-        "openings": openings,
+        "episodes": episodes,
+        "trusted_at_end": context.terms(),
+        "dead_pairings": [e["term"] for e in episodes if e["dead_pairing"]],
     }
 
 
-def pinned_section(manifest: dict, wav: str) -> dict:
-    """The corpus section a trace was built from, located by its own WAV path.
+def pinned_sections(manifest: dict, trace: dict) -> list[tuple[str, str, list[dict]]]:
+    """Each traced section with its pinned reference text and its own captions.
 
-    Naming the section here rather than fixing one keeps the census bound to
-    whichever section the trace records, so a trace and its reference can never
-    come from different chapters of the narration.
+    Resolving sections through the trace's own records rather than a fixed list
+    keeps a trace and its reference from ever coming from different chapters.
     """
-    for section in manifest["sections"].values():
-        if section["build"]["wav"] == wav:
-            return section
-    raise SystemExit(
-        f"trace WAV {wav} is not a pinned corpus section\n"
-        "rebuild the corpus: uv run --with soundfile python tests/eval_long_form.py"
-    )
+    sections = []
+    for key, recorded in sorted(trace["sections"].items()):
+        section = manifest["sections"].get(key)
+        if section is None:
+            raise SystemExit(
+                f"traced section {key} is not in the corpus manifest\n"
+                "rebuild the corpus: uv run --with soundfile python tests/eval_long_form.py"
+            )
+        pinned = section["build"]["wav_sha256"]
+        if recorded["wav_sha256"] != pinned:
+            raise SystemExit(
+                f"section {key} was traced from a different WAV\n  trace:  "
+                f"{recorded['wav_sha256']}\n  pinned: {pinned}\n"
+                "rebuild it: tests/build_caption_trace.py"
+            )
+        captions = [c for c in trace["captions"] if c["section"] == key]
+        sections.append((key, section["reference"]["text"], captions))
+    return sections
 
 
 def run(term: str) -> dict:
     trace = json.loads(TRACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    section = pinned_section(manifest, trace["source"]["wav"])
-    pinned = section["build"]["wav_sha256"]
-    if trace["source"]["wav_sha256"] != pinned:
-        raise SystemExit(
-            f"trace was built from a different WAV\n  trace:  "
-            f"{trace['source']['wav_sha256']}\n  pinned: {pinned}\n"
-            "rebuild it: tests/build_caption_trace.py"
-        )
+    sections = pinned_sections(manifest, trace)
     captions = trace["captions"]
     result = {
         "term": term,
         "trace": {
-            "wav_sha256": trace["source"]["wav_sha256"],
+            "sections": [key for key, _, _ in sections],
             "requested_device": trace["run"]["requested_device"],
             "hotwords_reachable": trace["run"]["hotwords_reachable"],
+            "audio_s": trace["source"]["audio_s"],
             "n_captions": len(captions),
         },
         "support_threshold": CONTEXT_TERM_SUPPORT,
-        **census(term, section["reference"]["text"], captions),
+        **story_census(term, sections),
     }
     result["learner"] = learner(captions)
-    result["target_forms_trusted"] = [
-        f["form"] for f in result["forms"] if f["form"] in result["learner"]["first_trusted"]
-    ]
+    # `reaches_support` counts sightings anywhere in the story, while the learner
+    # also has to hold a candidate for CONTEXT_TERM_MEMORY segments -- so a form
+    # can meet the count and still never be trusted. Only the replay decides.
+    trusted_terms = {e["term"] for e in result["learner"]["episodes"]}
+    for form in result["forms"]:
+        form["trusted"] = form["form"] in trusted_terms
+    result["target_forms_trusted"] = [f["form"] for f in result["forms"] if f["trusted"]]
     return result
 
 
@@ -230,7 +335,8 @@ def main() -> None:
     trace, lea = result["trace"], result["learner"]
     print(
         f"census of {result['term']} over {trace['n_captions']} captions "
-        f"({lea['n_published']} published) from {trace['requested_device']}, "
+        f"({lea['n_published']} published) from {len(trace['sections'])} sections, "
+        f"{trace['audio_s']:.1f}s on {trace['requested_device']}, "
         f"hotwords_reachable={trace['hotwords_reachable']}"
     )
     print(
@@ -239,19 +345,52 @@ def main() -> None:
     )
     for row in result["occurrences"]:
         where = f"caption {row['caption']}" if row["caption"] is not None else "(dropped)"
-        print(f"    ref@{row['ref_pos']:>4} {where:>12}  form={row['form']}  …{row['context']}…")
+        print(
+            f"    {row['section']} ref@{row['ref_pos']:>4} {where:>12}  "
+            f"form={row['form']}  …{row['context']}…"
+        )
     print(f"  distinct forms={len(result['forms'])} (support={result['support_threshold']})")
     for form in result["forms"]:
-        mark = "REACHES SUPPORT" if form["reaches_support"] else "below support"
+        if form["trusted"]:
+            mark = "TRUSTED"
+        elif form["reaches_support"]:
+            mark = "sighted enough, never trusted (candidate memory expired between sightings)"
+        else:
+            mark = "below support"
         print(f"    {form['form']}  captions={form['n_captions']} {form['captions']}  {mark}")
     print(
-        f"  learner: {len(lea['first_trusted'])} terms trusted over the session "
-        f"{lea['first_trusted']}, {len(lea['trusted_at_end'])} live at the end; "
-        f"target forms trusted={result['target_forms_trusted'] or 'none'}"
+        f"  target forms trusted={result['target_forms_trusted'] or 'none'}; "
+        f"{len(lea['trusted_at_end'])} terms live at the end: {lea['trusted_at_end']}"
     )
-    print(f"  pairing openings (need {lea['en_support']} for a rendering):")
-    for term, seen in lea["openings"].items():
-        print(f"    {term}  n={len(seen)} {seen}")
+    print(
+        f"  trust episodes={len(lea['episodes'])} "
+        f"(lease={lea['lease']} published captions, pairing needs {lea['en_support']} openings)"
+    )
+    print(
+        f"    {'term':<10} {'trusted@':>8} {'sight':>5} {'last@':>5} {'after':>5} "
+        f"{'open':>4} {'pre':>3} {'paired@':>7} {'used':>4} {'expired@':>8}  how"
+    )
+    for episode in lea["episodes"]:
+        print(
+            f"    {episode['term']:<10} {episode['trusted_at']:>8} {episode['n_sightings']:>5} "
+            f"{episode['last_sighting']:>5} {episode['published_after']:>5} "
+            f"{len(episode['openings']):>4} {episode['openings_before_quiet']:>3} "
+            f"{str(episode['paired_at']):>7} {episode['sightings_after_paired']:>4} "
+            f"{str(episode['expired_at']):>8}  {episode['mechanism'] or 'live at end'}"
+            f"{'  DEAD PAIRING' if episode['dead_pairing'] else ''}"
+        )
+    dead = [e for e in lea["episodes"] if e["dead_pairing"]]
+    if not dead:
+        print("  dead pairings: NONE — no trusted key acquired a rendering and then lost it")
+        return
+    print(f"  dead pairings: {len(dead)}")
+    for episode in dead:
+        print(
+            f"    {episode['term']}  paired@{episode['paired_at']}  "
+            f"expired@{episode['expired_at']} ({episode['mechanism']}), "
+            f"{episode['sightings_after_paired']} sightings used the rendering, "
+            f"{episode['published_after']} published captions after its last sighting"
+        )
 
 
 if __name__ == "__main__":
