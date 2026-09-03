@@ -11,8 +11,29 @@ capacity rather than by lease, is not one.
 
 from __future__ import annotations
 
-from live_stt import CONTEXT_MAX_TERMS, CONTEXT_TERM_LEASE, _en_names
-from tests.eval_term_census import _placeholder, census, learner, norm_map, story_census
+import re
+
+import pytest
+
+import live_stt
+from live_stt import (
+    CONTEXT_EN_SUPPORT,
+    CONTEXT_MAX_TERMS,
+    CONTEXT_TERM_LEASE,
+    CONTEXT_TERM_MEMORY,
+    CONTEXT_TERM_SUPPORT,
+    _en_names,
+)
+from tests.eval_term_census import (
+    _placeholder,
+    candidate_floor,
+    census,
+    floor_arm,
+    learner,
+    norm_map,
+    shipped_floor,
+    story_census,
+)
 
 TERM = "兵十"
 
@@ -146,6 +167,60 @@ def test_capacity_eviction_is_not_reported_as_a_lapsed_lease():
     assert episode["published_after"] < CONTEXT_TERM_LEASE
     assert episode["dead_pairing"] is False
     assert _episodes(caps)["戌山"]["trusted_at"] == 6
+
+
+def test_candidate_floor_moves_only_the_katakana_floor_and_restores_it():
+    """An arm must differ from production in the floor and in nothing else (M12.4)."""
+    shipped = live_stt._TERM_RUN
+    with candidate_floor(shipped_floor() + 1):
+        assert live_stt._TERM_RUN.findall("ゴンと標柱") == ["標柱"]  # katakana floor raised
+    assert shipped.findall("ゴンと標柱") == ["ゴン", "標柱"]  # kanji floor untouched
+    assert live_stt._TERM_RUN is shipped
+    with pytest.raises(RuntimeError), candidate_floor(shipped_floor() + 1):
+        raise RuntimeError("arm aborted")
+    assert live_stt._TERM_RUN is shipped
+
+
+def test_the_arm_refuses_a_rule_it_cannot_locate_a_floor_in(monkeypatch: pytest.MonkeyPatch):
+    """A rewritten _TERM_RUN fails loudly rather than reporting a bogus arm."""
+    monkeypatch.setattr(live_stt, "_TERM_RUN", re.compile(r"[A-Za-z]+"))
+    with pytest.raises(SystemExit):
+        shipped_floor()
+
+
+def test_floor_arm_separates_what_a_floor_admits_from_what_it_trusts():
+    """Two filters in series: the floor makes a candidate, support briefs it.
+
+    A form can meet the sighting count and still never be trusted, because the
+    learner also has to hold it for CONTEXT_TERM_MEMORY segments (M12.3) -- so
+    the number that decides a floor is `trusted`, which only the replay knows.
+    """
+    spread = ["そこにいた。"] * CONTEXT_TERM_MEMORY + ["モズがきた。"]
+    caps = _captions(*["ゴンと標柱。"] * CONTEXT_TERM_SUPPORT, *spread * CONTEXT_TERM_SUPPORT)
+    arm = floor_arm(caps, shipped_floor() + 1)
+    assert [
+        (r["form"], r["n_captions"], r["reaches_support"], r["trusted"])
+        for r in arm["only_shipped"]
+    ] == [
+        ("ゴン", CONTEXT_TERM_SUPPORT, True, True),
+        ("モズ", CONTEXT_TERM_SUPPORT, True, False),  # every sighting a memory apart
+    ]
+    assert arm["only_alt"] == []  # the raised floor admits nothing of its own
+
+
+def test_admitting_a_term_can_strand_its_neighbours_rendering():
+    """`shared_episodes_identical` is measured, not assumed.
+
+    A second trusted term in the same caption closes observe_en's opening
+    (D-015), so a floor that admits one term can cost another its rendering --
+    interference the per-form counts cannot show.
+    """
+    caps = _captions(*["ゴンと標柱。"] * (CONTEXT_TERM_SUPPORT + CONTEXT_EN_SUPPORT))
+    arm = floor_arm(caps, shipped_floor() + 1)
+    assert arm["shared_episodes_identical"] is False
+    assert _episodes(caps)["標柱"]["paired_at"] is None  # shipped floor trusts both
+    with candidate_floor(shipped_floor() + 1):
+        assert _episodes(caps)["標柱"]["paired_at"] == CONTEXT_TERM_SUPPORT + 1
 
 
 def test_pairing_placeholders_are_distinct_proper_nouns():

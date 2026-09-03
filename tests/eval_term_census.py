@@ -7,7 +7,7 @@ follow and this answers both from `caption_trace.json` alone -- no model, no
 accelerator, no audio, under a second -- the way `eval_vac_lag.py` derives
 caption lag, so a fresh clone can rerun it:
 
-    uv run python tests/eval_term_census.py [--term 兵十] [--json]
+    uv run python tests/eval_term_census.py [--term 兵十] [--floor 3] [--json]
 
 **How one name is recognised** (M12.1, `--term`). The reference and the captions
 are aligned character by character with the shipped scorer (`cer.alignment`, one
@@ -18,6 +18,12 @@ because a candidate is exactly what the learner sees: a form that is not one --
 a lone kanji, a run below the length floor -- can never reach support, however
 often it recurs. Alignment runs per section, so an occurrence is always matched
 inside the audio it was read from.
+
+**What the candidate floor costs** (M12.4, `--floor`). Two filters stand between
+a script run and the translator brief, and only the second one costs anything:
+the floor decides what is a candidate, `CONTEXT_TERM_SUPPORT` decides which
+candidates are ever briefed. So an arm reports both stages -- the forms one floor
+admits and the other does not, then the trust episodes each one actually opens.
 
 **Whether a pairing dies** (M12.3, always). A dead pairing is a trusted key that
 acquires an English rendering and then stops recurring: its trust lapses, the
@@ -36,21 +42,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 sys.path[:0] = [str(TESTS), str(ROOT)]
 
+import live_stt  # noqa: E402
 from cer import alignment, normalize  # noqa: E402
 from live_stt import (  # noqa: E402
-    _TERM_RUN,
     CONTEXT_EN_SUPPORT,
     CONTEXT_TERM_LEASE,
     CONTEXT_TERM_SUPPORT,
     SessionContext,
 )
+
+# The candidate rule is read through the module, never bound here, so `--floor`
+# moves it in one place and no arm can report one floor's candidates under
+# another's trust.
 
 TRACE = TESTS / "caption_trace.json"
 MANIFEST = TESTS / "long_form.json"
@@ -88,7 +101,7 @@ def hyp_map(captions: list[dict]) -> tuple[str, list[tuple[int, int]]]:
 
 def _candidate_at(text: str, offsets: list[int]) -> str | None:
     """The _TERM_RUN candidate covering any of `offsets`, or None if none does."""
-    for match in _TERM_RUN.finditer(text):
+    for match in live_stt._TERM_RUN.finditer(text):
         if any(match.start() <= k < match.end() for k in offsets):
             return match.group()
     return None
@@ -229,7 +242,7 @@ def learner(captions: list[dict]) -> dict:
         # folds in, while observe_en's gate is a plain substring of the caption:
         # a term swallowed by a longer kanji run opens a pairing without
         # renewing its own trust.
-        for term in set(_TERM_RUN.findall(text)) & live.keys():
+        for term in set(live_stt._TERM_RUN.findall(text)) & live.keys():
             live[term]["n_sightings"] += 1
             live[term]["last_sighting"] = idx
             live[term]["last_sighting_seq"] = seq
@@ -267,6 +280,91 @@ def learner(captions: list[dict]) -> dict:
     }
 
 
+_KATAKANA_FLOOR = re.compile(r"(?<=\[ァ-ヺー\]\{)\d+")
+
+
+def shipped_floor() -> int:
+    """`_TERM_RUN`'s katakana floor, read off the shipped pattern."""
+    found = _KATAKANA_FLOOR.findall(live_stt._TERM_RUN.pattern)
+    if len(found) != 1:
+        raise SystemExit(
+            "_TERM_RUN no longer carries exactly one katakana floor, so no arm can move "
+            f"it: {live_stt._TERM_RUN.pattern!r}"
+        )
+    return int(found[0])
+
+
+@contextmanager
+def candidate_floor(floor: int) -> Iterator[None]:
+    """Run the block with the candidate rule's katakana floor moved to `floor`.
+
+    Rewriting the shipped pattern, rather than restating it, is what keeps an arm
+    differing from production in the floor and in nothing else.
+    """
+    shipped = live_stt._TERM_RUN
+    shipped_floor()  # refuse before rewriting a pattern this cannot locate a floor in
+    live_stt._TERM_RUN = re.compile(_KATAKANA_FLOOR.sub(str(floor), shipped.pattern))
+    try:
+        yield
+    finally:
+        live_stt._TERM_RUN = shipped
+
+
+def floor_arm(captions: list[dict], floor: int) -> dict:
+    """The shipped katakana floor against `floor`, in candidates and in trust.
+
+    A candidate that never reaches support never enters a brief, so the count
+    that decides a floor is the second one: how many of the forms it uniquely
+    admits the learner ends up trusting. Shared episodes are compared whole,
+    because admitting a term also spends a capacity slot and blocks its
+    neighbours' pairing openings while it is unpaired -- interference the
+    per-form counts cannot show.
+    """
+    arms = {}
+    for name, value in (("shipped", shipped_floor()), ("alt", floor)):
+        with candidate_floor(value):
+            forms: dict[str, set[int]] = {}
+            for caption in captions:
+                for term in set(live_stt._TERM_RUN.findall(caption["text"])):
+                    forms.setdefault(term, set()).add(caption["idx"])
+            arms[name] = {"floor": value, "forms": forms, "learner": learner(captions)}
+    episodes = {n: {e["term"]: e for e in a["learner"]["episodes"]} for n, a in arms.items()}
+
+    def only(name: str, other: str) -> list[dict]:
+        return [
+            {
+                "form": form,
+                "captions": sorted(seen),
+                "n_captions": len(seen),
+                "reaches_support": len(seen) >= CONTEXT_TERM_SUPPORT,
+                "trusted": form in episodes[name],
+            }
+            for form, seen in sorted(
+                arms[name]["forms"].items(), key=lambda kv: (-len(kv[1]), kv[0])
+            )
+            if form not in arms[other]["forms"]
+        ]
+
+    shared = episodes["shipped"].keys() & episodes["alt"].keys()
+    return {
+        "shipped_floor": arms["shipped"]["floor"],
+        "alt_floor": floor,
+        "only_shipped": only("shipped", "alt"),
+        "only_alt": only("alt", "shipped"),
+        "n_candidates": {n: len(a["forms"]) for n, a in arms.items()},
+        "n_episodes": {n: len(e) for n, e in episodes.items()},
+        "dead_pairings": {n: a["learner"]["dead_pairings"] for n, a in arms.items()},
+        "evictions": {
+            n: [e["term"] for e in a["learner"]["episodes"] if e["mechanism"] == "eviction"]
+            for n, a in arms.items()
+        },
+        "n_shared_episodes": len(shared),
+        "shared_episodes_identical": all(
+            episodes["shipped"][t] == episodes["alt"][t] for t in shared
+        ),
+    }
+
+
 def pinned_sections(manifest: dict, trace: dict) -> list[tuple[str, str, list[dict]]]:
     """Each traced section with its pinned reference text and its own captions.
 
@@ -293,7 +391,7 @@ def pinned_sections(manifest: dict, trace: dict) -> list[tuple[str, str, list[di
     return sections
 
 
-def run(term: str) -> dict:
+def run(term: str, floor: int | None = None) -> dict:
     trace = json.loads(TRACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     sections = pinned_sections(manifest, trace)
@@ -318,16 +416,19 @@ def run(term: str) -> dict:
     for form in result["forms"]:
         form["trusted"] = form["form"] in trusted_terms
     result["target_forms_trusted"] = [f["form"] for f in result["forms"] if f["trusted"]]
+    if floor is not None:
+        result["floor"] = floor_arm(captions, floor)
     return result
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--term", default=DEFAULT_TERM, help=f"Reference term ({DEFAULT_TERM})")
+    ap.add_argument("--floor", type=int, help="Compare the shipped katakana floor against this.")
     ap.add_argument("--json", action="store_true", help="Emit the census as JSON.")
     args = ap.parse_args()
 
-    result = run(args.term)
+    result = run(args.term, args.floor)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
@@ -382,15 +483,46 @@ def main() -> None:
     dead = [e for e in lea["episodes"] if e["dead_pairing"]]
     if not dead:
         print("  dead pairings: NONE — no trusted key acquired a rendering and then lost it")
-        return
-    print(f"  dead pairings: {len(dead)}")
-    for episode in dead:
+    else:
+        print(f"  dead pairings: {len(dead)}")
+        for episode in dead:
+            print(
+                f"    {episode['term']}  paired@{episode['paired_at']}  "
+                f"expired@{episode['expired_at']} ({episode['mechanism']}), "
+                f"{episode['sightings_after_paired']} sightings used the rendering, "
+                f"{episode['published_after']} published captions after its last sighting"
+            )
+    if "floor" in result:
+        _print_floor(result["floor"])
+
+
+def _print_floor(arm: dict) -> None:
+    print(
+        f"  katakana floor {arm['shipped_floor']} (shipped) vs {arm['alt_floor']}: candidates "
+        f"{arm['n_candidates']['shipped']} vs {arm['n_candidates']['alt']}, episodes "
+        f"{arm['n_episodes']['shipped']} vs {arm['n_episodes']['alt']}, dead pairings "
+        f"{len(arm['dead_pairings']['shipped'])} vs {len(arm['dead_pairings']['alt'])}, evictions "
+        f"{len(arm['evictions']['shipped'])} vs {len(arm['evictions']['alt'])}"
+    )
+    for key, floor in (("only_shipped", arm["shipped_floor"]), ("only_alt", arm["alt_floor"])):
+        rows = arm[key]
         print(
-            f"    {episode['term']}  paired@{episode['paired_at']}  "
-            f"expired@{episode['expired_at']} ({episode['mechanism']}), "
-            f"{episode['sightings_after_paired']} sightings used the rendering, "
-            f"{episode['published_after']} published captions after its last sighting"
+            f"    admitted by floor {floor} alone: {len(rows)} forms, "
+            f"{sum(1 for r in rows if r['reaches_support'])} reach support, "
+            f"{sum(1 for r in rows if r['trusted'])} trusted"
         )
+        for row in rows:
+            if row["trusted"]:
+                mark = "TRUSTED"
+            elif row["reaches_support"]:
+                mark = "sighted enough, never trusted"
+            else:
+                mark = "below support"
+            print(f"      {row['form']}  captions={row['n_captions']} {row['captions']}  {mark}")
+    print(
+        f"    {arm['n_shared_episodes']} episodes open in both arms; "
+        f"identical={arm['shared_episodes_identical']}"
+    )
 
 
 if __name__ == "__main__":

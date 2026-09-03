@@ -643,7 +643,12 @@ def emit_line(tag, seq, text, output_file):
 # katakana (loanwords and most names), kanji compounds, and latin/alphanumeric
 # identifiers. Unrestricted n-grams over the same 81 caption lines yielded 9,613
 # candidates against 100 for runs, nearly all of them grammar fragments.
-_TERM_RUN = re.compile(r"[ァ-ヺー]{3,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-]+")
+# The katakana floor matches the kanji one at 2 because CONTEXT_TERM_SUPPORT,
+# not the floor, is what rejects ordinary vocabulary (M12.4): over 215 real
+# captions a 2-character floor admitted 10 forms and exactly one reached
+# support — the protagonist's name, which the recogniser writes in katakana and
+# a 3-character floor hid in 47 of its 50 occurrences.
+_TERM_RUN = re.compile(r"[ァ-ヺー]{2,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-]+")
 
 # A proper noun is what stays capitalized mid-sentence; a sentence's first word is
 # capitalized by convention and so is never evidence. That positional rule produced

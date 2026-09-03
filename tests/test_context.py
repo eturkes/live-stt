@@ -166,11 +166,31 @@ def test_empty_context_produces_nothing():
 
 
 def test_grammar_fragments_are_not_terms():
-    """Script runs, not n-grams: hiragana and 2-char kana carry no session identity."""
+    """Script runs, not n-grams: hiragana carries grammar, never session identity."""
     ctx = SessionContext()
     for _ in range(CONTEXT_TERM_SUPPORT * 2):
         ctx.observe_ja("それではこちらをごらんください")
     assert ctx.terms() == []
+
+
+def test_a_two_character_katakana_term_is_learned():
+    """The katakana floor matches the kanji one at 2 (M12.4).
+
+    A short native name is what the recogniser writes in katakana, and support,
+    not the floor, is what keeps ordinary vocabulary out: over 215 real captions
+    a 2-character floor admitted 10 forms and exactly one reached support.
+    """
+    ctx = SessionContext()
+    _see(ctx, "ゴン", CONTEXT_TERM_SUPPORT)
+    assert "ゴン" in ctx.terms()
+
+
+def test_the_floor_still_rejects_a_lone_katakana_character():
+    """Lowering the floor to 2 is not removing it; one character carries no identity."""
+    ctx = SessionContext()
+    for _ in range(CONTEXT_TERM_SUPPORT):
+        ctx.observe_ja("コの字にゴンが曲がる")
+    assert ctx.terms() == ["ゴン"]
 
 
 def test_nothing_carries_into_a_new_session():

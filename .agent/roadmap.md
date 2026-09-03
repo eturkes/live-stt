@@ -15,7 +15,7 @@ unit touches decode quality, a CER number the commit body records.
 ## Status
 
 - Milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **IN-PROGRESS**
-  (M12.1-M12.3 DONE; M12.4 OPEN, M12.5 OPEN and unblocked by M12.3's two candidates). Opened by
+  (M12.1-M12.4 DONE; M12.5 OPEN and unblocked by M12.3's two candidates). Opened by
   user decision on the P-012 register row, which outgrew polish.
   `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English spelling on the JA
   string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text — the learner's best
@@ -27,7 +27,9 @@ unit touches decode quality, a CER number the commit body records.
   cannot expire). What the census found instead is a **third mode P-012 never named — the learner
   stabilises a WRONG key**: both terms it trusts all session are mis-recognitions, while the
   correctly-recognised protagonist ゴン sits below `_TERM_RUN`'s 3-character katakana floor and is
-  invisible to it. **M12.3 then made (a) reachable and it fires: 2 dead pairings over the whole
+  invisible to it — **M12.4 ruled on that floor and lowered it to 2**, admitting ゴン as the
+  session's earliest and healthiest trust episode without disturbing any other. **M12.3 then made
+  (a) reachable and it fires: 2 dead pairings over the whole
   story** (鼻腔, イワシ), both by lapsed lease, one of them paired on its very last sighting. The
   shape is real; whether either pairing is real needs one translator turn per candidate (M12.5),
   because a rendering exists only where the English supplies a proper noun.
@@ -78,24 +80,14 @@ ever prompted, so the lease never expires by prompting and degenerates to "expir
 the last sighting". **The learner's blast radius is the translator brief alone**, never the decode,
 so both failure modes are translation-quality questions and D-016's CER numbers cannot move.
 
-Sizing is calibrated on three actuals: M12.1 `main=77% 184K/240K` against no estimate, M12.2
+Sizing is calibrated on four actuals: M12.1 `main=77% 184K/240K` against no estimate, M12.2
 `main=78% 187K/240K` against `est 140K` (1.34), M12.3 `main=77% 184K/240K` against `est 120K`
-(1.53) ⇒ ratio **1.43**, spread 1.34-1.53. Apply it to the raw estimates below.
+(1.53), M12.4 `main=71% 171K/240K` against `est 80K` (**2.14**) ⇒ ratio **1.67**, spread 1.34-2.14.
+M12.4 is the outlier and says why: a unit whose deliverable is a RULING pays for the evidence that
+could have overturned it, not for the one-character change that followed. Apply 1.67 below.
 
-- **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [OPEN]** est 80K → cal 114K.
-  - why: M12.1 found ごん recognised correctly 15 times of 16 and invisible in every one, because the
-    floor is 3 katakana characters and ゴン is 2. The learner spends its whole capacity on the names
-    it got wrong.
-  - **what M12.3 added to the case.** Over the whole story the learner opens 7 trust episodes and
-    only 2 keys trace back to a name (標柱 = 兵十, カスケ = 加助). The other 5 are ordinary
-    vocabulary — 鼻腔, イワシ, 物置, 二人, 神様 — so the floor is not merely hiding one protagonist;
-    the learner spends 5 of 7 slots on words no glossary needs.
-  - acceptance: over the six full-story traces, count what a 2-character floor would ADMIT —
-    candidate count, how many reach support, and how many of those are ordinary vocabulary rather
-    than names — then rule with that number in hand. The floor exists to keep common 2-character
-    katakana out of the term list, so a change ships only if the admitted set is dominated by names.
 - **M12.5 — Confirm M12.3's two dead pairings against the real translator. [OPEN]** est 150K →
-  cal 215K ⇒ over one window, so split at the arm boundary.
+  cal 250K at the new ratio ⇒ over one window twice over, so split at the arm boundary.
   - **the candidates, both by lapsed lease:** 鼻腔 (trusted@48, paired@50, **0 sightings ever used
     the rendering**, expired@110, 165 published captions of session left) and イワシ (trusted@123,
     paired@125, 2 sightings used it, expired@194, 81 captions left).
@@ -105,6 +97,12 @@ Sizing is calibrated on three actuals: M12.1 `main=77% 184K/240K` against no est
     the learner's best case. Both candidates are ORDINARY NOUNS in English (鼻腔 → "nasal cavity",
     イワシ → "sardine"), so the predicted live outcome is that NEITHER pairs. Establish that with
     ~2 turns before funding any arm matrix: it is a structural refutation, not an underpowered null.
+  - **M12.4 handed this unit its positive control, and it is what makes the refutation readable.**
+    A live "neither pairs" is otherwise confounded with "`observe_en` pairs nothing at all on this
+    corpus". The lowered floor adds ゴン — a real name, 40 captions, trusted@20, and the one term
+    here whose English rendering IS a proper noun. Run it in the same turns as the two negatives:
+    ゴン pairing while 鼻腔/イワシ do not is the clean structural result; nothing pairing indicts the
+    harness instead of the mode.
   - then, only if a pairing is real: P-012's arm matrix (learner on/off, 3 sessions each, real
     `CodexTranslator`, reps interleaved across arms per L-026) on those terms alone. Mark a null
     there UNDERPOWERED rather than reporting it as a pass (P-002 already spent one null that way on
@@ -114,6 +112,57 @@ Sizing is calibrated on three actuals: M12.1 `main=77% 184K/240K` against no est
     supplied, and M12 closes on that.
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [DONE] — SHIPPED at 2: the floor was hiding the
+  one name in the story and guarding a slot ordinary vocabulary does not occupy.** One production
+  character (`[ァ-ヺー]{3,}` → `{2,}`), matching the kanji floor that was already 2.
+  **The evidence, rerunnable with no hardware in <1 s:** `eval_term_census.py --floor 3` over the
+  committed 215-caption trace. Floor 2 admits **10 forms that floor 3 rejects; exactly 1 reaches
+  support and it is the protagonist** — ゴン, 40 captions. The other 9 are the ordinary vocabulary
+  the floor was built to stop (キス 2 captions; カゴ カン キレ ゴミ ドン ヒバ モズ ラー 1 each) and
+  **every one dies below `CONTEXT_TERM_SUPPORT`**, so none ever enters a brief. Floor 3 admits
+  nothing of its own. `--floor N` rewrites the shipped pattern rather than restating it, so an arm
+  differs from production in the floor and in nothing else, and it refuses a `_TERM_RUN` it cannot
+  locate exactly one floor in.
+  **The control, over the whole story: ごん = 50 reference occurrences, 0 dropped.** At floor 3 only
+  3 land as a candidate at all (ゴギツネ, `Gong`, 言語), none reaching support ⇒ the protagonist was
+  invisible in **47 of 50**. At floor 2, **43 of 50** land, 40 of them as the single stable form ゴン.
+  **Non-interference is measured, not assumed.** Admitting a term also spends a capacity slot and
+  closes its neighbours' `observe_en` openings while it is unpaired, so the arm compares shared
+  episodes whole: candidates 123 → 133, episodes 7 → 8, dead pairings 2 → 2, evictions 0 → 0, and
+  **all 7 pre-existing episodes are identical** — same `trusted_at`, `paired_at`, `expired_at`,
+  mechanism. `CONTEXT_MAX_TERMS`=12 still never binds (6 live). ゴン is the session's earliest and
+  healthiest episode: trusted@20 (18 captions before the first mis-recognition), paired@23, 36 of
+  its 38 sightings carrying the rendering, live at the end — not a new dead-pairing candidate.
+  **What actually decided it, and it is not the raw count.** The kanji floor was ALREADY 2, and 5 of
+  the 7 terms it admits are ordinary vocabulary (鼻腔, 物置, 二人, 神様, イワシ). 2-character ordinary
+  vocabulary was therefore never a new admission class — the asymmetry simply made the stricter side
+  the one that carries Japanese names. The filter that works is `CONTEXT_TERM_SUPPORT`, not the
+  floor: it rejected 9 of the 10 admissions here unaided.
+  **Why the 2-character katakana slot is nearly empty of vocabulary:** across every JA REFERENCE in
+  tree — Aozora 「ごん狐」 4,888 chars, the 182 s retention probe 1,354, the replay goldens 637 —
+  there is **1 maximal 2-character katakana token in 6,879 characters** (ドン) against 70 of 3+
+  characters, because borrowed words are mostly ≥3 katakana. That slot is populated by the
+  RECOGNISER instead (50 tokens in 4,508 caption characters, 40 of them ゴン), which is exactly where
+  a short native name lands when whisper writes it in katakana.
+  **Honest limit:** one corpus, katakana-sparse by genre. In a loanword-dense domain (ドア, バス,
+  ケア, メモ) short vocabulary would reach support, and the protection against it now rests on the
+  support threshold alone. The cost of a wrong term is bounded and known — brief tokens, a thread
+  rotation, one of 12 slots, and a blocked pairing opening while unpaired — and the learner already
+  pays it 5 times over on the kanji side.
+  **Blast radius confirmed empty on the shipped path.** `hotwords_reachable: false` on NPU, so
+  `set_hotwords` drops the list and decode cannot move; measured, not inferred — all **25 replay
+  goldens** reproduced with the accel farm sourced, including the whisper NPU row that normally
+  skips (`tests/test_replay.py` 32/32, 0 skipped), so no golden text or boundary shifted and
+  D-016's CER numbers stand untouched.
+  Suite 235 → **241 passed / 1 skipped / 19.1 s** (6 new locks: a 2-character katakana term is
+  learned, a lone katakana character is still not, the arm moves only the katakana floor and
+  restores it on an exception, it refuses an unlocatable floor, admitted-vs-trusted are separate
+  counts, and admitting a term can strand a neighbour's rendering). Gate 6/6. All 5 new predicates
+  proved non-vacuous by neutralization (L-022): reverting the floor reds 5 tests, dropping the arm's
+  restore reds 3, and the refusal / `shared_episodes_identical` / replay-derived `trusted` red 1
+  each. `main=71% 171K/240K` against `est 80K` ⇒ 2.14; no teammates funded — the arm is
+  script-derivable and the ruling is MAIN's.
 
 - **M12.3 — Record the full story and screen it for dead pairings. [DONE] — the mode is real: 2 dead
   pairings over 215 captions, and neither is a name.** `build_caption_trace.py` now decodes every
@@ -386,11 +435,15 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open — M12.4 is next and needs no further input to start.** One thing to know without acting
-on it: M12.3's screen makes a falsifiable prediction that M12.5 will settle in ~2 translator turns —
-both dead-pairing candidates are ordinary nouns in English, and `observe_en` pairs only on a proper
-noun, so the live outcome is probably that neither pairing exists at all. That would close M12 on a
-structural refutation rather than on P-012's fix. The polish register holds one row (**P-014**, the
+**None open — M12.5 is the last M12 unit and needs no further input to start.** Two things to know
+without acting on them. (1) M12.3's screen makes a falsifiable prediction that M12.5 settles in ~2
+translator turns — both dead-pairing candidates are ordinary nouns in English, and `observe_en`
+pairs only on a proper noun, so the live outcome is probably that neither pairing exists at all.
+That would close M12 on a structural refutation rather than on P-012's fix, and M12.4's ゴン is now
+the positive control that separates that refutation from a broken harness. (2) M12.5 is sized past
+one window even before M12.4 widened the calibration ratio to 1.67, so it opens by splitting at the
+arm boundary: the ~2-turn pairing probe is a unit, the arm matrix is a unit and is funded only if
+the probe finds a real pairing. The polish register holds one row (**P-014**, the
 NPU decode-stall bursts, now with M12.3's 6-section counter-sample), pickable by `/session-polish`
 whenever. Standing options for after M12, none of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
