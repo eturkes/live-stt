@@ -24,6 +24,9 @@ spike/backends/cache/
 # Saved sessions: one transcript file per run, written by default (TRANSCRIPT_DIR)
 transcripts/
 
+# Captured run output (stderr redirects from live sessions, e.g. `uv run live-stt 2> stt.log`)
+*.log
+
 # Local STT model weights (download via models/README.md; large binaries)
 models/*
 !models/README.md

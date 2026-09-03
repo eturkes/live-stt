@@ -82,10 +82,19 @@ Format step is **repo-wide and green**; the touched-file machinery (`touched_py`
 - Benign default-engine STT quirks: ジェミニ→ゼミニ, 文→分 homophone — EN leg translates through them.
 - **`whisper/long`'s golden pins a real duplication (`…に送ってに送って…`) — CLOSED, do not re-derive or re-fix (user ruling 2026-09-02, two measured attempts).** Root cause: `streaming.py`'s `emitted` is a character count re-derived from the latest hypothesis, but it must denote what was PUBLISHED. `process()` pins `stable = max(agreed, len(self.emitted))` then assigns `self.emitted = text[:stable]`, so a decode that RE-SPELLS an already-published prefix at the same character length silently re-anchors the boundary to earlier audio; `finish()` then flushes `previous[len(emitted):]` a second time. Instrumented NPU replay of `long.wav`: 13 updates, **0 trims** — not a trim effect, and D-016(d)'s append-only fix covers only the SHRINKING case. Not inherent to LocalAgreement-2; the policy is fine, the bookkeeping is wrong. Both fixes cost more than the artifact: a `startswith` commit guard starves `_trim` (max_buffer 11.248 → 23.9/25.5 s, **RTF 1.15**, above real time), and an audio-time cut at `finish()` traded 4 duplicated characters for 6 dropped ones (retention CER 0.0583 → **0.0635**, D 35 → 41). The second attempt is preserved whole on branch `attempt/p009-audio-time-cut` @ `bd37bf7`. A third attempt must first separate a genuine re-spelling from ordinary span jitter — 6 of 157 commits move backward, median 0.084 s / max 0.452 s, against the ~0.7 s real re-spelling — and would be a funded roadmap unit, not polish.
 - **Live-audio repetition loops are M13, not P-009 above.** On real mic audio the shipped recogniser
-  emits captions that are 76-100 % one short unit repeated 33-148 times (max **517** chars against a
-  caption p50 of **15**); P-009 is a 4-character bookkeeping duplication and its ruling does not
-  cover this. `tests/caption_trace.json` screens **0**, so no committed clip reproduces it and live
-  audio is not retained — `roadmap.md` M13 owns the corpus problem and the fix.
+  emits captions that are 76-100 % one short unit repeated 33-148 times, reproduced in both
+  real-world sessions (max **890** chars against a caption p50 of **15-17**); P-009 is a 4-character
+  bookkeeping duplication and its ruling does not cover this. `tests/caption_trace.json` screens
+  **0**, so no committed clip reproduces it and live audio is not retained — `roadmap.md` M13 owns
+  the corpus problem and the fix. Candidate trigger, from session 2: **laughter after a long speech
+  gap**.
+- **A long single-character run makes the TRANSLATOR generate without terminating** — measured
+  through the real `CodexTranslator` on a fresh thread with `_turn` bounded at 120 s: `"あ" +
+  "は"*(N-1)` costs 2.5 s at N=20 and 2.2 s at N=60, then **>120 s at N=160/333/445/890**. Not a
+  length effect (890 characters of real speech = 8.1 s) and not all repetition (a 3-character
+  meaningful unit ×111 = 4.7 s). `TRANSLATE_TIMEOUT_S`=15 is the only container, so each occurrence
+  costs 15 s plus one of `TRANSLATE_MAX_FAILURES`=3, and the recogniser fix does not remove it. The
+  probe inputs are literals, so it reruns with no artifact.
 - The EN leg needs `codex` on the PATH of the machine *running* live-stt; installs/logins are per-machine, user-only, and a container login does not carry over. Both layers have it now — host installed + EN confirmed live there (second smoke, 2026-07-02).
 
 ## Decisions (D-002 … D-014)

@@ -55,10 +55,44 @@ goes under Spine flags and to the user instead of running here.
   reading the JA side — n=195/196/197 are three consecutive M13 runaway captions, so it was the
   3-strike branch. That inference needed the caption shapes and does not generalize; a marker line
   would have said so directly.
+  **Second evidence point, and it widens the row by one line.** Session 2
+  (`transcripts/2026-09-03T16-07-24.txt`, 195 JA / 194 EN) lost only n=43, and its captured stderr
+  carries the per-block warning the transcript omits: `translation failed (); JA-only for this
+  block`. **The reason is empty** — `logger.warning("translation failed (%s); …", e)`
+  (`live_stt.py:1039`) formats a `TimeoutError`, whose `str()` is `''`, so not even the stderr line
+  says "timeout". `%s` → `%r`, or an explicit `type(e).__name__`, is the whole fix.
   Acceptance: a run that trips either path writes one marker line into the transcript naming the
-  path; `tests/test_translator.py`'s in-memory `FakeProc`/`StreamReader` locks prove the marker
-  lands exactly once on the 3-strike path, once on the EOF path, and never repeats after the flip.
-  Neutralize each write (L-022) to prove the locks are non-vacuous.
+  path, and a per-block failure logs a non-empty cause; `tests/test_translator.py`'s in-memory
+  `FakeProc`/`StreamReader` locks prove the marker lands exactly once on the 3-strike path, once on
+  the EOF path, never repeats after the flip, and that a timed-out turn logs a line naming
+  `TimeoutError`. Neutralize each write (L-022) to prove the locks are non-vacuous.
+
+- **P-016 · Backlog counters cannot be captured to a file.** `pri 2` · `size S`.
+  `meter` returns immediately when `not _STDOUT_TTY` (`live_stt.py:1365`, symmetric with
+  `_StderrFormatter`, L-006), so `q=` / `seg=` / `drop=` / `tdrop=` exist only on a live terminal.
+  A user asked for "the output of the run" can therefore supply stderr (warnings only) or a
+  redirected stdout (JA/EN lines, meter silenced) but never the backlog evidence, which is exactly
+  what `memory.md` § Soak asks a soak run to watch. Evidence: session 2's `stt.log` = **one line for
+  37 minutes**, and that session's drop counters are unrecoverable.
+  Acceptance: off a TTY the counters reach the log at a bounded cadence — one stderr line only when
+  a counter is nonzero or has changed, so a clean session still costs ~nothing — and the TTY path is
+  byte-unchanged. Lock the off-TTY emission and the no-change silence in `tests/`; neutralize the
+  gate (L-022) to prove both are non-vacuous.
+
+- **P-017 · The last caption's EN went missing on both short runs, and the drain looks correct.**
+  `pri 3` · `size S`.
+  `transcripts/2026-09-03T16-01-04.txt` (8 JA / 7 EN) and `2026-09-03T16-04-25.txt` (7 JA / 6 EN)
+  each lost the FINAL turn's EN; the 37-minute run between them lost only its runaway and
+  translated n=195 two seconds before exit. Code reading does not explain it: `finalize()` submits
+  the flushed tail (`live_stt.py:1249`) before `worker_task` is awaited, and shutdown then lands
+  `submit_sentinel()` and waits `TRANSLATE_TIMEOUT_S + 5` on `translator_task`
+  (`live_stt.py:1485-1489`). The 16:04 run had ~50 s of slack before the next run started, so a
+  timeout is not it either. Most likely the process died on a signal outside the handled
+  `(SIGINT, SIGTERM)` — `_install_signal_handlers` does not cover `SIGHUP`, so closing the terminal
+  terminates immediately with no drain. Not established: those runs' stderr was not captured.
+  Acceptance: reproduce off-mic through an in-memory harness — submit a final turn, land the
+  sentinel, assert the EN line reaches the transcript; then rule on `SIGHUP` with that in hand.
+  Close as no-defect if the drain holds and terminal death explains it, recording that.
 
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its
@@ -68,9 +102,20 @@ why/evidence/acceptance whole. Do not re-file it here.
 
 - **The EN leg died permanently 194 turns into the first real-world session.** CAUSE FOUND and it is
   upstream: n=195/196/197 are three consecutive M13 runaway captions (341/444/86 chars) = exactly
-  `TRANSLATE_MAX_FAILURES`=3. The translator behaved as D-009/D-011 design, so **`roadmap.md` M13
-  owns the fix** and no diagnosis unit is needed here. What survives as an open policy question,
-  and only as one: a 3-strike disable that is permanent for the session costs every later turn on a
-  1-3 h soak target (`memory.md` § Smoke), and single runaways at n=130 and n=138 translated fine,
-  so the failures that trip it can be transient. Do not act on this before M13 lands — fixing the
-  recogniser may remove the trigger entirely.
+  `TRANSLATE_MAX_FAILURES`=3, so **`roadmap.md` M13 owns the trigger** and no diagnosis unit is
+  needed here. What survives as an open policy question, and only as one: a 3-strike disable that is
+  permanent for the session costs every later turn on a 1-3 h soak target (`memory.md` § Smoke), and
+  single runaways at n=130 and n=138 translated fine, so the failures that trip it can be transient.
+
+- **The translator generates without terminating on a long single-character run — a SECOND defect,
+  and it is on our side of D-011.** Session 2 (`transcripts/2026-09-03T16-07-24.txt` + `stt.log`)
+  measured it through the real `CodexTranslator` on a fresh thread, `_turn` bounded at 120 s instead
+  of the shipped 15 s: `"あ" + "は"*(N-1)` costs 2.5 s at N=20 and 2.2 s at N=60, then **>120 s at
+  N=160, 333, 445 and 890**. Length is not the cause — 890 characters of real speech concatenated
+  from the same session cost 8.1 s, and M13's other runaway (`'中央の'`×111, 333 chars) cost 4.7 s. So
+  `TRANSLATE_TIMEOUT_S`=15 is the only thing containing an unbounded generation, and every
+  occurrence spends 15 s of wall time plus a strike. **Fixing the recogniser removes the trigger but
+  not this**: any degenerate caption from any source still lands it, which is the argument for a
+  caption-side degeneracy screen before `submit`. A length cap is refuted by both controls above.
+  Do not act before M13 plans — the screen belongs to whichever side M13 rules on, and its
+  parameters (unit length, repeat count) are exactly what M13's own screen already computes.

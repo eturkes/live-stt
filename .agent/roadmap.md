@@ -15,10 +15,13 @@ unit touches decode quality, a CER number the commit body records.
 ## Status
 
 - Milestone: **M13 the shipped recogniser emits degenerate repetition loops on live audio** —
-  **UNPLANNED**, and the next milestone by user direction. The first real-world run produced
-  **9 captions that are 76-100 % one short unit repeated 33-148 times**, 341-517 characters against
-  a caption p50 of 15, and three of them took the EN leg down for the rest of the session. No
-  committed artifact reproduces it. Plan it before touching code; evidence → `## Open`.
+  **UNPLANNED**, and the next milestone by user direction. Two real-world sessions, both flagged:
+  session 1 = 9 captions that are 76-100 % one short unit repeated 33-148 times (341-517 chars);
+  session 2 = 2 more, new max **890 chars** against a caption p50 of 17. No committed artifact
+  reproduces it. **Session 2 also converted the EN-leg failure from inference to measurement, and
+  it is a SECOND defect** — a long single-character run makes the TRANSLATOR generate without
+  terminating (>120 s against `TRANSLATE_TIMEOUT_S`=15), while 890 chars of real speech costs 8.1 s.
+  Plan before touching code; evidence + the probe table → `## Open`.
 - Parked milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **PARKED**
   (M12.1-M12.4 DONE; M12.5 OPEN, parked not cancelled — a defect in the shipped default engine's
   live output outranks a learner-quality question, and M12.5 resumes unchanged because it replays a
@@ -96,6 +99,40 @@ unit touches decode quality, a CER number the commit body records.
   permanent JA-only for the last 47 turns. The one earlier isolated EN gap, n=144, is also a
   runaway. Single runaways at n=130 and n=138 did translate, so one is survivable and three in a
   row are not. The translator behaved as D-009/D-011 design; the recogniser is the fault.
+
+  **SESSION 2 reproduces the mode and measures the translator side (`transcripts/2026-09-03T16-07-24.txt`,
+  gitignored, 195 captions / 194 translations / 37 min, plus the user-captured `stt.log`).** Same
+  screen: **2 flagged at 100 % repeat** — n=22 `'中央の'`×111 (333 chars) and n=43 `'あ'+'は'`×889
+  (**890 chars**, a new max against session 1's 517). Caption length p50 **17**, p90 102. Two short
+  runs earlier the same hour (8 and 7 captions) screen **0**, so the mode is not per-run.
+  **The whole session's stderr is one line**, and it is the runaway's: `[16:18:20] WARNING
+  translation failed (); JA-only for this block`, 16 s after n=43's caption at 16:18:04. The empty
+  `()` is `TimeoutError`, whose `str()` is `''` — `asyncio.wait_for(self._turn(ja),
+  TRANSLATE_TIMEOUT_S)` at `live_stt.py:1025`. n=43 is the session's ONLY missing EN; n=44/45/46
+  translated normally, so `_failures` reset and the leg survived at 194/195.
+  **The EN leg is killed by a translator defect, not merely by caption size.** Four probes through
+  the real `CodexTranslator` (fresh thread, `_turn` under a 120 s bound instead of the shipped 15 s,
+  control/runaway interleaved per L-026) separate length from degeneracy, and length is exonerated:
+
+  | input | chars | turn |
+  |---|---|---|
+  | real speech n=47 / n=98 | 237 / 264 | 4.0 s / 4.6 s |
+  | real speech, 6 captions concatenated | 890 | **8.1 s**, 2364 EN chars |
+  | n=22 runaway `'中央の'`×111 | 333 | **4.7 s**, 971 EN chars |
+  | n=43 laughter `'あ'+'は'*(N-1)` | 20 / 60 | 2.5 s / 2.2 s |
+  | same, longer | 160 / 333 / 445 / 890 | **>120 s, all four** |
+
+  So: **890 chars of real speech is fine, a 3-character meaningful unit repeated 111× is fine, and a
+  single-character run somewhere between 60 and 160 characters stops terminating.** The inputs are
+  literals (`"あ" + "は" * (N-1)`), so this reruns with no artifact. `TRANSLATE_TIMEOUT_S` is the only
+  thing containing it; `_abort_turn` then interrupts the turn server-side. Consequence for the plan:
+  a recogniser fix removes the trigger but leaves the translator unbounded on any degenerate input,
+  and a caption-side degeneracy screen — NOT a length cap, which n=22 and the 890-char control both
+  refute — is a mitigation independent of hypotheses (a) and (b) below.
+  **Ordinary-turn numbers from the same session, for sizing:** EN latency p50 **3.0 s**, p90 5 s,
+  max 11 s over 194 turns; EN/JA character amplification p50 **2.57×**, max 5.43× (n=22); silence
+  gap before a caption p50 7 s, p90 24 s, max 86 s. n=43 follows the neighbourhood's longest gap
+  (50 s), consistent with the trigger being non-speech.
   **Do not confuse this with P-009** (`memory.md`, CLOSED by user ruling, do not re-derive or
   re-fix): that is a 4-character re-spelling duplication from `streaming.py`'s `emitted`
   bookkeeping, measured at 0 trims. This is decoder degeneration two to three orders of magnitude
@@ -110,10 +147,18 @@ unit touches decode quality, a CER number the commit body records.
   degenerate".
   **Named unknowns for the plan:** whether the NPU `StaticWhisperPipeline` HONORS those three knobs
   (it already refuses `initial_prompt` and `hotwords`, so assume nothing and measure); how to
-  acquire audio that triggers it, since the trigger looks like silence, room tone or non-speech;
-  and whether a `streaming.py`-side degeneracy reject, running the screen above on a hypothesis
-  before it is committed, is cheaper and more portable than a decode-side knob. Prefer whichever
-  the fresh session can gate without hardware.
+  acquire audio that triggers it; and whether a `streaming.py`-side degeneracy reject, running the
+  screen above on a hypothesis before it is committed, is cheaper and more portable than a
+  decode-side knob. Prefer whichever the fresh session can gate without hardware.
+  **The corpus problem got cheaper.** Session 2 names a candidate trigger the user can produce on
+  demand — n=43 is **laughter** (`あははは…`) after the neighbourhood's longest speech gap, and n=22's
+  `中央の` loop follows a 13 s gap. A short mic recording of laughter, throat-clearing and room tone
+  is a far smaller ask than "capture a 40-minute session and hope". Ask for a retained WAV, not a
+  transcript: audio is what closes the (a)/(b) split.
+  **Capture limitation to state when asking.** `stt.log` is stderr only, and that is all it CAN be:
+  the meter status line is gated on `_STDOUT_TTY` (`live_stt.py:1365`, L-006), so redirecting stdout
+  silences `q=`/`seg=`/`drop=` entirely and no redirection captures them. A run's backlog evidence
+  is therefore unobtainable today without a code change — size that into any evidence request.
 
 **M12 sizing fact, measured from tree, then confirmed by the M12.1 run — read it before M12.4/M12.5.**
 `tests/caption_trace.json` records `hotwords_reachable: false`. `ASR_DEVICE = "NPU"` and
