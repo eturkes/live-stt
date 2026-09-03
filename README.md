@@ -17,9 +17,9 @@ On the default engine, Japanese builds on the status line while you speak. The n
   `--asr-device GPU` or `--asr-device CPU` to use another one. OpenVINO ships
   wheels only for CPython 3.11 to 3.14 on macOS arm64, Linux x86_64 and
   aarch64, and Windows amd64. If your shell sets `PYTHONPATH` to a different
-  OpenVINO build, clear it before you run live-stt. That entry hides the
-  installed package, and the import then fails with a confusing `AxisSet`
-  error instead of a clear one.
+  OpenVINO build, clear it first. That entry hides the installed package. The
+  OpenVINO import then fails with a message that does not name `PYTHONPATH`.
+  The committed `.envrc` clears `PYTHONPATH` when direnv is active.
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
@@ -39,7 +39,7 @@ codex login              # optional: enable the EN leg
 
 ### One tree, two environments
 
-The working tree is shared between the host OS, where live-mic sessions run (the mic and the lowest latency live there), and a dev container, where development and testing happen. Python venvs hard-code absolute paths and each side sees the tree at a different one, so each side keeps its own venv: `.venv` in the container (uv's default), `.venv-host` on the host. The committed `.envrc` exports `UV_PROJECT_ENVIRONMENT` to match; allow it once per machine (`direnv allow`). In shells without direnv, export the variable yourself before running `uv`.
+The working tree is shared between the host OS, where live-mic sessions run (the mic and the lowest latency live there), and a dev container, where development and testing happen. Python venvs hard-code absolute paths and each side sees the tree at a different one, so each side keeps its own venv: `.venv` in the container (uv's default), `.venv-host` on the host. The committed `.envrc` exports `UV_PROJECT_ENVIRONMENT` to match. Run `direnv allow` on each machine, and again after the file changes. In shells without direnv, export the variable yourself before you run `uv`, and clear `PYTHONPATH` as above.
 
 The EN leg is environment-local too: live-stt resolves `codex` from its own process `PATH`. For a host live-mic session, install the CLI and run `codex login` from the host; a container-only install or login does not enable translation on the host.
 
