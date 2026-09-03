@@ -44,10 +44,30 @@ goes under Spine flags and to the user instead of running here.
   `SCALE_LADDER` margin M11.4 already measured. Evidence: `tests/caption_trace.json` @ M12.3 (n=215,
   clean) vs the same file at `f25cfb5` (n=67, one burst).
 
+- **P-015 · The saved transcript records a translation degrade only as absence.** `pri 2` · `size S`.
+  Both degrade paths log to stderr alone — `translation disabled after %d consecutive failures`
+  (`live_stt.py:1034`) and `codex app-server exited; JA-only for the rest of the session`
+  (`live_stt.py:943`) — while `TranscriptFile` writes `JA`/`EN` lines only. The durable artifact
+  therefore carries the loss with no cause, and a session cannot be diagnosed after the terminal
+  scrollback is gone. Evidence: `transcripts/2026-09-03T14-03-43.txt` (gitignored, 434 lines) =
+  **241 `JA` lines against 193 `EN`**; `EN` stops after n=194 and never returns (47 consecutive
+  JA-only turns to the end), plus one isolated gap at n=144 consistent with a single failed or
+  evicted turn. Which of the two paths fired is unrecoverable.
+  Acceptance: a run that trips either path writes one marker line into the transcript naming the
+  path; `tests/test_translator.py`'s in-memory `FakeProc`/`StreamReader` locks prove the marker
+  lands exactly once on the 3-strike path, once on the EOF path, and never repeats after the flip.
+  Neutralize each write (L-022) to prove the locks are non-vacuous.
+
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its
 why/evidence/acceptance whole. Do not re-file it here.
 
 ## Spine flags
 
-None open.
+- **The EN leg died permanently 194 turns into the first real-world session and never recovered.**
+  Same evidence as P-015: 47 consecutive JA-only turns closed a 41-minute run, ~20 % of the session's
+  captions. D-009 makes JA-only a hard degrade guarantee, so the tool behaved as designed; what is
+  unmeasured is whether a 3-strike disable that is permanent for the session is the right policy on
+  a multi-hour target (`memory.md` § Smoke soaks for 1-3 h). Blocked on P-015: the cause is
+  stderr-only and this session's scrollback is gone, so the next live run must capture stderr or
+  land the marker first. User decision — fund a diagnosis unit, or leave it until it recurs.
