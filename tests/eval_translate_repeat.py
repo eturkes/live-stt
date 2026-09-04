@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What repetition stops the translator terminating: M13.1's calibration probe.
 
-The producer of `TRANSLATE_REPEAT_MAX_CHARS`. On-demand, never a gate step: it
+The producer of `CAPTION_REPEAT_MAX_CHARS`. On-demand, never a gate step: it
 needs a live `codex app-server` and spends up to ~15 minutes of real turns. Its
 inputs are literals plus the committed caption trace, so it reruns from a clean
 clone with no gitignored artifact and no accelerator.

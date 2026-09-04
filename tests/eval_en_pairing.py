@@ -194,7 +194,7 @@ async def live_turns(captions: list[dict]) -> dict:
             continue  # production publishes -- and so observes -- nothing else
         context.observe_ja(ja)  # `prompted` is empty on the NPU: nothing is ever biased
         span = live_stt.repeat_span(ja)
-        if span >= live_stt.TRANSLATE_REPEAT_MAX_CHARS:
+        if span >= live_stt.CAPTION_REPEAT_MAX_CHARS:
             declined += 1  # M13.1's screen, which lives in submit ahead of the queue
             turns.append({"idx": caption["idx"], "ja": ja, "en": "", "s": 0.0, "declined": True})
             continue

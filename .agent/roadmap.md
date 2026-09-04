@@ -14,23 +14,20 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Status
 
-- Milestone: **M13 the shipped pipeline degenerates on live audio** — **IN-PROGRESS**, and the next
-  milestone by user direction. **M13.1 is DONE and no unit is OPEN**, so the next session's mode is
-  PLANNING for M13's recogniser scope — which is **BLOCKED on a standing precondition: a retained
-  WAV of laughter / throat-clearing / room tone** (`## Decisions pending from user`). Evidence
-  unchanged ⇒ read-only close, and run a standing option instead — **M12.5 and P-019 are both
-  DONE, so no alternative is funded and the standing options are what is left.** Two
-  real-world sessions, both flagged:
-  session 1 = 9 captions that are 76-100 % one short unit repeated 33-148 times (341-517 chars);
-  session 2 = 2 more, new max **890 chars** against a caption p50 of 17. No committed artifact
-  reproduces it. **Session 2 also converted the EN-leg failure from inference to measurement, and
-  it is a SECOND defect** — a repeated short unit makes the TRANSLATOR generate without terminating
-  (measured again at 25 turns in M13.1), while 480 chars of real speech costs 7.0 s.
-  **M13.1 shipped that mitigation on 2026-09-03 and is DONE**: a degeneracy screen in
-  `CodexTranslator.submit` declines the caption before the queue, so the EN leg survives any streak
-  of runaways. **The recogniser side is the whole remaining milestone and is still UNPLANNED** — it
-  needs audio before it can be planned, and the next ask is a short retained WAV of laughter,
-  throat-clearing and room tone (session 2's n=43 is laughter after the longest speech gap).
+- Milestone: **M13 the shipped pipeline degenerates on live audio** — **IMPLEMENTED** (M13.1 +
+  M13.2 both DONE), **no unit is OPEN**, so the next session's mode is PLANNING and it needs a
+  direction — the standing options in `## Decisions pending from user` are what is left.
+  **Both defects are shipped and the milestone's blocker dissolved rather than being satisfied.**
+  The translator one first (M13.1, a degeneracy screen before the queue). Then M13.2 answered the
+  recogniser side, which had been BLOCKED for a retained WAV of laughter/room tone: **the trigger
+  is not laughter, it is any audio the Japanese pin cannot account for**, and 11 s of public-domain
+  ENGLISH speech (JFK) reproduces the loop offline in one command. Hypothesis (a) is confirmed —
+  nothing bounded the decode — so the fix is `ASR_REPETITION_PENALTY`=1.2 at decode plus a
+  publication screen that drops a defective caption whole, and (b) is moot: VAC never sees a loop
+  the penalty prevents.
+  **Live evidence, six sessions, 1073 JA captions:** 26 runaway captions (max **890 chars** against
+  a caption p50 of 17, 15-31 % of every Japanese character printed) and 23 latin-dominant ones.
+  The two shipped rules drop 4.0 % of captions and, on that corpus, cost no genuine Japanese.
 - Previous milestone: **M12 does the EN rendering learner hold up on real ASR output?** —
   **IMPLEMENTED** (M12.1-M12.5 all DONE). **The answer is measured and it is mixed.** Both modes
   P-012 named are refuted: the recogniser does not fragment a name (M12.1) and the dead pairings the
@@ -86,7 +83,8 @@ unit touches decode quality, a CER number the commit body records.
 - Agent-covered: VAC buffer mechanics + the VAC loop over stubbed VAD/recogniser; `SessionContext`
   learning rules; the shipped CLI/routing surface; two-engine short goldens + CER stressors + 4:48
   narration **on the sherpa fallback only**, plus the shipped path's one accuracy gate (M11.5
-  `eval_retention.py`, 182 s pause-free, CER 0.0583 on NPU); deterministic paced backpressure on
+  `eval_retention.py`, 182 s pause-free, CER **0.0609** on NPU since M13.2 shipped the
+  repetition penalty; 0.0583 is the penalty-free number M11.5 pinned); deterministic paced backpressure on
   BOTH branches —
   44.722 s at RTF 0.20 on the sherpa fallback, 44.722 s + 182.482 s at real per-update NPU cost on
   the shipped VAC path (M11.4); shutdown/stage-failure/translation-degradation mechanics.
@@ -95,95 +93,7 @@ unit touches decode quality, a CER number the commit body records.
 
 ## Open (do these; lowest ID first)
 
-- **M13 — The shipped pipeline degenerates on live audio: the recogniser emits repetition loops and
-  the translator never terminates on them. [IN-PROGRESS]**
-  Next by user direction. **Two independent defects. The translator one was funded first and
-  M13.1 shipped it (see `## Done`), so the EN leg no longer dies on a runaway.** The RECOGNISER
-  side stays **UNPLANNED** and still needs its own planning session before any code: the two
-  hypotheses below take different fixes and the corpus does not exist yet. **Planning is blocked on
-  audio, not on a decision** — the ask is a short retained WAV, not a transcript.
-  **The measurement** — `transcripts/2026-09-03T14-03-43.txt` (gitignored, 241 captions / 193
-  translations / ~41 min). Screen each caption for its longest adjacent repeated substring (unit
-  ≥2 chars, ≥3 repeats, span ≥12 chars): **12 captions flagged, 9 of them 76-100 % repeat** — n=196
-  `'次は、'`×148 filling 444 of 444 chars, n=224 `'、私は'`×148 of 517, n=138 `'副部の'`×109, n=144
-  `'クラブの'`×109, n=195 `'私は、'`×98, n=130 `'アーメンの'`×88, n=240 `'中学院の'`×72, n=227×33.
-  Caption length p50 **15**, p90 92, **max 517**. Three captions are `ご視聴ありがとうございました` /
-  `ありがとうございました` — whisper's canonical Japanese hallucination on non-speech — so some of
-  these fire on silence or room tone, not on speech.
-  **The negative control is committed and clean.** The same screen over `tests/caption_trace.json`
-  (215 NPU captions, whole 「ごん狐」 story, shipped VAC path) flags **0**; max caption length **69**
-  against the live 517, p90 33 against 92. **Nothing in tree reproduces this** — every pinned clip
-  is clean continuous narration. Live audio is not retained, so that session is evidence, not a
-  repro, and acquiring a triggering corpus is the milestone's first real cost.
-  **It is what took the EN leg down.** EN flowed through n=194 on short captions; n=195/196/197 are
-  **three consecutive runaways** (341/444/86 chars) = exactly `TRANSLATE_MAX_FAILURES`=3 ⇒
-  permanent JA-only for the last 47 turns. The one earlier isolated EN gap, n=144, is also a
-  runaway. Single runaways at n=130 and n=138 did translate, so one is survivable and three in a
-  row are not. The translator behaved as D-009/D-011 design; the recogniser is the fault.
-  **M13.1 has since shipped, so this specific kill path is closed:** a caption repeating one short
-  unit for ≥40 characters is declined before the translation queue, which costs an EN line and no
-  strike, so no streak of runaways can disable the leg again. Every runaway named above is declined
-  by the shipped screen. What remains is the recogniser emitting them at all.
-
-  **SESSION 2 reproduces the mode and measures the translator side (`transcripts/2026-09-03T16-07-24.txt`,
-  gitignored, 195 captions / 194 translations / 37 min, plus the user-captured `stt.log`).** Same
-  screen: **2 flagged at 100 % repeat** — n=22 `'中央の'`×111 (333 chars) and n=43 `'あ'+'は'`×889
-  (**890 chars**, a new max against session 1's 517). Caption length p50 **17**, p90 102. Two short
-  runs earlier the same hour (8 and 7 captions) screen **0**, so the mode is not per-run.
-  **The whole session's stderr is one line**, and it is the runaway's: `[16:18:20] WARNING
-  translation failed (); JA-only for this block`, 16 s after n=43's caption at 16:18:04. The empty
-  `()` is `TimeoutError`, whose `str()` is `''` — `asyncio.wait_for(self._turn(ja),
-  TRANSLATE_TIMEOUT_S)` at `live_stt.py:1025`. n=43 is the session's ONLY missing EN; n=44/45/46
-  translated normally, so `_failures` reset and the leg survived at 194/195.
-  **The EN leg is killed by a translator defect, not merely by caption size.** Four probes through
-  the real `CodexTranslator` (fresh thread, `_turn` under a 120 s bound instead of the shipped 15 s,
-  control/runaway interleaved per L-026) separate length from degeneracy, and length is exonerated:
-
-  | input | chars | turn |
-  |---|---|---|
-  | real speech n=47 / n=98 | 237 / 264 | 4.0 s / 4.6 s |
-  | real speech, 6 captions concatenated | 890 | **8.1 s**, 2364 EN chars |
-  | n=22 runaway `'中央の'`×111 | 333 | **4.7 s**, 971 EN chars |
-  | n=43 laughter `'あ'+'は'*(N-1)` | 20 / 60 | 2.5 s / 2.2 s |
-  | same, longer | 160 / 333 / 445 / 890 | **>120 s, all four** |
-
-  So: **890 chars of real speech is fine, a 3-character meaningful unit repeated 111× is fine, and a
-  single-character run somewhere between 60 and 160 characters stops terminating.** The inputs are
-  literals (`"あ" + "は" * (N-1)`), so this reruns with no artifact. `TRANSLATE_TIMEOUT_S` is the only
-  thing containing it; `_abort_turn` then interrupts the turn server-side. Consequence for the plan:
-  a recogniser fix removes the trigger but leaves the translator unbounded on any degenerate input,
-  and a caption-side degeneracy screen — NOT a length cap, which n=22 and the 890-char control both
-  refute — is a mitigation independent of hypotheses (a) and (b) below.
-  **Ordinary-turn numbers from the same session, for sizing:** EN latency p50 **3.0 s**, p90 5 s,
-  max 11 s over 194 turns; EN/JA character amplification p50 **2.57×**, max 5.43× (n=22); silence
-  gap before a caption p50 7 s, p90 24 s, max 86 s. n=43 follows the neighbourhood's longest gap
-  (50 s), consistent with the trigger being non-speech.
-  **Do not confuse this with P-009** (`memory.md`, CLOSED by user ruling, do not re-derive or
-  re-fix): that is a 4-character re-spelling duplication from `streaming.py`'s `emitted`
-  bookkeeping, measured at 0 trims. This is decoder degeneration two to three orders of magnitude
-  larger, and a fix for one is not a fix for the other.
-  **Two hypotheses, different fixes, separate them first.** (a) **Nothing bounds a degenerate
-  decode** — `WhisperEngine.generate` (`live_stt.py:331`) passes only `language`, `task`,
-  `return_timestamps` and optional `hotwords`, so on this build `repetition_penalty`=1.0,
-  `no_repeat_ngram_size`=SIZE_MAX and `max_new_tokens`=SIZE_MAX are all effectively off and a 1-2 s
-  buffer may emit 517 characters. (b) **VAC ratifies the loop** — LocalAgreement-2 commits the
-  common prefix of two consecutive decodes, and two degenerate decodes of one buffer agree on the
-  repeated prefix, so `streaming.py` cannot separate "stable because correct" from "stable because
-  degenerate".
-  **Named unknowns for the plan:** whether the NPU `StaticWhisperPipeline` HONORS those three knobs
-  (it already refuses `initial_prompt` and `hotwords`, so assume nothing and measure); how to
-  acquire audio that triggers it; and whether a `streaming.py`-side degeneracy reject, running the
-  screen above on a hypothesis before it is committed, is cheaper and more portable than a
-  decode-side knob. Prefer whichever the fresh session can gate without hardware.
-  **The corpus problem got cheaper.** Session 2 names a candidate trigger the user can produce on
-  demand — n=43 is **laughter** (`あははは…`) after the neighbourhood's longest speech gap, and n=22's
-  `中央の` loop follows a 13 s gap. A short mic recording of laughter, throat-clearing and room tone
-  is a far smaller ask than "capture a 40-minute session and hope". Ask for a retained WAV, not a
-  transcript: audio is what closes the (a)/(b) split.
-  **Capture limitation to state when asking.** `stt.log` is stderr only, and that is all it CAN be:
-  the meter status line is gated on `_STDOUT_TTY` (`live_stt.py:1365`, L-006), so redirecting stdout
-  silences `q=`/`seg=`/`drop=` entirely and no redirection captures them. A run's backlog evidence
-  is therefore unobtainable today without a code change — size that into any evidence request.
+**Empty.** M13 closed on 2026-09-04; the next milestone needs a user direction.
 
 ## Done (ID · outcome · decisions/lessons produced)
 
@@ -239,14 +149,83 @@ unit touches decode quality, a CER number the commit body records.
   Calibration series: M12.2 1.34 · M12.3 1.53 · M12.4 2.14 · M12.5 1.37 ⇒ ratio **1.60**, spread
   1.34-2.14. No teammates funded — the probe is script-derivable and the ruling is MAIN's.
 
+- **M13.2 — Stop the recogniser inventing captions. [DONE] — SHIPPED, and the milestone's standing
+  blocker DISSOLVED: the trigger is reproducible offline from public-domain audio, so no user WAV
+  was ever needed.**
+  **The repro, one command, no artifact** — `curl -sSL -o .scratch/jfk.flac
+  https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac` (11 s JFK inaugural),
+  resample 44.1k→16k, pad 1 s silence each end, `replay.py --engine whisper` ⇒ segment 3 is a
+  **528-char loop `…ことを求めることを求める…`, decode 7.06 s, RTF 1.106** — above real time, so a
+  runaway costs the budget twice. **The cause is not laughter and not room tone.** The recogniser is
+  pinned to Japanese; audio it cannot account for is emitted as Japanese tokens until the model
+  hits `max_length`=448, which is exactly the 444-char captions in the live logs. Synthetic
+  non-speech (digital silence, −60 dB noise, 60 Hz hum) reproduces the *hallucination phrases*
+  (`ご視聴ありがとうございました`) but **not** the loop — English speech is what loops it. Live
+  corroboration: runaways follow 13-47 s silence gaps and cluster around English speech.
+  **Hypothesis (a) is confirmed and (b) is moot.** The knob sweep, through the shipped VAC path on
+  the NPU:
+
+  | penalty | jfk EN trigger | JA long | JA stressor | JA paused |
+  |---|---|---|---|---|
+  | none | 550 ch, maxrep 528, RTF 0.729 | 81 ch | 277 ch | 14 ch |
+  | 1.15 | 550, **510 — no fix** | — | — | — |
+  | **1.2** | **45 ch, 0, RTF 0.387** | 80, CER 0.0000 | 276, CER 0.0036 | 14, 0.0000 |
+  | 1.25 | 48, 0 | — | — | — |
+
+  The knee is between 1.15 and 1.2, so 1.2 is the first working value and 1.25 buys nothing.
+  **Retention CER is the price and the user ruled it worth paying** (`tests/eval_retention.py`, NPU):
+  penalty=None **0.0583** S=33 D=35 I=0 N=1166 (D-016(e) reproduced exactly, third time) →
+  penalty=1.2 **0.0609** S=36 D=35 I=0 = **3 substitutions in 1166 characters**; 1.3 is clearly
+  worse (0.0789, S=40 D=48 I=4).
+  **Two API traps found by measurement, both in `memory.md`:** `no_repeat_ngram_size` is accepted
+  and **silently ignored** on this NPU build (sizes 2/3/4/5/8 all return byte-identical baseline
+  text on a clip repeating a 5-char unit ~140×), so `repetition_penalty` is the only repetition knob
+  that reaches the NPU; and `WhisperPipeline` **latches its language** across calls, which kills the
+  cheap per-utterance LID gate.
+  **The publication screen is the second defence, and the user ruled DROP over collapse or
+  truncate.** `caption_defect()` + `drop_caption()`, gating both publish sites
+  (`_vac_segments.finalize` and `_decode_segments`), so a defective caption is never printed, saved,
+  numbered, learned from or queued — **`observe_ja` is bypassed by construction, which closes
+  P-018**. A drop burns no sequence number, so `JA n` still counts captions. Meter gained `skip=`,
+  kept separate from backlog `drop=`/`tdrop=` and from the translator's `tskip=` backstop.
+  **Both thresholds are corpus-picked against 1073 live JA captions over 6 sessions, and both sit in
+  an empty gap.** Repetition: smallest dropped caption carries **252** repeated chars, longest
+  survivor **32** (`3 months`×4, itself English) — a 6× margin around 40. Language: the user's first
+  ruling was `latin > japanese`, and measuring it showed it drops **5 genuine Japanese captions**
+  (`Discordで送ります。` 7v5, `HDMIはどう?` 4v3, `A&M Studioですね。` 8v3, `HTMLあるんで HMADの中で`
+  8v7, `…quantizationは、precisionの、そして、` 21v16) — a Latin letter is one phoneme where a
+  Japanese character is a syllable, so one loanword outnumbers the kana around it. The two
+  populations separate cleanly by ratio (18 spoken-English captions at ≤0.15 Japanese-per-character,
+  6 loanword-carrying Japanese ones at ≥0.27); **the user re-ruled to `CAPTION_LATIN_RATIO`=4**,
+  which cuts that gap at 0.20 and costs nothing measurable. Combined drop rate **4.0 %**.
+  **Attribution, which is what the user actually asked:** reading 30 consecutive JA/EN pairs from
+  session 3, **the translator is not the bottleneck** — the English is fluent and faithful to
+  whatever Japanese it is handed, and every defect is ASR (`パーツ`→`パンツ`, `左肩甲骨`→`左肩骨`,
+  `コロナル`→`セコロナルタ`, plus a stray `おやすみなさい。` mid-meeting). EN trails JA by p50 2-3 s
+  and never more than 3 captions. **Pace is structural, not backlog:** a caption publishes only at
+  utterance end, `VAD_MAX_SPEECH_S`=20 is a soft silero cap (L-023) that does not bound continuous
+  speech, clean-caption p99 is 136-312 chars ≈ 18-40 s of speech, and `stt.log` carries one sherpa
+  `circular-buffer.cc Overflow! capacity: 960000` = a >60 s continuous speech-detected stretch. The
+  user ruled the utterance cap OUT: one utterance stays one line and one turn.
+  Suite 275 → **302 passed / 1 skipped** (+27). Gate 6/6. Replay goldens regenerated under the
+  farm, **32/32 with 0 skipped**; the only whisper-row change is one dropped `、`, and P-009's
+  `に送ってに送って` survives the penalty (noted, NOT re-litigated — CLOSED by user ruling).
+  All 10 new predicates proved non-vacuous by neutralization (L-022), re-run against the final
+  source: dropping the penalty reds 1, each caption rule reds 7/8, ratio=1 reds exactly the 5
+  loanword captions, ratio=100 reds the 2 tightest English ones, bound=4000 reds 20, uncounting the
+  drop reds 4, each publish-site gate reds 3/1, an unconditional `skip=` reds 5 — baseline and
+  post-restore both 302.
+
 - **M13.1 — Decline a degenerate caption before it reaches the translator. [DONE] — SHIPPED: the
   EN leg now survives what killed session 1, and the threshold is corpus-picked, not guessed.**
   `repeat_span()` + a screen in `CodexTranslator.submit` (`live_stt.py:1005`), 26 production lines.
-  A caption is declined when its longest adjacent repetition of a unit ≤`TRANSLATE_REPEAT_UNIT_CHARS`
-  =8 reaches `TRANSLATE_REPEAT_MAX_CHARS`=40. The seam is BEFORE the queue, so `_turn`, `_failures`
-  and `observe_en` are untouched **by construction**; the numbered `JA n:` line still prints and is
-  still saved, one WARNING names the caption and how much of it repeats, and the meter gained a
-  dedicated `tskip=` (kept out of `tdrop=`, which means translation fell behind).
+  A caption is declined when its longest adjacent repetition of a unit ≤`CAPTION_REPEAT_UNIT_CHARS`
+  =8 reaches `CAPTION_REPEAT_MAX_CHARS`=40 (renamed by M13.2, which shares both). The seam is BEFORE
+  the queue, so `_turn`, `_failures` and `observe_en` are untouched **by construction**; one WARNING
+  names the caption and how much of it repeats, and the meter gained a dedicated `tskip=` (kept out
+  of `tdrop=`, which means translation fell behind). **M13.2 superseded this as the first line of
+  defence** — such a caption is now dropped before publication, so it no longer prints or saves and
+  `tskip=` only fires if one reaches the queue by another route.
   **The calibration matrix, 25 turns through the real app-server (`tests/eval_translate_repeat.py`, inputs
   are literals + the committed trace, so it reruns with no artifact):** fresh thread per turn, 30 s
   bound, real-speech canary after every degenerate turn — **every canary healthy at 2.8-7.0 s**, so
@@ -282,7 +261,8 @@ unit touches decode quality, a CER number the commit body records.
   the module by the same byte count. `main=88% 212K/240K` against `est 90K → cal 150K` ⇒ 2.36 on the
   raw estimate, 1.41 on the calibrated one; no teammates funded.
   Out of contract, registered not fixed: **P-018** — `observe_ja` still sees a declined caption, so
-  three runaways repeating one unit could promote a decode artifact into the term list.
+  three runaways repeating one unit could promote a decode artifact into the term list. **Closed by
+  M13.2 by construction:** the drop precedes `observe_ja`.
 
 - **M12.4 — Rule on `_TERM_RUN`'s katakana floor. [DONE] — SHIPPED at 2: the floor was hiding the
   one name in the story and guarding a slot ordinary vocabulary does not occupy.** One production
@@ -606,21 +586,16 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**One open, and it is an EVIDENCE request, not a design call: M13's recogniser side needs audio
-before it can be planned.** M13.1 shipped the translator mitigation, so nothing else in M13 is
-executable — the two hypotheses take different fixes and no committed clip reproduces the defect.
-**The ask: a short retained WAV (any length, a minute is plenty) of laughter, throat-clearing,
-room tone and a few seconds of silence, recorded on the live-stt mic.** Session 2 named the trigger
-— n=43 is laughter (`あははは…`) after the neighbourhood's longest speech gap, and n=22's loop
-follows a 13 s gap — so this is a far smaller ask than "capture a 40-minute session and hope". A
-transcript cannot substitute: audio is the only thing that separates hypothesis (a) an unbounded
-decode from (b) VAC ratifying the loop. Without it M13 cannot open its next unit, and the standing
-options below (a live-mic validation pass, a maintenance pass, a new capability milestone) or a
-polish row are what a session would run instead.
-The polish register holds **P-014** (NPU decode-stall bursts, with M12.3's 6-section
-counter-sample) and **P-020** (a sentence after a closing quote reads as mid-sentence, which costs
-the correct `カスケ = Kasuke`), both pickable by `/session-polish` whenever. Standing options, none
-of them blocking:
+**None open. M13 is IMPLEMENTED and no unit is OPEN, so the next session needs a direction.**
+The standing WAV request is **withdrawn, not satisfied**: M13.2 found the trigger is any audio the
+Japanese pin cannot account for, so 11 s of public-domain English speech reproduces the loop
+offline and no live recording is needed. Both M13 defects shipped.
+The polish register holds **P-021** (the shipped path never drains the VAD and leaks ~3.5 MB per
+speech-minute — found by M13.2, measured, `pri 1`), **P-014** (NPU decode-stall bursts, with
+M12.3's 6-section counter-sample), **P-016** (backlog counters unobtainable under redirection, which
+is why M13.2's live evidence is transcripts and stderr only) and **P-020** (a sentence after a
+closing quote reads as mid-sentence, which costs the correct `カスケ = Kasuke`), all pickable by
+`/session-polish` whenever. Standing options, none of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
     user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
     VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.
@@ -629,7 +604,13 @@ of them blocking:
 (c) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
     most of the obvious ones.
 
-(Last resolved: **P-019's fix shape** — the user picked the JA-side plausibility test on 2026-09-04
+(Last resolved: **M13.2's four rulings, all 2026-09-04** — (1) a runaway caption is DROPPED whole,
+not collapsed to two repeats and not truncated; (2) ship `repetition_penalty`=1.2 despite retention
+CER 0.0583 → 0.0609; (3) the language gate is a text-side rule only, no whisper LID — first ruled
+`latin > japanese`, then **re-ruled to `latin > 4 × japanese`** when measurement showed the 1:1 form
+drops 5 genuine Japanese captions; (4) utterances stay UNCAPPED — one utterance is one line and one
+turn, even at 88 s.
+Before that: **P-019's fix shape** — the user picked the JA-side plausibility test on 2026-09-04
 conditional on it being more robust long-term; arms over the committed trace showed it is not (it
 drops the correct `神様 = God` and blocks the whole kanji-name class), the user was given that
 refutation and the English-side substitute, and directed the session to implement it. Shipped the

@@ -59,6 +59,16 @@ WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa
 ASR_DEVICE = "NPU"
 ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})
 OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
+# Audio the JA pin cannot account for -- English speech, room tone -- makes the
+# decoder emit one unit until it hits the model's 448-token max_length: 13 s of
+# English replays as a 528-character loop at RTF 1.106, above real time. 1.2 is
+# the knee measured through the shipped VAC path over five trigger variants (both
+# that loop go 550 -> 45 characters, RTF 0.73 -> 0.39; 1.15 leaves the loop
+# intact) and costs 3 substitutions in 1166 characters on the retention probe
+# (D-016(e) CER 0.0583 -> 0.0609); 1.3 costs 0.0789. no_repeat_ngram_size is
+# accepted and then SILENTLY IGNORED on this build -- sizes 2..8 all return the
+# baseline text -- so this is the only repetition knob that reaches the NPU.
+ASR_REPETITION_PENALTY = 1.2
 # VAC (silero as a controller around the streaming policy). Waiting for a VAD
 # segment to close bounds first-caption latency by the utterance length, which on
 # pause-free speech measured 15.5 s median / 36.6 s max; re-decoding the utterance
@@ -130,15 +140,30 @@ TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> JA-only for the session
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
 TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) block
 
-# A degenerate decode repeats one short unit without end, and that stops the model
-# TERMINATING: measured through the real app-server, fresh thread per turn, 30 s
-# bound — "あ"+"は"*n never finished at 120 characters and every unit up to 5
-# characters stalled at 480, while 480 characters of real speech cost 7.0 s. So the
-# screen is repetition, never length; 中央の×80 (240 characters) translated in 10.8 s.
-# 40 is five times the longest repetition any real caption in tree carries
-# (ポンポンポンポン) and three times under the shortest measured stall.
-TRANSLATE_REPEAT_MAX_CHARS = 40
-TRANSLATE_REPEAT_UNIT_CHARS = 8  # a longer unit is a repeated phrase, not a decode loop
+# A degenerate decode repeats one short unit without end. Two independent costs,
+# so the caption is dropped outright and the translator keeps its own screen.
+# (1) It floods the reader: over four live sessions the runaways were 15-31 % of
+# every Japanese character printed, one of them 714 characters against a caption
+# median of 19, which scrolls the conversation out of the terminal.
+# (2) It stops the TRANSLATOR terminating: measured through the real app-server,
+# fresh thread per turn, 30 s bound — "あ"+"は"*n never finished at 120 characters
+# and every unit up to 5 characters stalled at 480, while 480 characters of real
+# speech cost 7.0 s. So the screen is repetition, never length; 中央の×80 (240
+# characters) translated in 10.8 s. 40 is five times the longest repetition any
+# real caption in tree carries (ポンポンポンポン) and three times under the shortest
+# measured stall. Across 1073 live captions the threshold sits in an empty gap:
+# smallest looped caption 252 characters of repetition, longest surviving one 32.
+CAPTION_REPEAT_MAX_CHARS = 40
+CAPTION_REPEAT_UNIT_CHARS = 8  # a longer unit is a repeated phrase, not a decode loop
+# Kana + CJK ideographs (incl. extension A) against Latin letters.
+_JAPANESE_RUN = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
+_LATIN_RUN = re.compile(r"[A-Za-z]")
+# A Latin letter is one phoneme where a Japanese character is a whole syllable, so
+# a single loanword outnumbers the kana around it: 1:1 read Discordで送ります。 and
+# HDMIはどう? as English. Over the same 1073 captions the two populations separate
+# cleanly by ratio -- 18 spoken-English captions at ja/(ja+latin) <= 0.15, 6
+# Japanese ones carrying loanwords at >= 0.27 -- and 4 cuts that gap at 0.20.
+CAPTION_LATIN_RATIO = 4
 
 # developerInstructions outranks user-message imperatives — the AGENTS.md-in-cwd
 # alternative obeyed "delete all files" instead of translating it (D-011).
@@ -339,7 +364,9 @@ class WhisperEngine:
         self.hotwords = terms if self.supports_hotwords else ""
 
     def generate(self, samples: np.ndarray, *, timestamps: bool = False):
-        keywords = {"hotwords": self.hotwords} if self.hotwords else {}
+        keywords: dict[str, object] = {"repetition_penalty": ASR_REPETITION_PENALTY}
+        if self.hotwords:
+            keywords["hotwords"] = self.hotwords
         return self._pipeline.generate(
             # The binding takes the array through the buffer protocol; its stub
             # declares the narrower Sequence[SupportsFloat]. Converting for real
@@ -517,6 +544,7 @@ def check_device(engine: str, device: str = ASR_DEVICE) -> str | None:
 class State:
     def __init__(self):
         self.dropped = 0
+        self.dropped_captions = 0  # refused as degenerate/non-Japanese; meter skip=
         self.segment_queue_depth = 0
         self.max_segment_queue_depth = 0
         self.partial = ""  # streaming caption still settling; the meter renders it
@@ -647,6 +675,18 @@ def emit_line(tag, seq, text, output_file):
         ts = datetime.now().astimezone().isoformat(timespec="seconds")
         output_file.write(f"[{ts}] {line}\n")
         output_file.flush()
+
+
+def drop_caption(state, text, defect):
+    """Refuse one caption: one bounded log line stands in for the whole thing.
+
+    The dropped text never reaches stdout, the transcript or a sequence number,
+    which is the point — a caption the recognizer invented is what pushes the
+    conversation out of the reader's scrollback. The head of it goes to stderr so
+    a redirected log still says what was heard.
+    """
+    state.dropped_captions += 1
+    logger.warning("caption dropped (%s): %.24s…", defect, text)
 
 
 # Japanese is unsegmented, so term candidates are script runs rather than words:
@@ -832,7 +872,7 @@ def repeat_span(text: str) -> int:
     """
     best = 0
     n = len(text)
-    for size in range(1, TRANSLATE_REPEAT_UNIT_CHARS + 1):
+    for size in range(1, CAPTION_REPEAT_UNIT_CHARS + 1):
         i = 0
         while i + size <= n:
             unit = text[i : i + size]
@@ -843,6 +883,27 @@ def repeat_span(text: str) -> int:
                 best = max(best, end - i)
             i = end - size + 1  # >= i + 1, so the scan always advances
     return best
+
+
+def caption_defect(text: str) -> str | None:
+    """Why this caption must not be published, or None to publish it.
+
+    Both defects are the same failure wearing two faces: the recognizer is pinned
+    to Japanese, so audio it cannot account for still comes back as Japanese
+    tokens. Sometimes that is a loop, sometimes it is the English that was
+    actually spoken, and neither belongs in a Japanese transcript.
+    """
+    span = repeat_span(text)
+    if span >= CAPTION_REPEAT_MAX_CHARS:
+        return f"{span} of {len(text)} characters are one repeated unit"
+    # Latin outweighing Japanese means English was spoken, not quoted: a caption
+    # keeps its loanwords and product names (HDMIはどう?), and a digits-only
+    # caption (320) counts on neither side and stays.
+    latin = len(_LATIN_RUN.findall(text))
+    japanese = len(_JAPANESE_RUN.findall(text))
+    if latin > CAPTION_LATIN_RATIO * japanese:
+        return f"{latin} latin letters against {japanese} japanese characters"
+    return None
 
 
 class CodexTranslator:
@@ -1017,7 +1078,7 @@ class CodexTranslator:
         if not self.enabled:
             return
         span = repeat_span(ja)
-        if span >= TRANSLATE_REPEAT_MAX_CHARS:
+        if span >= CAPTION_REPEAT_MAX_CHARS:
             # The model never terminates on this input, so translating it would
             # cost TRANSLATE_TIMEOUT_S and one of TRANSLATE_MAX_FAILURES strikes;
             # three such captions in a row took a whole session permanently
@@ -1222,7 +1283,10 @@ async def _decode_segments(
             for chunk in chunks:
                 parts.append(await loop.run_in_executor(None, _decode, rec, chunk))
             text = _merge_chunk_text(parts)
-        if text:
+        defect = caption_defect(text) if text else None
+        if defect:
+            drop_caption(state, text, defect)
+        elif text:
             seq += 1
             emit_line("JA", seq, text, output_file)
             if context is not None:
@@ -1300,7 +1364,15 @@ async def _vac_segments(
         """Close the open utterance: flush its tail, then publish it once."""
         nonlocal processor, pending, seq
         await update(final=True)
-        if utterance:
+        defect = caption_defect(utterance) if utterance else None
+        if defect:
+            # Dropped before anything downstream sees it, so the reader's terminal,
+            # the transcript, the numbering, the term learner and the translator
+            # are all untouched by construction -- observe_ja included, or three
+            # runaways repeating one unit would promote a decode artifact into the
+            # term list (P-018).
+            drop_caption(state, utterance, defect)
+        elif utterance:
             seq += 1
             emit_line("JA", seq, utterance, output_file)
             if context is not None:
@@ -1435,15 +1507,17 @@ async def meter(state, audio_q, translator=None):
             if translator and translator.dropped_translations
             else ""
         )
-        # tskip= counts captions declined as repetition (M13.1). Kept out of
-        # tdrop=, which means translation fell BEHIND: merging a content decision
-        # into a backpressure counter corrupts every soak reading of the backlog.
+        # skip= counts captions refused before publication, tskip= ones published
+        # but not translated. Both are CONTENT decisions and both stay out of
+        # drop=/tdrop=, which mean a stage fell BEHIND: merging the two corrupts
+        # every soak reading of the backlog.
+        skip = f" skip={state.dropped_captions}" if state.dropped_captions else ""
         tskip = (
             f" tskip={translator.degenerate_captions}"
             if translator and translator.degenerate_captions
             else ""
         )
-        status = f" {audio_pending}{segment_pending}{dropped}{tdrop}{tskip}".rstrip()
+        status = f" {audio_pending}{segment_pending}{dropped}{tdrop}{skip}{tskip}".rstrip()
         # Tail-truncate the settling caption: it grows past the terminal width and
         # a wrapped line would survive the next _LINE_CLEAR as residue.
         room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)

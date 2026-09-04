@@ -90,7 +90,26 @@ Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so 
 4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). Committed text appears on the status line as it lands and is never rewritten; the numbered `JA n:` line follows at the end of the utterance. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 11.2 s on the measured clips. Decode RTF is 0.48-0.61 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture buffers into the 2 s queue meanwhile. Measured on the NPU, the longest single wait was 1.006 s over 182 s of pause-free speech, and nothing was dropped. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
-5. **Emit.** `JA n:` prints immediately; the text is queued for translation.
+5. **Screen.** A caption the recognizer invented is dropped whole, before anything else sees it. See the next section.
+6. **Emit.** `JA n:` prints immediately; the text is queued for translation.
+
+### Captions the recognizer invented
+
+The recognizer is pinned to Japanese. Audio that it cannot account for therefore still comes back as Japanese text. It arrives in two shapes.
+
+The first shape is a loop: one short unit, repeated until the model reaches its own length limit. Long silence and spoken English both cause it. One live caption reached 714 characters against a caption median of 19. Across four live sessions the loops were 15-31 % of every Japanese character printed, which scrolls the conversation out of the terminal. The second shape is spoken English, transcribed as English.
+
+Two defences apply, in order:
+
+- **Decode.** Every decode carries `ASR_REPETITION_PENALTY`. This is the only repetition control that the NPU honors. It accepts `no_repeat_ngram_size` and then ignores it silently. On an English clip the penalty cuts a 528-character loop to zero, and it costs 3 substitutions in 1166 characters of the retention corpus.
+- **Publication.** A caption that still shows a defect is dropped whole. The tool does not print it, save it, number it, or translate it. It keeps its line numbers dense, so `JA 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
+
+A caption is dropped when either rule matches:
+
+- 40 or more of its characters are one unit of at most 8 characters, repeated back to back.
+- Its Latin letters outnumber its Japanese characters by more than `CAPTION_LATIN_RATIO` to 1.
+
+Both bounds sit in an empty gap in 1073 live captions, which the rules drop 4.0 % of. The smallest looped caption carries 252 repeated characters and the longest survivor carries 32. A Latin letter is one phoneme where a Japanese character is a whole syllable, so one loanword outnumbers the kana around it: at 1 to 1 the second rule reads `Discordで送ります。` as English. The 18 spoken-English captions stay below 0.15 Japanese characters per character, and the 6 Japanese captions that carry loanwords stay above 0.27.
 
 ### Long speech and long sessions
 
@@ -112,7 +131,7 @@ Deterministic coverage now reaches 182 s of pause-free audio on the shipped path
 
 `CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so EN lines keep JA order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed). Two of those instructions target defects measured on clinical Japanese: Japanese brand-name drugs come back as the international generic (プレドニン as prednisolone, not the different molecule "prednisone") with the dose and schedule untouched, and the English never invents a patient's sex the Japanese did not state.
 
-A caption that is one short unit repeated over and over is declined before it is queued. The recognizer produces such a caption on laughter or room tone, and the model then generates without ever stopping: a run of one character never finished a turn at 120 characters, while 480 characters of real speech took 7 s. The declined caption still prints and is still saved, because it is the record of what was heard. Only its translation is skipped. One warning names the reason, and the meter counts it as `tskip=`. The rule is repetition, not length: a caption is declined when 40 or more of its characters are one unit of at most 8 characters, repeated back to back.
+The translator declines a repeated caption independently, as a backstop to the publication screen above. Such a caption makes the model generate without ever stopping: a run of one character never finished a turn at 120 characters, while 480 characters of real speech took 7 s. The rule is repetition, not length, and it is the same rule and the same threshold. One warning names the reason, and the meter counts the caption as `tskip=`. On the shipped path the screen drops those captions first, so `tskip=` stays at 0 unless a caption reaches the queue by another route.
 
 Degradation, in order:
 
@@ -138,6 +157,7 @@ The last line is the status line. It rewrites itself in place and holds two thin
 
 - `q=Ns`: captured audio waiting for VAD, measured in seconds (appears when non-zero)
 - `seg=N`: completed utterances waiting for sequential decode (sherpa engines only; appears when non-zero)
+- `skip=N`: captions dropped as loops or as spoken English (appears once non-zero)
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
 - `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
 - `tskip=N`: captions declined as repetition loops and not translated (appears once non-zero)
@@ -228,6 +248,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAD_MAX_SPEECH_S` | 20 s | Soft endpointing hint; dip-less speech may exceed it |
 | `VAD_PRE_PAD_S` | 0.4 s | Lead-in re-sliced from the ring (silero onset clipping fix) |
 | `ASR_DEVICE` | `NPU` | OpenVINO device for the default engine (`--asr-device` overrides) |
+| `ASR_REPETITION_PENALTY` | 1.2 | Decode-side loop brake; the only repetition knob the NPU honors |
 | `VAC_CHUNK_S` | 1 s | New audio between streaming re-decodes (default engine) |
 | `VAC_TRIM_S` | 8 s | Past this, the streaming buffer commits finished spans and trims them away |
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits (sherpa engines) |
@@ -238,8 +259,9 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → JA-only |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
 | `TRANSLATE_QUEUE_MAX` | 50 | Translation backlog cap (drop-oldest) |
-| `TRANSLATE_REPEAT_MAX_CHARS` | 40 | Repetition span that declines a caption before it is queued |
-| `TRANSLATE_REPEAT_UNIT_CHARS` | 8 | Longest repeated unit that screen counts as a decode loop |
+| `CAPTION_REPEAT_MAX_CHARS` | 40 | Repetition span that drops a caption before it is published |
+| `CAPTION_REPEAT_UNIT_CHARS` | 8 | Longest repeated unit that screen counts as a decode loop |
+| `CAPTION_LATIN_RATIO` | 4 | Latin letters per Japanese character above which a caption is English |
 
 ## Notes
 

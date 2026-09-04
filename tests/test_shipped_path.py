@@ -199,6 +199,22 @@ def test_decode_asks_for_japanese_transcription_without_timestamps(openvino, tmp
     assert call["return_timestamps"] is False
 
 
+def test_every_decode_carries_the_repetition_penalty(openvino, tmp_path):
+    """The only knob that reaches the NPU: `no_repeat_ngram_size` is accepted and
+    silently ignored there, so a decode that lost this argument would loop."""
+    engine = live_stt.WhisperEngine(tmp_path / "model", "CPU")
+    openvino[0].result = _Result(["あ"], [_Chunk(0.0, 1.0, "あ")])
+    samples = np.zeros(SAMPLE_RATE, dtype=np.float32)
+
+    engine.decode(samples)
+    engine.decode_segments(samples)
+
+    assert [c["repetition_penalty"] for c in openvino[0].calls] == [
+        live_stt.ASR_REPETITION_PENALTY
+    ] * 2
+    assert live_stt.ASR_REPETITION_PENALTY > 1.0
+
+
 def test_the_audio_reaches_the_pipeline_unaltered(openvino, tmp_path):
     """Every other test feeds zeros, so a decode that substituted its input would pass."""
     engine = live_stt.WhisperEngine(tmp_path / "model", "CPU")
@@ -539,6 +555,116 @@ def test_a_silent_utterance_does_not_consume_a_line_number(monkeypatch, openvino
     assert [seq for seq, _ in translator.submitted] == [1]
 
 
+# --- captions the recognizer invented (M13.2) ---------------------------------
+
+
+def fixed_pipeline(pipeline, text):
+    """Make `pipeline` return `text` whole, as one span, on every decode."""
+    pipeline.result = _Result([text], [_Chunk(0.0, 1.0, text)])
+
+
+# Every literal below is a caption a live session actually printed, so the two
+# thresholds are pinned against the population they were measured on.
+RUNAWAY = "私は、" * 148
+SPOKEN_ENGLISH = "I think you said the HDMI is broken, right?"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        RUNAWAY,
+        "うん、" * 222,  # 714 characters, the longest recorded
+        "この" + "の紙" * 126,  # the loop starts after real speech
+        "ご視聴ありがとうございました" + "短い" * 141,  # hallucination, then loop
+        SPOKEN_ENGLISH,
+        "I don't do...I don't do those covers as many.",
+        "Gemini.com",
+        "GT",
+        "3 months3 months3 months3 months",  # 32 repeated chars: under the bound, still English
+        "quantizationは",  # one particle does not make a Japanese caption
+        "2025年9月Hirata Kenji",  # the tightest true-English caption in the corpus, 11 vs 2
+    ],
+)
+def test_caption_defect_names_a_reason_for_every_live_failure(text):
+    assert live_stt.caption_defect(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        TRANSCRIPT,
+        "320",  # digits count on neither side
+        "ポンポンポンポン",  # onomatopoeia: 8 repeated characters
+        "どうも、どうも、どうも、どうも、",  # a speaker repeating themselves, 16
+        "情報源?情報源?情報源?",  # 12
+        # Japanese carrying loanwords, which a 1:1 rule would have read as English.
+        "A&M Studioですね。",  # the tightest survivor in the corpus, 8 vs 3
+        "あ、OK",
+        "Discordで送ります。",
+        "HDMIはどう?",
+        "HTMLあるんで HMADの中で",
+    ],
+)
+def test_caption_defect_passes_what_a_person_actually_said(text):
+    assert live_stt.caption_defect(text) is None
+
+
+@pytest.mark.parametrize("text", [RUNAWAY, SPOKEN_ENGLISH])
+def test_an_invented_caption_reaches_no_consumer_at_all(monkeypatch, openvino, tmp_path, text):
+    """The drop is upstream of publication, so stdout, the transcript, the term
+    learner and the translator are all untouched by construction."""
+    engine = whisper_engine(openvino, tmp_path)
+    fixed_pipeline(openvino[0], text)
+    translator, context = _RecordingTranslator(), _RecordingContext()
+
+    run = run_vac(monkeypatch, engine, ONE_UTTERANCE, translator=translator, context=context)
+
+    assert run.lines == []
+    assert translator.submitted == []
+    assert context.observed == []
+    assert run.state.dropped_captions == 1
+    assert len(run.segments) == 1  # the utterance still closed; replay still counts it
+
+
+def test_a_dropped_caption_burns_no_line_number(monkeypatch, openvino, tmp_path):
+    engine = whisper_engine(openvino, tmp_path)
+    speaking = openvino[0].result
+    decodes: list[int] = []
+
+    def result(samples):
+        decodes.append(1)
+        return (
+            _Result([RUNAWAY], [_Chunk(0.0, 1.0, RUNAWAY)])
+            if len(decodes) <= 3
+            else speaking(samples)
+        )
+
+    openvino[0].result = result
+
+    run = run_vac(monkeypatch, engine, [True] * 20 + [False] * 5 + [True] * 20 + [False])
+
+    assert [seq for _, seq, _ in run.lines] == [1]
+    assert run.state.dropped_captions == 1
+
+
+def test_the_sherpa_path_drops_the_same_captions(monkeypatch):
+    """One caption policy, both branches: the VAD-segment path publishes too."""
+    monkeypatch.setattr(live_stt, "_decode", lambda rec, samples: RUNAWAY)
+    monkeypatch.setattr(live_stt, "emit_line", lambda *a: pytest.fail("published a runaway"))
+    state = live_stt.State()
+    translator, context = _RecordingTranslator(), _RecordingContext()
+    q: asyncio.Queue = asyncio.Queue()
+    q.put_nowait((0, 1600, np.zeros(1600, dtype=np.float32)))
+    q.put_nowait(None)
+    state.segment_queue_depth = 1
+
+    asyncio.run(live_stt._decode_segments(object(), q, state, None, translator, None, context))
+
+    assert state.dropped_captions == 1
+    assert translator.submitted == []
+    assert context.observed == []
+
+
 def test_the_default_device_reports_no_biasing_so_captions_stay_evidence(
     monkeypatch, openvino, tmp_path
 ):
@@ -682,6 +808,19 @@ def test_the_meter_hides_a_translator_with_no_dropped_turns(monkeypatch):
 
     assert "tdrop" not in written
     assert "tskip" not in written
+
+
+def test_the_meter_counts_captions_the_recognizer_invented(monkeypatch):
+    """skip= is a content decision and drop= is a backlog one; a soak reading that
+    conflated them would blame the machine for a caption nobody spoke."""
+    assert "skip" not in run_meter(monkeypatch, live_stt.State())[0]
+
+    state = live_stt.State()
+    state.dropped_captions = 6
+    written = run_meter(monkeypatch, state)[0]
+
+    assert "skip=6" in written
+    assert "drop=" not in written
 
 
 def test_the_meter_separates_declined_captions_from_backlog_drops(monkeypatch):

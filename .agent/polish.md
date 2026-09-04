@@ -13,6 +13,24 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
+- **P-021 · The shipped path never drains the VAD, so it leaks for the whole session.** `pri 1` ·
+  `size S`. `_vac_segments` calls `accept_waveform` + `is_speech_detected` only
+  (`live_stt.py:1397-1400`); it never touches `flush`/`empty`/`front`/`pop`, which the sherpa
+  branch does at `:1245-1249`. Completed VAD segments therefore accumulate in
+  `VoiceActivityDetector` for the whole run, and the segments are exactly what the VAC path does not
+  want — it re-slices its own audio from `RingBuffer`. **Measured, not inferred:** 531 s of speech
+  fed window-by-window without popping ⇒ RSS climbs **linearly, +6.1 MB per 106 s of speech
+  (~3.5 MB per speech-minute), 70 → 99 MB**, `vad.empty()` False throughout, and
+  `is_speech_detected()` stays correct the whole time — so this is retention, not a correctness
+  defect. Live corroboration: the user's `stt.log` carries `circular-buffer.cc:Push:107 Overflow!
+  ... capacity: 960000`, the 60 s audio buffer complaining that nothing drains it. Sizing: `memory.md`
+  § Smoke targets a 1-3 h soak, which is ~200-600 MB of retained segments.
+  Acceptance: after N speech-minutes on the VAC path, RSS growth attributable to the VAD is flat and
+  `vad.empty()` is True between utterances, with `is_speech_detected()` behaviour byte-unchanged on
+  the replay goldens (32/32). Lock it by driving `_vac_segments` with a stub VAD that counts `pop`
+  calls against segments it reported closed; neutralize the drain (L-022). Check whether `flush()`
+  is needed at speech-end or whether popping on `empty()` alone suffices.
+
 - **P-014 · NPU decode stalls in bursts that no committed trace sampled.** `pri 1` · `size M`.
   Two NPU replays of `gongitsune_01.wav` (M12.1) produced byte-identical captions and boundaries but
   not identical cost: each run carried ONE cluster of 3-4 consecutive captions decoding at 1.9-11.7×
@@ -147,17 +165,23 @@ why/evidence/acceptance whole. Do not re-file it here.
   residue that stayed unfixed: a hallucinated but genuine proper noun (`Okkawa`, `Anke`) is
   unreachable by any lexical or positional rule, and `CONTEXT_EN_SUPPORT` is the only lever there.
 
-- **P-018 · A declined caption still teaches the recogniser-side learner.** `pri 3` · `size S`.
-  M13.1's screen sits at the TRANSLATOR seam (`live_stt.py:1005`), and both producers fold the
-  caption into `SessionContext` first: `observe_ja` at `live_stt.py:1296` (VAC) and `:1222`
-  (sherpa) run before `translator.submit` at `:1298` / `:1224`. A runaway therefore contributes one
-  sighting of every `_TERM_RUN` candidate it contains (`dict.fromkeys` dedupes within a caption), so
-  `CONTEXT_TERM_SUPPORT`=3 runaways repeating one unit would promote that unit and brief the
-  translator on a decode artifact. Latent, not measured: the observed runaways repeat DIFFERENT
-  units, so none promoted. Evidence: session 2 n=22 = `中央の`×111 (中央 is a valid 2-character kanji
-  candidate); session 1 carries 次は / 私は / 副部 / クラブ / アーメン across five captions.
-  Acceptance: a caption the screen declines contributes no candidate — `repeat_span(text) >=
-  TRANSLATE_REPEAT_MAX_CHARS` short-circuits `observe_ja` at both call sites; lock with
-  `CONTEXT_TERM_SUPPORT` identical runaways leaving `terms()` empty while an ordinary caption still
-  promotes, and neutralize each guard (L-022). Decide first whether the screen belongs in the
-  producers rather than in `submit`, since M13's recogniser units may want the same predicate.
+- **Two M13.2 alternatives were MEASURED and ruled out by the user — do not re-propose either.**
+  (1) **A per-utterance whisper LID gate.** Feasible and cheap: LID on the NPU is reliable from 1 s
+  of audio (EN → `en` at every duration 0.5-8 s, JA → `ja` from 1 s), and a fresh pipeline costs
+  0.46 s p50 / 0.60 s max to construct plus 0.54 s to detect, RSS flat at 201 MB over 40 constructs.
+  It is also the only shape that works, because **`WhisperPipeline` latches its language**: after a
+  `generate(language=…)` call, or after an auto-detect call, that language persists into every later
+  call on the instance, and neither `language=None`/`''` (both raise) nor `set_generation_config()`
+  nor a positional config clears it. So an LID gate costs a fresh pipeline per utterance. The user
+  ruled the text-side rule sufficient. Note the gate would ALSO have killed the hallucination
+  phrases, since silence and −30 dB noise both detect as `en`.
+  (2) **An utterance-length hard cap for pace.** Clean-caption p99 is 136-312 chars ≈ 18-40 s of
+  speech and the live max is 664 chars ≈ 88 s, because a caption publishes only at utterance end and
+  `VAD_MAX_SPEECH_S`=20 is a soft silero cap (L-023). The user ruled utterances stay UNCAPPED: one
+  utterance is one line and one turn, whatever its length.
+
+- **P-018 CLOSED by M13.2, by construction rather than by a guard.** The flagged path was
+  `observe_ja` running before `translator.submit`, so a runaway briefed the translator on a decode
+  artifact. M13.2 moved the screen to PUBLICATION, upstream of every consumer, which is the
+  disposition the row asked the deciding session to rule on first. `observe_ja` cannot see a
+  defective caption now; the lock is `test_an_invented_caption_reaches_no_consumer_at_all`.

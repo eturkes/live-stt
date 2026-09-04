@@ -579,7 +579,7 @@ def test_a_declined_caption_names_its_reason_once(caplog):
     ],
 )
 def test_every_caption_measured_to_stall_the_translator_is_declined(unit, span):
-    assert live_stt.repeat_span(_runaway(unit, span)) >= live_stt.TRANSLATE_REPEAT_MAX_CHARS
+    assert live_stt.repeat_span(_runaway(unit, span)) >= live_stt.CAPTION_REPEAT_MAX_CHARS
 
 
 def test_the_screen_flags_no_real_caption():
@@ -590,16 +590,16 @@ def test_the_screen_flags_no_real_caption():
     spans = {text: live_stt.repeat_span(text) for text in _real_japanese()}
 
     assert max(spans.values()) == 8
-    assert not [t for t, s in spans.items() if s >= live_stt.TRANSLATE_REPEAT_MAX_CHARS]
+    assert not [t for t, s in spans.items() if s >= live_stt.CAPTION_REPEAT_MAX_CHARS]
 
 
 def test_the_threshold_is_a_boundary_and_the_unit_bound_is_real():
     # Two constants decide every verdict above, so pin each at its own edge.
-    # A unit longer than TRANSLATE_REPEAT_UNIT_CHARS is a repeated PHRASE — a
+    # A unit longer than CAPTION_REPEAT_UNIT_CHARS is a repeated PHRASE — a
     # speaker saying the same thing twice — while a decode loop repeats something
     # short, so the bound is what keeps a person out of the screen.
-    limit = live_stt.TRANSLATE_REPEAT_MAX_CHARS
-    unit = live_stt.TRANSLATE_REPEAT_UNIT_CHARS
+    limit = live_stt.CAPTION_REPEAT_MAX_CHARS
+    unit = live_stt.CAPTION_REPEAT_UNIT_CHARS
 
     assert live_stt.repeat_span("ごんは兵十のうちへ出かけました。") == 0  # a span, not a length
     assert live_stt.repeat_span("あ" * (limit - 1)) == limit - 1
