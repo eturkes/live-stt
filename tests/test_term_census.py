@@ -223,6 +223,25 @@ def test_admitting_a_term_can_strand_its_neighbours_rendering():
         assert _episodes(caps)["標柱"]["paired_at"] == CONTEXT_TERM_SUPPORT + 1
 
 
+def test_the_arm_compares_behaviour_and_not_the_simulated_placeholder():
+    """`best_case` names placeholders in first-opening order, not per term.
+
+    So an arm that pairs one extra term spells every later one differently, and
+    comparing that counter would report identical episodes as divergent -- the
+    interference `shared_episodes_identical` exists to detect would drown in it.
+    """
+    run = CONTEXT_TERM_SUPPORT + CONTEXT_EN_SUPPORT - 1
+    caps = _captions(*["ゴンがきた。"] * run, *["標柱がきた。"] * run)  # never co-occurring
+    shared = _episodes(caps)["標柱"]
+    with candidate_floor(shipped_floor() + 1):  # the raised floor hides ゴン entirely
+        alone = _episodes(caps)["標柱"]
+    assert {k: v for k, v in shared.items() if k != "rendering"} == {
+        k: v for k, v in alone.items() if k != "rendering"
+    }
+    assert shared["rendering"] != alone["rendering"]  # second placeholder vs first
+    assert floor_arm(caps, shipped_floor() + 1)["shared_episodes_identical"] is True
+
+
 def test_pairing_placeholders_are_distinct_proper_nouns():
     """A shared spelling would let two terms confirm each other's rendering."""
     names = [_placeholder(i) for i in range(30)]

@@ -44,7 +44,7 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -185,7 +185,25 @@ def _placeholder(n: int) -> str:
     return "N" + letters
 
 
-def learner(captions: list[dict]) -> dict:
+def best_case() -> Callable[[dict, list[str]], str]:
+    """English at the learner's BEST case: every opening answered with a proper noun.
+
+    A rendering unobtainable even here is not one a translator could strand, and
+    supplying it is also what keeps the gate's state true -- a paired term stops
+    blocking its neighbours' openings, which a never-pairing replay would hide.
+    """
+    names: dict[str, str] = {}
+
+    def supply(caption: dict, unpaired: list[str]) -> str:
+        if len(unpaired) != 1:
+            return ""  # observe_en's JA-side gate is shut, so any English is a no-op
+        names.setdefault(unpaired[0], _placeholder(len(names)))
+        return f"the story mentions {names[unpaired[0]]}."
+
+    return supply
+
+
+def learner(captions: list[dict], english: Callable[[dict, list[str]], str] | None = None) -> dict:
     """Replay the caption stream through SessionContext; report every trust episode.
 
     An episode is one term's whole trust lifetime -- promoted, sighted, paired,
@@ -193,17 +211,15 @@ def learner(captions: list[dict]) -> dict:
     belongs to, so an episode is exactly one chance to acquire an English
     spelling and lose it, and a term re-earning support later starts over.
 
-    The English side is simulated at the learner's BEST case: every pairing
-    opening is answered through the real `observe_en` with an agreeing proper
-    noun, so a rendering unobtainable even here is not one a translator could
-    strand. Simulating it is also what keeps the gate's state true -- a paired
-    term stops blocking its neighbours' openings, which a never-pairing replay
-    would hide.
+    `english` supplies each caption's English side, given the caption and the
+    terms observe_en's JA-side gate leaves unpaired; it defaults to `best_case`.
+    M12.5 passes the REAL translator's captions through the same bookkeeping, so
+    one definition of an episode serves both the simulation and the live run.
     """
+    english = english or best_case()
     context = SessionContext()
     episodes: list[dict] = []
     live: dict[str, dict] = {}
-    names: dict[str, str] = {}
     seq = 0
     for caption in captions:
         text = caption["text"]
@@ -223,6 +239,7 @@ def learner(captions: list[dict]) -> dict:
                     "last_sighting_seq": seq,
                     "openings": [],
                     "paired_at": None,
+                    "rendering": None,
                     "sightings_after_paired": 0,
                     "expired_at": None,
                     "mechanism": None,
@@ -253,12 +270,14 @@ def learner(captions: list[dict]) -> dict:
         # rendering be acquired", never "how much evidence was available".
         unpaired = [t for t in trusted if t in text and t not in context.renderings]
         if len(unpaired) == 1 and unpaired[0] in live:
-            episode = live[unpaired[0]]
-            episode["openings"].append(idx)
-            names.setdefault(unpaired[0], _placeholder(len(names)))
-            context.observe_en(text, f"the story mentions {names[unpaired[0]]}.")
-            if unpaired[0] in context.renderings and episode["paired_at"] is None:
-                episode["paired_at"] = idx
+            live[unpaired[0]]["openings"].append(idx)
+        en = english(caption, unpaired)
+        if en:
+            context.observe_en(text, en)
+            for term, episode in live.items():
+                if episode["paired_at"] is None and term in context.renderings:
+                    episode["paired_at"] = idx
+                    episode["rendering"] = context.renderings[term]
     for episode in episodes:
         # Everything the dead-pairing verdict rests on, in the lease's own unit:
         # how much session was left to spend after the key went quiet, and how
@@ -346,6 +365,13 @@ def floor_arm(captions: list[dict], floor: int) -> dict:
         ]
 
     shared = episodes["shipped"].keys() & episodes["alt"].keys()
+
+    def behaviour(episode: dict) -> dict:
+        # `best_case` names placeholders in first-opening order, so an arm that
+        # pairs a different term first spells every later one differently. That
+        # is the simulation's counter, not the learner's behaviour.
+        return {k: v for k, v in episode.items() if k != "rendering"}
+
     return {
         "shipped_floor": arms["shipped"]["floor"],
         "alt_floor": floor,
@@ -360,7 +386,7 @@ def floor_arm(captions: list[dict], floor: int) -> dict:
         },
         "n_shared_episodes": len(shared),
         "shared_episodes_identical": all(
-            episodes["shipped"][t] == episodes["alt"][t] for t in shared
+            behaviour(episodes["shipped"][t]) == behaviour(episodes["alt"][t]) for t in shared
         ),
     }
 

@@ -18,8 +18,9 @@ unit touches decode quality, a CER number the commit body records.
   milestone by user direction. **M13.1 is DONE and no unit is OPEN**, so the next session's mode is
   PLANNING for M13's recogniser scope — which is **BLOCKED on a standing precondition: a retained
   WAV of laughter / throat-clearing / room tone** (`## Decisions pending from user`). Evidence
-  unchanged ⇒ read-only close, and run M12.5 or a standing option instead. Two real-world sessions,
-  both flagged:
+  unchanged ⇒ read-only close, and run a standing option instead — **M12.5 is now DONE, so the
+  M12 tail is gone and P-019 is the one funded-looking alternative awaiting a ruling.** Two
+  real-world sessions, both flagged:
   session 1 = 9 captions that are 76-100 % one short unit repeated 33-148 times (341-517 chars);
   session 2 = 2 more, new max **890 chars** against a caption p50 of 17. No committed artifact
   reproduces it. **Session 2 also converted the EN-leg failure from inference to measurement, and
@@ -30,10 +31,15 @@ unit touches decode quality, a CER number the commit body records.
   of runaways. **The recogniser side is the whole remaining milestone and is still UNPLANNED** — it
   needs audio before it can be planned, and the next ask is a short retained WAV of laughter,
   throat-clearing and room tone (session 2's n=43 is laughter after the longest speech gap).
-- Parked milestone: **M12 does the EN rendering learner hold up on real ASR output?** — **PARKED**
-  (M12.1-M12.4 DONE; M12.5 OPEN, parked not cancelled — a defect in the shipped default engine's
-  live output outranks a learner-quality question, and M12.5 resumes unchanged because it replays a
-  committed trace that screens clean). Opened by
+- Previous milestone: **M12 does the EN rendering learner hold up on real ASR output?** —
+  **IMPLEMENTED** (M12.1-M12.5 all DONE). **The answer is measured and it is mixed.** Both modes
+  P-012 named are refuted: the recogniser does not fragment a name (M12.1) and the dead pairings the
+  offline screen found do not exist against a real translator (M12.5, 0 live against 2 simulated).
+  What the milestone found instead are two modes P-012 never named, and both are real: the learner
+  **stabilises a WRONG key** (M12.1 — the two terms it trusted all session were mis-recognitions,
+  while the protagonist sat below a floor M12.4 then lowered), and it **learns a WRONG rendering**
+  (M12.5 — `標柱 = I`, because English capitalizes its first-person pronoun). The first is fixed;
+  the second is `polish.md` **P-019** and awaits a user ruling. Opened by
   user decision on the P-012 register row, which outgrew polish.
   `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English spelling on the JA
   string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text — the learner's best
@@ -48,9 +54,12 @@ unit touches decode quality, a CER number the commit body records.
   invisible to it — **M12.4 ruled on that floor and lowered it to 2**, admitting ゴン as the
   session's earliest and healthiest trust episode without disturbing any other. **M12.3 then made
   (a) reachable and it fires: 2 dead pairings over the whole
-  story** (鼻腔, イワシ), both by lapsed lease, one of them paired on its very last sighting. The
-  shape is real; whether either pairing is real needs one translator turn per candidate (M12.5),
-  because a rendering exists only where the English supplies a proper noun.
+  story** (鼻腔, イワシ), both by lapsed lease, one of them paired on its very last sighting —
+  **but only in simulation. M12.5 put all 215 captions through the real translator and neither
+  pairing exists**, because a rendering needs a proper noun and both keys are ordinary English
+  nouns; the control ゴン → `Gon` pairs in the same run, so that is a refutation and not a null.
+  The **fourth mode**, and the one still open, is what that run found instead: the learner pairs
+  `標柱 = I` off the English first-person pronoun (`polish.md` **P-019**).
 - Previous milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — **IMPLEMENTED**
   (all units DONE). Both questions M11 opened are answered and both answers are green: the VAC
   branch does not drop audio in real time (M11.4, with a 1.25-1.75× reserve), and D-016's retention
@@ -176,51 +185,59 @@ unit touches decode quality, a CER number the commit body records.
   silences `q=`/`seg=`/`drop=` entirely and no redirection captures them. A run's backlog evidence
   is therefore unobtainable today without a code change — size that into any evidence request.
 
-**M12 sizing fact, measured from tree, then confirmed by the M12.1 run — read it before M12.4/M12.5.**
-`tests/caption_trace.json` records `hotwords_reachable: false`. `ASR_DEVICE = "NPU"` and
-`ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})`, so `WhisperEngine.set_hotwords` drops the list
-and `live_stt.py:1272` computes `biased = frozenset()` on every segment of a default run. Three
-consequences size this whole milestone. **The caption stream is arm-independent** — `SessionContext`
-cannot reach the recogniser on the shipped device, so ONE NPU replay serves every arm and every
-downstream arm is a CPU-only offline replay of that trace (the unlock M11.4 got from
-`vac_decode_trace.json`, applied again). **D-015's anti-feedback half is inert** — no sighting is
-ever prompted, so the lease never expires by prompting and degenerates to "expire 60 segments after
-the last sighting". **The learner's blast radius is the translator brief alone**, never the decode,
-so both failure modes are translation-quality questions and D-016's CER numbers cannot move.
-
-Sizing is calibrated on four actuals: M12.1 `main=77% 184K/240K` against no estimate, M12.2
-`main=78% 187K/240K` against `est 140K` (1.34), M12.3 `main=77% 184K/240K` against `est 120K`
-(1.53), M12.4 `main=71% 171K/240K` against `est 80K` (**2.14**) ⇒ ratio **1.67**, spread 1.34-2.14.
-M12.4 is the outlier and says why: a unit whose deliverable is a RULING pays for the evidence that
-could have overturned it, not for the one-character change that followed. Apply 1.67 below.
-
-- **M12.5 — Confirm M12.3's two dead pairings against the real translator. [PARKED behind M13]**
-  est 150K →
-  cal 250K at the new ratio ⇒ over one window twice over, so split at the arm boundary.
-  - **the candidates, both by lapsed lease:** 鼻腔 (trusted@48, paired@50, **0 sightings ever used
-    the rendering**, expired@110, 165 published captions of session left) and イワシ (trusted@123,
-    paired@125, 2 sightings used it, expired@194, 81 captions left).
-  - **the one thing the screen could not decide, so it is this unit's first measurement.**
-    `observe_en` acquires a rendering only where the English caption carries a proper noun — a
-    capitalized run that is not sentence-initial — and the screen supplied one by construction, at
-    the learner's best case. Both candidates are ORDINARY NOUNS in English (鼻腔 → "nasal cavity",
-    イワシ → "sardine"), so the predicted live outcome is that NEITHER pairs. Establish that with
-    ~2 turns before funding any arm matrix: it is a structural refutation, not an underpowered null.
-  - **M12.4 handed this unit its positive control, and it is what makes the refutation readable.**
-    A live "neither pairs" is otherwise confounded with "`observe_en` pairs nothing at all on this
-    corpus". The lowered floor adds ゴン — a real name, 40 captions, trusted@20, and the one term
-    here whose English rendering IS a proper noun. Run it in the same turns as the two negatives:
-    ゴン pairing while 鼻腔/イワシ do not is the clean structural result; nothing pairing indicts the
-    harness instead of the mode.
-  - then, only if a pairing is real: P-012's arm matrix (learner on/off, 3 sessions each, real
-    `CodexTranslator`, reps interleaved across arms per L-026) on those terms alone. Mark a null
-    there UNDERPOWERED rather than reporting it as a pass (P-002 already spent one null that way on
-    「走れメロス」).
-  - verdict: a rendering that is really acquired and then dies ⇒ P-012's fix is warranted; no
-    pairing on either candidate ⇒ the mode needs a NAME to go quiet, which this corpus never
-    supplied, and M12 closes on that.
-
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M12.5 — Confirm M12.3's two dead pairings against the real translator. [DONE] — REFUTED: neither
+  pairing exists live, the control does, and the run found a defect the simulation could not.**
+  `tests/eval_en_pairing.py` + the committed `tests/en_pairing_trace.json`: all **215 captions
+  translated through the real `CodexTranslator`** over a live `codex app-server`, in production's own
+  order (`observe_ja` → `_translate` → `observe_en`), 0 failures, 0 restarts, 0 declined by M13.1's
+  screen, 39 thread rotations, 569 s wall, EN latency p50 2.33 s / p90 4.19 s / max 6.2 s.
+  Episode bookkeeping is `eval_term_census.learner`, now taking its English side from a supplier, so
+  M12.3's table and this one are comparable by construction rather than by restatement — the census
+  re-derives byte-identically through the refactor.
+
+  | term | trusted@ | openings best/live | paired@ best/live | live rendering |
+  |---|---|---|---|---|
+  | ゴン **(control)** | 20 | 2/4 | 23/**31** | **Gon** |
+  | 標柱 | 38 | 2/13 | 44/**127** | **I** ← defect |
+  | 鼻腔 **(candidate)** | 48 | 2/2 | 50/**never** | — |
+  | イワシ **(candidate)** | 123 | 2/4 | 125/**never** | — |
+  | 神様 | 185 | 2/3 | 189/**194** | **God** |
+
+  **The verdict M12 closes on: 0 dead pairings live against the best case's 2.** 鼻腔's two openings
+  offered `Gon` then nothing; イワシ's four offered `Anke`, nothing, `Hyōjū`, nothing — no two turns
+  agree, and neither term is a proper noun in English, exactly as predicted. **The control separates
+  that from a broken harness:** ゴン pairs to `Gon`, 神様 to `God`, so renderings are acquirable on
+  this corpus and the candidates' nulls are structural, not underpowered. **P-012's arm matrix is
+  therefore not funded** — there is no real pairing for it to protect.
+  **The live arm is not the simulation, and the openings column is why.** A term the English never
+  pairs never leaves `observe_en`'s gate, so it keeps closing its NEIGHBOURS' openings while opening
+  on every one of its own sightings: 標柱 opens 13 times live against the best case's 2. The JA side
+  is arm-independent (`observe_ja` never reads `renderings`), so `trusted_at` / `expired_at` /
+  `mechanism` / sighting counts are identical in both arms and the report checks that.
+  **Out of contract, registered not fixed — `polish.md` P-019, and it is the sharper finding.**
+  `observe_en` learned **`標柱 = I`**: "I" is capitalized everywhere in English, so it passes the
+  not-sentence-initial rule, and it is the **most common sole proper noun in the whole stream — 20
+  of the 63 turns carrying exactly one, ahead of `Gon` at 17**. The session ended briefing the
+  translator to render a mis-recognised key as a pronoun, for 13 of its 26 sightings. Dropping the
+  single token `"I"` removes it and leaves both correct renderings identical; the user owns whether
+  that shape is right, since the same rule would pin the hallucinated `Okkawa`/`Anke` too.
+  Suite 256 → **265 passed / 1 skipped / 15.5 s** (9 locks: common-noun English never pairs while a
+  mid-sentence name does, an unpaired key keeps closing its neighbours' openings, the verdict moves
+  only pairing columns, three refusals binding a turn trace to its captions, the prompted-trace
+  guard, the committed run still yielding this verdict, and the floor arm comparing behaviour rather
+  than the simulated placeholder). All 7 new predicates proved non-vacuous
+  by neutralization (L-022): dropping the sentence-initial rule reds 3, replaying the best case
+  instead of the recorded English reds 4, and the caption-text binding / duplicate-index refusal /
+  hotwords guard / `openings_before_quiet` omission / floor-arm placeholder each red 1. An eighth
+  mutant is a deliberate EQUIVALENCE check and reds 0: calling `observe_en` on every turn (what
+  production does) is equivalent to calling it only where the JA gate is open. Gate 6/6.
+  Cost: 215 live turns ≈ 0.2 pp of the weekly window. `main=86% 206K/240K` against `est 150K` ⇒
+  **1.37**, at the low end of the band — the deliverable was one measurement whose whole surface
+  M12.3/M12.4 had already enumerated, and the overrun was the out-of-contract finding (L-031).
+  Calibration series: M12.2 1.34 · M12.3 1.53 · M12.4 2.14 · M12.5 1.37 ⇒ ratio **1.60**, spread
+  1.34-2.14. No teammates funded — the probe is script-derivable and the ruling is MAIN's.
 
 - **M13.1 — Decline a degenerate caption before it reaches the translator. [DONE] — SHIPPED: the
   EN leg now survives what killed session 1, and the threshold is corpus-picked, not guessed.**
@@ -589,7 +606,7 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**One open, and it is an EVIDENCE request, not a design call: M13's recogniser side needs audio
+**Two open. The first is an EVIDENCE request, not a design call: M13's recogniser side needs audio
 before it can be planned.** M13.1 shipped the translator mitigation, so nothing else in M13 is
 executable — the two hypotheses take different fixes and no committed clip reproduces the defect.
 **The ask: a short retained WAV (any length, a minute is plenty) of laughter, throat-clearing,
@@ -600,18 +617,21 @@ transcript cannot substitute: audio is the only thing that separates hypothesis 
 decode from (b) VAC ratifying the loop. Without it M13 cannot open its next unit, and the standing
 options below (a live-mic validation pass, a maintenance pass, a new capability milestone) or M12.5
 are what a session would run instead.
-M13 parks M12.5, which resumes unchanged whenever M13 closes. Two M12 things to know without acting
-on them.
-(1) M12.3's screen makes a falsifiable prediction that M12.5 settles in ~2
-translator turns — both dead-pairing candidates are ordinary nouns in English, and `observe_en`
-pairs only on a proper noun, so the live outcome is probably that neither pairing exists at all.
-That would close M12 on a structural refutation rather than on P-012's fix, and M12.4's ゴン is now
-the positive control that separates that refutation from a broken harness. (2) M12.5 is sized past
-one window even before M12.4 widened the calibration ratio to 1.67, so it opens by splitting at the
-arm boundary: the ~2-turn pairing probe is a unit, the arm matrix is a unit and is funded only if
-the probe finds a real pairing. The polish register holds one row (**P-014**, the
-NPU decode-stall bursts, now with M12.3's 6-section counter-sample), pickable by `/session-polish`
-whenever. Standing options for after M12, none of them blocking:
+**A second decision is now waiting and it is a design call, not evidence: `polish.md` P-019.**
+M12.5 measured the learner pairing **`標柱 = I`** on the shipped path — English capitalizes its
+first-person pronoun, so it passes `observe_en`'s not-sentence-initial test, and over 215 real turns
+"I" is the most common sole proper noun in the stream (20 of 63, ahead of `Gon` at 17). The session
+ended telling the translator to render a mis-recognised key as a pronoun. Three shapes, and the
+choice is yours: (i) **one-token stop set** — drop `"I"` from `_en_names`; measured on the committed
+trace, it removes the wrong pairing and leaves `ゴン = Gon` and `神様 = God` byte-identical, and it
+is a `size S` unit; (ii) **stop set plus a JA-side plausibility test**, because the same rule would
+equally pin the hallucinated `Okkawa`/`Anke` had either agreed with itself twice — larger, and it
+reopens D-015's evidence rule; (iii) **accept it** — the blast radius is the translator brief alone
+(hotwords are unreachable on NPU), so a wrong rendering costs consistency on one term and no decode
+accuracy. M12 is closed either way; this is a defect in shipped behaviour, not a milestone.
+The polish register also holds **P-014** (NPU decode-stall bursts, with M12.3's 6-section
+counter-sample), pickable by `/session-polish` whenever. Standing options, none of them blocking:
+(0) **Rule on P-019 above** — the only open defect in shipped behaviour, and (i) is a small unit.
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
     user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
     VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.
@@ -620,7 +640,9 @@ whenever. Standing options for after M12, none of them blocking:
 (c) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
     most of the obvious ones.
 
-(Last resolved: **which M13 defect goes first** — the user ruled the translator mitigation ahead of
+(Last resolved: **M12.5 needed no ruling** — its acceptance named the verdict in advance and the
+measurement returned the predicted branch, so M12 closed on the refutation without a user call.
+Before that: **which M13 defect goes first** — the user ruled the translator mitigation ahead of
 the recogniser work on 2026-09-03, and M13.1 shipped it the same day. Before that: **M12's remaining scope** — M12.1's census answered M12's two named modes without a
 translator turn, leaving the question of what to fund next. Offered (a) run the arm matrix as
 scoped on the 67-caption clip, (b) close M12 on the census and rule on P-012's fix on its merits, or

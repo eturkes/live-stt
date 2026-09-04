@@ -113,6 +113,35 @@ why/evidence/acceptance whole. Do not re-file it here.
   first, and it is now **`roadmap.md` M13.1**, which owns its seam, calibration probe, corpus check
   and acceptance whole. Do not re-file it here.
 
+- **P-019 · `observe_en` learned the English pronoun "I" as a name, on the shipped path.** `pri 1` ·
+  `size S`. Found by M12.5, out of its contract. `_en_names` accepts any capitalized run that is not
+  sentence-initial (`live_stt.py:673`), and English capitalizes "I" everywhere — so the rule that
+  needs no lexicon needs exactly one entry.
+  **Measured over 215 real translator turns** (`tests/eval_en_pairing.py` + the committed
+  `tests/en_pairing_trace.json`): **"I" is the single most common sole proper noun in the whole
+  English stream — 20 of the 63 turns that carry exactly one, ahead of the protagonist's real name
+  `Gon` at 17.** Two of them (captions 77 and 127) landed while 標柱 was the only unpaired trusted
+  term, meeting `CONTEXT_EN_SUPPORT`=2, so the session ended briefing the translator
+  **`標柱 = I`** — carried through the last 13 of that term's 26 sightings — beside the correct
+  `ゴン = Gon` and `神様 = God`. 標柱 is itself a mis-recognition of 兵十, so the learner pinned a
+  wrong key to a pronoun and told the translator to render it that way every time.
+  **The fix is measured and one token wide:** dropping `"I"` from `_en_names` removes the pairing and
+  leaves both correct renderings identical (`ゴン = Gon` @31, `神様 = God` @194). Adding `It`/`Ah`
+  changes nothing more here — both occur only inside quotes (captions 33, 83) after `thought, "`,
+  which `_EN_SENTENCE`'s `[.!?]\s+` split cannot see, so they are the same class and did not land.
+  **Why D-015 missed it:** its 90-word function-word lexicon comparison ran on 1,260 turns of clean
+  third-person Aozora narration, which never puts a mid-sentence "I" in a caption carrying exactly
+  one unpaired term. "No lexicon ships" holds for that corpus and fails on this one.
+  Wider exposure, not fixed by the stop set: the same rule pins hallucinated names too — `Okkawa`
+  (caption 106) and `Anke` (123) are proper nouns the translator invented, and either would have
+  paired had it agreed with itself twice.
+  Acceptance: over the committed pairing trace the learner acquires `ゴン = Gon` and `神様 = God` and
+  nothing else, 標柱 unpaired; a model-free test locks that `_en_names` rejects a lone "I" while
+  still accepting a real mid-sentence name; neutralizing the exclusion reds it (L-022).
+  **User decision first, which is why this is a flag and not a polish row:** whether a one-token
+  English stop set is the right shape, or whether pairing should also require the JA key to be
+  plausibly a name at all — the wider exposure above is untouched by the cheap fix.
+
 - **P-018 · A declined caption still teaches the recogniser-side learner.** `pri 3` · `size S`.
   M13.1's screen sits at the TRANSLATOR seam (`live_stt.py:1005`), and both producers fold the
   caption into `SessionContext` first: `observe_ja` at `live_stt.py:1296` (VAC) and `:1222`

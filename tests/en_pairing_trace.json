@@ -1,0 +1,1531 @@
+{
+ "source": {
+  "trace": "caption_trace.json",
+  "n_captions": 215
+ },
+ "run": {
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "service_tier": "priority",
+  "instructions_sha256": "a4a562c8f61277b2",
+  "n_turns": 215,
+  "n_translated": 215,
+  "n_empty": 0,
+  "n_declined": 0,
+  "rotations": 39,
+  "restarts": 0,
+  "wall_s": 568.8,
+  "latency_s": {
+   "p50": 2.33,
+   "p90": 4.19,
+   "max": 6.2
+  }
+ },
+ "turns": [
+  {
+   "idx": 1,
+   "ja": "1",
+   "en": "1",
+   "s": 2.52,
+   "rotated": false
+  },
+  {
+   "idx": 2,
+   "ja": "これは私私が小さい時に、",
+   "en": "This is from when I was little.",
+   "s": 1.94,
+   "rotated": false
+  },
+  {
+   "idx": 3,
+   "ja": "村のモヘイというおじいさんから聞いたお話です。",
+   "en": "This is a story I heard from an old man named Mohei in the village.",
+   "s": 3.44,
+   "rotated": false
+  },
+  {
+   "idx": 4,
+   "ja": "昔は",
+   "en": "Long ago,",
+   "s": 2.51,
+   "rotated": false
+  },
+  {
+   "idx": 5,
+   "ja": "私たちの村の近くの中山というところに小さなお城があって、",
+   "en": "There was a small castle in a place called Nakayama near our village, and…",
+   "s": 2.74,
+   "rotated": false
+  },
+  {
+   "idx": 6,
+   "ja": "中山様というお殿様がおられたそうです",
+   "en": "Apparently, there was a lord named Lord Nakayama.",
+   "s": 1.85,
+   "rotated": false
+  },
+  {
+   "idx": 7,
+   "ja": "その中山から、",
+   "en": "From that Nakayama,—",
+   "s": 1.76,
+   "rotated": false
+  },
+  {
+   "idx": 8,
+   "ja": "少し離れた山の中に",
+   "en": "In the mountains a little farther away,",
+   "s": 2.01,
+   "rotated": false
+  },
+  {
+   "idx": 9,
+   "ja": "ゴギツネというキツネがいました。",
+   "en": "there was a fox called Gogitsune.",
+   "s": 1.69,
+   "rotated": false
+  },
+  {
+   "idx": 10,
+   "ja": "ゴンはひとりぼっちのこにつねで",
+   "en": "Gon was a lonely little fox.",
+   "s": 2.08,
+   "rotated": false
+  },
+  {
+   "idx": 11,
+   "ja": "舌のいっぱい茂った森の中に、穴を掘って棲んでいました。",
+   "en": "He dug a hole and lived in a densely overgrown forest.",
+   "s": 2.01,
+   "rotated": false
+  },
+  {
+   "idx": 12,
+   "ja": "そして",
+   "en": "And then…",
+   "s": 2.48,
+   "rotated": false
+  },
+  {
+   "idx": 13,
+   "ja": "夜でも昼でもあたりの村へ出てきて、いたずらばかりしました。",
+   "en": "Whether it was day or night, he would go into the nearby village and do nothing but play pranks.",
+   "s": 1.72,
+   "rotated": false
+  },
+  {
+   "idx": 14,
+   "ja": "畑へ入って芋を掘り散らしたり",
+   "en": "He would go into the fields and dig up and scatter the potatoes, or…",
+   "s": 2.31,
+   "rotated": false
+  },
+  {
+   "idx": 15,
+   "ja": "ナタネガラの干しであるのへ火をつけたり、",
+   "en": "set fire to the dried rapeseed stalks, or…",
+   "s": 3.47,
+   "rotated": false
+  },
+  {
+   "idx": 16,
+   "ja": "百姓屋の裏手に吊るしてある 唐辛子をむしり取って行ったりり、いろんなことをしました。",
+   "en": "He would pluck and run off with the chili peppers hanging behind farmers’ houses, and he did all sorts of things.",
+   "s": 2.76,
+   "rotated": false
+  },
+  {
+   "idx": 17,
+   "ja": "ある、秋のことでした。",
+   "en": "One autumn day,‑",
+   "s": 1.78,
+   "rotated": false
+  },
+  {
+   "idx": 18,
+   "ja": "2、3日、雨は降り続いたその間、",
+   "en": "It kept raining for two or three days. During that time,‑",
+   "s": 1.99,
+   "rotated": false
+  },
+  {
+   "idx": 19,
+   "ja": "ゴンは外へも出られなくて穴の中ににしゃがんでいました。",
+   "en": "Gon couldn’t go outside either, so he crouched in his hole.",
+   "s": 1.85,
+   "rotated": false
+  },
+  {
+   "idx": 20,
+   "ja": "雨が上がると、ゴンはほっとして穴からはい出ました。",
+   "en": "When the rain stopped, Gon felt relieved and crawled out of the hole.",
+   "s": 4.26,
+   "rotated": true
+  },
+  {
+   "idx": 21,
+   "ja": "空はカラッと晴れていて、",
+   "en": "The sky was clear and bright, and",
+   "s": 1.44,
+   "rotated": false
+  },
+  {
+   "idx": 22,
+   "ja": "モズの声が、きんきん響いていました。",
+   "en": "The shrike's call rang out sharply.",
+   "s": 1.83,
+   "rotated": false
+  },
+  {
+   "idx": 23,
+   "ja": "ゴンは村の側の包みまで出てきました。",
+   "en": "Gon made it as far as the outskirts of the village.",
+   "s": 3.49,
+   "rotated": false
+  },
+  {
+   "idx": 24,
+   "ja": "あたりのすすきのほうには、まだ雨のしずくが光っていました。",
+   "en": "Raindrops still glistened on the pampas grass nearby.",
+   "s": 2.18,
+   "rotated": false
+  },
+  {
+   "idx": 25,
+   "ja": "川はいつもは水が少ないのですが、",
+   "en": "The river usually has very little water, but now",
+   "s": 1.55,
+   "rotated": false
+  },
+  {
+   "idx": 26,
+   "ja": "三日もの雨で、水がどっと増していました。",
+   "en": "After three days of rain, the water level had risen dramatically.",
+   "s": 1.64,
+   "rotated": false
+  },
+  {
+   "idx": 27,
+   "ja": "ただの時は水に浸かることのない川べりのすすきや萩の株が、",
+   "en": "The pampas grass and bush clover growing along the riverbank, which were never submerged in ordinary weather, seemed to be...",
+   "s": 2.3,
+   "rotated": false
+  },
+  {
+   "idx": 28,
+   "ja": "黄色く濁った水に横倒しになって揉まれています。",
+   "en": "Being knocked about as they lay on their sides in the yellow, muddy water.",
+   "s": 2.55,
+   "rotated": false
+  },
+  {
+   "idx": 29,
+   "ja": "ゴンは川下の方へとぬかるみ道を歩いていきました。",
+   "en": "Gon walked along the muddy road toward downstream.",
+   "s": 2.08,
+   "rotated": false
+  },
+  {
+   "idx": 30,
+   "ja": "ふと見ると、川の中に人がいて、何かやっています。",
+   "en": "Suddenly, Gon noticed someone in the river doing something.",
+   "s": 1.92,
+   "rotated": false
+  },
+  {
+   "idx": 31,
+   "ja": "ゴンは見つからないように、そっと草のの深いところへ歩き寄って、",
+   "en": "So that no one would notice him, Gon quietly crept toward the thickest part of the grass, and…",
+   "s": 2.34,
+   "rotated": false
+  },
+  {
+   "idx": 32,
+   "ja": "そこからじっとのぞいてみました。",
+   "en": "I peered out from there.",
+   "s": 5.41,
+   "rotated": true
+  },
+  {
+   "idx": 33,
+   "ja": "標柱だなとゴンは思いました。",
+   "en": "Gon thought, “It’s a marker post.”",
+   "s": 1.71,
+   "rotated": false
+  },
+  {
+   "idx": 34,
+   "ja": "標柱はボロボロの黒い着物をまくしあげて、",
+   "en": "The marker post hitched up its tattered black kimono and…",
+   "s": 3.24,
+   "rotated": false
+  },
+  {
+   "idx": 35,
+   "ja": "腰のところまで水に浸りながら",
+   "en": "While submerged in water up to its waist,",
+   "s": 1.88,
+   "rotated": false
+  },
+  {
+   "idx": 36,
+   "ja": "魚を捕るハレキリといういうあみをゆすぶっていました",
+   "en": "It was shaking a net called a “harekiri” for catching fish.",
+   "s": 1.57,
+   "rotated": false
+  },
+  {
+   "idx": 37,
+   "ja": "鉢巻きをした顔の横っちょうに、丸い萩の葉が一枚、大きなほくろみたいにへばれついていました。",
+   "en": "A round hagi leaf was stuck beside the headbanded face like a large mole.",
+   "s": 2.09,
+   "rotated": false
+  },
+  {
+   "idx": 38,
+   "ja": "しばらくすると標柱は、張り切り編みの一番後ろの、",
+   "en": "After a while, the marker post is at the very back of the tensioned knitting, and…",
+   "s": 4.85,
+   "rotated": true
+  },
+  {
+   "idx": 39,
+   "ja": "袋のようになったところを水の中から持ち上げました。",
+   "en": "I lifted the bag-like part out of the water.",
+   "s": 1.91,
+   "rotated": false
+  },
+  {
+   "idx": 40,
+   "ja": "その中には、ヒバの根や、草の葉や、",
+   "en": "Inside were hiba cypress roots, grass leaves, and…",
+   "s": 1.89,
+   "rotated": false
+  },
+  {
+   "idx": 41,
+   "ja": "あった木切れなどがこちゃこちゃ入っていましたが",
+   "en": "There were bits of wood and other things jumbled together inside, but…",
+   "s": 2.7,
+   "rotated": false
+  },
+  {
+   "idx": 42,
+   "ja": "でも、ところどころ、白いものは、 キラキラ光っています。",
+   "en": "But here and there, the white things are sparkling.",
+   "s": 1.6,
+   "rotated": false
+  },
+  {
+   "idx": 43,
+   "ja": "それは、太いウナギの腹や大きなキスの腹でした。",
+   "en": "They were the bellies of fat eels and large whiting.",
+   "s": 3.51,
+   "rotated": false
+  },
+  {
+   "idx": 44,
+   "ja": "標柱は鼻腔の中へそのうなぎやキスをゴミと一緒にぶち込みました",
+   "en": "The marker post shoved the eels and whiting, along with the trash, into its nasal cavities.",
+   "s": 3.43,
+   "rotated": false
+  },
+  {
+   "idx": 45,
+   "ja": "そしてまた、ふくろの口をしばっってみずのなかへいれました。",
+   "en": "Then they tied the mouth of the bag again and put it back into the water.",
+   "s": 1.55,
+   "rotated": false
+  },
+  {
+   "idx": 46,
+   "ja": "標柱はそれから、鼻腔を持ってから上がり、",
+   "en": "Then the marker post climbed up, holding the nasal cavity, and…",
+   "s": 2.5,
+   "rotated": false
+  },
+  {
+   "idx": 47,
+   "ja": "びくを土手に置いといて、何を探しにか、川上の方へかけていきました。",
+   "en": "They left the creel on the riverbank and ran upstream, apparently looking for something.",
+   "s": 2.27,
+   "rotated": false
+  },
+  {
+   "idx": 48,
+   "ja": "標準がいなくなると、ゴンはぴょいと草の中から飛び出して、鼻腔のそばへ駆けつき合いました。",
+   "en": "When the marker post was gone, Gon sprang out of the grass and ran over beside the nasal cavity.",
+   "s": 4.66,
+   "rotated": true
+  },
+  {
+   "idx": 49,
+   "ja": "ちょいといたずらがしたくなったのです",
+   "en": "Gon felt like playing a little prank.",
+   "s": 1.44,
+   "rotated": false
+  },
+  {
+   "idx": 50,
+   "ja": "ゴンは、鼻腔の中の魚をつかみ出しては、ては、はりきりあみのかかっているところより、しもてのかわのなかをめがけて、ぽんぽん、なぎこみました。",
+   "en": "Gon grabbed the fish out of the nasal cavity one after another and tossed them into the river downstream of the fishing net, plop, plop.",
+   "s": 4.74,
+   "rotated": false
+  },
+  {
+   "idx": 51,
+   "ja": "どの魚も、とぼんと音を立てながら、濁った水の中へもぎりこみました。",
+   "en": "Each fish made a plopping sound as it wriggled into the muddy water.",
+   "s": 1.82,
+   "rotated": false
+  },
+  {
+   "idx": 52,
+   "ja": "一番しまいに",
+   "en": "Finally.",
+   "s": 1.41,
+   "rotated": false
+  },
+  {
+   "idx": 53,
+   "ja": "太いうなぎをつかみにかかりましたが",
+   "en": "Gon reached for a thick eel, but…",
+   "s": 1.69,
+   "rotated": false
+  },
+  {
+   "idx": 54,
+   "ja": "何しろぬるぬるとすばり抜けるので、ではつかめません。",
+   "en": "It was so slippery that it kept slipping right out of their hands, and they simply couldn’t catch it.",
+   "s": 2.73,
+   "rotated": false
+  },
+  {
+   "idx": 55,
+   "ja": "ゴンはじれったくなって、頭をびくの中に突っ込んで、",
+   "en": "Gon grew impatient and stuck his head into the creel, and…",
+   "s": 2.74,
+   "rotated": false
+  },
+  {
+   "idx": 56,
+   "ja": "うなぎの頭を口にくわえました",
+   "en": "He clamped the eel’s head between his teeth.",
+   "s": 2.78,
+   "rotated": false
+  },
+  {
+   "idx": 57,
+   "ja": "うなぎはキュッと言ってゴンの首へ巻きつきました。",
+   "en": "The eel squeaked and wrapped itself around Gon’s neck.",
+   "s": 2.31,
+   "rotated": false
+  },
+  {
+   "idx": 58,
+   "ja": "その途端に、標柱が向こうから、",
+   "en": "At that moment, the marker post came from over there,",
+   "s": 4.12,
+   "rotated": true
+  },
+  {
+   "idx": 59,
+   "ja": "わぁ、ぬすとぎすねめ、とどんなり立てました。",
+   "en": "Wow, we set it up prominently as a marker for thieves.",
+   "s": 4.41,
+   "rotated": false
+  },
+  {
+   "idx": 60,
+   "ja": "ゴンはびっくりして飛び上がりました。",
+   "en": "Gon was startled and jumped up.",
+   "s": 3.72,
+   "rotated": true
+  },
+  {
+   "idx": 61,
+   "ja": "うなぎをふり捨てて逃げようとしましたが",
+   "en": "Gon tried to shake off the eel and run away, but…",
+   "s": 1.84,
+   "rotated": false
+  },
+  {
+   "idx": 62,
+   "ja": "うなぎはごんのくびにまきついたままはなれません。",
+   "en": "The eel remained wrapped around Gon’s neck and would not let go.",
+   "s": 1.93,
+   "rotated": false
+  },
+  {
+   "idx": 63,
+   "ja": "ゴンはそのまま横飛びに飛び出して一生懸命に逃げていきました",
+   "en": "Gon leaped sideways and ran away as fast as they could.",
+   "s": 1.44,
+   "rotated": false
+  },
+  {
+   "idx": 64,
+   "ja": "掘ラー穴の近くのハンノキの下で振り返ってみましたが、",
+   "en": "Gon looked back from beneath an alder tree near the burrow, but…",
+   "s": 3.51,
+   "rotated": false
+  },
+  {
+   "idx": 65,
+   "ja": "標柱は追っかけては来ませんでした",
+   "en": "The marker post did not follow us.",
+   "s": 4.7,
+   "rotated": true
+  },
+  {
+   "idx": 66,
+   "ja": "ゴンはほっとしてウナギの頭を噛み砕き、やっとはずして穴の外の草の葉の上にのせておきました。",
+   "en": "Relieved, Gon crushed the eel’s head, finally removed it, and placed it on a blade of grass outside the hole.",
+   "s": 3.87,
+   "rotated": true
+  },
+  {
+   "idx": 67,
+   "ja": "終わり",
+   "en": "The end.",
+   "s": 1.51,
+   "rotated": false
+  },
+  {
+   "idx": 68,
+   "ja": "10日ほどたって権が、安家というお百姓の家の裏を通りかかりますと、",
+   "en": "About ten days later, as Gon was passing behind the home of a farmer named Anke,",
+   "s": 6.2,
+   "rotated": false
+  },
+  {
+   "idx": 69,
+   "ja": "そこの一軸の木の鍵で",
+   "en": "In the shade of a fig tree there,",
+   "s": 6.15,
+   "rotated": false
+  },
+  {
+   "idx": 70,
+   "ja": "安家の家内ががおはぐろをつけていました",
+   "en": "Anke’s wife was blackening her teeth.",
+   "s": 3.43,
+   "rotated": false
+  },
+  {
+   "idx": 71,
+   "ja": "鍛冶屋の新兵衛の家の裏を通ると、新兵衛の家内が紙をすいていました。",
+   "en": "When Gon passed behind the home of Shinbei the blacksmith, Shinbei’s wife was making paper.",
+   "s": 2.24,
+   "rotated": false
+  },
+  {
+   "idx": 72,
+   "ja": "言は 部分",
+   "en": "The part that says “言”",
+   "s": 2.6,
+   "rotated": false
+  },
+  {
+   "idx": 73,
+   "ja": "村に何かあるんだなと思いました。",
+   "en": "Gon thought that something must be happening in the village.",
+   "s": 2.16,
+   "rotated": false
+  },
+  {
+   "idx": 74,
+   "ja": "なんだろう、秋祭りかな?",
+   "en": "I wonder what it is—perhaps the autumn festival?",
+   "s": 1.74,
+   "rotated": false
+  },
+  {
+   "idx": 75,
+   "ja": "祭りなら太鼓や笛の音が必要なものだ",
+   "en": "If it were a festival, there would surely be the sound of drums and flutes.",
+   "s": 2.34,
+   "rotated": false
+  },
+  {
+   "idx": 76,
+   "ja": "それに第一、、お宮にのぼりがたつはずだが、",
+   "en": "Besides, for one thing, a banner should have been raised at the shrine, but…",
+   "s": 2.47,
+   "rotated": false
+  },
+  {
+   "idx": 77,
+   "ja": "こんなことを考えながらやってきますと、いつの間にか、表にに赤い井戸のある標柱の家の前へ来ました。",
+   "en": "As I went along thinking about these things, before I knew it I had arrived in front of the house with a signpost and a red well out front.",
+   "s": 4.81,
+   "rotated": true
+  },
+  {
+   "idx": 78,
+   "ja": "その小さな壊れかけた家の中には、",
+   "en": "Inside that small, dilapidated house,",
+   "s": 2.53,
+   "rotated": false
+  },
+  {
+   "idx": 79,
+   "ja": "大勢の人が集まっていました。",
+   "en": "A large crowd of people had gathered.",
+   "s": 2.67,
+   "rotated": false
+  },
+  {
+   "idx": 80,
+   "ja": "よそ行きの着物を着て、腰に手拭いを下げたりした女たちが、",
+   "en": "Women dressed in their finest kimono, with hand towels hanging from their waists,",
+   "s": 1.98,
+   "rotated": false
+  },
+  {
+   "idx": 81,
+   "ja": "表のかまどで火をたいています。",
+   "en": "were lighting a fire in the outdoor stove.",
+   "s": 1.79,
+   "rotated": false
+  },
+  {
+   "idx": 82,
+   "ja": "大きな鍋の中では、何かぐずぐず煮えていました。",
+   "en": "Something was simmering in a large pot.",
+   "s": 1.42,
+   "rotated": false
+  },
+  {
+   "idx": 83,
+   "ja": "ああ、葬式だ、とゴンは思いました。",
+   "en": "Gon thought, “Ah, it’s a funeral.”",
+   "s": 3.86,
+   "rotated": true
+  },
+  {
+   "idx": 84,
+   "ja": "標柱の家の誰が死んだんだろう",
+   "en": "I wonder who in the house with the marker post died.",
+   "s": 4.98,
+   "rotated": true
+  },
+  {
+   "idx": 85,
+   "ja": "お昼が過ぎると、ゴンは村の墓地へ行って、六地蔵さんの陰に隠れていました。",
+   "en": "After noon, Gon would go to the village cemetery and hide behind the six Jizo statues.",
+   "s": 3.03,
+   "rotated": true
+  },
+  {
+   "idx": 86,
+   "ja": "いいお天気で、遠く向うにはお城の屋根がわれが光ています",
+   "en": "It was fine weather, and in the distance, the castle roof tiles were shining.",
+   "s": 3.41,
+   "rotated": false
+  },
+  {
+   "idx": 87,
+   "ja": "墓地には彼岸花が赤いキレのようにうに咲きつついていました。",
+   "en": "In the cemetery, red spider lilies continued blooming like scraps of red cloth.",
+   "s": 2.52,
+   "rotated": false
+  },
+  {
+   "idx": 88,
+   "ja": "村の方から",
+   "en": "From the direction of the village.",
+   "s": 1.62,
+   "rotated": false
+  },
+  {
+   "idx": 89,
+   "ja": "かん、カンと鐘が鳴ってきました。",
+   "en": "The sound of a bell came ringing: clang, clang.",
+   "s": 1.58,
+   "rotated": false
+  },
+  {
+   "idx": 90,
+   "ja": "葬式の出る合図です",
+   "en": "It was the signal that a funeral procession was about to depart.",
+   "s": 1.65,
+   "rotated": false
+  },
+  {
+   "idx": 91,
+   "ja": "やがて、白い着物を着た 壮烈の者たちが、やって来るのが、ちらちら見え始めました。",
+   "en": "Before long, Gon began to catch glimpses of the funeral procession’s members approaching in white robes.",
+   "s": 2.11,
+   "rotated": false
+  },
+  {
+   "idx": 92,
+   "ja": "話し声も近くなりました。",
+   "en": "The voices came closer, too.",
+   "s": 1.44,
+   "rotated": false
+  },
+  {
+   "idx": 93,
+   "ja": "そうれつはぼちへはいってきました。",
+   "en": "The funeral procession entered the cemetery.",
+   "s": 1.46,
+   "rotated": false
+  },
+  {
+   "idx": 94,
+   "ja": "人々が通った後には、遺願羽が踏み寄られていました。",
+   "en": "After the people had passed, the red spider lilies had been trampled and broken.",
+   "s": 2.34,
+   "rotated": false
+  },
+  {
+   "idx": 95,
+   "ja": "ゴンはのびあがってみました。",
+   "en": "Gon stretched up to take a look.",
+   "s": 1.47,
+   "rotated": false
+  },
+  {
+   "idx": 96,
+   "ja": "標柱が白い紙霜をつけて、位牌を捧げています。",
+   "en": "The marker post is wearing a white kamishimo and presenting a memorial tablet.",
+   "s": 5.11,
+   "rotated": true
+  },
+  {
+   "idx": 97,
+   "ja": "いつもは赤いさつまいもみたいな元気のいい顔が、",
+   "en": "The usually lively face, red like a sweet potato, is…",
+   "s": 1.67,
+   "rotated": false
+  },
+  {
+   "idx": 98,
+   "ja": "今日は何だかしおれていました",
+   "en": "Today, it somehow looked wilted.",
+   "s": 1.79,
+   "rotated": false
+  },
+  {
+   "idx": 99,
+   "ja": "あはん、",
+   "en": "Ah-ha.",
+   "s": 1.43,
+   "rotated": false
+  },
+  {
+   "idx": 100,
+   "ja": "死んだのは標準の母だ",
+   "en": "It was the marker post’s mother who died.",
+   "s": 3.32,
+   "rotated": false
+  },
+  {
+   "idx": 101,
+   "ja": "ゴンはそう思いながら頭を引っ込めました。",
+   "en": "Thinking that, Gon pulled their head back.",
+   "s": 3.77,
+   "rotated": true
+  },
+  {
+   "idx": 102,
+   "ja": "その晩、、ゴンは、穴のなかで考えました。",
+   "en": "That night, Gon thought inside the hole.",
+   "s": 1.73,
+   "rotated": false
+  },
+  {
+   "idx": 103,
+   "ja": "兵樹の奥川はは床についていて、うなぎが食べたいと言ったに違いない。",
+   "en": "Okugawa of Heiju must have been in bed and said they wanted to eat eel.",
+   "s": 3.0,
+   "rotated": false
+  },
+  {
+   "idx": 104,
+   "ja": "それで標柱が張り切り網を持ち出したんだ。",
+   "en": "So the marker got all fired up and brought out a net.",
+   "s": 4.19,
+   "rotated": true
+  },
+  {
+   "idx": 105,
+   "ja": "ところがわしがいたずらをしてうなぎをとってきてしまった",
+   "en": "However, I played a prank and ended up catching an eel.",
+   "s": 1.64,
+   "rotated": false
+  },
+  {
+   "idx": 106,
+   "ja": "だから標柱は、 おっかわにうなぎを食べさせることができなかった。",
+   "en": "So the marker couldn't feed the eel to Okkawa.",
+   "s": 1.55,
+   "rotated": false
+  },
+  {
+   "idx": 107,
+   "ja": "そのままおっかあは、しんじゃったにちがいない。",
+   "en": "At that rate, Okkā must have died.",
+   "s": 1.52,
+   "rotated": false
+  },
+  {
+   "idx": 108,
+   "ja": "ああ、うなぎが食べたい、うなぎが食べたいと思いながら死んだんだろう。",
+   "en": "Ah, they must have died thinking, “I want to eat eel. I want to eat eel.”",
+   "s": 1.83,
+   "rotated": false
+  },
+  {
+   "idx": 109,
+   "ja": "あんないたずらをしなければよかった",
+   "en": "I wish I hadn’t played that prank.",
+   "s": 1.69,
+   "rotated": false
+  },
+  {
+   "idx": 110,
+   "ja": "章 終わり",
+   "en": "End of chapter.",
+   "s": 3.94,
+   "rotated": true
+  },
+  {
+   "idx": 111,
+   "ja": "標柱が赤い色のところで麦を研いでいました",
+   "en": "They were grinding wheat where the marker post was red.",
+   "s": 2.58,
+   "rotated": false
+  },
+  {
+   "idx": 112,
+   "ja": "標準は今まで、お母と二人きりで貧しい暮らしをしていたもので、",
+   "en": "Gon had been living in poverty with just his mother until then, so…",
+   "s": 3.38,
+   "rotated": false
+  },
+  {
+   "idx": 113,
+   "ja": "おっ母が死んでしまっては、もう一人ぼっちでした。",
+   "en": "After his mother died, he was all alone.",
+   "s": 2.87,
+   "rotated": false
+  },
+  {
+   "idx": 114,
+   "ja": "俺と同じ一人ぼっちの標柱か。",
+   "en": "A marker post as lonely as me?",
+   "s": 1.63,
+   "rotated": false
+  },
+  {
+   "idx": 115,
+   "ja": "こちらの物置の後ろから見ていたゴンは、そう思いました。",
+   "en": "Gon, who was watching from behind this shed, thought so.",
+   "s": 3.36,
+   "rotated": true
+  },
+  {
+   "idx": 116,
+   "ja": "ゴンは物置のそばを離れて向こうへ行きかけますと、",
+   "en": "When Gon left the shed and started heading over there,",
+   "s": 2.0,
+   "rotated": false
+  },
+  {
+   "idx": 117,
+   "ja": "どこかでイワシを折る声がします",
+   "en": "Somewhere, he hears the sound of a branch breaking.",
+   "s": 3.64,
+   "rotated": false
+  },
+  {
+   "idx": 118,
+   "ja": "イワシのヤスリダイ",
+   "en": "A sardine’s file board.",
+   "s": 3.63,
+   "rotated": false
+  },
+  {
+   "idx": 119,
+   "ja": "生きのいい岩しだい。",
+   "en": "Fresh sardines!",
+   "s": 2.64,
+   "rotated": false
+  },
+  {
+   "idx": 120,
+   "ja": "ゴンはその威勢のいい声のする方へ走って行きました。",
+   "en": "Gon ran toward the source of that lively voice.",
+   "s": 3.01,
+   "rotated": false
+  },
+  {
+   "idx": 121,
+   "ja": "安家ののおかみさんが、うらとぐちから。",
+   "en": "The fishmonger’s wife, from the back door…",
+   "s": 2.77,
+   "rotated": false
+  },
+  {
+   "idx": 122,
+   "ja": "いわしをくれといいました",
+   "en": "said, “Give me some sardines.”",
+   "s": 2.29,
+   "rotated": false
+  },
+  {
+   "idx": 123,
+   "ja": "ヤシシウリはイワシの籠を積んだ車を道端に置いてピカピカ光るイワシをを両手で掴んで、安家の家の中へ持って入りました。",
+   "en": "Yashishiri left the vehicle loaded with baskets of sardines by the roadside, grabbed the shiny sardines with both hands, and carried them inside Anke’s house.",
+   "s": 3.75,
+   "rotated": true
+  },
+  {
+   "idx": 124,
+   "ja": "豪はその隙間に",
+   "en": "Gō slipped into that gap.",
+   "s": 2.0,
+   "rotated": false
+  },
+  {
+   "idx": 125,
+   "ja": "カゴの中から五六匹のイワシをつかみ出して元来た方へ駆け出しました",
+   "en": "He grabbed five or six sardines from the basket and ran back the way he had come.",
+   "s": 4.2,
+   "rotated": false
+  },
+  {
+   "idx": 126,
+   "ja": "そして兵十の家の裏口から家の中へイワシを投げ込んでんで、穴へ向かって駆け戻りました。",
+   "en": "Then he threw the sardines into Hyōjū’s house through the back door and ran back toward the hole.",
+   "s": 2.3,
+   "rotated": false
+  },
+  {
+   "idx": 127,
+   "ja": "途中の坂の上で振り返ってみますと、標柱がまだ井戸のところで麦を研いでいるのが小さく見えました。",
+   "en": "When I looked back from the top of the slope, I could still see the marker post, now tiny, grinding wheat by the well.",
+   "s": 5.25,
+   "rotated": true
+  },
+  {
+   "idx": 128,
+   "ja": "ゴンはウナギのつくないにに、まずひとついいことをしたと思いました。",
+   "en": "I thought Gon first did one good thing for the eel’s tsukudani.",
+   "s": 3.67,
+   "rotated": true
+  },
+  {
+   "idx": 129,
+   "ja": "次の日には、ゴンは山で栗をどっさり拾って、",
+   "en": "The next day, Gon picked up a whole lot of chestnuts in the mountains, and",
+   "s": 2.62,
+   "rotated": false
+  },
+  {
+   "idx": 130,
+   "ja": "それを抱えて標柱の家へ行きました",
+   "en": "I carried it to I's house.",
+   "s": 5.84,
+   "rotated": true
+  },
+  {
+   "idx": 131,
+   "ja": "裏口から覗いてみますと、標柱は、昼飯を食べかけて、茶碗を持ったまま、ぼんやりとと考え込んでいました。",
+   "en": "When I peeked in through the back door, I was halfway through lunch, holding my rice bowl, and staring blankly, deep in thought.",
+   "s": 2.08,
+   "rotated": false
+  },
+  {
+   "idx": 132,
+   "ja": "変なことに標柱のほっぺたにかすり傷がついています",
+   "en": "Strangely, I had a scratch on my cheek.",
+   "s": 1.91,
+   "rotated": false
+  },
+  {
+   "idx": 133,
+   "ja": "どうしたんだろうとゴンが思っていますと、標柱が独り言を言いました。",
+   "en": "Gon is thinking, “I wonder what happened,” and I said something to myself.",
+   "s": 3.65,
+   "rotated": true
+  },
+  {
+   "idx": 134,
+   "ja": "一体誰がイワシなんかを俺の家へ放り込んで行ったんだろう",
+   "en": "Who on earth threw sardines into my house and left?",
+   "s": 3.51,
+   "rotated": false
+  },
+  {
+   "idx": 135,
+   "ja": "おかんいで俺は、主人と思われて、いわし屋の奴にひどい目にあわされた。",
+   "en": "Because of that, I was mistaken for the owner and badly treated by the sardine shop guy.",
+   "s": 2.52,
+   "rotated": false
+  },
+  {
+   "idx": 136,
+   "ja": "と、ぶつぶつ言っています。",
+   "en": "They are muttering.",
+   "s": 1.73,
+   "rotated": false
+  },
+  {
+   "idx": 137,
+   "ja": "ゴンはこれはしまったと思いました",
+   "en": "Gon thought, “Oh no, this is bad.”",
+   "s": 2.08,
+   "rotated": false
+  },
+  {
+   "idx": 138,
+   "ja": "かわいそうに兵中は、いわし屋にぶん殴られて、あんな傷までつけられたのか。",
+   "en": "Poor I—was I beaten up by the sardine shopkeeper and even given wounds like those?",
+   "s": 3.14,
+   "rotated": false
+  },
+  {
+   "idx": 139,
+   "ja": "ゴンはこう思いながら、そっと物置の方へ回って、その入口にクリューを置いて帰りました。",
+   "en": "Thinking this, Gon quietly went around to the storage shed, left Curyu at its entrance, and went home.",
+   "s": 3.07,
+   "rotated": true
+  },
+  {
+   "idx": 140,
+   "ja": "次の日も、その次の日もゴンは、栗を拾っては、標柱の家へ持ってきてやりました。",
+   "en": "The next day and the day after that, Gon continued picking up chestnuts and bringing them to the I’s house.",
+   "s": 4.83,
+   "rotated": true
+  },
+  {
+   "idx": 141,
+   "ja": "その次の日には、ばかりでなく、松酒も二、三本持っていきました。",
+   "en": "The day after that, Gon brought not only chestnuts but also two or three bottles of pine liquor.",
+   "s": 2.05,
+   "rotated": false
+  },
+  {
+   "idx": 142,
+   "ja": "4",
+   "en": "4",
+   "s": 2.23,
+   "rotated": false
+  },
+  {
+   "idx": 143,
+   "ja": "月のいい晩でした。",
+   "en": "It was a pleasant moonlit evening.",
+   "s": 2.29,
+   "rotated": false
+  },
+  {
+   "idx": 144,
+   "ja": "ゴンはぶらぶら遊びに出かけました",
+   "en": "Gon went out for a leisurely stroll.",
+   "s": 1.81,
+   "rotated": false
+  },
+  {
+   "idx": 145,
+   "ja": "中山様のお城の下を通って少し行くと、",
+   "en": "After passing below Lord Nakayama’s castle and going a little farther,",
+   "s": 1.99,
+   "rotated": false
+  },
+  {
+   "idx": 146,
+   "ja": "細い道の向こうから誰か来るようです。",
+   "en": "It seemed that someone was coming from the other side of the narrow path.",
+   "s": 2.0,
+   "rotated": false
+  },
+  {
+   "idx": 147,
+   "ja": "話し声が聞こえます。",
+   "en": "Gon could hear voices.",
+   "s": 2.98,
+   "rotated": false
+  },
+  {
+   "idx": 148,
+   "ja": "ちんちろりん、チンチロリンとマツムシが鳴いています。",
+   "en": "The matsumushi were chirping, “Chinchirorin, chinchirorin.”",
+   "s": 3.53,
+   "rotated": false
+  },
+  {
+   "idx": 149,
+   "ja": "ゴンは道の片側にかくれてじっとしていました",
+   "en": "Gon hid on one side of the path and stayed perfectly still.",
+   "s": 2.86,
+   "rotated": false
+  },
+  {
+   "idx": 150,
+   "ja": "話し声はだんだん近くなりました。",
+   "en": "The voices gradually drew nearer.",
+   "s": 2.51,
+   "rotated": false
+  },
+  {
+   "idx": 151,
+   "ja": "それは標柱とカスケというお百姓でした。",
+   "en": "They were a farmer named I and a farmer named Kasuke.",
+   "s": 3.23,
+   "rotated": true
+  },
+  {
+   "idx": 152,
+   "ja": "そうそう、長あかすけ、と標柱が言いました。あん?",
+   "en": "“That’s right, Nagaakasuke,” said I. Huh?",
+   "s": 1.69,
+   "rotated": false
+  },
+  {
+   "idx": 153,
+   "ja": "俺はこの頃とても不思議なことがあるんだ。",
+   "en": "Lately, I’ve been experiencing something very strange.",
+   "s": 1.9,
+   "rotated": false
+  },
+  {
+   "idx": 154,
+   "ja": "何が?",
+   "en": "What is it?",
+   "s": 2.11,
+   "rotated": false
+  },
+  {
+   "idx": 155,
+   "ja": "お母が死んでからは誰だかか知らんが、俺にに栗や松茸なんかを毎日毎日くれるんだよ。",
+   "en": "Ever since my mother died, someone—I don’t know who—has been giving me things like chestnuts and matsutake mushrooms every single day.",
+   "s": 2.75,
+   "rotated": false
+  },
+  {
+   "idx": 156,
+   "ja": "ふんだれが",
+   "en": "Hmph, who is it?",
+   "s": 2.19,
+   "rotated": false
+  },
+  {
+   "idx": 157,
+   "ja": "それがわからぬだよ。",
+   "en": "That’s what I don’t know.",
+   "s": 2.0,
+   "rotated": false
+  },
+  {
+   "idx": 158,
+   "ja": "俺の白い口に置いていくんだ",
+   "en": "They leave them at my white mouth.",
+   "s": 2.5,
+   "rotated": false
+  },
+  {
+   "idx": 159,
+   "ja": "ゴンは二人の後をつけていきました。",
+   "en": "Gon followed the two of them.",
+   "s": 4.08,
+   "rotated": true
+  },
+  {
+   "idx": 160,
+   "ja": "ほんとうかい?",
+   "en": "Is that really true?",
+   "s": 1.57,
+   "rotated": false
+  },
+  {
+   "idx": 161,
+   "ja": "本当だと思う",
+   "en": "I think it’s true.",
+   "s": 1.92,
+   "rotated": false
+  },
+  {
+   "idx": 162,
+   "ja": "嘘と思うなら明日見に来いよ。この国を見せてやるよ。",
+   "en": "If you think I’m lying, come see for yourself tomorrow. I’ll show you this country.",
+   "s": 1.86,
+   "rotated": false
+  },
+  {
+   "idx": 163,
+   "ja": "へえ、変なこともあるもんだな。",
+   "en": "Huh, strange things do happen.",
+   "s": 1.6,
+   "rotated": false
+  },
+  {
+   "idx": 164,
+   "ja": "それなり二人は黙って歩いていきました。",
+   "en": "Then the two of them walked on in silence.",
+   "s": 2.75,
+   "rotated": false
+  },
+  {
+   "idx": 165,
+   "ja": "カスケがひょいと後ろを見ました",
+   "en": "Kasuke casually glanced back.",
+   "s": 2.13,
+   "rotated": false
+  },
+  {
+   "idx": 166,
+   "ja": "ゴンはびくっとして小さくなって立ち止まりました",
+   "en": "Gon flinched, shrank down, and stopped.",
+   "s": 1.46,
+   "rotated": false
+  },
+  {
+   "idx": 167,
+   "ja": "カスケはごにはきがつかないで、そのままさっさとあるきました。",
+   "en": "Kasuke did not notice Gon and kept walking briskly.",
+   "s": 4.21,
+   "rotated": true
+  },
+  {
+   "idx": 168,
+   "ja": "吉兵衛というお百姓の家まで来ると、二人はそこへ入って行きました。",
+   "en": "When they reached the farmhouse of a farmer named Kichibee, the two went inside.",
+   "s": 3.9,
+   "rotated": true
+  },
+  {
+   "idx": 169,
+   "ja": "ポンポンポンポンと木曜の音がしています。",
+   "en": "There is a pon-pon-pon-pon sound from a wooden fish drum.",
+   "s": 2.27,
+   "rotated": false
+  },
+  {
+   "idx": 170,
+   "ja": "窓の障子に明かりがさしていて、大きな坊主頭が映って動いていました。",
+   "en": "Light shone through the window’s shoji screen, and a large bald head was silhouetted there, moving about.",
+   "s": 2.82,
+   "rotated": false
+  },
+  {
+   "idx": 171,
+   "ja": "Gongは",
+   "en": "Gong is…",
+   "s": 1.74,
+   "rotated": false
+  },
+  {
+   "idx": 172,
+   "ja": "お念仏があるんだなと思いながら井戸のそばにしゃがんでいました",
+   "en": "Thinking that someone must be chanting Buddhist prayers, they crouched beside the well.",
+   "s": 1.92,
+   "rotated": false
+  },
+  {
+   "idx": 173,
+   "ja": "しばらくすると、また三人ほど、人が連れ立って吉兵衛の家へ入っていきました。",
+   "en": "After a while, about three more people went together into Kichibee’s house.",
+   "s": 2.48,
+   "rotated": false
+  },
+  {
+   "idx": 174,
+   "ja": "お経を読む声が聞えて来ました",
+   "en": "They could hear voices reciting sutras.",
+   "s": 1.96,
+   "rotated": false
+  },
+  {
+   "idx": 175,
+   "ja": "表 割",
+   "en": "Front; split.",
+   "s": 1.75,
+   "rotated": false
+  },
+  {
+   "idx": 176,
+   "ja": "言は お念仏が済むまで",
+   "en": "Gon, until the Buddhist prayers were finished...",
+   "s": 3.48,
+   "rotated": false
+  },
+  {
+   "idx": 177,
+   "ja": "井戸のそばにしゃがんでいました",
+   "en": "Gon was crouching beside the well.",
+   "s": 1.72,
+   "rotated": false
+  },
+  {
+   "idx": 178,
+   "ja": "標柱とカスケは、また一緒に帰っていきます。",
+   "en": "I and Kaske are heading home together again.",
+   "s": 3.12,
+   "rotated": true
+  },
+  {
+   "idx": 179,
+   "ja": "ゴンは二人の話を聞こうと思って、ついていきました。",
+   "en": "Gon decided to follow them because Gon wanted to hear the two of them talk.",
+   "s": 3.33,
+   "rotated": true
+  },
+  {
+   "idx": 180,
+   "ja": "標柱の影帽子を踏み踏み行きました",
+   "en": "I went along stepping on the signpost’s shadow and hat.",
+   "s": 3.58,
+   "rotated": true
+  },
+  {
+   "idx": 181,
+   "ja": "お城の前まで来た時、カスケが言い出しました。",
+   "en": "When we got in front of the castle, Kasuke said.",
+   "s": 2.5,
+   "rotated": false
+  },
+  {
+   "idx": 182,
+   "ja": "さっきの話はきっと、そりゃ神様の仕業だぞ。しわざだぞ。へっと標準はびっくりしてカスケの顔を見ました",
+   "en": "“That thing we were talking about earlier was surely the work of the gods. It was their doing.” Hyōjun was startled and looked at Kasuke’s face.",
+   "s": 2.33,
+   "rotated": false
+  },
+  {
+   "idx": 183,
+   "ja": "俺はあれからずっと考えていたが、",
+   "en": "I've been thinking about it ever since, but...",
+   "s": 1.79,
+   "rotated": false
+  },
+  {
+   "idx": 184,
+   "ja": "どうも、それは人間じゃない。神様だ。",
+   "en": "It definitely wasn’t a human. It was a god.",
+   "s": 1.65,
+   "rotated": false
+  },
+  {
+   "idx": 185,
+   "ja": "神様がお前がたった一人になったのをを哀れに思わしあって、",
+   "en": "God took pity on you for being all alone.",
+   "s": 3.89,
+   "rotated": true
+  },
+  {
+   "idx": 186,
+   "ja": "いろんなものを恵んでくださるんだよ",
+   "en": "They bless you with all kinds of things.",
+   "s": 2.17,
+   "rotated": false
+  },
+  {
+   "idx": 187,
+   "ja": "そうかなあ。",
+   "en": "I wonder if that's true.",
+   "s": 1.52,
+   "rotated": false
+  },
+  {
+   "idx": 188,
+   "ja": "そうだと思う",
+   "en": "I think so.",
+   "s": 1.89,
+   "rotated": false
+  },
+  {
+   "idx": 189,
+   "ja": "だから、毎日神様にお礼を言うがいいよ。",
+   "en": "So you should thank God every day.",
+   "s": 2.83,
+   "rotated": false
+  },
+  {
+   "idx": 190,
+   "ja": "うん",
+   "en": "Yeah.",
+   "s": 1.28,
+   "rotated": false
+  },
+  {
+   "idx": 191,
+   "ja": "言語は",
+   "en": "What language?",
+   "s": 2.16,
+   "rotated": false
+  },
+  {
+   "idx": 192,
+   "ja": "こいつはつまらないなと思いました。",
+   "en": "I thought this guy was boring.",
+   "s": 2.61,
+   "rotated": false
+  },
+  {
+   "idx": 193,
+   "ja": "俺が栗や松茸を持って行ってやるのに、",
+   "en": "Even though I was going to bring you chestnuts and matsutake mushrooms, …",
+   "s": 2.92,
+   "rotated": false
+  },
+  {
+   "idx": 194,
+   "ja": "その俺にはお礼を言わないで、神様にお礼を言うんじゃ、俺や",
+   "en": "Don’t thank me; thank God. It’s me.",
+   "s": 4.55,
+   "rotated": true
+  },
+  {
+   "idx": 195,
+   "ja": "そのあくれひもゴンは、くりをもって、 標準の家へ出かけました。",
+   "en": "That Akurehimo Gon went to I’s house carrying chestnuts.",
+   "s": 5.98,
+   "rotated": true
+  },
+  {
+   "idx": 196,
+   "ja": "標柱は物置でなおおなっていました。",
+   "en": "I was fixing the marker post in the storage shed.",
+   "s": 3.52,
+   "rotated": true
+  },
+  {
+   "idx": 197,
+   "ja": "それでゴンは家の裏口からこっそり中へ入りました。",
+   "en": "So Gon quietly slipped inside through the back door of the house.",
+   "s": 2.77,
+   "rotated": true
+  },
+  {
+   "idx": 198,
+   "ja": "その時標準ははふと顔を上げました。",
+   "en": "At that moment, I suddenly looked up.",
+   "s": 3.49,
+   "rotated": false
+  },
+  {
+   "idx": 199,
+   "ja": "とキツネが家の中へ入ったではありませんか",
+   "en": "And before I knew it, the fox had entered the house.",
+   "s": 3.2,
+   "rotated": false
+  },
+  {
+   "idx": 200,
+   "ja": "こないだ、うなぎをぬすみやがったあのご狐めめが、",
+   "en": "That damn fox that stole the eel the other day...",
+   "s": 2.81,
+   "rotated": false
+  },
+  {
+   "idx": 201,
+   "ja": "また、いたずらをしに来たな。",
+   "en": "You came here to play a prank again.",
+   "s": 3.19,
+   "rotated": false
+  },
+  {
+   "idx": 202,
+   "ja": "用紙",
+   "en": "Paper.",
+   "s": 1.53,
+   "rotated": false
+  },
+  {
+   "idx": 203,
+   "ja": "兵樹は立ち上がって 苗にかけてある火の輪重を取って、火力を詰めました。",
+   "en": "Hyōju stood up, took the matchlock slung over their shoulder, and loaded it with gunpowder.",
+   "s": 4.55,
+   "rotated": false
+  },
+  {
+   "idx": 204,
+   "ja": "そして、足音を忍ばせて寄って",
+   "en": "Then they crept closer, muffling their footsteps.",
+   "s": 2.64,
+   "rotated": false
+  },
+  {
+   "idx": 205,
+   "ja": "今、戸口を出ようとするゴンをドンと打ちました。",
+   "en": "They struck Gon hard just as Gon was about to leave through the doorway.",
+   "s": 1.87,
+   "rotated": false
+  },
+  {
+   "idx": 206,
+   "ja": "ゴンはばたりと倒れました。",
+   "en": "Gon collapsed to the ground.",
+   "s": 1.6,
+   "rotated": false
+  },
+  {
+   "idx": 207,
+   "ja": "標柱は駆け寄って来ました。",
+   "en": "I came running over.",
+   "s": 3.12,
+   "rotated": true
+  },
+  {
+   "idx": 208,
+   "ja": "家の中を見ると、ど真に栗が固めて置いてあるのが目につきました。",
+   "en": "When I looked inside the house, I noticed a large pile of chestnuts placed right in the middle.",
+   "s": 1.81,
+   "rotated": false
+  },
+  {
+   "idx": 209,
+   "ja": "おや?と標柱は",
+   "en": "“Huh?” I said.",
+   "s": 1.59,
+   "rotated": false
+  },
+  {
+   "idx": 210,
+   "ja": "びっくりして、ゴンに目を落としました。",
+   "en": "I was startled and lowered my eyes to Gon.",
+   "s": 3.24,
+   "rotated": true
+  },
+  {
+   "idx": 211,
+   "ja": "ゴン、お前だったのか。いつも苦慮をくれたのは。」",
+   "en": "Gon, was it you who was always causing me trouble?",
+   "s": 3.24,
+   "rotated": false
+  },
+  {
+   "idx": 212,
+   "ja": "ゴンはぐったりと目をつぶったまま、うなずきました。",
+   "en": "Gon nodded with his eyes closed, looking exhausted.",
+   "s": 1.9,
+   "rotated": false
+  },
+  {
+   "idx": 213,
+   "ja": "標柱はひなわじゅうををばたりととり落としました。",
+   "en": "I dropped the matchlock gun with a thud.",
+   "s": 5.17,
+   "rotated": true
+  },
+  {
+   "idx": 214,
+   "ja": "青い煙がまだ筒口から細く出ていました。",
+   "en": "A thin stream of blue smoke was still rising from the muzzle.",
+   "s": 1.51,
+   "rotated": false
+  },
+  {
+   "idx": 215,
+   "ja": "章 終わり",
+   "en": "End of chapter.",
+   "s": 1.36,
+   "rotated": false
+  }
+ ]
+}
