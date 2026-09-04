@@ -622,13 +622,16 @@ M12.5 measured the learner pairing **`標柱 = I`** on the shipped path — Engl
 first-person pronoun, so it passes `observe_en`'s not-sentence-initial test, and over 215 real turns
 "I" is the most common sole proper noun in the stream (20 of 63, ahead of `Gon` at 17). The session
 ended telling the translator to render a mis-recognised key as a pronoun. Three shapes, and the
-choice is yours: (i) **one-token stop set** — drop `"I"` from `_en_names`; measured on the committed
-trace, it removes the wrong pairing and leaves `ゴン = Gon` and `神様 = God` byte-identical, and it
-is a `size S` unit; (ii) **stop set plus a JA-side plausibility test**, because the same rule would
-equally pin the hallucinated `Okkawa`/`Anke` had either agreed with itself twice — larger, and it
-reopens D-015's evidence rule; (iii) **accept it** — the blast radius is the translator brief alone
-(hotwords are unreachable on NPU), so a wrong rendering costs consistency on one term and no decode
-accuracy. M12 is closed either way; this is a defect in shipped behaviour, not a milestone.
+user chose the JA-side plausibility shape on 2026-09-04 **conditional on it being more robust
+long-term, and measurement says it is not** — a katakana-key gate drops the CORRECT `神様 = God` and
+removes `標柱 = I` only because 標柱 is kanji, so it blocks every kanji name (兵十, 加助 are kanji
+names in this story). The defect's key is itself name-shaped, so no key-shape test can separate the
+cases; the separation is purely English-side. **The shape that survives measurement is English-side
+and mechanical: a lexical stop set (`I` + contractions) plus a positional fix so a quote-opening
+word counts as sentence-initial.** `polish.md` P-019 carries the arms and the revised acceptance;
+it is still `size S`. Hallucinated-but-genuine proper nouns stay unfixable by any such rule, and
+`CONTEXT_EN_SUPPORT`=2 is the lever there. M12 is closed either way; this is a defect in shipped
+behaviour, not a milestone.
 The polish register also holds **P-014** (NPU decode-stall bursts, with M12.3's 6-section
 counter-sample), pickable by `/session-polish` whenever. Standing options, none of them blocking:
 (0) **Rule on P-019 above** — the only open defect in shipped behaviour, and (i) is a small unit.

@@ -138,9 +138,29 @@ why/evidence/acceptance whole. Do not re-file it here.
   Acceptance: over the committed pairing trace the learner acquires `ゴン = Gon` and `神様 = God` and
   nothing else, 標柱 unpaired; a model-free test locks that `_en_names` rejects a lone "I" while
   still accepting a real mid-sentence name; neutralizing the exclusion reds it (L-022).
-  **User decision first, which is why this is a flag and not a polish row:** whether a one-token
-  English stop set is the right shape, or whether pairing should also require the JA key to be
-  plausibly a name at all — the wider exposure above is untouched by the cheap fix.
+  **The JA-side plausibility test was offered, chosen by the user, and then REFUTED by measurement
+  — do not re-propose it.** The user picked it on 2026-09-04 conditional on it being the more robust
+  long-term shape; it is not. Arms over the committed pairing trace, JA-side gate = "the key is a
+  katakana run": shipped `{ゴン: Gon, 標柱: I, 神様: God}` → katakana-only `{ゴン: Gon}`. It drops the
+  **correct** `神様 = God`, and it removes `標柱 = I` only by accident — 標柱 is kanji, so the same
+  rule blocks the **entire kanji-name class**, and 兵十 / 加助 are kanji names in this very story.
+  A key-shape test cannot separate these cases because the shipped defect's key IS name-shaped
+  (標柱 is a mis-recognition of the name 兵十); what separates them is purely English-side, where
+  `Gon` and `God` are names and `I` is a pronoun.
+  **So the robust shape is English-side and has two mechanical classes plus one irreducible one.**
+  (a) **Lexical** — "I" and its contractions, a closed set fixed by the language; `_EN_NAME`'s
+  character class swallows the apostrophe, so `I’m`/`I’d`/`I’ll`/`I’ve` match as single tokens and
+  the test must fold on the apostrophe. (b) **Positional** — `_EN_SENTENCE` splits on `[.!?]\s+`
+  only, so the first word inside a quotation reads as mid-sentence: measured `It` (caption 33,
+  `thought, “It’s a marker post.”`) and `Ah` (83). Neither landed here, but they are the same defect
+  one quote earlier. (c) **Semantic** — a hallucinated but genuine proper noun (`Okkawa`, `Anke`) is
+  unreachable by any lexical or positional rule; the defence that actually worked is
+  `CONTEXT_EN_SUPPORT`=2 agreeing turns, which is what stopped `Anke`/`Hyōjū` pairing to イワシ.
+  Raising that threshold is the tunable, not a key-shape test.
+  Revised acceptance: (a) + (b) shipped together, `ゴン = Gon` and `神様 = God` preserved
+  byte-identically on the committed trace and 標柱 unpaired; model-free locks that a lone `I` and
+  each contraction are rejected while a real mid-sentence name is kept, and that a quote-opening
+  word is treated as sentence-initial; neutralize each (L-022). Leave (c) recorded, unfixed.
 
 - **P-018 · A declined caption still teaches the recogniser-side learner.** `pri 3` · `size S`.
   M13.1's screen sits at the TRANSLATOR seam (`live_stt.py:1005`), and both producers fold the
