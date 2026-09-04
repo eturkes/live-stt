@@ -133,6 +133,21 @@ def test_a_prompted_trace_is_refused(tmp_path, monkeypatch: pytest.MonkeyPatch):
         eval_en_pairing.caption_stream()
 
 
+def test_the_committed_run_learns_two_renderings_and_no_pronoun():
+    """P-019's acceptance, re-derived from the run that measured the defect.
+
+    The shipped rule ended this session briefing `標柱 = I` — a mis-recognised
+    key pinned to a pronoun. Both correct renderings have to survive at the same
+    captions, and no third entry may come back. 標柱 still opens the gate here,
+    so its null is the English never supplying a name, not the term going quiet.
+    """
+    trace = json.loads(TURNS.read_text(encoding="utf-8"))
+    episodes = {e["term"]: e for e in replay(caption_stream(), trace["turns"])["episodes"]}
+    learned = {t: (e["rendering"], e["paired_at"]) for t, e in episodes.items() if e["rendering"]}
+    assert learned == {"ゴン": ("Gon", 31), "神様": ("God", 194)}
+    assert episodes["標柱"]["paired_at"] is None and episodes["標柱"]["openings"]
+
+
 def test_the_committed_run_still_yields_m125s_verdict():
     """The ruling, re-derived: the control pairs and neither candidate does.
 

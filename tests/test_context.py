@@ -17,6 +17,8 @@ object knows nothing.
 
 from __future__ import annotations
 
+import pytest
+
 from live_stt import (
     CONTEXT_EN_SUPPORT,
     CONTEXT_MAX_TERMS,
@@ -241,6 +243,57 @@ def test_a_sentence_opening_capital_is_not_a_name():
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
     _pair(ctx, CONTEXT_EN_SUPPORT * 2, "Predonine was given at eight.")
     assert ctx.renderings == {}
+
+
+@pytest.mark.parametrize(
+    "en",
+    [
+        "The nurse said I gave the dose.",
+        "The nurse said I’m late with the dose.",
+        "The nurse said I've given the dose.",
+        "The nurse said I’d given the dose.",
+        "The nurse said I’ll give the dose.",
+    ],
+)
+def test_the_first_person_pronoun_is_never_a_name(en: str):
+    """The one word the positional rule cannot judge: English capitalizes "I" anywhere.
+
+    Over 215 real translator turns it was the commonest sole proper noun in the
+    stream — 22 of the 63 single-name turns against `Gon`'s 17 — and it pinned
+    `標柱 = I` into the brief for 13 sightings (M12.5). The contractions match as
+    single tokens because `_EN_NAME`'s class swallows the apostrophe, and both
+    apostrophe characters have to fold.
+    """
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT * 2, en)
+    assert ctx.renderings == {}
+    _pair(ctx, CONTEXT_EN_SUPPORT)  # same open gate, a real mid-sentence name: learned
+    assert ctx.renderings[DRUG] == "Predonine"
+
+
+@pytest.mark.parametrize("opened,closed", [('"', '"'), ("“", "”"), ("‘", "’")])
+def test_a_quotation_opens_a_sentence(opened: str, closed: str):
+    """A quotation's first word is capitalized by convention, exactly like a sentence's.
+
+    Dropping it is also what leaves the rest of the quote unambiguous: before
+    this rule the quoted opener counted as a second proper noun and shut the
+    gate on the real one beside it.
+    """
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT * 2, f"The nurse said, {opened}Predonine is late.{closed}")
+    assert ctx.renderings == {}
+    _pair(ctx, CONTEXT_EN_SUPPORT, f"The nurse said, {opened}It is Predonine again.{closed}")
+    assert ctx.renderings[DRUG] == "Predonine"
+
+
+def test_a_name_after_quoted_speech_is_still_evidence():
+    """The straight `"` closes with the character it opens with, so only the opener splits."""
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT, '"It is late," Predonine was given anyway.')
+    assert ctx.renderings[DRUG] == "Predonine"
 
 
 def test_a_possessive_folds_to_the_bare_name():

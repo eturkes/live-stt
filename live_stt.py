@@ -661,13 +661,22 @@ def emit_line(tag, seq, text, output_file):
 _TERM_RUN = re.compile(r"[ァ-ヺー]{2,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-]+")
 
 # A proper noun is what stays capitalized mid-sentence; a sentence's first word is
-# capitalized by convention and so is never evidence. That positional rule produced
-# the same pairings as a 90-word function-word lexicon over 1,260 recorded turns,
-# so the lexicon buys nothing.
-_EN_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+# capitalized by convention and so is never evidence. That positional rule reproduced
+# a 90-word function-word lexicon's pairings over 1,260 turns of third-person Aozora
+# narration, so no general lexicon ships — but first-person speech takes the two
+# additions below (M12.5, 215 real translator turns). A quotation opens a sentence of
+# its own, and English capitalizes "I" everywhere: unstopped it was the commonest sole
+# proper noun in the stream — 22 of the 63 single-name turns against `Gon`'s 17 — and
+# it pinned `標柱 = I` into the brief through 13 of that term's 26 sightings.
+# A quote only opens where a word does, so the straight `"` — which is the same
+# character closing as opening — splits once rather than at both ends of the speech.
+_EN_SENTENCE = re.compile(r'(?<=[.!?])\s+|(?:^|(?<=\s))(?=["“‘])')
 _EN_WORD = re.compile(r"[A-Za-zÀ-ſ'’-]+")
 _EN_NAME = re.compile(r"[A-Z][A-Za-zÀ-ſ'’-]*(?:\s+[A-Z][A-Za-zÀ-ſ'’-]*)*")
 _EN_POSSESSIVE = re.compile(r"[’']s$")
+# `_EN_NAME`'s class swallows the apostrophe, so each contraction matches as one token
+# and needs its own entry; the typographic form folds to ASCII before the lookup.
+_EN_STOP = frozenset({"i", "i'm", "i'd", "i'll", "i've"})
 
 
 def _en_names(text: str) -> list[str]:
@@ -675,12 +684,14 @@ def _en_names(text: str) -> list[str]:
     names = []
     for sentence in _EN_SENTENCE.split(text):
         first = _EN_WORD.search(sentence)
-        if first:
-            names += [
-                _EN_POSSESSIVE.sub("", match.group())
-                for match in _EN_NAME.finditer(sentence)
-                if match.start() >= first.end()
-            ]
+        if not first:
+            continue
+        for match in _EN_NAME.finditer(sentence):
+            if match.start() < first.end():
+                continue
+            name = _EN_POSSESSIVE.sub("", match.group())
+            if name.lower().replace("’", "'") not in _EN_STOP:
+                names.append(name)
     return names
 
 

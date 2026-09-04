@@ -94,6 +94,29 @@ goes under Spine flags and to the user instead of running here.
   sentinel, assert the EN line reaches the transcript; then rule on `SIGHUP` with that in hand.
   Close as no-defect if the drain holds and terminal death explains it, recording that.
 
+- **P-020 · A sentence that starts after a closing quote is read as mid-sentence.** `pri 2` ·
+  `size S`. Found by P-019, out of its contract. `_EN_SENTENCE` now splits where a quote OPENS
+  speech (`live_stt.py:673`), but a terminator inside the quote (`.”`) still hides the boundary,
+  because the lookbehind wants `[.!?]` immediately before the whitespace. Same class: `…` ends
+  sentences 20 times in this stream and `[.!?]` does not carry it.
+  **It costs a CORRECT rendering, measured on the committed pairing trace.** n=182 is
+  `“That thing … their doing.” Hyōjun was startled and looked at Kasuke’s face.` → the shipped rule
+  reads two names, `['Hyōjun', 'Kasuke']`, so `observe_en`'s EN gate shuts. Splitting on
+  `(?<=[.!?])["”’»]*\s+` makes `Hyōjun` sentence-initial, leaving `Kasuke` alone; with n=181
+  (`When we got in front of the castle, Kasuke said.`) that is `CONTEXT_EN_SUPPORT`=2 and the run
+  learns **`カスケ = Kasuke` @182** — 加助, the story's second real character name. Arms over
+  `tests/eval_en_pairing.py` (default mode, <1 s, no codex): shipped `{ゴン: Gon, 神様: God}` →
+  +closing quote `{ゴン: Gon, カスケ: Kasuke, 神様: God}`; `…` alone moves nothing here, so it ships
+  on the class argument, not on this trace.
+  Acceptance: the trace learns exactly those three, P-019's two unchanged at @31/@194 — widen
+  `tests/test_en_pairing.py::test_the_committed_run_learns_two_renderings_and_no_pronoun` (rename
+  it; its name counts the renderings) rather than adding a row beside it; model-free locks in
+  `tests/test_context.py` that a name after quoted
+  speech and a name after `…` are both sentence-initial, each neutralized (L-022). Watch the
+  straight `"`: it closes with the character it opens with, so the opener guard
+  `(?:^|(?<=\s))` must keep holding — `test_a_name_after_quoted_speech_is_still_evidence` is the
+  lock that reds if it does not.
+
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its
 why/evidence/acceptance whole. Do not re-file it here.
@@ -113,54 +136,16 @@ why/evidence/acceptance whole. Do not re-file it here.
   first, and it is now **`roadmap.md` M13.1**, which owns its seam, calibration probe, corpus check
   and acceptance whole. Do not re-file it here.
 
-- **P-019 · `observe_en` learned the English pronoun "I" as a name, on the shipped path.** `pri 1` ·
-  `size S`. Found by M12.5, out of its contract. `_en_names` accepts any capitalized run that is not
-  sentence-initial (`live_stt.py:673`), and English capitalizes "I" everywhere — so the rule that
-  needs no lexicon needs exactly one entry.
-  **Measured over 215 real translator turns** (`tests/eval_en_pairing.py` + the committed
-  `tests/en_pairing_trace.json`): **"I" is the single most common sole proper noun in the whole
-  English stream — 20 of the 63 turns that carry exactly one, ahead of the protagonist's real name
-  `Gon` at 17.** Two of them (captions 77 and 127) landed while 標柱 was the only unpaired trusted
-  term, meeting `CONTEXT_EN_SUPPORT`=2, so the session ended briefing the translator
-  **`標柱 = I`** — carried through the last 13 of that term's 26 sightings — beside the correct
-  `ゴン = Gon` and `神様 = God`. 標柱 is itself a mis-recognition of 兵十, so the learner pinned a
-  wrong key to a pronoun and told the translator to render it that way every time.
-  **The fix is measured and one token wide:** dropping `"I"` from `_en_names` removes the pairing and
-  leaves both correct renderings identical (`ゴン = Gon` @31, `神様 = God` @194). Adding `It`/`Ah`
-  changes nothing more here — both occur only inside quotes (captions 33, 83) after `thought, "`,
-  which `_EN_SENTENCE`'s `[.!?]\s+` split cannot see, so they are the same class and did not land.
-  **Why D-015 missed it:** its 90-word function-word lexicon comparison ran on 1,260 turns of clean
-  third-person Aozora narration, which never puts a mid-sentence "I" in a caption carrying exactly
-  one unpaired term. "No lexicon ships" holds for that corpus and fails on this one.
-  Wider exposure, not fixed by the stop set: the same rule pins hallucinated names too — `Okkawa`
-  (caption 106) and `Anke` (123) are proper nouns the translator invented, and either would have
-  paired had it agreed with itself twice.
-  Acceptance: over the committed pairing trace the learner acquires `ゴン = Gon` and `神様 = God` and
-  nothing else, 標柱 unpaired; a model-free test locks that `_en_names` rejects a lone "I" while
-  still accepting a real mid-sentence name; neutralizing the exclusion reds it (L-022).
-  **The JA-side plausibility test was offered, chosen by the user, and then REFUTED by measurement
-  — do not re-propose it.** The user picked it on 2026-09-04 conditional on it being the more robust
-  long-term shape; it is not. Arms over the committed pairing trace, JA-side gate = "the key is a
-  katakana run": shipped `{ゴン: Gon, 標柱: I, 神様: God}` → katakana-only `{ゴン: Gon}`. It drops the
-  **correct** `神様 = God`, and it removes `標柱 = I` only by accident — 標柱 is kanji, so the same
-  rule blocks the **entire kanji-name class**, and 兵十 / 加助 are kanji names in this very story.
-  A key-shape test cannot separate these cases because the shipped defect's key IS name-shaped
-  (標柱 is a mis-recognition of the name 兵十); what separates them is purely English-side, where
-  `Gon` and `God` are names and `I` is a pronoun.
-  **So the robust shape is English-side and has two mechanical classes plus one irreducible one.**
-  (a) **Lexical** — "I" and its contractions, a closed set fixed by the language; `_EN_NAME`'s
-  character class swallows the apostrophe, so `I’m`/`I’d`/`I’ll`/`I’ve` match as single tokens and
-  the test must fold on the apostrophe. (b) **Positional** — `_EN_SENTENCE` splits on `[.!?]\s+`
-  only, so the first word inside a quotation reads as mid-sentence: measured `It` (caption 33,
-  `thought, “It’s a marker post.”`) and `Ah` (83). Neither landed here, but they are the same defect
-  one quote earlier. (c) **Semantic** — a hallucinated but genuine proper noun (`Okkawa`, `Anke`) is
-  unreachable by any lexical or positional rule; the defence that actually worked is
-  `CONTEXT_EN_SUPPORT`=2 agreeing turns, which is what stopped `Anke`/`Hyōjū` pairing to イワシ.
-  Raising that threshold is the tunable, not a key-shape test.
-  Revised acceptance: (a) + (b) shipped together, `ゴン = Gon` and `神様 = God` preserved
-  byte-identically on the committed trace and 標柱 unpaired; model-free locks that a lone `I` and
-  each contraction are rejected while a real mid-sentence name is kept, and that a quote-opening
-  word is treated as sentence-initial; neutralize each (L-022). Leave (c) recorded, unfixed.
+- **P-019 SHIPPED, and its rejected shape must not be re-proposed.** `observe_en` learned
+  `標柱 = I`; the fix is English-side and lives in `live_stt.py:663-677` — a 5-entry stop set for
+  the pronoun and its contractions, plus `_EN_SENTENCE` treating a quote-opening word as
+  sentence-initial. The JA-side plausibility test (key must look like a name) was offered, chosen
+  by the user, and **refuted by arms over the committed pairing trace**: it drops the CORRECT
+  `神様 = God` and removes `標柱 = I` only because 標柱 is kanji, so it blocks the entire kanji-name
+  class (兵十 / 加助 are kanji names in this story). No key-shape test can separate the cases,
+  because the defect's key IS name-shaped. `memory.md` D-015 carries the measurement and the one
+  residue that stayed unfixed: a hallucinated but genuine proper noun (`Okkawa`, `Anke`) is
+  unreachable by any lexical or positional rule, and `CONTEXT_EN_SUPPORT` is the only lever there.
 
 - **P-018 · A declined caption still teaches the recogniser-side learner.** `pri 3` · `size S`.
   M13.1's screen sits at the TRANSLATOR seam (`live_stt.py:1005`), and both producers fold the

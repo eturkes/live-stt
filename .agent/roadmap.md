@@ -18,8 +18,8 @@ unit touches decode quality, a CER number the commit body records.
   milestone by user direction. **M13.1 is DONE and no unit is OPEN**, so the next session's mode is
   PLANNING for M13's recogniser scope — which is **BLOCKED on a standing precondition: a retained
   WAV of laughter / throat-clearing / room tone** (`## Decisions pending from user`). Evidence
-  unchanged ⇒ read-only close, and run a standing option instead — **M12.5 is now DONE, so the
-  M12 tail is gone and P-019 is the one funded-looking alternative awaiting a ruling.** Two
+  unchanged ⇒ read-only close, and run a standing option instead — **M12.5 and P-019 are both
+  DONE, so no alternative is funded and the standing options are what is left.** Two
   real-world sessions, both flagged:
   session 1 = 9 captions that are 76-100 % one short unit repeated 33-148 times (341-517 chars);
   session 2 = 2 more, new max **890 chars** against a caption p50 of 17. No committed artifact
@@ -38,8 +38,8 @@ unit touches decode quality, a CER number the commit body records.
   What the milestone found instead are two modes P-012 never named, and both are real: the learner
   **stabilises a WRONG key** (M12.1 — the two terms it trusted all session were mis-recognitions,
   while the protagonist sat below a floor M12.4 then lowered), and it **learns a WRONG rendering**
-  (M12.5 — `標柱 = I`, because English capitalizes its first-person pronoun). The first is fixed;
-  the second is `polish.md` **P-019** and awaits a user ruling. Opened by
+  (M12.5 — `標柱 = I`, because English capitalizes its first-person pronoun). **Both are now
+  fixed**, the second by P-019 on 2026-09-04. Opened by
   user decision on the P-012 register row, which outgrew polish.
   `observe_en` (D-015, shipped by P-002 in `16a842b`) keys a learned English spelling on the JA
   string the RECOGNISER produced, and every P-002 arm ran on clean Aozora text — the learner's best
@@ -58,8 +58,8 @@ unit touches decode quality, a CER number the commit body records.
   **but only in simulation. M12.5 put all 215 captions through the real translator and neither
   pairing exists**, because a rendering needs a proper noun and both keys are ordinary English
   nouns; the control ゴン → `Gon` pairs in the same run, so that is a refutation and not a null.
-  The **fourth mode**, and the one still open, is what that run found instead: the learner pairs
-  `標柱 = I` off the English first-person pronoun (`polish.md` **P-019**).
+  The **fourth mode** is what that run found instead: the learner pairs `標柱 = I` off the English
+  first-person pronoun — fixed by **P-019**, English-side, on 2026-09-04.
 - Previous milestone: **M11 production-qualify the shipped whisper+VAC+NPU path** — **IMPLEMENTED**
   (all units DONE). Both questions M11 opened are answered and both answers are green: the VAC
   branch does not drop audio in real time (M11.4, with a 1.25-1.75× reserve), and D-016's retention
@@ -216,13 +216,13 @@ unit touches decode quality, a CER number the commit body records.
   on every one of its own sightings: 標柱 opens 13 times live against the best case's 2. The JA side
   is arm-independent (`observe_ja` never reads `renderings`), so `trusted_at` / `expired_at` /
   `mechanism` / sighting counts are identical in both arms and the report checks that.
-  **Out of contract, registered not fixed — `polish.md` P-019, and it is the sharper finding.**
+  **Out of contract, and the sharper finding — registered as P-019, shipped 2026-09-04.**
   `observe_en` learned **`標柱 = I`**: "I" is capitalized everywhere in English, so it passes the
   not-sentence-initial rule, and it is the **most common sole proper noun in the whole stream — 20
   of the 63 turns carrying exactly one, ahead of `Gon` at 17**. The session ended briefing the
   translator to render a mis-recognised key as a pronoun, for 13 of its 26 sightings. Dropping the
-  single token `"I"` removes it and leaves both correct renderings identical; the user owns whether
-  that shape is right, since the same rule would pin the hallucinated `Okkawa`/`Anke` too.
+  single token `"I"` removes it and leaves both correct renderings identical; the same rule would
+  pin the hallucinated `Okkawa`/`Anke` too, which no lexical or positional rule can reach.
   Suite 256 → **265 passed / 1 skipped / 15.5 s** (9 locks: common-noun English never pairs while a
   mid-sentence name does, an unpaired key keeps closing its neighbours' openings, the verdict moves
   only pairing columns, three refusals binding a turn trace to its captions, the prompted-trace
@@ -606,7 +606,7 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**Two open. The first is an EVIDENCE request, not a design call: M13's recogniser side needs audio
+**One open, and it is an EVIDENCE request, not a design call: M13's recogniser side needs audio
 before it can be planned.** M13.1 shipped the translator mitigation, so nothing else in M13 is
 executable — the two hypotheses take different fixes and no committed clip reproduces the defect.
 **The ask: a short retained WAV (any length, a minute is plenty) of laughter, throat-clearing,
@@ -615,26 +615,12 @@ room tone and a few seconds of silence, recorded on the live-stt mic.** Session 
 follows a 13 s gap — so this is a far smaller ask than "capture a 40-minute session and hope". A
 transcript cannot substitute: audio is the only thing that separates hypothesis (a) an unbounded
 decode from (b) VAC ratifying the loop. Without it M13 cannot open its next unit, and the standing
-options below (a live-mic validation pass, a maintenance pass, a new capability milestone) or M12.5
-are what a session would run instead.
-**A second decision is now waiting and it is a design call, not evidence: `polish.md` P-019.**
-M12.5 measured the learner pairing **`標柱 = I`** on the shipped path — English capitalizes its
-first-person pronoun, so it passes `observe_en`'s not-sentence-initial test, and over 215 real turns
-"I" is the most common sole proper noun in the stream (20 of 63, ahead of `Gon` at 17). The session
-ended telling the translator to render a mis-recognised key as a pronoun. Three shapes, and the
-user chose the JA-side plausibility shape on 2026-09-04 **conditional on it being more robust
-long-term, and measurement says it is not** — a katakana-key gate drops the CORRECT `神様 = God` and
-removes `標柱 = I` only because 標柱 is kanji, so it blocks every kanji name (兵十, 加助 are kanji
-names in this story). The defect's key is itself name-shaped, so no key-shape test can separate the
-cases; the separation is purely English-side. **The shape that survives measurement is English-side
-and mechanical: a lexical stop set (`I` + contractions) plus a positional fix so a quote-opening
-word counts as sentence-initial.** `polish.md` P-019 carries the arms and the revised acceptance;
-it is still `size S`. Hallucinated-but-genuine proper nouns stay unfixable by any such rule, and
-`CONTEXT_EN_SUPPORT`=2 is the lever there. M12 is closed either way; this is a defect in shipped
-behaviour, not a milestone.
-The polish register also holds **P-014** (NPU decode-stall bursts, with M12.3's 6-section
-counter-sample), pickable by `/session-polish` whenever. Standing options, none of them blocking:
-(0) **Rule on P-019 above** — the only open defect in shipped behaviour, and (i) is a small unit.
+options below (a live-mic validation pass, a maintenance pass, a new capability milestone) or a
+polish row are what a session would run instead.
+The polish register holds **P-014** (NPU decode-stall bursts, with M12.3's 6-section
+counter-sample) and **P-020** (a sentence after a closing quote reads as mid-sentence, which costs
+the correct `カスケ = Kasuke`), both pickable by `/session-polish` whenever. Standing options, none
+of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
     user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
     VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.
@@ -643,7 +629,12 @@ counter-sample), pickable by `/session-polish` whenever. Standing options, none 
 (c) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
     most of the obvious ones.
 
-(Last resolved: **M12.5 needed no ruling** — its acceptance named the verdict in advance and the
+(Last resolved: **P-019's fix shape** — the user picked the JA-side plausibility test on 2026-09-04
+conditional on it being more robust long-term; arms over the committed trace showed it is not (it
+drops the correct `神様 = God` and blocks the whole kanji-name class), the user was given that
+refutation and the English-side substitute, and directed the session to implement it. Shipped the
+same day, stop set + quote rule, `{ゴン: Gon, 神様: God}` preserved and 標柱 unpaired.
+Before that: **M12.5 needed no ruling** — its acceptance named the verdict in advance and the
 measurement returned the predicted branch, so M12 closed on the refutation without a user call.
 Before that: **which M13 defect goes first** — the user ruled the translator mitigation ahead of
 the recogniser work on 2026-09-03, and M13.1 shipped it the same day. Before that: **M12's remaining scope** — M12.1's census answered M12's two named modes without a
