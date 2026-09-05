@@ -2,15 +2,13 @@
 
 Canonical plan + status. Pick the lowest-numbered OPEN unit; restate its acceptance before coding.
 Trajectory: single-file personal tool, simplicity over completeness — no frameworks, no config, no
-premature abstraction. Milestone states: UNPLANNED · IN-PROGRESS · IMPLEMENTED · REVIEWED · PARKED.
-Unit states: OPEN · BLOCKED · DONE.
+premature abstraction. Milestone states: UNPLANNED · IN-PROGRESS · IMPLEMENTED (terminal) · PARKED;
+REVIEWED is historical (M9, M10). Unit states: OPEN · BLOCKED · DONE.
 
-**Assurance posture, set by user ruling 2026-09-02 (see `## Decisions pending from user`).** This is a
-personal tool, not an industrial product. Verification = the fast test suite + replay goldens + a
-plain CER script run on demand. Provenance machinery — contract fingerprints, claim registries,
-mutation matrices, per-unit acceptance contracts, review ledgers — was deleted, not serviced. Do not
-reintroduce any of it. A unit closes when its acceptance holds under `python gate.py` and, where the
-unit touches decode quality, a CER number the commit body records.
+**Assurance posture = `.claude/rules/assurance-posture.md`**, auto-loaded beside `CLAUDE.md` every
+session and binding over the command files: a unit closes on `python gate.py` plus, where it touches
+decode quality, a CER number the commit body records — no per-unit acceptance contract, review
+ledger or other provenance machinery.
 
 ## Status
 

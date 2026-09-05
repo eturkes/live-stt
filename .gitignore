@@ -31,7 +31,7 @@ transcripts/
 models/*
 !models/README.md
 
-# Claude Code per-user overrides (committed counterparts: .claude/settings.json, CLAUDE.md)
+# Claude Code per-user overrides (committed counterparts: CLAUDE.md, .claude/rules/)
 .claude/settings.local.json
 CLAUDE.local.md
 
