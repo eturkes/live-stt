@@ -49,26 +49,26 @@ goes under Spine flags and to the user instead of running here.
   `SCALE_LADDER` margin M11.4 already measured. Evidence: `tests/caption_trace.json` @ M12.3 (n=215,
   clean) vs the same file at `f25cfb5` (n=67, one burst).
 
-- **P-017 · The last caption's EN went missing on both short runs, and the drain looks correct.**
-  `pri 3` · `size S`.
-  `transcripts/2026-09-03T16-01-04.txt` (8 JA / 7 EN) and `2026-09-03T16-04-25.txt` (7 JA / 6 EN)
-  each lost the FINAL turn's EN; the 37-minute run between them lost only its runaway and
-  translated n=195 two seconds before exit. Code reading does not explain it: `finalize()` submits
-  the flushed tail (`live_stt.py:1249`) before `worker_task` is awaited, and shutdown then lands
-  `submit_sentinel()` and waits `TRANSLATE_TIMEOUT_S + 5` on `translator_task`
-  (`live_stt.py:1485-1489`). The 16:04 run had ~50 s of slack before the next run started, so a
-  timeout is not it either. Most likely the process died on a signal outside the handled
-  `(SIGINT, SIGTERM)` — `_install_signal_handlers` does not cover `SIGHUP`, so closing the terminal
-  terminates immediately with no drain. Not established: those runs' stderr was not captured.
-  Acceptance: reproduce off-mic through an in-memory harness — submit a final turn, land the
-  sentinel, assert the EN line reaches the transcript; then rule on `SIGHUP` with that in hand.
-  Close as no-defect if the drain holds and terminal death explains it, recording that.
-
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its
 why/evidence/acceptance whole. Do not re-file it here.
 
 ## Spine flags
+
+- **spine? Closing the terminal kills live-stt outright and the last EN dies with it | why: P-017's
+  drain is now PROVEN correct, so only process death explains the two short runs.** The drain lock
+  (`test_the_final_utterance_keeps_its_en_line_through_shutdown`) replays shutdown's order over the
+  real `_vac_segments` + `CodexTranslator` + `TranscriptFile`, with one turn in flight and one
+  caption queued behind it, and both EN lines land; a mutant that clears the backlog at the sentinel
+  reproduces the live symptom exactly (`JA 1, JA 2, EN 1`). `_install_signal_handlers` covers
+  `(SIGINT, SIGTERM)` only, and SIGHUP's default action terminates — measured: a Python child with
+  asyncio SIGINT/SIGTERM handlers installed exits `-1` (= −SIGHUP) with no cleanup. JA flushes as it
+  lands while EN needs the drain ⇒ exactly one missing EN, the last, in both runs (8 JA/7 EN, 7 JA/6
+  EN, final line `JA n` in each). **The fix is not one token.** Handling SIGHUP runs the drain
+  against a dead pty: writing to a pty slave after its master closes raises `OSError` errno 5
+  (measured), and `emit_line` prints to stdout BEFORE `output_file.write`, so the EN line would
+  raise exactly where it is meant to be saved. A real fix = catch SIGHUP **and** make `emit_line`'s
+  stdout write survive a dead terminal — shipped-behaviour policy, so it needs a user ruling.
 
 - **The EN leg died permanently 194 turns into the first real-world session.** CAUSE FOUND and it is
   upstream: n=195/196/197 are three consecutive M13 runaway captions (341/444/86 chars) = exactly

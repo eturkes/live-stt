@@ -726,6 +726,71 @@ def test_the_settling_caption_only_ever_grows_while_an_utterance_is_open(
     assert state.partial == ""  # cleared once the numbered line is published
 
 
+# --- P-017: the last utterance must keep its EN line through shutdown --------
+
+
+def test_the_final_utterance_keeps_its_en_line_through_shutdown(monkeypatch, openvino, tmp_path):
+    # Two short live runs each lost the FINAL turn's EN and nothing else (8 JA/7
+    # EN, 7 JA/6 EN), so replay run_session's shutdown ORDER off-mic over real
+    # parts: mic stops -> audio sentinel -> worker publishes the still-open
+    # utterance and submits it -> ONLY THEN the translation sentinel -> run()
+    # drains ahead of it. A sentinel landing one step earlier, or a drain that
+    # stops at the sentinel instead of behind the queued turn, loses exactly one
+    # EN line: the last. The real CodexTranslator.run/submit_sentinel/queue and a
+    # real TranscriptFile are under test; only the codex turn is faked.
+    engine = whisper_engine(openvino, tmp_path)
+    transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
+    t = live_stt.CodexTranslator(output_file=transcript)
+    t.enabled = True
+    t._proc = None  # _abort_turn early-returns; no turn should fail anyway
+
+    async def session():
+        q: asyncio.Queue = asyncio.Queue()
+        state = live_stt.State()
+        # Turn 1 parks until the sentinel is down, so the shutdown finds one turn
+        # IN FLIGHT and caption 2 still QUEUED behind it. Both must survive; a
+        # sentinel that stops the drain instead of following the backlog loses the
+        # tail, which is the observed symptom. An event, not a sleep: the race is
+        # then decided by the code under test rather than by the scheduler.
+        release = asyncio.Event()
+
+        async def fake_turn(ja: str) -> str:
+            await release.wait()
+            return f"[en] {ja}"
+
+        t._turn = fake_turn  # type: ignore[assignment]
+        # No trailing False: the second utterance is still OPEN when the mic stops,
+        # so it is submitted inside `await worker_task`, one step before the
+        # translation sentinel lands -- the tightest ordering the shutdown has.
+        script = [True] * 30 + [False] * 5 + [True] * 30
+        for _ in script:
+            q.put_nowait(np.zeros(1600, dtype=np.float32))
+        worker_task = asyncio.create_task(
+            live_stt._vac_segments(
+                engine, _StubVad(script), 1600, q, state, transcript, translator=t
+            )
+        )
+        translator_task = asyncio.create_task(t.run())
+
+        await live_stt.submit_audio_sentinel(q)  # run_session's finally, in order
+        await worker_task
+        t.submit_sentinel()
+        release.set()
+        await asyncio.wait_for(translator_task, live_stt.TRANSLATE_TIMEOUT_S + 5)
+        assert t.enabled is True  # the drain finished; close() disables next
+        await t.close()
+        transcript.close()
+
+    asyncio.run(session())
+
+    lines = (tmp_path / "session.txt").read_text(encoding="utf-8").splitlines()
+    tags = [line.split("] ", 1)[1].split(": ", 1)[0] for line in lines]
+    texts = [line.split(": ", 1)[1] for line in lines]
+    assert tags == ["JA 1", "JA 2", "EN 1", "EN 2"]  # nothing lost, nothing degraded
+    assert all(text and TRANSCRIPT.startswith(text) for text in texts[:2])
+    assert texts[2:] == [f"[en] {texts[0]}", f"[en] {texts[1]}"]  # each EN to its own JA
+
+
 class _Screen:
     """stdout double that stops the meter after `ticks` writes."""
 
