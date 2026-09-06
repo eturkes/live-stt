@@ -206,18 +206,40 @@ def test_missing_segments_disable_trimming_but_not_commits():
 
 
 class _StubVad:
-    """Speech is on while `script` says so, one entry per accepted window."""
+    """Speech is on while `script` says so, one entry per accepted window.
+
+    Models sherpa's segment queue as well as its speech flag: the window that
+    ends speech pushes one completed segment, and `pop` is the only thing that
+    ever removes one (P-021). `test_shipped_path.py` drives the same stub.
+    """
 
     def __init__(self, script):
         self.script = list(script)
         self.calls = 0
+        self.closed = 0  # segments the VAD reported finished
+        self.queued = 0  # of those, the ones still held
+        self.peak = 0
+        self.pops = 0
 
     def accept_waveform(self, _block):
+        was_speech = self.is_speech_detected()
         self.calls += 1
+        if was_speech and not self.is_speech_detected():
+            self.closed += 1
+            self.queued += 1
+            self.peak = max(self.peak, self.queued)
 
     def is_speech_detected(self):
         i = min(self.calls, len(self.script)) - 1
         return self.script[i] if i >= 0 else False
+
+    def empty(self):
+        return self.queued == 0
+
+    def pop(self):
+        assert self.queued, "popped a segment the VAD never reported"
+        self.queued -= 1
+        self.pops += 1
 
 
 class _StubRec:
@@ -276,6 +298,33 @@ def test_vac_stays_silent_when_no_speech_is_detected():
     assert lines == []
     assert state.partial == ""
     assert rec.seen == []
+
+
+def test_vac_keeps_no_finished_vad_segment_past_the_window_that_closed_it():
+    """VAC re-slices from its own ring, so a retained segment is pure leak (P-021).
+
+    Peak depth 1 is the load-bearing half: draining at flush alone would still
+    hold every utterance of the session, which is the defect. Measured on 848 s
+    of narration, the undrained VAD ended holding 214 segments = 39.4 MB.
+    """
+    rec, vad = _StubRec(), _StubVad([True] * 30 + [False] * 5 + [True] * 30 + [False])
+    state = live_stt.State()
+    q = asyncio.Queue()
+    for _ in range(66):
+        q.put_nowait(np.zeros(1600, dtype=np.float32))
+    q.put_nowait(None)
+
+    original = live_stt.emit_line
+    live_stt.emit_line = lambda *a: None
+    try:
+        asyncio.run(live_stt._vac_segments(rec, vad, 1600, q, state, None))
+    finally:
+        live_stt.emit_line = original
+
+    assert vad.closed == 2
+    assert vad.pops == vad.closed
+    assert vad.peak == 1
+    assert vad.empty()
 
 
 def test_vac_reports_each_utterance_once_to_on_segment():

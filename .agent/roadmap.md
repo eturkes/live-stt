@@ -588,8 +588,7 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 The standing WAV request is **withdrawn, not satisfied**: M13.2 found the trigger is any audio the
 Japanese pin cannot account for, so 11 s of public-domain English speech reproduces the loop
 offline and no live recording is needed. Both M13 defects shipped.
-The polish register holds **P-021** (the shipped path never drains the VAD and leaks ~3.5 MB per
-speech-minute — found by M13.2, measured, `pri 1`), **P-014** (NPU decode-stall bursts, with
+The polish register holds **P-014** (NPU decode-stall bursts, with
 M12.3's 6-section counter-sample), **P-016** (backlog counters unobtainable under redirection, which
 is why M13.2's live evidence is transcripts and stderr only) and **P-020** (a sentence after a
 closing quote reads as mid-sentence, which costs the correct `カスケ = Kasuke`), all pickable by

@@ -13,24 +13,6 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-- **P-021 · The shipped path never drains the VAD, so it leaks for the whole session.** `pri 1` ·
-  `size S`. `_vac_segments` calls `accept_waveform` + `is_speech_detected` only
-  (`live_stt.py:1397-1400`); it never touches `flush`/`empty`/`front`/`pop`, which the sherpa
-  branch does at `:1245-1249`. Completed VAD segments therefore accumulate in
-  `VoiceActivityDetector` for the whole run, and the segments are exactly what the VAC path does not
-  want — it re-slices its own audio from `RingBuffer`. **Measured, not inferred:** 531 s of speech
-  fed window-by-window without popping ⇒ RSS climbs **linearly, +6.1 MB per 106 s of speech
-  (~3.5 MB per speech-minute), 70 → 99 MB**, `vad.empty()` False throughout, and
-  `is_speech_detected()` stays correct the whole time — so this is retention, not a correctness
-  defect. Live corroboration: the user's `stt.log` carries `circular-buffer.cc:Push:107 Overflow!
-  ... capacity: 960000`, the 60 s audio buffer complaining that nothing drains it. Sizing: `memory.md`
-  § Smoke targets a 1-3 h soak, which is ~200-600 MB of retained segments.
-  Acceptance: after N speech-minutes on the VAC path, RSS growth attributable to the VAD is flat and
-  `vad.empty()` is True between utterances, with `is_speech_detected()` behaviour byte-unchanged on
-  the replay goldens (32/32). Lock it by driving `_vac_segments` with a stub VAD that counts `pop`
-  calls against segments it reported closed; neutralize the drain (L-022). Check whether `flush()`
-  is needed at speech-end or whether popping on `empty()` alone suffices.
-
 - **P-014 · NPU decode stalls in bursts that no committed trace sampled.** `pri 1` · `size M`.
   Two NPU replays of `gongitsune_01.wav` (M12.1) produced byte-identical captions and boundaries but
   not identical cost: each run carried ONE cluster of 3-4 consecutive captions decoding at 1.9-11.7×

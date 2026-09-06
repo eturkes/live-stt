@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import live_stt  # noqa: E402
 from streaming import SAMPLE_RATE  # noqa: E402
+from tests.test_streaming import _StubVad  # noqa: E402  (one VAD stub, two drivers)
 
 TRANSCRIPT = "あいうえおかきくけこさしすせそたちつてと"
 
@@ -391,21 +392,6 @@ def test_a_sherpa_recognizer_runs_the_vad_segment_path(monkeypatch):
 
 
 # --- VAC over the real engine: publication + biasing (P3, P7) -----------------
-
-
-class _StubVad:
-    """Speech is on while `script` says so, one entry per accepted window."""
-
-    def __init__(self, script):
-        self.script = list(script)
-        self.calls = 0
-
-    def accept_waveform(self, _block):
-        self.calls += 1
-
-    def is_speech_detected(self):
-        i = min(self.calls, len(self.script)) - 1
-        return self.script[i] if i >= 0 else False
 
 
 class _RecordingContext:
