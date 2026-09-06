@@ -681,6 +681,22 @@ def emit_line(tag, seq, text, output_file):
         output_file.flush()
 
 
+def emit_note(text, output_file):
+    """Persist one unnumbered session event to the transcript, nothing else.
+
+    A degrade reached stderr alone, so the durable artifact recorded the loss as
+    absence: one live session went JA-only at n=194 and its last 47 turns simply
+    had no EN line, the cause recoverable only from scrollback that was gone.
+    The `--` tag keeps the marker out of the `JA n:`/`EN n:` grammar every reader
+    of these files parses, and stdout is skipped because the logger already
+    carries the same event there.
+    """
+    if output_file:
+        ts = datetime.now().astimezone().isoformat(timespec="seconds")
+        output_file.write(f"[{ts}] -- {text}\n")
+        output_file.flush()
+
+
 def drop_caption(state, text, defect):
     """Refuse one caption: one bounded log line stands in for the whole thing.
 
@@ -915,6 +931,15 @@ def caption_defect(text: str) -> str | None:
     return None
 
 
+def failure_cause(e: BaseException) -> str:
+    """Name an exception, because the one that matters here stringifies to ''.
+
+    `asyncio.wait_for` raises a bare `TimeoutError`, so `%s` rendered the only
+    per-block degrade a live session actually hit as `translation failed ()`.
+    """
+    return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+
+
 class CodexTranslator:
     """JA→EN over a persistent `codex app-server` subprocess (D-011).
 
@@ -924,8 +949,11 @@ class CodexTranslator:
     TRANSLATE_MAX_FAILURES consecutive ones or if startup fails.
     """
 
-    def __init__(self, context: "SessionContext | None" = None):
+    def __init__(
+        self, context: "SessionContext | None" = None, output_file: TranscriptFile | None = None
+    ):
         self.context = context
+        self.output_file = output_file  # EN lines + the one degrade marker
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
         self._next_id = 0
@@ -952,7 +980,7 @@ class CodexTranslator:
                 stderr=asyncio.subprocess.DEVNULL,
             )
         except (FileNotFoundError, OSError) as e:
-            logger.warning("codex CLI unavailable (%s); running JA-only", e)
+            logger.warning("codex CLI unavailable (%s); running JA-only", failure_cause(e))
             return False
         self._reader_task = asyncio.create_task(self._read_loop())
         try:
@@ -970,7 +998,7 @@ class CodexTranslator:
             # translation path (auth, entitlement, instructions) up front.
             await asyncio.wait_for(self._turn("こんにちは。"), TRANSLATE_TIMEOUT_S)
         except Exception as e:
-            logger.warning("codex app-server init failed (%s); running JA-only", e)
+            logger.warning("codex app-server init failed (%s); running JA-only", failure_cause(e))
             await self.close()
             return False
         # A warm-up turn can complete and the server then die before we enable:
@@ -986,6 +1014,21 @@ class CodexTranslator:
             return False
         self.enabled = True
         return True
+
+    def _disable(self, reason: str):
+        """End the EN leg for the rest of the session, once, in both channels.
+
+        Every permanent degrade lands here so the marker cannot double-write or
+        go missing on a new path. Startup failure deliberately routes elsewhere:
+        it has no marker to write, because nothing has been transcribed yet and
+        TranscriptFile creates its file on the first write, so a marker there
+        would leave a file behind every silent session.
+        """
+        if not self.enabled:
+            return
+        self.enabled = False
+        logger.error("translation disabled: %s; JA-only for the rest of the session", reason)
+        emit_note(f"translation disabled: {reason}", self.output_file)
 
     def _instructions(self) -> str:
         """Base instructions plus the session glossary, if anything is known yet.
@@ -1050,12 +1093,10 @@ class CodexTranslator:
                 self._write({"jsonrpc": "2.0", "id": msg["id"], "result": {"decision": "denied"}})
             else:
                 self._notes.put_nowait(msg)
-        # EOF: app-server died -> JA-only. Log once on the enabled->disabled
-        # transition (startup/3-strike both log; a death in an idle gap was the
-        # one silent, permanent case) — T8.5.
-        if self.enabled:
-            logger.error("codex app-server exited; JA-only for the rest of the session")
-        self.enabled = False
+        # EOF: app-server died -> JA-only. _disable records the enabled->disabled
+        # transition once (startup/3-strike both record theirs; a death in an
+        # idle gap was the one silent, permanent case) — T8.5.
+        self._disable("codex app-server exited")
         # Fail pending requests; their awaiters raise and degrade per-block.
         for fut in self._pending.values():
             if not fut.done():
@@ -1125,7 +1166,7 @@ class CodexTranslator:
                 except asyncio.QueueEmpty:
                     pass
 
-    async def run(self, output_file):
+    async def run(self):
         """Sequentially translate queued blocks until a None sentinel."""
         while True:
             item = await self.queue.get()
@@ -1134,7 +1175,7 @@ class CodexTranslator:
             seq, ja = item
             en = await self._translate(ja)
             if en:
-                emit_line("EN", seq, en, output_file)
+                emit_line("EN", seq, en, self.output_file)
                 if self.context is not None:
                     self.context.observe_en(ja, en)
 
@@ -1159,14 +1200,9 @@ class CodexTranslator:
             self._failures += 1
             await self._abort_turn()
             if self._failures >= TRANSLATE_MAX_FAILURES:
-                self.enabled = False
-                logger.error(
-                    "translation disabled after %d consecutive failures (%s); JA-only",
-                    self._failures,
-                    e,
-                )
+                self._disable(f"{self._failures} consecutive failures ({failure_cause(e)})")
             else:
-                logger.warning("translation failed (%s); JA-only for this block", e)
+                logger.warning("translation failed (%s); JA-only for this block", failure_cause(e))
             return ""
 
     async def _turn(self, ja: str) -> str:
@@ -1610,7 +1646,7 @@ async def run_session(args):
 
     translator = None
     if not args.no_translate:
-        t = CodexTranslator(context)
+        t = CodexTranslator(context, output_file)
         if await t.start():
             translator = t
             print(f"Translation: {TRANSLATE_MODEL} via codex app-server")
@@ -1648,7 +1684,7 @@ async def run_session(args):
     worker_task = asyncio.create_task(
         worker(rec, vad, window, audio_q, state, output_file, translator, context=context)
     )
-    translator_task = asyncio.create_task(translator.run(output_file)) if translator else None
+    translator_task = asyncio.create_task(translator.run()) if translator else None
 
     try:
         stream.start()

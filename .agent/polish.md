@@ -49,29 +49,6 @@ goes under Spine flags and to the user instead of running here.
   `SCALE_LADDER` margin M11.4 already measured. Evidence: `tests/caption_trace.json` @ M12.3 (n=215,
   clean) vs the same file at `f25cfb5` (n=67, one burst).
 
-- **P-015 · The saved transcript records a translation degrade only as absence.** `pri 2` · `size S`.
-  Both degrade paths log to stderr alone — `translation disabled after %d consecutive failures`
-  (`live_stt.py:1034`) and `codex app-server exited; JA-only for the rest of the session`
-  (`live_stt.py:943`) — while `TranscriptFile` writes `JA`/`EN` lines only. The durable artifact
-  therefore carries the loss with no cause, and a session cannot be diagnosed after the terminal
-  scrollback is gone. Evidence: `transcripts/2026-09-03T14-03-43.txt` (gitignored, 434 lines) =
-  **241 `JA` lines against 193 `EN`**; `EN` stops after n=194 and never returns (47 consecutive
-  JA-only turns to the end), plus one isolated gap at n=144. Which path fired was recovered only by
-  reading the JA side — n=195/196/197 are three consecutive M13 runaway captions, so it was the
-  3-strike branch. That inference needed the caption shapes and does not generalize; a marker line
-  would have said so directly.
-  **Second evidence point, and it widens the row by one line.** Session 2
-  (`transcripts/2026-09-03T16-07-24.txt`, 195 JA / 194 EN) lost only n=43, and its captured stderr
-  carries the per-block warning the transcript omits: `translation failed (); JA-only for this
-  block`. **The reason is empty** — `logger.warning("translation failed (%s); …", e)`
-  (`live_stt.py:1039`) formats a `TimeoutError`, whose `str()` is `''`, so not even the stderr line
-  says "timeout". `%s` → `%r`, or an explicit `type(e).__name__`, is the whole fix.
-  Acceptance: a run that trips either path writes one marker line into the transcript naming the
-  path, and a per-block failure logs a non-empty cause; `tests/test_translator.py`'s in-memory
-  `FakeProc`/`StreamReader` locks prove the marker lands exactly once on the 3-strike path, once on
-  the EOF path, never repeats after the flip, and that a timed-out turn logs a line naming
-  `TimeoutError`. Neutralize each write (L-022) to prove the locks are non-vacuous.
-
 - **P-017 · The last caption's EN went missing on both short runs, and the drain looks correct.**
   `pri 3` · `size S`.
   `transcripts/2026-09-03T16-01-04.txt` (8 JA / 7 EN) and `2026-09-03T16-04-25.txt` (7 JA / 6 EN)

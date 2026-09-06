@@ -78,6 +78,14 @@ Transcript: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.txt
 
 Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so JA and EN pairs stay matched. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
 
+If the translation leg stops for the rest of the session, live-stt writes one marker line and names the cause:
+
+```
+[2026-08-31T13:52:07+09:00] -- translation disabled: codex app-server exited
+```
+
+The marker holds `--` in place of the number. JA lines continue after it. The transcript is the record that outlives the terminal, so read the marker to see why the EN lines stopped.
+
 `transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
 ## How it works

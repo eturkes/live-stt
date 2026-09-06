@@ -4,7 +4,8 @@ The happy-path live turn needs a real `codex app-server` + auth and stays a
 user smoke (L-004). What is locked here is the failure surface a refactor can
 silently break: 3-strike session disable, backlog eviction, the `_read_loop`
 dispatch/EOF branches plus its oversized-line/broken-transport guard (the sole
-non-local input boundary, T6-hardened), and M13.1's degeneracy screen. All in
+non-local input boundary, T6-hardened), the transcript marker + named cause that
+make a degrade diagnosable afterwards, and M13.1's degeneracy screen. All in
 memory — fake stdio over an asyncio.StreamReader, `asyncio.run` per test, no
 subprocess, no mic, no new dependency.
 """
@@ -338,6 +339,92 @@ def test_eof_logs_once_and_disables(caplog):
     asyncio.run(scenario())
 
 
+# --- P-015: the saved transcript must name a degrade, not just lack EN lines --
+
+
+def _marker_lines(path: Path) -> list[str]:
+    """Transcript lines that are neither JA nor EN, i.e. the degrade markers."""
+    return [ln for ln in path.read_text(encoding="utf-8").splitlines() if " -- " in ln]
+
+
+def test_the_three_strike_degrade_marks_the_transcript_once(tmp_path):
+    # Session 1 went JA-only at n=194 and ran 47 more turns with no EN line and no
+    # recorded cause; which of the two paths fired was recovered only by reading
+    # the JA text. The marker must name the path, land once, and never repeat
+    # afterwards — a marker per later caption would bury the transcript it saves.
+    async def scenario():
+        transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
+        t = live_stt.CodexTranslator(output_file=transcript)
+        t.enabled = True
+        t._proc = None  # _abort_turn early-returns -> no interrupt write needed
+
+        async def timeout(_ja):
+            raise TimeoutError  # what asyncio.wait_for raises around a stalled turn
+
+        t._turn = timeout  # type: ignore[assignment]
+        for _ in range(live_stt.TRANSLATE_MAX_FAILURES):
+            assert await t._translate("テスト") == ""
+        assert t.enabled is False
+        for _ in range(3):  # every later caption after the flip
+            assert await t._translate("テスト") == ""
+        transcript.close()
+
+    asyncio.run(scenario())
+    markers = _marker_lines(tmp_path / "session.txt")
+    assert len(markers) == 1
+    assert markers[0].startswith("[")  # same timestamped shape as a JA/EN line
+    assert "] -- translation disabled: " in markers[0]  # but outside their grammar
+    assert f"{live_stt.TRANSLATE_MAX_FAILURES} consecutive failures" in markers[0]
+    assert "TimeoutError" in markers[0]  # which path AND what failed
+
+
+def test_the_eof_degrade_marks_the_transcript_once(tmp_path):
+    # The other permanent path: codex dies in an idle gap. Feeding EOF twice
+    # proves the marker tracks the enabled->disabled TRANSITION rather than the
+    # event, so a second cleanup pass cannot re-mark a session already degraded.
+    async def scenario():
+        transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
+        t = live_stt.CodexTranslator(output_file=transcript)
+        t.enabled = True
+        for _ in range(2):
+            reader = asyncio.StreamReader()
+            reader.feed_eof()
+            t._proc = _FakeProc(reader)  # type: ignore[assignment]
+            await t._read_loop()
+        assert t.enabled is False
+        transcript.close()
+
+    asyncio.run(scenario())
+    markers = _marker_lines(tmp_path / "session.txt")
+    assert len(markers) == 1
+    assert "translation disabled: codex app-server exited" in markers[0]
+
+
+def test_a_timed_out_turn_logs_the_cause_it_used_to_swallow(caplog, monkeypatch):
+    # Session 2's entire stderr record of a lost EN line was `translation failed
+    # ()`: TimeoutError carries no message, so %s formatted the cause away and not
+    # even the word "timeout" survived. A real wait_for timeout here, so the test
+    # locks the rendering of the exception production actually raises.
+    async def scenario():
+        t = live_stt.CodexTranslator()
+        t.enabled = True
+        t._proc = None
+
+        async def hang(_ja):
+            await asyncio.sleep(3600)
+
+        t._turn = hang  # type: ignore[assignment]
+        monkeypatch.setattr(live_stt, "TRANSLATE_TIMEOUT_S", 0.01)
+        with caplog.at_level(logging.WARNING, logger="live_stt"):
+            assert await t._translate("テスト") == ""
+        assert t.enabled is True  # one block lost, the session survives
+
+    asyncio.run(scenario())
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    assert "TimeoutError" in warnings[0].getMessage()
+
+
 def test_start_refuses_dead_server_after_warmup(monkeypatch):
     # T8.6: the warm-up turn completes, then the server dies before start()
     # enables (its turn/completed is consumed, the next readline hits EOF). The
@@ -521,7 +608,7 @@ def test_a_degenerate_caption_never_reaches_a_turn():
         assert t.dropped_translations == 0  # a content decision, never backpressure
 
         t.submit_sentinel()
-        await t.run(None)
+        await t.run()
 
         assert turns == [real]  # the runaway never entered a turn
         assert paired == [real]  # nor observe_en (D-015)
