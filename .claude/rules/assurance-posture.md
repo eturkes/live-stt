@@ -23,8 +23,8 @@ Retired — never reintroduce (roadmap `## Out of scope`):
 - Contract fingerprints · claim registries · mutation matrices.
 
 Live, per the command files: assurance tiers · MVP-spine units · `.agent/polish.md` · worktree
-isolation · evidence roles (`map` `res` `spike` `test` `orc` `prod` `diff` `triage` `scout` `gate`) ·
-two-tier reports · Close order · commit convention.
+isolation · every role the command file names except the retired three · two-tier reports ·
+Close order · commit convention.
 
 Adversarial review (`CLAUDE.md` review-termination rule) fixes its check set before reading the diff,
 then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its subchecks: adjudicate every
@@ -33,6 +33,7 @@ bounds presentation, never coverage — a check set that will not fit means the 
 (L-031) ⇒ report that and let MAIN split it, which is also PLANNING's calibration input. The report
 is the whole record; no ledger carries rows between sessions.
 
-Context window = **1M**. Every gauge recorded through M13 reads `N% NK/240K`: absolute K and the
-`main=`/`est` ratios stay comparable across the change, the percentage does not, and the one-window
-aim rose ~4× ⇒ size new units against 1M.
+`<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): **273K**
+now, `/240K` in every gauge M11-M13 recorded. Compare units by absolute K; the percentage is
+denominator-relative. Those recorded `main=` actuals stay live sizing analogs ⇒ PLANNING sizes new
+units bottom-up against them plus the global reserve, never against a literal written here.
