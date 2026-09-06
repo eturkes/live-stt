@@ -29,6 +29,23 @@ goes under Spine flags and to the user instead of running here.
   3 strikes, session 6 on `codex app-server exited` at 14:38:49, and caption 263 escaping the screen
   — and a fresh clone with no `transcripts/` exits clean rather than failing.
 
+- **P-022 · rule on `CAPTION_REPEAT_MAX_CHARS`=40's known false negatives** · `pri 3` · `size S` ·
+  out of contract for M14.1, which held the threshold fixed at 40 by acceptance.
+  **Why:** widening the unit bound to 13 made the threshold's margin measurable on the phrase side
+  for the first time, and it is no longer the empty gap M13.2 recorded. Three live captions repeat a
+  phrase exactly 4× and survive at 36 / 30 / 28 chars — `イメージの質問は、`×4 (session 1 n=213),
+  `つもい`×10 (session 6 n=103), `翌日は翌日です`×4 (session 1 n=197) — all decode loops, none
+  dropped. Against them the largest repetition a SPEAKER produced is 20 (`リソース?`×4), so the
+  usable range is 21..36 and the current 40 sits above all three.
+  **Cost of acting:** the margin over genuine speech falls from 2× to ~1.4× at a threshold of 28,
+  and M13.1's measurement says nothing about it — 40 was picked against the TRANSLATOR's stall
+  floor (shortest measured stall 120 chars), not against publication. A caption of 36 repeated
+  characters does not stall a turn, so this trades reader noise against dropping real speech.
+  **Acceptance:** re-derive the live population at the candidate threshold, adjudicate every newly
+  dropped caption as loop or speech, and keep a ≥1.5× margin over the largest genuine repetition —
+  or record the refusal with that margin as the reason. `tests/test_translator.py`'s corpus and
+  boundary locks plus the pass-list in `test_shipped_path.py` are what must move with it.
+
 P-014 was CLOSED on committed data (user ruling): its exit-2 evidence pointer was wrong — a caption's
 `decode_s` is the SUM of that utterance's VAC update decodes, so its 7.420 s max is not a blockage
 and never was comparable to `AUDIO_HEADROOM_S`. The comparable instrument is CARRY, and

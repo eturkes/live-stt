@@ -268,7 +268,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
 | `TRANSLATE_QUEUE_MAX` | 50 | Translation backlog cap (drop-oldest) |
 | `CAPTION_REPEAT_MAX_CHARS` | 40 | Repetition span that drops a caption before it is published |
-| `CAPTION_REPEAT_UNIT_CHARS` | 8 | Longest repeated unit that screen counts as a decode loop |
+| `CAPTION_REPEAT_UNIT_CHARS` | 13 | Longest repeated unit that screen counts as a decode loop. A drop needs four repeats of a unit this long, so a speaker who says one phrase three times is still published |
 | `CAPTION_LATIN_RATIO` | 4 | Latin letters per Japanese character above which a caption is English |
 
 ## Notes

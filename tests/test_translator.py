@@ -569,14 +569,16 @@ def _runaway(unit: str, span: int) -> str:
 
 
 def _real_japanese() -> list[str]:
-    """Every real caption committed in tree: 215 NPU captions + each golden text."""
+    """Every real Japanese committed in tree: 215 NPU captions, each golden text,
+    and the Aozora reference — 10.7 K characters no accelerator can change."""
     trace = json.loads((TESTS / "caption_trace.json").read_text(encoding="utf-8"))
     texts = [c["text"] for c in trace["captions"]]
     goldens = json.loads((TESTS / "replay_goldens.json").read_text(encoding="utf-8"))
     for clips in goldens.values():
         for row in clips.values():
             texts += [seg["text"] for seg in row["segments"]] + [row["ja_ref"]]
-    return texts
+    long_form = json.loads((TESTS / "long_form.json").read_text(encoding="utf-8"))
+    return texts + [s["reference"]["text"] for s in long_form["sections"].values()]
 
 
 def test_a_degenerate_caption_never_reaches_a_turn():
@@ -663,6 +665,11 @@ def test_a_declined_caption_names_its_reason_once(caplog):
         ("は", 890),  # session 2 n=43, the observed maximum caption
         ("次は、", 444),  # session 1 n=196, first of the three that killed the leg
         ("中央の", 333),  # session 2 n=22
+        # The three the 8-character bound let through, each measured live and
+        # each an escape only because its unit is longer than the old bound.
+        ("いい音があるので、", 664),  # session 6 n=263, x68 — reached the translator
+        ("キーパーソースになります", 53),  # session 5 n=114, x4 — the shortest true loop
+        ("、彼女の人にとってもらえず", 443),  # session 1 n=227, x33 — hit max_length
     ],
 )
 def test_every_caption_measured_to_stall_the_translator_is_declined(unit, span):
@@ -670,13 +677,16 @@ def test_every_caption_measured_to_stall_the_translator_is_declined(unit, span):
 
 
 def test_the_screen_flags_no_real_caption():
-    # The false-positive side, hardware-free and rerunnable from committed state:
-    # across every real Japanese caption in tree the longest adjacent repetition
-    # is 8 characters (ポンポンポンポン, an onomatopoeia the story itself uses),
-    # five times under the threshold.
+    # The false-positive side, hardware-free and rerunnable from committed state.
+    # Widening the unit bound to 13 raises the longest surviving repetition in
+    # tree from 8 (ポンポンポンポン, an onomatopoeia the story itself uses) to 18 —
+    # a speaker saying a 9-character phrase twice, which is what the bound now
+    # reaches. It survives with better than a 2x margin, and nothing else moves.
     spans = {text: live_stt.repeat_span(text) for text in _real_japanese()}
+    longest = max(spans, key=lambda t: spans[t])
 
-    assert max(spans.values()) == 8
+    assert spans[longest] == 18
+    assert "、うなぎが食べたい、うなぎが食べたい" in longest  # said twice, not looped
     assert not [t for t, s in spans.items() if s >= live_stt.CAPTION_REPEAT_MAX_CHARS]
 
 
@@ -687,9 +697,42 @@ def test_the_threshold_is_a_boundary_and_the_unit_bound_is_real():
     # short, so the bound is what keeps a person out of the screen.
     limit = live_stt.CAPTION_REPEAT_MAX_CHARS
     unit = live_stt.CAPTION_REPEAT_UNIT_CHARS
+    distinct = "あいうえおかきくけこさしすせそ"  # >unit characters, none repeating
+    assert len(distinct) > unit
 
     assert live_stt.repeat_span("ごんは兵十のうちへ出かけました。") == 0  # a span, not a length
     assert live_stt.repeat_span("あ" * (limit - 1)) == limit - 1
     assert live_stt.repeat_span("あ" * limit) == limit
-    assert live_stt.repeat_span(("あいうえおかきくけこ"[:unit]) * 5) >= limit
-    assert live_stt.repeat_span(("あいうえおかきくけこ"[: unit + 1]) * 5) < limit
+    assert live_stt.repeat_span(distinct[:unit] * 4) >= limit
+    assert live_stt.repeat_span(distinct[: unit + 1] * 4) == 0  # one character wider, invisible
+
+
+def test_a_phrase_said_three_times_survives_at_every_size_the_screen_scans():
+    # What the bound is FOR, stated as the invariant rather than as a number: a
+    # drop needs ceil(limit/size) repeats, so the widest unit must still take
+    # four. 13 is the last bound that does (3x13=39), which is why widening
+    # stopped there — at 14 a tripled phrase drops, and a live caption shows the
+    # shape (完全にどころから…x2 followed by a unique third sentence).
+    unit = live_stt.CAPTION_REPEAT_UNIT_CHARS
+
+    assert unit * 3 < live_stt.CAPTION_REPEAT_MAX_CHARS
+    for size in range(1, unit + 1):
+        phrase = ("あいうえおかきくけこさしすせそたちつてと" * 2)[:size]
+        assert live_stt.repeat_span(phrase * 3) < live_stt.CAPTION_REPEAT_MAX_CHARS
+
+
+def test_both_screens_read_one_bound(caplog):
+    # The publication screen and the translator backstop are two sites deciding
+    # one question, so they share repeat_span rather than each carrying a copy —
+    # a caption caught at publication must also be declined if it ever reaches
+    # the queue by another route.
+    escape = _runaway("いい音があるので、", 612)  # session 6 n=263
+    t = live_stt.CodexTranslator()
+    t.enabled = True
+
+    with caplog.at_level(logging.WARNING, logger="live_stt"):
+        t.submit(263, escape)
+
+    assert live_stt.caption_defect(escape)
+    assert t.degenerate_captions == 1
+    assert t.queue.empty()

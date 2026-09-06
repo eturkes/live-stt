@@ -154,12 +154,18 @@ TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) blo
 # fresh thread per turn, 30 s bound — "あ"+"は"*n never finished at 120 characters
 # and every unit up to 5 characters stalled at 480, while 480 characters of real
 # speech cost 7.0 s. So the screen is repetition, never length; 中央の×80 (240
-# characters) translated in 10.8 s. 40 is five times the longest repetition any
-# real caption in tree carries (ポンポンポンポン) and three times under the shortest
-# measured stall. Across 1073 live captions the threshold sits in an empty gap:
-# smallest looped caption 252 characters of repetition, longest surviving one 32.
+# characters) translated in 10.8 s. 40 is three times under the shortest measured
+# stall, and over 1073 live captions it separates the two populations at roughly
+# 2x either side: the longest repetition a SPEAKER produced is 20 (リソース?×4,
+# hunting for a word) and the shortest true loop caught is 48.
 CAPTION_REPEAT_MAX_CHARS = 40
-CAPTION_REPEAT_UNIT_CHARS = 8  # a longer unit is a repeated phrase, not a decode loop
+# A longer unit is a repeated phrase, not a decode loop — but 8 was one character
+# too tight for a live loop (いい音があるので、×68 escaped both screens and reached
+# the translator), and the two next-longest units measured are 12 and 13. What
+# bounds the widening is that a drop takes ceil(40/size) repeats: 13 is the last
+# size needing four, so a speaker who says the same phrase three times is still
+# published. Over the live corpus 8 -> 13 catches 3 more captions, all loops.
+CAPTION_REPEAT_UNIT_CHARS = 13
 # Kana + CJK ideographs (incl. extension A) against Latin letters.
 _JAPANESE_RUN = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
 _LATIN_RUN = re.compile(r"[A-Za-z]")

@@ -573,6 +573,11 @@ SPOKEN_ENGLISH = "I think you said the HDMI is broken, right?"
         "3 months3 months3 months3 months",  # 32 repeated chars: under the bound, still English
         "quantizationは",  # one particle does not make a Japanese caption
         "2025年9月Hirata Kenji",  # the tightest true-English caption in the corpus, 11 vs 2
+        # The loops an 8-character unit bound published: each repeats a unit of
+        # 9, 12 and 13 characters, so nothing shorter ever saw them.
+        "はい、でも" + "いい音があるので、" * 68,  # session 6 n=263, the one that escaped live
+        "そうです " + "キーパーソースになります" * 4,  # session 5 n=114
+        "私が彼女の人にとって" + "、彼女の人にとってもらえず" * 33,  # session 1 n=227
     ],
 )
 def test_caption_defect_names_a_reason_for_every_live_failure(text):
@@ -587,6 +592,11 @@ def test_caption_defect_names_a_reason_for_every_live_failure(text):
         "ポンポンポンポン",  # onomatopoeia: 8 repeated characters
         "どうも、どうも、どうも、どうも、",  # a speaker repeating themselves, 16
         "情報源?情報源?情報源?",  # 12
+        # The widened bound now reaches phrase-length repetition, so the largest
+        # genuine ones in the live corpus are pinned: a speaker hunting for a
+        # word, and one saying the same phrase twice. 20 is the corpus maximum.
+        "情報源?情報源?情報源?リフォーメーション リソース?リソース?リソース?リソース?あ、ソースか!",
+        "同じくらい同じくらいですね どっちでもいいですどっちでもいいです",  # 18
         # Japanese carrying loanwords, which a 1:1 rule would have read as English.
         "A&M Studioですね。",  # the tightest survivor in the corpus, 8 vs 3
         "あ、OK",

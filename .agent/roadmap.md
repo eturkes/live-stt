@@ -13,7 +13,7 @@ ledger or other provenance machinery.
 ## Status
 
 - Milestone: **M14 the EN leg still dies permanently in live sessions** — **IN-PROGRESS**, units
-  M14.1-M14.3 enumerated in `## Open`, M14.1 OPEN.
+  M14.1-M14.3 enumerated; **M14.1 DONE, M14.2 OPEN** (the lowest, and the milestone's largest).
   **Two live sessions ended with translation off for the rest of the run, on two DIFFERENT
   triggers.** Session 1 (`2026-09-03T14-03-43`, 241 JA / 193 EN) died at n≈194 on the 3-strike path,
   three consecutive runaway captions. Session 6 (`2026-09-04T13-44-44`, 263 JA / 248 EN) died at
@@ -22,13 +22,8 @@ ledger or other provenance machinery.
   removed the trigger"* is **refuted by evidence**, and the two triggers need different remedies:
   **a re-probe cannot revive an exited process, only a respawn can.** User ruled 2026-09-06:
   recover, shape = **respawn (EOF) + cooldown re-probe (3-strike)**.
-  **M13's repeat screen also has a measured live escape.** Caption 263 repeats `いい音があるので、`
-  = a **9-character** unit; `repeat_span()` scans sizes 1..`CAPTION_REPEAT_UNIT_CHARS`=8
-  (`live_stt.py:932`), so it never saw it — `stt.log` carries a `not translated` warning for all 12
-  other loops that session and none for 263, which therefore reached the translator.
-  `caption_defect()` shares the bound (`live_stt.py:954`) ⇒ it escapes the publication screen too,
-  leaving only `ASR_REPETITION_PENALTY` against it. Sweep over the 1073 live captions: bound 8 → 26
-  caught (M13.2's recorded number reproduced), 9 → **27**, 12 → 28, 14 → 29, plateau to 20.
+  **M13's repeat screen escape is CLOSED by M14.1** — bound 8 → 13, three more live loops caught,
+  no genuine caption dropped. Detail in `## Done`.
 - **M13.2 and every 2026-09-06 polish fix is shipped and has never met a mic.** The last live
   session predates `bdd0f28` by 2.5 h ⇒ the decode penalty, the publication drop, the VAD segment
   drain (`f105e0c`), the off-TTY meter high-water marks (`12ea603`), the degrade marker (`71f6bf1`)
@@ -115,27 +110,6 @@ ledger or other provenance machinery.
 Each entry below IS its unit's acceptance contract (`.claude/rules/assurance-posture.md`); its
 outcome is the commit body. All three are `tier=kernel` — production code in `live_stt.py`.
 
-- **M14.1 — Close the repeat screen's measured live escape. [OPEN]** M14's **calibration probe**
-  (no M14 actuals yet).
-  **Why:** caption 263 repeats a 9-character unit, passed both screens, reached the translator, and
-  belongs to the class whose strikes killed session 1. `CAPTION_REPEAT_UNIT_CHARS`=8 is one
-  character too tight for a real live loop, and the penalty alone is not the designed defence.
-  **Acceptance:** (a) the widened bound catches caption 263's class at the unchanged
-  `CAPTION_REPEAT_MAX_CHARS`=40; (b) every caption the widening NEWLY catches over the 1073-caption
-  live corpus is adjudicated in the commit body as loop or false positive — the sweep says 1 more at
-  bound 9 and 3 more by bound 14 — and no genuine Japanese caption is dropped; (c) the
-  false-positive side is re-derived over the in-tree corpora that need no gitignored input (215 NPU
-  captions + all replay golden texts + the Aozora reference), recording the longest surviving
-  repetition; (d) the bound stays below the phrase-repetition floor `memory.md` names
-  (`、うなぎが食べたい`×2 = 18 chars), so a speaker repeating a phrase is never dropped; (e) both
-  sites move together — `caption_defect` (`live_stt.py:954`) and `submit`'s backstop (`:1163`);
-  (f) new predicates proved non-vacuous by neutralization (L-022 — drop bytecode between mutants);
-  (g) `python gate.py` 6/6.
-  **Corpus note:** `transcripts/` is gitignored ⇒ the live numbers are durable only in the commit
-  body, exactly as M13.2 recorded its 1073-caption split. Re-derive by parsing `[ts] JA n: text`.
-  **Size:** est 92K → cal 147K, + ~75K baseline. Nearest analog **M12.4** (one constant + corpus arm
-  + locks) actual **171K** — read the analog as the likelier figure, the calibrated one as ceiling.
-
 - **M14.2 — Respawn the EN leg after the app-server exits. [OPEN]**
   **Why:** the trigger that actually fired. `_read_loop`'s EOF path calls `_disable("codex
   app-server exited")` and the leg stays off for the whole session; the process is gone, so there is
@@ -174,17 +148,72 @@ outcome is the commit body. All three are `tier=kernel` — production code in `
   (f) neutralization; (g) `python gate.py` 6/6.
   **Size:** est 40K → cal 64K + ~75K baseline ≈ 139K. Smallest unit; reuses M14.2 whole.
 
-**M14 sizing basis.** No M14 actuals ⇒ M14.1 is the calibration probe and M14.2/M14.3 re-size from
-its measured `main=`. Provisional multiplier **1.6 on WORK, never on the total**: M13.1's recorded
-2.36 is a raw-estimate ratio that never counted the fresh-session baseline, and backing that
-baseline out of its 212K actual leaves a work ratio ≈1.63 — matching the M12 series' 1.60 (spread
-1.34-2.14). **Fresh-session baseline measured this session ≈ 75K**: attached state alone is 182 KB
-(`roadmap.md` 56 KB + `memory.md` 107 KB + `polish.md` 6 KB) before any work, so a unit's usable
-work budget inside the 223K aim is ~148K. Judgment review is retired
+**M14 sizing basis — recalibrated on M14.1's actual.** M14.1 measured **`main=66% 181K/273K`**
+against `est 92K → cal 147K`: backing out the ~75K baseline leaves work 106K against 92K ⇒ measured
+work multiplier **1.15**, far under the provisional 1.6 (M13.1 ≈1.63, M12 series 1.60, spread
+1.34-2.14). **Do not apply 1.15 to M14.2 unadjusted** — L-031 explains the gap: M14.1's whole
+surface was enumerated in its own plan entry (the sweep table, the escape, both sites) so the unit
+originated one decision, the bound, and that is L-031's cheap class. M14.2 originates a design fork
+plus a new mechanism, which is the expensive class. Read M14.2 as its **M13.1 analog (212K)** and
+M14.3 at the measured 1.15 (40K → 46K + 75K ≈ **121K**). Fresh-session baseline ≈ 75K: attached
+state alone is 182 KB before any work, so a unit's usable work budget inside the 223K aim is ~148K
+⇒ M14.2 is the one that can overrun, and its split seam is already named. Judgment review is retired
 (`.claude/rules/assurance-posture.md`) ⇒ no review-session projection. No teammates funded: every
 unit is script-derivable or MAIN-implementable, matching M12.3-M13.2.
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M14.1 — Close the repeat screen's measured live escape. [DONE] — SHIPPED at bound 13, and the
+  value is pinned by an invariant rather than by a count: 13 is the LAST unit size at which a
+  tripled phrase still publishes.** One production constant, 8 → 13
+  (`CAPTION_REPEAT_UNIT_CHARS`), both screens moving together because `caption_defect` and
+  `submit`'s backstop share `repeat_span` — the widening needed no second site.
+  **What decided it, and it is not the catch count.** A drop takes `ceil(40/size)` repeats, so the
+  unit bound sets how many times a speaker may repeat themselves before the screen fires: 5 at
+  bound 8, **4 at 13**, 3 at 14, and a mere DOUBLING at 20. The live corpus prices that last step —
+  session 1 n=163 doubles a 22-character sentence and then adds a unique third one, so a bound of 22
+  would drop real content to catch it. 13 is simultaneously the largest bound that adds a catch and
+  the largest that still demands four repeats (3×13=39 < 40); the two criteria coincide, which is
+  why the choice is not a taste.
+  **The sweep, re-derived over the same 1073 live JA captions / 6 sessions** (M13.2's numbers
+  reproduced exactly at bound 8): 26 caught at 8, 27 at 9, 28 at 12, **29 at 13**, flat through 21,
+  30 at 22. Combined with the language rule the drop rate goes **4.0 % → 4.3 %**.
+  **All three newly-caught captions adjudicated — every one a decode loop, no false positive:**
+
+  | session | n | len | repeated | unit |
+  |---|---|---|---|---|
+  | 6 `13-44-44` | 263 | 664 | 612 | `いい音があるので、`×68 — **the live escape**, reached the translator |
+  | 5 `13-01-53` | 114 | 53 | 48 | `キーパーソースになります`×4 — shortest true loop in the corpus |
+  | 1 `14-03-43` | 227 | 443 | 429 | `、彼女の人にとってもらえず`×33 — hit whisper `max_length` |
+
+  **The false-positive side, re-derived hardware-free from committed state** (215 NPU captions + all
+  golden texts + the Aozora reference, 10.7 K chars — `_real_japanese()` gained the Aozora side this
+  unit): longest surviving repetition **8 → 18**, and the 18 is `、うなぎが食べたい`×2, a speaker
+  saying a phrase twice, 2.2× under the threshold. Live, the largest repetition any SPEAKER produced
+  is **20** — `リソース?`×4 from `…情報源?情報源?…リソース?リソース?…あ、ソースか!`, someone hunting
+  for a word — against a smallest true-loop drop of 48, so 40 sits at 2× on both sides.
+  **A memory correction the measurement forced:** M13.1 recorded "widening the unit bound to 20
+  starts catching a speaker repeating a PHRASE (`、うなぎが食べたい`×2)". That unit is **9**
+  characters, so the phrase is visible from bound 9 — the claim was wrong about the bound and right
+  about the danger. `memory.md` now carries the repeat-count rule instead, which is the property
+  that actually bounds the widening.
+  **Out of contract, registered as P-022, not fixed:** the gap M13.2 called empty no longer is.
+  Three live captions repeat a phrase exactly 4× and survive at 36 / 30 / 28 chars
+  (`イメージの質問は、`×4 the largest) — all loops, none dropped, because 40 was picked against the
+  TRANSLATOR's stall floor and not against publication.
+  Suite 318 → **328 passed / 1 skipped / 14.2 s** (+10: 3 stall rows, 3 publication-screen rows, 2
+  genuine-repetition pass rows, and 2 new locks — the tripled-phrase invariant and one caption
+  proving both screens read one bound). Gate 6/6.
+  All 5 new predicates proved non-vacuous by neutralization (L-022), each mutant reding a DISTINCT
+  set: unit=8 reds 9, unit=12 reds exactly the 13-character caption at both sites (2), unit=14 reds
+  the tripled-phrase invariant alone (1), unit=20 reds 2, and `MAX`=20 reds the genuine-repetition
+  pass list (2); baseline and post-restore both 0 of 123.
+  **The matrix caught its own defect first, and it is a new failure mode for L-022:** restoring
+  mutants with `git checkout -- live_stt.py` reverted the UNSTAGED fix, so mutants 2-4 silently
+  re-ran the un-fixed baseline and reported identical red sets — L-022's stale-`.pyc` tell with a
+  different cause. Restore from a file copy taken after the fix, never from git, while the fix is
+  uncommitted.
+  `main=66% 181K/273K` against `est 92K → cal 147K` ⇒ work ratio **1.15**; no teammates funded.
 
 - **M12.5 — Confirm M12.3's two dead pairings against the real translator. [DONE] — REFUTED: neither
   pairing exists live, the control does, and the run found a defect the simulation could not.**
@@ -675,7 +704,7 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open. M14 is planned and IN-PROGRESS; the next session runs WORK-UNIT on M14.1.**
+**None open. M14 is IN-PROGRESS; the next session runs WORK-UNIT on M14.2.**
 The polish register's `## Open` is **empty** — P-014, P-015, P-017 and P-020 all shipped between
 2026-09-04 and 2026-09-06. Standing options, none of them blocking and none of them M14:
 (a) **A live-mic validation pass** — still the largest untested surface and only the user can run
@@ -689,7 +718,10 @@ The polish register's `## Open` is **empty** — P-014, P-015, P-017 and P-020 a
 (c) **A new capability milestone** — needs a direction, since `## Out of scope` closes most of the
     obvious ones.
 
-(Last resolved: **M14's direction + the recovery shape, both 2026-09-06** — offered (1) the EN leg
+(Last resolved: **M14.1's unit bound** — priced 9 (minimal, catches only the escape), 13, and 17
+(widest, no extra catch); the user chose **13**, the knee where the last new catch and the last
+four-repeat guarantee coincide.
+Before that: **M14's direction + the recovery shape, both 2026-09-06** — offered (1) the EN leg
 still dies live, (2) a live-validation pass, (3) a maintenance pass, (4) a new capability; the user
 chose **(1)**. On the recovery shape, the priced options were respawn+cooldown, cooldown-only, and
 keep-permanent; the user chose **respawn + cooldown**, which is the only one that covers the trigger
