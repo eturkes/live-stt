@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import errno
 import io
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from datetime import datetime
 
 import numpy as np
 
+import live_stt
 from live_stt import (
     DECODE_CHUNK_OVERLAP_S,
     DECODE_CHUNK_S,
@@ -281,6 +283,47 @@ def test_emit_line_no_file_no_crash(capsys):
     emit_line("JA", 1, "テスト", None)
     captured = capsys.readouterr()
     assert "JA 1: テスト" in captured.out
+
+
+class _DeadTerminal:
+    """A pty slave whose master is gone: every write raises OSError errno 5."""
+
+    def write(self, text):
+        raise OSError(errno.EIO, "Input/output error")
+
+    def flush(self):
+        raise OSError(errno.EIO, "Input/output error")
+
+
+def test_emit_line_persists_when_the_terminal_is_already_gone(monkeypatch):
+    # Closing the terminal runs the shutdown drain against a dead pty. stdout used
+    # to go first, so the line raised on the display instead of reaching the file
+    # it was being drained into -- one lost EN line per session, always the last.
+    monkeypatch.setattr(live_stt, "_stdout_live", True)
+    monkeypatch.setattr(sys, "stdout", _DeadTerminal())
+    buf = io.StringIO()
+    emit_line("JA", 1, "こんにちは", buf)
+    emit_line("EN", 1, "Hello", buf)
+    assert "JA 1: こんにちは" in buf.getvalue()
+    assert "EN 1: Hello" in buf.getvalue()
+
+
+def test_write_stdout_latches_off_after_the_first_refusal(monkeypatch):
+    # One failed syscall per line for the rest of the session buys nothing, and a
+    # latch is what lets every other stdout writer share this path unguarded.
+    dead = _DeadTerminal()
+    calls = []
+    monkeypatch.setattr(live_stt, "_stdout_live", True)
+    monkeypatch.setattr(sys, "stdout", dead)
+    monkeypatch.setattr(dead, "write", lambda text: calls.append(text) or _raise_eio())
+    live_stt.write_stdout("first")
+    live_stt.write_stdout("second")
+    assert calls == ["first"]
+    assert live_stt._stdout_live is False
+
+
+def _raise_eio():
+    raise OSError(errno.EIO, "Input/output error")
 
 
 def test_emit_line_line_clear_gated_on_stdout_tty(monkeypatch, capsys):

@@ -18,7 +18,11 @@ function-local import runs.
 """
 
 import asyncio
+import os
+import pty
+import signal
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -789,6 +793,93 @@ def test_the_final_utterance_keeps_its_en_line_through_shutdown(monkeypatch, ope
     assert tags == ["JA 1", "JA 2", "EN 1", "EN 2"]  # nothing lost, nothing degraded
     assert all(text and TRANSCRIPT.startswith(text) for text in texts[:2])
     assert texts[2:] == [f"[en] {texts[0]}", f"[en] {texts[1]}"]  # each EN to its own JA
+
+
+def test_closing_the_terminal_reaches_that_drain_instead_of_killing_the_process():
+    """The other half of the same defect: the drain above was never reached.
+
+    With the drain proven correct, only process death explained the two short
+    sessions, and SIGHUP's default action is termination -- so closing the window
+    killed live-stt outright. JA flushes as it lands while EN needs the drain,
+    which is exactly one lost EN line per session, the last one.
+    """
+    installed = []
+
+    async def install():
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler = lambda sig, callback, *args: installed.append((sig, callback))
+        state = live_stt.State()
+        live_stt._install_signal_handlers(state)
+        return state
+
+    state = asyncio.run(install())
+    assert {sig for sig, _ in installed} == {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
+    for _, callback in installed:
+        callback()
+    assert state.stopping is True
+
+
+_HANGUP_CHILD = """
+import asyncio, sys
+from pathlib import Path
+sys.path.insert(0, {root!r})
+import live_stt
+
+async def main():
+    state = live_stt.State()
+    live_stt._install_signal_handlers(state)
+    f = live_stt.TranscriptFile(Path({path!r}))
+    live_stt.emit_line("JA", 1, "before hangup", f)
+    while not state.stopping:
+        await asyncio.sleep(0.01)
+    live_stt.emit_line("EN", 1, "after hangup", f)   # stdout is a dead pty here
+    f.close()
+
+asyncio.run(main())
+"""
+
+
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+def test_the_terminal_close_drains_to_the_transcript_over_a_real_pty(tmp_path):
+    """What neither lock above can show: the OS delivering the signal.
+
+    pty.fork gives the child a controlling terminal, so closing the master is a
+    genuine hangup. Without SIGHUP handled this child dies of signal 1 with only
+    its JA line on disk -- the live symptom exactly -- and without emit_line
+    persisting first its EN line raises on the pty instead of reaching the file.
+
+    forkpty warns because a fork under threads can deadlock on a lock the child
+    never gets to release. The child here reaches execv in an attribute lookup and
+    a list build -- the source string is rendered BEFORE the fork precisely so
+    nothing else runs in it -- which is the documented way to stay safe.
+    """
+    transcript = tmp_path / "session.txt"
+    source = _HANGUP_CHILD.format(root=str(Path(live_stt.__file__).parent), path=str(transcript))
+    pid, master = pty.fork()
+    if pid == 0:  # pragma: no cover - replaced by execv
+        os.execv(sys.executable, [sys.executable, "-c", source])
+
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:  # the child is up once its JA line lands
+        if transcript.exists() and "JA 1" in transcript.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.01)
+    os.close(master)  # <-- closing the terminal
+
+    status = None
+    while time.monotonic() < deadline and status is None:
+        done, raw = os.waitpid(pid, os.WNOHANG)
+        status = raw if done else None
+        if status is None:
+            time.sleep(0.01)
+    if status is None:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        pytest.fail("child never exited after the hangup")
+
+    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0  # not -SIGHUP
+    lines = [ln.split("] ", 1)[-1] for ln in transcript.read_text(encoding="utf-8").splitlines()]
+    assert lines == ["JA 1: before hangup", "EN 1: after hangup"]
 
 
 class _Screen:

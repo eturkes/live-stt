@@ -27,27 +27,17 @@ why/evidence/acceptance whole. Do not re-file it here.
 
 ## Spine flags
 
-- **spine? Closing the terminal kills live-stt outright and the last EN dies with it | why: P-017's
-  drain is now PROVEN correct, so only process death explains the two short runs.** The drain lock
-  (`test_the_final_utterance_keeps_its_en_line_through_shutdown`) replays shutdown's order over the
-  real `_vac_segments` + `CodexTranslator` + `TranscriptFile`, with one turn in flight and one
-  caption queued behind it, and both EN lines land; a mutant that clears the backlog at the sentinel
-  reproduces the live symptom exactly (`JA 1, JA 2, EN 1`). `_install_signal_handlers` covers
-  `(SIGINT, SIGTERM)` only, and SIGHUP's default action terminates — measured: a Python child with
-  asyncio SIGINT/SIGTERM handlers installed exits `-1` (= −SIGHUP) with no cleanup. JA flushes as it
-  lands while EN needs the drain ⇒ exactly one missing EN, the last, in both runs (8 JA/7 EN, 7 JA/6
-  EN, final line `JA n` in each). **The fix is not one token.** Handling SIGHUP runs the drain
-  against a dead pty: writing to a pty slave after its master closes raises `OSError` errno 5
-  (measured), and `emit_line` prints to stdout BEFORE `output_file.write`, so the EN line would
-  raise exactly where it is meant to be saved. A real fix = catch SIGHUP **and** make `emit_line`'s
-  stdout write survive a dead terminal — shipped-behaviour policy, so it needs a user ruling.
-
 - **The EN leg died permanently 194 turns into the first real-world session.** CAUSE FOUND and it is
   upstream: n=195/196/197 are three consecutive M13 runaway captions (341/444/86 chars) = exactly
   `TRANSLATE_MAX_FAILURES`=3, so **`roadmap.md` M13 owns the trigger** and no diagnosis unit is
   needed here. What survives as an open policy question, and only as one: a 3-strike disable that is
   permanent for the session costs every later turn on a 1-3 h soak target (`memory.md` § Smoke), and
   single runaways at n=130 and n=138 translated fine, so the failures that trip it can be transient.
+  **User ruled it to `/session-roadmap`**: PLANNING sizes it as a unit with its own acceptance rather
+  than a polish item. The two shapes already priced are "keep permanent" (M13.2 removed the trigger
+  that fired it, so the flag closes as fixed upstream) and a cooldown re-probe that retries once per
+  window, re-enabling on a healthy turn and doubling the wait on a failure, at one stalled turn per
+  probe against a genuinely dead codex.
 
 - **The translator's unbounded generation was FLAGGED and is now FUNDED — it left this register the
   same day.** Session 2 measured it as a second, independent defect (`"あ" + "は"*(N-1)` >120 s at

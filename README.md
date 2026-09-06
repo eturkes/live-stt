@@ -275,6 +275,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 
 - Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/roadmap.md` § Deferred).
 - `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
+- Closing the terminal runs that same shutdown. The screen is gone, so the last utterance and its translation land in the transcript file only.
 - Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window. The "Fast" service tier trades quota for speed ("1.5x speed, increased usage"), so it burns that window faster than the per-turn token counts alone suggest; set `TRANSLATE_SERVICE_TIER = "default"` to drop back to the standard tier.
 - Claude Code is this project's development agent. See `CLAUDE.md`, `.claude/`, `.serena/`, and `.agent/` for its workflow and context.
 

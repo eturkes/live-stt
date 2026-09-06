@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import signal
@@ -664,21 +665,52 @@ class TranscriptFile:
             self._f.close()
 
 
+_stdout_live = True
+
+
+def write_stdout(text):
+    """Write to stdout, or give up on it permanently once it stops accepting.
+
+    Closing the terminal is a real shutdown path (SIGHUP), and the drain it
+    triggers outlives the pty: writing to a slave whose master is gone raises
+    OSError errno 5, a closed stream raises ValueError. Both used to abort the
+    caller, and in `emit_line` that was the whole defect -- stdout went first, so
+    the last EN line died on the display it no longer had, one statement before
+    the transcript write meant to preserve it. Latching off keeps the rest of the
+    session's writes cheap instead of one failed syscall per line.
+    """
+    global _stdout_live
+    if not _stdout_live:
+        return
+    try:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+    except (OSError, ValueError):
+        _stdout_live = False
+        # CPython flushes sys.stdout during finalization, and on a dead pty that
+        # flush fails the same way this one did -- measured: it turns an otherwise
+        # clean hangup exit into 120. Dropping the stream is what makes closing the
+        # terminal a normal shutdown; stderr is not implicated (its handler flushes
+        # per record, so finalization finds nothing buffered to lose).
+        sys.stdout = open(os.devnull, "w")
+
+
 def emit_line(tag, seq, text, output_file):
-    """Display + persist one numbered event line (tag: "JA" or "EN").
+    """Persist + display one numbered event line (tag: "JA" or "EN").
 
     JA and EN lines are emitted independently (translation lags ~1 s and may
     interleave with the next block's JA); the shared seq number keeps pairs
     unambiguous. File entries are one self-describing line per event.
+
+    Persist BEFORE display: the transcript is the artifact that has to survive a
+    terminal that is already gone, so it must not sit behind a write to one.
     """
     line = f"{tag} {seq}: {text}"
-    if _STDOUT_TTY:
-        sys.stdout.write(_LINE_CLEAR)
-    print(f"  {line}")
     if output_file:
         ts = datetime.now().astimezone().isoformat(timespec="seconds")
         output_file.write(f"[{ts}] {line}\n")
         output_file.flush()
+    write_stdout(f"{_LINE_CLEAR if _STDOUT_TTY else ''}  {line}\n")
 
 
 def emit_note(text, output_file):
@@ -1589,8 +1621,7 @@ async def meter(state, audio_q, translator=None):
             # and a wrapped line would survive the next _LINE_CLEAR as residue.
             room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
             partial = state.partial[-room:] if room and state.partial else ""
-            sys.stdout.write(f"{_LINE_CLEAR}{status}{'   ' + partial if partial else ''}")
-            sys.stdout.flush()
+            write_stdout(f"{_LINE_CLEAR}{status}{'   ' + partial if partial else ''}")
         else:
             # Off a TTY the carriage-return rewrites would corrupt a redirected
             # stream (L-006), so the counters ride the log instead -- and as
@@ -1721,12 +1752,17 @@ async def run_session(args):
             pass
         if output_file:
             output_file.close()
-        sys.stdout.write("\n")
+        write_stdout("\n")
 
 
 def _install_signal_handlers(state):
     loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    # SIGHUP is the terminal-close path and its default action is termination, so
+    # without it here closing the window killed the process outright: JA flushes
+    # as it lands but EN needs the drain, which is why two live sessions lost
+    # exactly one EN line, the last. Handling it runs the same drain Ctrl+C does,
+    # against a pty that no longer accepts writes -- see write_stdout.
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         try:
             loop.add_signal_handler(sig, state.request_stop)
         except NotImplementedError:
@@ -1814,7 +1850,7 @@ def main():
         asyncio.run(run_session(args))
     except KeyboardInterrupt:
         pass
-    print("Stopped.")
+    write_stdout("Stopped.\n")
 
 
 if __name__ == "__main__":
