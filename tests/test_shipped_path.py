@@ -754,13 +754,84 @@ def run_meter(monkeypatch, state, audio_q=None, translator=None, columns=80, tty
     return screen.writes
 
 
-def test_the_meter_is_silent_off_a_terminal(monkeypatch):
+class _TickingState(live_stt.State):
+    """`stopping` flips True after `ticks` reads, so a meter that writes nothing
+    off a TTY still terminates."""
+
+    def __init__(self, ticks=2):
+        self._ticks = ticks
+        super().__init__()
+
+    @property
+    def stopping(self):
+        self._ticks -= 1
+        return self._ticks < 0
+
+    @stopping.setter
+    def stopping(self, _value):
+        pass
+
+
+def run_meter_log(monkeypatch, state, audio_q=None, translator=None):
+    """Off-TTY meter run; returns the lines it logged."""
+    logged: list[str] = []
+    screen = _Screen(state)
+    monkeypatch.setattr(live_stt, "_STDOUT_TTY", False)
+    monkeypatch.setattr(live_stt, "METER_LOG_INTERVAL", 0)
+    monkeypatch.setattr(live_stt.logger, "info", lambda msg, *a: logged.append(msg % a))
+    monkeypatch.setattr(sys, "stdout", screen)
+    queue = audio_q if audio_q is not None else asyncio.Queue()
+    asyncio.run(live_stt.meter(state, queue, translator))
+    assert screen.writes == [], "carriage returns would corrupt a redirected stream (L-006)"
+    return logged
+
+
+def test_the_meter_never_draws_off_a_terminal(monkeypatch):
     """Carriage returns would corrupt a redirected transcript (L-006)."""
-    state = live_stt.State()
+    state = _TickingState()
     state.partial = "あいうえお"
     state.dropped = 7
 
-    assert run_meter(monkeypatch, state, tty=False) == []
+    assert run_meter_log(monkeypatch, state) == ["backlog peak: drop=7"]
+
+
+def test_a_clean_session_logs_no_backlog_at_all(monkeypatch):
+    """A soak that never fell behind must cost nothing to redirect."""
+    assert run_meter_log(monkeypatch, _TickingState(ticks=5)) == []
+
+
+def test_the_logged_counters_are_the_peaks_not_the_instant_depths(monkeypatch):
+    """A depth that has already drained is exactly what a redirected run cannot see."""
+    state = _TickingState()
+    audio_q = live_stt.AudioQueue()
+    audio_q.put_nowait(np.zeros(SAMPLE_RATE // 2, dtype=np.float32))
+    audio_q.get_nowait()  # drained before the meter ever looks
+    state.max_segment_queue_depth = 3
+    translator = types.SimpleNamespace(dropped_translations=5, degenerate_captions=1)
+
+    (line,) = run_meter_log(monkeypatch, state, audio_q, translator)
+
+    assert line == "backlog peak: q=0.50s seg=3 tdrop=5 tskip=1"
+
+
+def test_the_log_stays_quiet_until_a_peak_actually_moves(monkeypatch):
+    """Bounded cadence: one line per thing learned, not one per tick."""
+    state = _TickingState(ticks=4)
+    audio_q = live_stt.AudioQueue()
+    audio_q.put_nowait(np.zeros(SAMPLE_RATE // 4, dtype=np.float32))
+    ticked = []
+
+    async def grow(_delay):
+        ticked.append(1)
+        if len(ticked) == 2:
+            state.dropped = 1
+
+    monkeypatch.setattr(live_stt.asyncio, "sleep", grow)
+
+    assert run_meter_log(monkeypatch, state, audio_q) == [
+        "backlog peak: q=0.25s",
+        "backlog peak: q=0.25s drop=1",
+    ]
 
 
 def test_an_idle_meter_writes_only_the_line_clear(monkeypatch):

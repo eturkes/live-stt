@@ -589,9 +589,8 @@ The standing WAV request is **withdrawn, not satisfied**: M13.2 found the trigge
 Japanese pin cannot account for, so 11 s of public-domain English speech reproduces the loop
 offline and no live recording is needed. Both M13 defects shipped.
 The polish register holds **P-014** (NPU decode-stall bursts, with
-M12.3's 6-section counter-sample), **P-016** (backlog counters unobtainable under redirection, which
-is why M13.2's live evidence is transcripts and stderr only) and **P-020** (a sentence after a
-closing quote reads as mid-sentence, which costs the correct `カスケ = Kasuke`), all pickable by
+M12.3's 6-section counter-sample) and **P-020** (a sentence after a
+closing quote reads as mid-sentence, which costs the correct `カスケ = Kasuke`), both pickable by
 `/session-polish` whenever. Standing options, none of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
     user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole

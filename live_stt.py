@@ -33,6 +33,10 @@ from streaming import Segment, StreamingProcessor
 
 SAMPLE_RATE = 16000  # VAD + recognizer rate; mic native rate is resampled to this
 METER_INTERVAL = 0.1
+# Off a TTY the meter logs high-water counters instead of drawing. A peak only
+# ever grows, so a 1 s sample loses nothing and bounds both the wakeup rate and
+# the worst case line rate of a redirected soak.
+METER_LOG_INTERVAL = 1.0
 # PortAudio chooses callback block sizes, so a chunk-count cap has no stable
 # duration. Bound captured PCM directly: the VAD feeder normally drains this
 # immediately; 2 s absorbs event-loop stalls without hiding sustained overload.
@@ -1496,43 +1500,74 @@ async def worker(
         state.request_stop()
 
 
+def _backlog(queued_samples, segments, state, translator=None) -> str:
+    """Backlog + content counters, each rendered only when nonzero.
+
+    The two channels differ in exactly one thing -- the status line passes the
+    live depths, the log passes their high-water marks -- so sharing the renderer
+    is what keeps `q=`/`seg=`/`drop=` one vocabulary, which is what the soak
+    checklist reads.
+    """
+    audio_pending = f" q={queued_samples / SAMPLE_RATE:.2f}s" if queued_samples else ""
+    segment_pending = f" seg={segments}" if segments else ""
+    dropped = f" drop={state.dropped}" if state.dropped else ""
+    # tdrop= mirrors drop= for the translation backlog (shown only when >0).
+    tdrop = (
+        f" tdrop={translator.dropped_translations}"
+        if translator and translator.dropped_translations
+        else ""
+    )
+    # skip= counts captions refused before publication, tskip= ones published but
+    # not translated. Both are CONTENT decisions and both stay out of drop=/tdrop=,
+    # which mean a stage fell BEHIND: merging the two corrupts every soak reading
+    # of the backlog.
+    skip = f" skip={state.dropped_captions}" if state.dropped_captions else ""
+    tskip = (
+        f" tskip={translator.degenerate_captions}"
+        if translator and translator.degenerate_captions
+        else ""
+    )
+    return f"{audio_pending}{segment_pending}{dropped}{tdrop}{skip}{tskip}"
+
+
 async def meter(state, audio_q, translator=None):
     # Self-refreshing status line: backlog/drop counters only (each shown when
     # nonzero). _LINE_CLEAR erases the whole line per tick so a shrinking width
     # (e.g. q= clearing) leaves no residue, and block/log output overwrites it.
-    # Off a TTY the carriage-return rewrites would corrupt a redirected stream, so
-    # stay silent there (symmetric with _StderrFormatter).
-    if not _STDOUT_TTY:
-        return
+    last = ""
     while not state.stopping:
-        queued_samples = getattr(audio_q, "queued_samples", 0)
-        audio_pending = f" q={queued_samples / SAMPLE_RATE:.2f}s" if queued_samples else ""
-        segment_pending = f" seg={state.segment_queue_depth}" if state.segment_queue_depth else ""
-        dropped = f" drop={state.dropped}" if state.dropped else ""
-        # tdrop= mirrors drop= for the translation backlog (shown only when >0).
-        tdrop = (
-            f" tdrop={translator.dropped_translations}"
-            if translator and translator.dropped_translations
-            else ""
-        )
-        # skip= counts captions refused before publication, tskip= ones published
-        # but not translated. Both are CONTENT decisions and both stay out of
-        # drop=/tdrop=, which mean a stage fell BEHIND: merging the two corrupts
-        # every soak reading of the backlog.
-        skip = f" skip={state.dropped_captions}" if state.dropped_captions else ""
-        tskip = (
-            f" tskip={translator.degenerate_captions}"
-            if translator and translator.degenerate_captions
-            else ""
-        )
-        status = f" {audio_pending}{segment_pending}{dropped}{tdrop}{skip}{tskip}".rstrip()
-        # Tail-truncate the settling caption: it grows past the terminal width and
-        # a wrapped line would survive the next _LINE_CLEAR as residue.
-        room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
-        partial = state.partial[-room:] if room and state.partial else ""
-        sys.stdout.write(f"{_LINE_CLEAR}{status}{'   ' + partial if partial else ''}")
-        sys.stdout.flush()
-        await asyncio.sleep(METER_INTERVAL)
+        if _STDOUT_TTY:
+            live = _backlog(
+                getattr(audio_q, "queued_samples", 0),
+                state.segment_queue_depth,
+                state,
+                translator,
+            )
+            status = f" {live}".rstrip()
+            # Tail-truncate the settling caption: it grows past the terminal width
+            # and a wrapped line would survive the next _LINE_CLEAR as residue.
+            room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
+            partial = state.partial[-room:] if room and state.partial else ""
+            sys.stdout.write(f"{_LINE_CLEAR}{status}{'   ' + partial if partial else ''}")
+            sys.stdout.flush()
+        else:
+            # Off a TTY the carriage-return rewrites would corrupt a redirected
+            # stream (L-006), so the counters ride the log instead -- and as
+            # HIGH-WATER marks, which is what makes that affordable: a peak only
+            # grows, so one line per change is a line per thing the session
+            # learned, a clean run costs nothing, and an instantaneous q= cannot
+            # churn a line per tick. Silence here is what left a 37-minute
+            # session's drop counters unrecoverable.
+            peak = _backlog(
+                getattr(audio_q, "max_queued_samples", 0),
+                state.max_segment_queue_depth,
+                state,
+                translator,
+            )
+            if peak != last:
+                last = peak
+                logger.info("backlog peak:%s", peak)
+        await asyncio.sleep(METER_INTERVAL if _STDOUT_TTY else METER_LOG_INTERVAL)
 
 
 async def run_session(args):

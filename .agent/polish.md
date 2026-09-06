@@ -67,18 +67,6 @@ goes under Spine flags and to the user instead of running here.
   the EOF path, never repeats after the flip, and that a timed-out turn logs a line naming
   `TimeoutError`. Neutralize each write (L-022) to prove the locks are non-vacuous.
 
-- **P-016 · Backlog counters cannot be captured to a file.** `pri 2` · `size S`.
-  `meter` returns immediately when `not _STDOUT_TTY` (`live_stt.py:1365`, symmetric with
-  `_StderrFormatter`, L-006), so `q=` / `seg=` / `drop=` / `tdrop=` exist only on a live terminal.
-  A user asked for "the output of the run" can therefore supply stderr (warnings only) or a
-  redirected stdout (JA/EN lines, meter silenced) but never the backlog evidence, which is exactly
-  what `memory.md` § Soak asks a soak run to watch. Evidence: session 2's `stt.log` = **one line for
-  37 minutes**, and that session's drop counters are unrecoverable.
-  Acceptance: off a TTY the counters reach the log at a bounded cadence — one stderr line only when
-  a counter is nonzero or has changed, so a clean session still costs ~nothing — and the TTY path is
-  byte-unchanged. Lock the off-TTY emission and the no-change silence in `tests/`; neutralize the
-  gate (L-022) to prove both are non-vacuous.
-
 - **P-017 · The last caption's EN went missing on both short runs, and the drain looks correct.**
   `pri 3` · `size S`.
   `transcripts/2026-09-03T16-01-04.txt` (8 JA / 7 EN) and `2026-09-03T16-04-25.txt` (7 JA / 6 EN)
