@@ -714,7 +714,12 @@ _TERM_RUN = re.compile(r"[ァ-ヺー]{2,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-
 # it pinned `標柱 = I` into the brief through 13 of that term's 26 sightings.
 # A quote only opens where a word does, so the straight `"` — which is the same
 # character closing as opening — splits once rather than at both ends of the speech.
-_EN_SENTENCE = re.compile(r'(?<=[.!?])\s+|(?:^|(?<=\s))(?=["“‘])')
+# The terminator itself is not always the last character of its sentence: quoted
+# speech ends `.”`, and a stream that ends 20 sentences on `…` never presents
+# `[.!?]` at all. Both hid the next sentence's first word mid-sentence, which cost
+# the correct `カスケ = Kasuke` on the committed trace (n=182, `Hyōjun` and `Kasuke`
+# read as two names in one sentence, so the pairing gate shut).
+_EN_SENTENCE = re.compile(r'(?<=[.!?…])["”’»]*\s+|(?:^|(?<=\s))(?=["“‘])')
 _EN_WORD = re.compile(r"[A-Za-zÀ-ſ'’-]+")
 _EN_NAME = re.compile(r"[A-Z][A-Za-zÀ-ſ'’-]*(?:\s+[A-Z][A-Za-zÀ-ſ'’-]*)*")
 _EN_POSSESSIVE = re.compile(r"[’']s$")

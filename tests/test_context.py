@@ -288,6 +288,29 @@ def test_a_quotation_opens_a_sentence(opened: str, closed: str):
     assert ctx.renderings[DRUG] == "Predonine"
 
 
+@pytest.mark.parametrize(
+    "en",
+    [
+        "The nurse said, “The dose is late.” Predonine was given anyway.",
+        "The nurse hesitated… Predonine was given anyway.",
+    ],
+)
+def test_a_terminator_ends_its_sentence_behind_a_quote_or_an_ellipsis(en: str):
+    """A bare `[.!?]` lookbehind cannot see either boundary, so the next sentence's
+    first word reads as a mid-sentence capital -- exactly the thing that IS evidence.
+
+    Measured cost on the committed pairing trace (P-020): n=182 read `…their
+    doing.” Hyōjun was startled and looked at Kasuke's face.` as one sentence, so
+    two names shut the gate and the correct `カスケ = Kasuke` never landed.
+    """
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pair(ctx, CONTEXT_EN_SUPPORT * 2, en)
+    assert ctx.renderings == {}
+    _pair(ctx, CONTEXT_EN_SUPPORT)  # same open gate, a real mid-sentence name: learned
+    assert ctx.renderings[DRUG] == "Predonine"
+
+
 def test_a_name_after_quoted_speech_is_still_evidence():
     """The straight `"` closes with the character it opens with, so only the opener splits."""
     ctx = SessionContext()

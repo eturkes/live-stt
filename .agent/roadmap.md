@@ -588,10 +588,12 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 The standing WAV request is **withdrawn, not satisfied**: M13.2 found the trigger is any audio the
 Japanese pin cannot account for, so 11 s of public-domain English speech reproduces the loop
 offline and no live recording is needed. Both M13 defects shipped.
-The polish register holds **P-014** (NPU decode-stall bursts, with
-M12.3's 6-section counter-sample) and **P-020** (a sentence after a
-closing quote reads as mid-sentence, which costs the correct `カスケ = Kasuke`), both pickable by
-`/session-polish` whenever. Standing options, none of them blocking:
+The polish register holds **P-014**, now marked `stale`: its acceptance prices a paced replay of a
+decode stall that M12.3's 6-section pass refutes, so **choosing between its two exits (reproduce the
+elevated-cost state, or re-scope to worst-observed-decode vs `AUDIO_HEADROOM_S` and close it on
+committed data) is a ruling this mode owes it**. Also open, both pickable by `/session-polish`
+whenever: **P-015** (a translation degrade reaches the saved transcript only as absence) and
+**P-017** (both short runs lost the final turn's EN, and the drain reads correct). Standing options, none of them blocking:
 (a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
     user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
     VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.

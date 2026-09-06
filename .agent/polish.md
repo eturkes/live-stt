@@ -13,7 +13,12 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-- **P-014 · NPU decode stalls in bursts that no committed trace sampled.** `pri 1` · `size M`.
+- **P-014 · NPU decode stalls in bursts that no committed trace sampled.** `pri 1` · `size M` ·
+  **`stale(the acceptance prices a paced replay of a stall the committed trace now refutes; which
+  of the row's own two exits to take is a scope ruling, not a polish call)`** — a `/session-roadmap`
+  session re-rules it: either fund reproducing the elevated-cost state and characterizing its cause,
+  or re-scope to "worst observed decode vs `AUDIO_HEADROOM_S`" and close it on committed data
+  (`caption_trace.json` @ n=215 + M11.4's `SCALE_LADDER` margin), which needs no accelerator run.
   Two NPU replays of `gongitsune_01.wav` (M12.1) produced byte-identical captions and boundaries but
   not identical cost: each run carried ONE cluster of 3-4 consecutive captions decoding at 1.9-11.7×
   real time — worst **55.74 s of decode on a 5.36 s utterance** — worth 77.0 s of 284.7 s and 64.9 s
@@ -81,29 +86,6 @@ goes under Spine flags and to the user instead of running here.
   Acceptance: reproduce off-mic through an in-memory harness — submit a final turn, land the
   sentinel, assert the EN line reaches the transcript; then rule on `SIGHUP` with that in hand.
   Close as no-defect if the drain holds and terminal death explains it, recording that.
-
-- **P-020 · A sentence that starts after a closing quote is read as mid-sentence.** `pri 2` ·
-  `size S`. Found by P-019, out of its contract. `_EN_SENTENCE` now splits where a quote OPENS
-  speech (`live_stt.py:673`), but a terminator inside the quote (`.”`) still hides the boundary,
-  because the lookbehind wants `[.!?]` immediately before the whitespace. Same class: `…` ends
-  sentences 20 times in this stream and `[.!?]` does not carry it.
-  **It costs a CORRECT rendering, measured on the committed pairing trace.** n=182 is
-  `“That thing … their doing.” Hyōjun was startled and looked at Kasuke’s face.` → the shipped rule
-  reads two names, `['Hyōjun', 'Kasuke']`, so `observe_en`'s EN gate shuts. Splitting on
-  `(?<=[.!?])["”’»]*\s+` makes `Hyōjun` sentence-initial, leaving `Kasuke` alone; with n=181
-  (`When we got in front of the castle, Kasuke said.`) that is `CONTEXT_EN_SUPPORT`=2 and the run
-  learns **`カスケ = Kasuke` @182** — 加助, the story's second real character name. Arms over
-  `tests/eval_en_pairing.py` (default mode, <1 s, no codex): shipped `{ゴン: Gon, 神様: God}` →
-  +closing quote `{ゴン: Gon, カスケ: Kasuke, 神様: God}`; `…` alone moves nothing here, so it ships
-  on the class argument, not on this trace.
-  Acceptance: the trace learns exactly those three, P-019's two unchanged at @31/@194 — widen
-  `tests/test_en_pairing.py::test_the_committed_run_learns_two_renderings_and_no_pronoun` (rename
-  it; its name counts the renderings) rather than adding a row beside it; model-free locks in
-  `tests/test_context.py` that a name after quoted
-  speech and a name after `…` are both sentence-initial, each neutralized (L-022). Watch the
-  straight `"`: it closes with the character it opens with, so the opener guard
-  `(?:^|(?<=\s))` must keep holding — `test_a_name_after_quoted_speech_is_still_evidence` is the
-  lock that reds if it does not.
 
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
 label, and the user funded it on 2026-09-02 as **M12** in `roadmap.md`, which now owns its
