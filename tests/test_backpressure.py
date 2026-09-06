@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -264,3 +265,63 @@ def test_vac_paced_replay_drops_when_decode_is_scaled_past_the_headroom():
     overloaded = _vac_run(STRESSOR, cost_scale=SCALE_LADDER[-1])
     assert overloaded["drops"] > 0
     assert _vac_run(STRESSOR) == _vac_run(STRESSOR)  # virtual clock, so bit-identical
+
+
+# --- Long-form decode duty (P-014) --------------------------------------------
+# The VAC arm above needs the gitignored WAV corpus; this one needs nothing but a
+# committed trace, so the shipped path's real-time margin stays checkable in a
+# fresh clone -- over 848 s of narration rather than the two pause-free clips the
+# per-update trace covers.
+#
+# caption_trace.json's `decode_s` is `utterance_decode_s`: the SUM of one
+# utterance's VAC update decodes, never a single blocking call. Reading a 7.42 s
+# caption as a 7.42 s stall against AUDIO_HEADROOM_S is therefore wrong twice
+# over. What the headroom is really spent against is CARRY: the loop decodes
+# instead of draining audio_q, so a caption costing more wall time than its own
+# audio hands the difference to its successor, and only that accumulation can
+# outgrow a bounded queue. Silence between captions drains further still, so
+# ignoring the gaps keeps the model conservative.
+
+CAPTION_TRACE = Path(__file__).resolve().parent / "caption_trace.json"
+
+
+def _worst_carry(captions) -> float:
+    """Peak backlog seconds a caption stream hands forward, floored at empty."""
+    carried = worst = 0.0
+    for caption in captions:
+        carried = max(0.0, carried + caption["decode_s"] - caption["dur_s"])
+        worst = max(worst, carried)
+    return worst
+
+
+def _carry_at(captions, scale: float) -> float:
+    return _worst_carry([{**c, "decode_s": c["decode_s"] * scale} for c in captions])
+
+
+def test_long_form_decode_duty_holds_real_time_with_a_scale_ladder_reserve():
+    """Margin, not a point reading -- decode cost varies ~20 % run to run (D-016).
+
+    Measured carry is 0.017 s of the 2 s headroom over 215 captions, one of them
+    over duty by that 0.017 s, so the queue empties inside every utterance and its
+    peak is a single update decode -- which this trace does not record and M11.4's
+    per-update trace measures at 0.764/1.006 s. The load-bearing number is the
+    knee: carry reaches AUDIO_HEADROOM_S at x1.541 decode cost, so 848 s of
+    narration independently reproduces M11.4's x1.5 SCALE_LADDER reserve on 4.4x
+    the audio and against a corpus its two pause-free clips never covered.
+    """
+    captions = json.loads(CAPTION_TRACE.read_text(encoding="utf-8"))["captions"]
+    for scale in (rung for rung in SCALE_LADDER if rung <= 1.25):
+        assert _carry_at(captions, scale) < AUDIO_HEADROOM_S
+
+
+def test_carry_outgrows_the_headroom_at_the_cost_that_raised_the_question():
+    """Non-vacuity, sized on the real event rather than an invented one.
+
+    M12.1's burst run is `git show f25cfb5:tests/caption_trace.json` -- same clip,
+    same section, same device, decode sum 284.673 s against 259.216 s of audio for
+    RTF 1.098 against this run's 0.551, and it carries 77.231 s. The nearest rung
+    to that ratio is x2.0, so the ladder that certifies the reserve above is the
+    same one that fails on the state P-014 was raised about.
+    """
+    captions = json.loads(CAPTION_TRACE.read_text(encoding="utf-8"))["captions"]
+    assert _carry_at(captions, 2.0) > AUDIO_HEADROOM_S
