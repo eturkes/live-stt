@@ -13,7 +13,21 @@ goes under Spine flags and to the user instead of running here.
 
 ## Open
 
-*(empty)*
+- **P-021 · make a live session self-evidencing** · `pri 2` · `size M` · off-spine for M14, which
+  fixes the leg rather than watching it.
+  **Why:** M14's whole scope came from reading `stt.log` and six `transcripts/*.txt` by hand — the
+  9-character screen escape, both permanent-disable triggers, and the 12 declines that validated
+  M13.1. That reading is repeatable and currently costs a session's attention every time, while
+  M13.2 and four polish fixes sit live-unvalidated because no artifact reports on them.
+  **Shape:** one committed script over `transcripts/*.txt` + a stderr log, no hardware and no
+  gitignored input beyond the session's own files, reporting the observables `memory.md` § Smoke
+  already names: captions with no EN and why (declined / timeout / disabled / shutdown), degrade +
+  re-enable markers with timestamps, `backlog peak:` high-water lines, caption length + repetition
+  distributions with the longest surviving repetition, thread-rotation bumps, EN-behind-JA lag.
+  **Acceptance:** run against the six saved sessions it re-derives, without hand-reading, the
+  numbers M14's plan asserts — 1073 captions, 26 caught at unit bound 8, session 1 dying at n≈194 on
+  3 strikes, session 6 on `codex app-server exited` at 14:38:49, and caption 263 escaping the screen
+  — and a fresh clone with no `transcripts/` exits clean rather than failing.
 
 P-014 was CLOSED on committed data (user ruling): its exit-2 evidence pointer was wrong — a caption's
 `decode_s` is the SUM of that utterance's VAC update decodes, so its 7.420 s max is not a blockage
@@ -27,17 +41,14 @@ why/evidence/acceptance whole. Do not re-file it here.
 
 ## Spine flags
 
-- **The EN leg died permanently 194 turns into the first real-world session.** CAUSE FOUND and it is
-  upstream: n=195/196/197 are three consecutive M13 runaway captions (341/444/86 chars) = exactly
-  `TRANSLATE_MAX_FAILURES`=3, so **`roadmap.md` M13 owns the trigger** and no diagnosis unit is
-  needed here. What survives as an open policy question, and only as one: a 3-strike disable that is
-  permanent for the session costs every later turn on a 1-3 h soak target (`memory.md` § Smoke), and
-  single runaways at n=130 and n=138 translated fine, so the failures that trip it can be transient.
-  **User ruled it to `/session-roadmap`**: PLANNING sizes it as a unit with its own acceptance rather
-  than a polish item. The two shapes already priced are "keep permanent" (M13.2 removed the trigger
-  that fired it, so the flag closes as fixed upstream) and a cooldown re-probe that retries once per
-  window, re-enabling on a healthy turn and doubling the wait on a failure, at one stalled turn per
-  probe against a genuinely dead codex.
+- **The permanent EN disable was FLAGGED and is now FUNDED — it left this register on 2026-09-06.**
+  It is **`roadmap.md` M14**, which owns both triggers, the design fork and the acceptance whole:
+  M14.2 respawns after `codex app-server exited`, M14.3 re-probes after a 3-strike disable. Do not
+  re-file it here. **One shape this register priced is refuted and must not be re-proposed:** "keep
+  permanent, because M13.2 removed the trigger that fired it" — session 6 died on an app-server EOF,
+  which M13.2 does not touch, so the flag never closed as fixed upstream. Its companion insight
+  survives and is why the shape is respawn+cooldown rather than cooldown alone: **a re-probe cannot
+  revive an exited process.**
 
 - **The translator's unbounded generation was FLAGGED and is now FUNDED — it left this register the
   same day.** Session 2 measured it as a second, independent defect (`"あ" + "は"*(N-1)` >120 s at

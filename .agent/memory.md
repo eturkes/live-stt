@@ -4,7 +4,7 @@ Sole carried-forward store: orientation, decisions (D-, cited by code), lessons 
 
 ## Orientation
 
-**What it is:** real-time Japanese STT + English translation, fully local STT, no API keys (D-009). Pipeline (`live_stt.py` ~1,470 lines + `streaming.py`, D-002): mic → `resample` → 2 s `AudioQueue` → silero VAD → **VAC controller** (speech-start opens a LocalAgreement-2 buffer in `streaming.py`; every `VAC_CHUNK_S` re-decodes the open buffer and commits what two decodes agree on; speech-end flushes the tail unconfirmed) → **whisper large-v3-turbo int8 on OpenVINO NPU** (D-016) → `CodexTranslator` (JA→EN over a persistent `codex app-server`, JSON-RPC/stdio, D-011) → `emit_line` → stdout + the per-session `transcripts/` file (saved by default). Partial text renders on the meter status line; one utterance = one numbered `JA` line = one translation turn. `--engine k2v2|parakeet` selects the **sherpa fallback path** (VAD-segment close → ring pre-pad re-slice → 8-segment queue → sequential low-RMS chunked decode, D-010); `--asr-device` selects the OpenVINO device for the default engine. Degrades to JA-only when codex is absent/failing (hard requirement, D-009).
+**What it is:** real-time Japanese STT + English translation, fully local STT, no API keys (D-009). Pipeline (`live_stt.py` ~1,860 lines + `streaming.py`, D-002): mic → `resample` → 2 s `AudioQueue` → silero VAD → **VAC controller** (speech-start opens a LocalAgreement-2 buffer in `streaming.py`; every `VAC_CHUNK_S` re-decodes the open buffer and commits what two decodes agree on; speech-end flushes the tail unconfirmed) → **whisper large-v3-turbo int8 on OpenVINO NPU** (D-016) → `CodexTranslator` (JA→EN over a persistent `codex app-server`, JSON-RPC/stdio, D-011) → `emit_line` → stdout + the per-session `transcripts/` file (saved by default). Partial text renders on the meter status line; one utterance = one numbered `JA` line = one translation turn. `--engine k2v2|parakeet` selects the **sherpa fallback path** (VAD-segment close → ring pre-pad re-slice → 8-segment queue → sequential low-RMS chunked decode, D-010); `--asr-device` selects the OpenVINO device for the default engine. Degrades to JA-only when codex is absent/failing (hard requirement, D-009).
 
 **File map** (read a file only when the task implicates it):
 - `live_stt.py` — the whole app. Edit minimally; its comments encode bench-derived optimization rationale — preserve them (L-001).
@@ -131,7 +131,11 @@ Format step is **repo-wide and green**; the touched-file machinery (`touched_py`
   **252** repeated chars, longest survivor **32** (`3 months`×4, itself English) ⇒ 40 has a 6×
   margin either way. In tree the longest repetition is **8** (ポンポンポンポン) over 215 NPU captions +
   all golden texts + 6.9 K chars of Aozora, and widening the unit bound to 20 starts catching a
-  speaker repeating a PHRASE (`、うなぎが食べたい`×2, 18 chars). Language: the 23 latin-dominant
+  speaker repeating a PHRASE (`、うなぎが食べたい`×2, 18 chars). **The 40-char threshold is sound;
+  the UNIT bound is NOT** — caption 263 of session 6 repeats `いい音があるので、` = 9 characters and
+  escaped both screens live, since `repeat_span` scans sizes 1..8 only. Sweep over the same 1073
+  captions: 26 caught at bound 8, 27 at 9, 28 at 12, 29 at 14, plateau to 20. `roadmap.md` M14.1
+  owns the fix and the adjudication of the newly-caught captions. Language: the 23 latin-dominant
   captions split cleanly — 18 true English at ≤0.15 Japanese-per-character, 6 Japanese-carrying-
   loanwords at ≥0.27, nothing between. A 1:1 rule (`latin > japanese`) therefore drops **5 genuine
   Japanese captions** (`Discordで送ります。` 7v5, `HDMIはどう?` 4v3, `A&M Studioですね。` 8v3,

@@ -12,9 +12,30 @@ ledger or other provenance machinery.
 
 ## Status
 
-- Milestone: **M13 the shipped pipeline degenerates on live audio** — **IMPLEMENTED** (M13.1 +
-  M13.2 both DONE), **no unit is OPEN**, so the next session's mode is PLANNING and it needs a
-  direction — the standing options in `## Decisions pending from user` are what is left.
+- Milestone: **M14 the EN leg still dies permanently in live sessions** — **IN-PROGRESS**, units
+  M14.1-M14.3 enumerated in `## Open`, M14.1 OPEN.
+  **Two live sessions ended with translation off for the rest of the run, on two DIFFERENT
+  triggers.** Session 1 (`2026-09-03T14-03-43`, 241 JA / 193 EN) died at n≈194 on the 3-strike path,
+  three consecutive runaway captions. Session 6 (`2026-09-04T13-44-44`, 263 JA / 248 EN) died at
+  14:38:49 on **`codex app-server exited`** (`live_stt.py:1131`) — an EOF, which M13 does not touch.
+  So the polish flag's priced option *"keep permanent, closes as fixed upstream because M13.2
+  removed the trigger"* is **refuted by evidence**, and the two triggers need different remedies:
+  **a re-probe cannot revive an exited process, only a respawn can.** User ruled 2026-09-06:
+  recover, shape = **respawn (EOF) + cooldown re-probe (3-strike)**.
+  **M13's repeat screen also has a measured live escape.** Caption 263 repeats `いい音があるので、`
+  = a **9-character** unit; `repeat_span()` scans sizes 1..`CAPTION_REPEAT_UNIT_CHARS`=8
+  (`live_stt.py:932`), so it never saw it — `stt.log` carries a `not translated` warning for all 12
+  other loops that session and none for 263, which therefore reached the translator.
+  `caption_defect()` shares the bound (`live_stt.py:954`) ⇒ it escapes the publication screen too,
+  leaving only `ASR_REPETITION_PENALTY` against it. Sweep over the 1073 live captions: bound 8 → 26
+  caught (M13.2's recorded number reproduced), 9 → **27**, 12 → 28, 14 → 29, plateau to 20.
+- **M13.2 and every 2026-09-06 polish fix is shipped and has never met a mic.** The last live
+  session predates `bdd0f28` by 2.5 h ⇒ the decode penalty, the publication drop, the VAD segment
+  drain (`f105e0c`), the off-TTY meter high-water marks (`12ea603`), the degrade marker (`71f6bf1`)
+  and the SIGHUP shutdown (`1bfb9fb`, `a7ef3f6`) are all live-unvalidated. **M13.1 IS
+  live-validated:** 12 declines in session 6, every one a genuine loop (252-666 repeated chars).
+- Previous milestone: **M13 the shipped pipeline degenerates on live audio** — **IMPLEMENTED**
+  (M13.1 + M13.2 both DONE).
   **Both defects are shipped and the milestone's blocker dissolved rather than being satisfied.**
   The translator one first (M13.1, a degeneracy screen before the queue). Then M13.2 answered the
   recogniser side, which had been BLOCKED for a retained WAV of laughter/room tone: **the trigger
@@ -91,7 +112,77 @@ ledger or other provenance machinery.
 
 ## Open (do these; lowest ID first)
 
-**Empty.** M13 closed on 2026-09-04; the next milestone needs a user direction.
+Each entry below IS its unit's acceptance contract (`.claude/rules/assurance-posture.md`); its
+outcome is the commit body. All three are `tier=kernel` — production code in `live_stt.py`.
+
+- **M14.1 — Close the repeat screen's measured live escape. [OPEN]** M14's **calibration probe**
+  (no M14 actuals yet).
+  **Why:** caption 263 repeats a 9-character unit, passed both screens, reached the translator, and
+  belongs to the class whose strikes killed session 1. `CAPTION_REPEAT_UNIT_CHARS`=8 is one
+  character too tight for a real live loop, and the penalty alone is not the designed defence.
+  **Acceptance:** (a) the widened bound catches caption 263's class at the unchanged
+  `CAPTION_REPEAT_MAX_CHARS`=40; (b) every caption the widening NEWLY catches over the 1073-caption
+  live corpus is adjudicated in the commit body as loop or false positive — the sweep says 1 more at
+  bound 9 and 3 more by bound 14 — and no genuine Japanese caption is dropped; (c) the
+  false-positive side is re-derived over the in-tree corpora that need no gitignored input (215 NPU
+  captions + all replay golden texts + the Aozora reference), recording the longest surviving
+  repetition; (d) the bound stays below the phrase-repetition floor `memory.md` names
+  (`、うなぎが食べたい`×2 = 18 chars), so a speaker repeating a phrase is never dropped; (e) both
+  sites move together — `caption_defect` (`live_stt.py:954`) and `submit`'s backstop (`:1163`);
+  (f) new predicates proved non-vacuous by neutralization (L-022 — drop bytecode between mutants);
+  (g) `python gate.py` 6/6.
+  **Corpus note:** `transcripts/` is gitignored ⇒ the live numbers are durable only in the commit
+  body, exactly as M13.2 recorded its 1073-caption split. Re-derive by parsing `[ts] JA n: text`.
+  **Size:** est 92K → cal 147K, + ~75K baseline. Nearest analog **M12.4** (one constant + corpus arm
+  + locks) actual **171K** — read the analog as the likelier figure, the calibrated one as ceiling.
+
+- **M14.2 — Respawn the EN leg after the app-server exits. [OPEN]**
+  **Why:** the trigger that actually fired. `_read_loop`'s EOF path calls `_disable("codex
+  app-server exited")` and the leg stays off for the whole session; the process is gone, so there is
+  nothing to probe — recovery requires a new subprocess.
+  **Design fork — settle it in wave 1 by measurement, not preference:** (i) a background recovery
+  task on a backoff, which never stalls a caption but adds a task that must not respawn codex during
+  teardown (`close()` plus the SIGHUP path, `a7ef3f6`); (ii) recovery driven inline from `run()` on
+  the next caption, which needs `submit()` to keep queueing while degraded (it early-returns on
+  `not self.enabled` today) and costs one stalled turn per attempt, but adds no task and inherits
+  the existing shutdown ordering whole. (ii) is materially cheaper and safer if the stall is
+  tolerable — measure it.
+  **Acceptance:** (a) an app-server EOF is followed by a bounded respawn attempt and the leg
+  re-enables on a healthy warm-up turn; (b) the respawned thread carries the CURRENT glossary
+  (`_new_thread` → `_instructions` → `translator_brief`), so learned terms survive the respawn;
+  (c) attempts back off and are bounded — a permanently broken codex costs a bounded count, never a
+  spin; (d) `codex` absent (`FileNotFoundError`) gives up permanently and says so once; (e) the
+  transcript records the RE-ENABLE as well as the disable, in order, so a saved session cannot read
+  "disabled" while EN lines resume below it; (f) shutdown cannot leave a respawn in flight —
+  `close()` and the SIGHUP path both terminate recovery, with a test; (g) neutralization per L-022;
+  (h) `python gate.py` 6/6; (i) a "Did not verify (L-004)" list naming what needs the user's mic.
+  **Size:** est 100K → cal 160K + ~75K baseline ⇒ **the milestone's largest and the one to watch**.
+  Nearest analog **M13.1** (same class, same test file, 15 locks) actual **212K**. This is already
+  the narrow half — the 3-strike trigger is M14.3, not here. If wave-1 picks shape (i) and the
+  projection clears the one-window aim, report it and split at the named seam: mechanism + markers
+  first, backoff policy second.
+
+- **M14.3 — Re-probe the EN leg after a transient-failure disable. [OPEN]**
+  **Why:** the other trigger. Three consecutive failures disable the leg for the session
+  (`live_stt.py:1234`) and session 1 died that way — but single runaways at n=130 and n=138
+  translated fine, so the failures that trip it can be transient. On the 1-3 h soak target that
+  costs every later turn.
+  **Acceptance:** (a) a 3-strike disable re-probes on a cooldown, re-enabling on a healthy turn and
+  doubling the wait on a failure; (b) it reuses M14.2's mechanism rather than adding a second one;
+  (c) a genuinely dead leg costs a bounded number of probes; (d) `_failures` resets on the healthy
+  turn, so a recovered leg is not one strike from dying again; (e) markers ordered as M14.2(e);
+  (f) neutralization; (g) `python gate.py` 6/6.
+  **Size:** est 40K → cal 64K + ~75K baseline ≈ 139K. Smallest unit; reuses M14.2 whole.
+
+**M14 sizing basis.** No M14 actuals ⇒ M14.1 is the calibration probe and M14.2/M14.3 re-size from
+its measured `main=`. Provisional multiplier **1.6 on WORK, never on the total**: M13.1's recorded
+2.36 is a raw-estimate ratio that never counted the fresh-session baseline, and backing that
+baseline out of its 212K actual leaves a work ratio ≈1.63 — matching the M12 series' 1.60 (spread
+1.34-2.14). **Fresh-session baseline measured this session ≈ 75K**: attached state alone is 182 KB
+(`roadmap.md` 56 KB + `memory.md` 107 KB + `polish.md` 6 KB) before any work, so a unit's usable
+work budget inside the 223K aim is ~148K. Judgment review is retired
+(`.claude/rules/assurance-posture.md`) ⇒ no review-session projection. No teammates funded: every
+unit is script-derivable or MAIN-implementable, matching M12.3-M13.2.
 
 ## Done (ID · outcome · decisions/lessons produced)
 
@@ -584,25 +675,28 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open. M13 is IMPLEMENTED and no unit is OPEN, so the next session needs a direction.**
-The standing WAV request is **withdrawn, not satisfied**: M13.2 found the trigger is any audio the
-Japanese pin cannot account for, so 11 s of public-domain English speech reproduces the loop
-offline and no live recording is needed. Both M13 defects shipped.
-The polish register holds **P-014**, now marked `stale`: its acceptance prices a paced replay of a
-decode stall that M12.3's 6-section pass refutes, so **choosing between its two exits (reproduce the
-elevated-cost state, or re-scope to worst-observed-decode vs `AUDIO_HEADROOM_S` and close it on
-committed data) is a ruling this mode owes it**. Also open, both pickable by `/session-polish`
-whenever: **P-015** (a translation degrade reaches the saved transcript only as absence) and
-**P-017** (both short runs lost the final turn's EN, and the drain reads correct). Standing options, none of them blocking:
-(a) **A live-mic validation pass** — the user-only debt is the largest untested surface and only the
-    user can run it: latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, and the whole
-    VAC partial-caption cadence (`memory.md` § Smoke). Agent coverage cannot substitute here.
-(b) **A maintenance pass** (L-018) — dependency/CVE sweep, lock bumps, full gate, re-verify the codex
-    leg.
-(c) **A new capability milestone** — needs a direction from the user, since `## Out of scope` closes
-    most of the obvious ones.
+**None open. M14 is planned and IN-PROGRESS; the next session runs WORK-UNIT on M14.1.**
+The polish register's `## Open` is **empty** — P-014, P-015, P-017 and P-020 all shipped between
+2026-09-04 and 2026-09-06. Standing options, none of them blocking and none of them M14:
+(a) **A live-mic validation pass** — still the largest untested surface and only the user can run
+    it, and it grew: on top of the standing debt (latency feel, `-o`, soak, sustained cadence,
+    Ctrl+C-mid-decode, the VAC partial-caption cadence — `memory.md` § Smoke), **M13.2 and all four
+    2026-09-06 polish fixes have never met a mic**. `polish.md` **P-021** would make an ordinary
+    session self-evidencing instead, which is the cheaper half of this.
+(b) **A maintenance pass** (L-018) — measured this session and real but small: `sherpa-onnx`
+    1.13.4 → 1.13.7, `sounddevice` 0.5.5 → 0.5.6, `ruff` 0.15.21 → 0.16.6; `numpy`, `openvino`,
+    `openvino-genai` and `pytest` are current. Plus pip-audit, full gate, codex-leg re-verify.
+(c) **A new capability milestone** — needs a direction, since `## Out of scope` closes most of the
+    obvious ones.
 
-(Last resolved: **M13.2's four rulings, all 2026-09-04** — (1) a runaway caption is DROPPED whole,
+(Last resolved: **M14's direction + the recovery shape, both 2026-09-06** — offered (1) the EN leg
+still dies live, (2) a live-validation pass, (3) a maintenance pass, (4) a new capability; the user
+chose **(1)**. On the recovery shape, the priced options were respawn+cooldown, cooldown-only, and
+keep-permanent; the user chose **respawn + cooldown**, which is the only one that covers the trigger
+the last live session actually hit, since a re-probe cannot revive an exited process. Both rulings
+rest on evidence read this session from `stt.log` + the six saved transcripts, not on new
+measurement funded for the purpose.
+Before that: **M13.2's four rulings, all 2026-09-04** — (1) a runaway caption is DROPPED whole,
 not collapsed to two repeats and not truncated; (2) ship `repetition_penalty`=1.2 despite retention
 CER 0.0583 → 0.0609; (3) the language gate is a text-side rule only, no whisper LID — first ruled
 `latin > japanese`, then **re-ruled to `latin > 4 × japanese`** when measurement showed the 1:1 form
