@@ -13,7 +13,7 @@ ledger or other provenance machinery.
 ## Status
 
 - Milestone: **M14 the EN leg still dies permanently in live sessions** — **IN-PROGRESS**, units
-  M14.1-M14.3 enumerated; **M14.1 DONE, M14.2 OPEN** (the lowest, and the milestone's largest).
+  M14.1-M14.3 enumerated; **M14.1 + M14.2 DONE, M14.3 OPEN** (the last, and the smallest).
   **Two live sessions ended with translation off for the rest of the run, on two DIFFERENT
   triggers.** Session 1 (`2026-09-03T14-03-43`, 241 JA / 193 EN) died at n≈194 on the 3-strike path,
   three consecutive runaway captions. Session 6 (`2026-09-04T13-44-44`, 263 JA / 248 EN) died at
@@ -22,8 +22,9 @@ ledger or other provenance machinery.
   removed the trigger"* is **refuted by evidence**, and the two triggers need different remedies:
   **a re-probe cannot revive an exited process, only a respawn can.** User ruled 2026-09-06:
   recover, shape = **respawn (EOF) + cooldown re-probe (3-strike)**.
-  **M13's repeat screen escape is CLOSED by M14.1** — bound 8 → 13, three more live loops caught,
-  no genuine caption dropped. Detail in `## Done`.
+  **The EOF half is CLOSED by M14.2** — the leg respawns inline in 4.8-5.2 s, measured live, and
+  M14.3 now inherits the whole mechanism. **M13's repeat screen escape is CLOSED by M14.1** — bound
+  8 → 13, three more live loops caught, no genuine caption dropped. Detail in `## Done`.
 - **M13.2 and every 2026-09-06 polish fix is shipped and has never met a mic.** The last live
   session predates `bdd0f28` by 2.5 h ⇒ the decode penalty, the publication drop, the VAD segment
   drain (`f105e0c`), the off-TTY meter high-water marks (`12ea603`), the degrade marker (`71f6bf1`)
@@ -110,32 +111,6 @@ ledger or other provenance machinery.
 Each entry below IS its unit's acceptance contract (`.claude/rules/assurance-posture.md`); its
 outcome is the commit body. All three are `tier=kernel` — production code in `live_stt.py`.
 
-- **M14.2 — Respawn the EN leg after the app-server exits. [OPEN]**
-  **Why:** the trigger that actually fired. `_read_loop`'s EOF path calls `_disable("codex
-  app-server exited")` and the leg stays off for the whole session; the process is gone, so there is
-  nothing to probe — recovery requires a new subprocess.
-  **Design fork — settle it in wave 1 by measurement, not preference:** (i) a background recovery
-  task on a backoff, which never stalls a caption but adds a task that must not respawn codex during
-  teardown (`close()` plus the SIGHUP path, `a7ef3f6`); (ii) recovery driven inline from `run()` on
-  the next caption, which needs `submit()` to keep queueing while degraded (it early-returns on
-  `not self.enabled` today) and costs one stalled turn per attempt, but adds no task and inherits
-  the existing shutdown ordering whole. (ii) is materially cheaper and safer if the stall is
-  tolerable — measure it.
-  **Acceptance:** (a) an app-server EOF is followed by a bounded respawn attempt and the leg
-  re-enables on a healthy warm-up turn; (b) the respawned thread carries the CURRENT glossary
-  (`_new_thread` → `_instructions` → `translator_brief`), so learned terms survive the respawn;
-  (c) attempts back off and are bounded — a permanently broken codex costs a bounded count, never a
-  spin; (d) `codex` absent (`FileNotFoundError`) gives up permanently and says so once; (e) the
-  transcript records the RE-ENABLE as well as the disable, in order, so a saved session cannot read
-  "disabled" while EN lines resume below it; (f) shutdown cannot leave a respawn in flight —
-  `close()` and the SIGHUP path both terminate recovery, with a test; (g) neutralization per L-022;
-  (h) `python gate.py` 6/6; (i) a "Did not verify (L-004)" list naming what needs the user's mic.
-  **Size:** est 100K → cal 160K + ~75K baseline ⇒ **the milestone's largest and the one to watch**.
-  Nearest analog **M13.1** (same class, same test file, 15 locks) actual **212K**. This is already
-  the narrow half — the 3-strike trigger is M14.3, not here. If wave-1 picks shape (i) and the
-  projection clears the one-window aim, report it and split at the named seam: mechanism + markers
-  first, backoff policy second.
-
 - **M14.3 — Re-probe the EN leg after a transient-failure disable. [OPEN]**
   **Why:** the other trigger. Three consecutive failures disable the leg for the session
   (`live_stt.py:1234`) and session 1 died that way — but single runaways at n=130 and n=138
@@ -146,22 +121,71 @@ outcome is the commit body. All three are `tier=kernel` — production code in `
   (c) a genuinely dead leg costs a bounded number of probes; (d) `_failures` resets on the healthy
   turn, so a recovered leg is not one strike from dying again; (e) markers ordered as M14.2(e);
   (f) neutralization; (g) `python gate.py` 6/6.
-  **Size:** est 40K → cal 64K + ~75K baseline ≈ 139K. Smallest unit; reuses M14.2 whole.
+  **Size:** est 40K → cal 46K at M14.1's measured 1.15 + ~75K baseline ≈ **121K**, and M14.2's
+  actual supports the low multiplier — 196K against `est 100K → cal 160K`, i.e. work 121K on a 100K
+  estimate ⇒ **1.21**, close to M14.1's 1.15 and far under the provisional 1.6. M14.3 is the cheap
+  L-031 class outright: `_respawn`, `_recoverable`, `_restore`, the `_closing` latches and the
+  `run()` seam all exist, so the unit originates one decision — what a probe on a LIVE process is
+  (a turn, not a spawn) — and inherits the rest.
 
-**M14 sizing basis — recalibrated on M14.1's actual.** M14.1 measured **`main=66% 181K/273K`**
-against `est 92K → cal 147K`: backing out the ~75K baseline leaves work 106K against 92K ⇒ measured
-work multiplier **1.15**, far under the provisional 1.6 (M13.1 ≈1.63, M12 series 1.60, spread
-1.34-2.14). **Do not apply 1.15 to M14.2 unadjusted** — L-031 explains the gap: M14.1's whole
-surface was enumerated in its own plan entry (the sweep table, the escape, both sites) so the unit
-originated one decision, the bound, and that is L-031's cheap class. M14.2 originates a design fork
-plus a new mechanism, which is the expensive class. Read M14.2 as its **M13.1 analog (212K)** and
-M14.3 at the measured 1.15 (40K → 46K + 75K ≈ **121K**). Fresh-session baseline ≈ 75K: attached
-state alone is 182 KB before any work, so a unit's usable work budget inside the 223K aim is ~148K
-⇒ M14.2 is the one that can overrun, and its split seam is already named. Judgment review is retired
-(`.claude/rules/assurance-posture.md`) ⇒ no review-session projection. No teammates funded: every
-unit is script-derivable or MAIN-implementable, matching M12.3-M13.2.
+**M14 sizing basis — two actuals in, both cheap.** M14.1 measured `main=181K` against
+`est 92K → cal 147K` and M14.2 `main=196K` against `est 100K → cal 160K`; backing out the ~75K
+fresh-session baseline leaves work ratios **1.15** and **1.21**, far under the provisional 1.6
+(M13.1 ≈1.63, M12 series 1.60, spread 1.34-2.14). **L-031 reads both the same way, and M14.2 is the
+sharper case**: it originated a design fork, which is nominally the expensive class, but wave 1
+settled the fork with ONE measurement (a 4.8 s respawn) instead of a spike, so the decisions the
+unit actually originated stayed at one. The predictor is decisions ORIGINATED, and a fork that a
+single probe can price does not originate them. Baseline ≈ 75K — attached state alone is 182 KB
+before any work — so a unit's usable work budget inside the 223K aim is ~148K, and neither M14 unit
+has needed its split seam. Judgment review is retired (`.claude/rules/assurance-posture.md`) ⇒ no
+review-session projection. No teammates funded: every unit is script-derivable or
+MAIN-implementable, matching M12.3-M13.2.
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M14.2 — Respawn the EN leg after the app-server exits. [DONE] — SHIPPED, and the recovery is
+  verified against a real `codex app-server`, not only against fakes: the leg comes back in
+  5.23 s and the transcript reads `EN 1 → disabled → restored → EN 2`.**
+  **Wave 1 settled the design fork by measurement in one probe, and the answer inverted the plan's
+  own worry.** Priced: (i) a background recovery task, (ii) recovery inline from `run()`. A real
+  respawn costs **4.78 s** (cold start 5.97 s) and the turn after it runs at 1.63 s — normal cadence
+  — so the "one stalled turn per attempt" that made (ii) look risky is ~5 s of one caption's EN
+  latency against a leg that was otherwise dead for the whole session. (ii) ships: no task to order
+  against `close()` and the SIGHUP path, and `run()` inherits the existing shutdown ordering whole.
+  **The same probe found the defect that would have made a naive `start()` reuse fail silently.**
+  The EOF cleanup's own wake sentinel (T8.3) is still in `_notes`, so the respawn's warm-up turn
+  collects that `{method:error}` and raises: `init failed (RuntimeError: {})` in **0.41 s**, a
+  healthy server thrown away. `_respawn` drains `_notes` first, and the test that locks it is the
+  matrix's widest mutant (4 reds).
+  **Shape, 46 production lines.** `_respawn` re-runs `start()` whole — which is what carries the
+  CURRENT glossary, since `_new_thread` → `_instructions` → `translator_brief` — behind
+  `_recoverable()` (`TRANSLATE_MAX_RESPAWNS`=5 per session, never refunded) and a doubling
+  `TRANSLATE_RESPAWN_WAIT_S`=5 cooldown. `submit` queues while the leg is down but still recoverable,
+  because `run()` is parked on that queue and nothing else wakes it; a caption inside the backoff is
+  discarded in `run()`, so a degrade never touches the backlog or `tdrop=`. `_restore` mirrors
+  `_disable` into both channels. The respawned leg resets `_failures` and `_turns`.
+  **`_proc is None` is what separates a missing BINARY from a failed handshake** — `start()` assigns
+  `_proc` only once the exec succeeds — so codex uninstalled mid-session ends recovery at one
+  attempt instead of spending the budget rediscovering it. `start()`'s own failure path had to move
+  from `close()` to a new `_end_proc()`, or one failed attempt would have latched the rest off.
+  **Live end-to-end through the shipped path** (`submit` → `run` → `_respawn`, real codex, killed in
+  an idle gap): recovered in **5.23 s**, `respawns=1`, `turns`/`failures` reset, EN 2 and EN 3 at
+  normal cadence, markers in file order.
+  Suite 328 → **337 passed / 1 skipped / 26.5 s** (+9 translator locks, one per acceptance clause
+  plus the stale-sentinel and counter-reset hazards). Gate 6/6.
+  All 10 new predicates proved non-vacuous by neutralization (L-022), baseline and post-restore both
+  46, source restored byte-identical from the `cp` snapshot: no-notes-drain reds 4,
+  submit-gate-reverted and unbounded-respawns 2 each, and no-respawn-call / no-backoff-deadline /
+  missing-binary-retry / no-restore-marker / sentinel-no-latch / close-no-latch / no-counter-reset
+  1 each.
+  **The matrix earned its keep by killing a vacuous predicate of mine:** `close-no-latch` first reds
+  **0**, because the one shutdown test reached `close()` through `submit_sentinel()`, which had
+  already latched `_closing`. Acceptance (f) names both ends, so the test split in two and each latch
+  now carries its own red. *A mutant that reds nothing indicts the test, not the code.*
+  `main=72% 196K/273K` against `est 100K → cal 160K` ⇒ work ratio **1.21**; no teammates funded.
+  **Did not verify (L-004):** a respawn triggered by a real mid-session codex death (all deaths here
+  were induced by `kill`), the ~5 s EN latency bump as it feels live, and recovery under a real
+  Ctrl+C or terminal close while a respawn is due.
 
 - **M14.1 — Close the repeat screen's measured live escape. [DONE] — SHIPPED at bound 13, and the
   value is pinned by an invariant rather than by a count: 13 is the LAST unit size at which a
@@ -704,7 +728,7 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open. M14 is IN-PROGRESS; the next session runs WORK-UNIT on M14.2.**
+**None open. M14 is IN-PROGRESS; the next session runs WORK-UNIT on M14.3, the last unit.**
 The polish register's `## Open` is **empty** — P-014, P-015, P-017 and P-020 all shipped between
 2026-09-04 and 2026-09-06. Standing options, none of them blocking and none of them M14:
 (a) **A live-mic validation pass** — still the largest untested surface and only the user can run

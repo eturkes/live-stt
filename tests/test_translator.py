@@ -5,9 +5,10 @@ user smoke (L-004). What is locked here is the failure surface a refactor can
 silently break: 3-strike session disable, backlog eviction, the `_read_loop`
 dispatch/EOF branches plus its oversized-line/broken-transport guard (the sole
 non-local input boundary, T6-hardened), the transcript marker + named cause that
-make a degrade diagnosable afterwards, and M13.1's degeneracy screen. All in
-memory — fake stdio over an asyncio.StreamReader, `asyncio.run` per test, no
-subprocess, no mic, no new dependency.
+make a degrade diagnosable afterwards, M13.1's degeneracy screen, and M14.2's
+bounded respawn of an exited app-server. All in memory — fake stdio over an
+asyncio.StreamReader, `asyncio.run` per test, no subprocess, no mic, no new
+dependency.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 
 import pytest
@@ -736,3 +738,306 @@ def test_both_screens_read_one_bound(caplog):
     assert live_stt.caption_defect(escape)
     assert t.degenerate_captions == 1
     assert t.queue.empty()
+
+
+# --- M14.2: respawn the EN leg after the app-server exits --------------------
+
+
+class _Codex:
+    """A `codex app-server` factory for create_subprocess_exec: one fresh
+    _FakeProc per spawn, so a test can count spawns and script each server."""
+
+    def __init__(self, missing: bool = False):
+        self.procs: list[_FakeProc] = []
+        self.missing = missing
+
+    async def exec(self, *_a, **_k):
+        if self.missing:
+            raise FileNotFoundError("codex")
+        self.procs.append(_FakeProc(asyncio.StreamReader()))
+        return self.procs[-1]
+
+
+async def _await_spawn(codex: _Codex, n: int, spins: int = 4000) -> _FakeProc:
+    """Yield until spawn `n` (1-based) exists and return its process."""
+    for _ in range(spins):
+        await asyncio.sleep(0)
+        if len(codex.procs) >= n:
+            return codex.procs[n - 1]
+    raise AssertionError(f"spawn {n} never happened ({len(codex.procs)} so far)")
+
+
+async def _answer(t: live_stt.CodexTranslator, reader, result: dict, after: int) -> int:
+    """Answer the next request issued after id `after`, through _read_loop.
+
+    Ids keep incrementing across a respawn, so tests chain on the returned id
+    rather than naming ids that shift the moment a handshake gains a step.
+    """
+    for _ in range(4000):
+        await asyncio.sleep(0)
+        new = [r for r in t._pending if r > after]
+        if new:
+            rid = min(new)
+            reader.feed_data(_rpc_result(rid, result))
+            return rid
+    raise AssertionError(f"no request was issued after id {after}")
+
+
+async def _serve_start(t: live_stt.CodexTranslator, proc: _FakeProc, warmup: bool = True) -> int:
+    """Answer the three requests start() issues; `warmup=False` fails the turn."""
+    reader = proc.stdout
+    rid = await _answer(t, reader, {}, 0)  # initialize
+    tier = live_stt.TRANSLATE_SERVICE_TIER
+    rid = await _answer(t, reader, {"thread": {"id": f"th-{rid}"}, "serviceTier": tier}, rid)
+    rid = await _answer(t, reader, {}, rid)  # warm-up turn/start
+    reader.feed_data(_rpc_note("turn/completed" if warmup else "error", {}))
+    return rid
+
+
+async def _live_leg(t: live_stt.CodexTranslator, codex: _Codex) -> _FakeProc:
+    """Bring the leg up against spawn 1 and return its process."""
+    starter = asyncio.create_task(t.start())
+    await _serve_start(t, await _await_spawn(codex, 1))
+    assert await asyncio.wait_for(starter, timeout=3.0) is True
+    return codex.procs[0]
+
+
+async def _kill(t: live_stt.CodexTranslator, proc: _FakeProc):
+    """The session-6 death: the app-server exits, leaving nothing to probe."""
+    proc.stdout.feed_eof()
+    assert t._reader_task is not None
+    await t._reader_task
+    assert t.enabled is False
+
+
+def test_an_exited_app_server_is_respawned_and_the_leg_re_enables(tmp_path, monkeypatch):
+    # M14.2(a)+(e). Session 6 lost translation at 14:38:49 on `codex app-server
+    # exited` and ran JA-only to the end; the process is gone, so a re-probe has
+    # nothing to talk to and only a new subprocess recovers. The transcript must
+    # record the recovery too -- one carrying the disable marker alone reads as
+    # JA-only from that point while EN lines resume below it.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
+        t = live_stt.CodexTranslator(output_file=transcript)
+        await _kill(t, await _live_leg(t, codex))
+
+        run_task = asyncio.create_task(t.run())
+        t.submit(7, "こんにちは。")  # the caption that finds the leg dead
+        second = await _await_spawn(codex, 2)
+        rid = await _serve_start(t, second)
+        rid = await _answer(t, second.stdout, {}, rid)  # the caption's own turn
+        item = {"item": {"type": "agentMessage", "text": "Hello."}}
+        second.stdout.feed_data(_rpc_note("item/completed", item))
+        second.stdout.feed_data(_rpc_note("turn/completed", {}))
+
+        t.submit_sentinel()
+        await asyncio.wait_for(run_task, timeout=3.0)
+        assert t.enabled is True  # the leg is back, not merely alive
+        assert len(codex.procs) == 2  # exactly one respawn
+        transcript.close()
+
+    asyncio.run(scenario())
+    body = (tmp_path / "session.txt").read_text(encoding="utf-8").splitlines()
+    events = [ln.split("] ", 1)[1] for ln in body]
+    assert events[0] == "-- translation disabled: codex app-server exited"
+    assert events[1].startswith("-- translation restored: ")
+    assert events[2] == "EN 7: Hello."  # the caption that paid for the respawn
+
+
+def test_the_respawned_thread_carries_the_glossary_learned_before_the_death(monkeypatch):
+    # M14.2(b). A term learned mid-session reaches the model through ONE channel,
+    # the thread's developerInstructions, and the thread died with the process.
+    # A respawn that did not re-run _instructions would silently un-learn the
+    # session while looking healthy.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        ctx = live_stt.SessionContext()
+        t = live_stt.CodexTranslator(ctx)
+        first = await _live_leg(t, codex)
+
+        def opened(proc: _FakeProc) -> list[dict]:
+            sent = [json.loads(w) for w in proc.stdin.writes]
+            return [m for m in sent if m.get("method") == "thread/start"]
+
+        # 標柱 is absent from TRANSLATOR_INSTRUCTIONS, so its presence below can
+        # only come from the glossary (プレドニン rides the fixed drug-name line).
+        assert "標柱" not in opened(first)[0]["params"]["developerInstructions"]
+
+        for _ in range(live_stt.CONTEXT_TERM_SUPPORT):  # learned while the leg was up
+            ctx.observe_ja("標柱が見えました")
+        await _kill(t, first)
+
+        respawn = asyncio.create_task(t._respawn())
+        second = await _await_spawn(codex, 2)
+        await _serve_start(t, second)
+        assert await asyncio.wait_for(respawn, timeout=3.0) is True
+
+        assert len(opened(second)) == 1
+        assert "標柱" in opened(second)[0]["params"]["developerInstructions"]
+        assert t._brief == ctx.translator_brief()  # and the rotation check agrees
+
+    asyncio.run(scenario())
+
+
+def test_a_stale_wake_sentinel_cannot_fail_the_respawn(monkeypatch):
+    # The EOF cleanup enqueues one {method:error} wake sentinel (T8.3) and it is
+    # still in _notes when recovery starts, so the respawn's warm-up turn collects
+    # THAT instead of its own turn/completed and raises. Measured against a real
+    # codex app-server: `init failed (RuntimeError: {})` in 0.41 s, a healthy
+    # server thrown away. _notes must be drained before the handshake.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        await _kill(t, await _live_leg(t, codex))
+        assert t._notes.qsize() == 1  # the stale sentinel is the whole hazard
+
+        respawn = asyncio.create_task(t._respawn())
+        await _serve_start(t, await _await_spawn(codex, 2))
+        assert await asyncio.wait_for(respawn, timeout=3.0) is True
+        assert t.enabled is True
+
+    asyncio.run(scenario())
+
+
+def test_a_dead_codex_costs_a_bounded_number_of_respawns(monkeypatch):
+    # M14.2(c). A codex that can be spawned but never completes its handshake
+    # must not be retried forever: the budget is per session, so a leg that keeps
+    # dying stops costing captions their latency once it is plainly gone. submit()
+    # stops queueing at the same moment, which is what keeps the backlog -- and
+    # the tdrop= counter that means real backpressure -- clear of a dead leg.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        await _kill(t, await _live_leg(t, codex))
+
+        for attempt in range(1, live_stt.TRANSLATE_MAX_RESPAWNS + 1):
+            t._respawn_at = 0.0  # the backoff itself is locked separately
+            respawn = asyncio.create_task(t._respawn())
+            await _serve_start(t, await _await_spawn(codex, attempt + 1), warmup=False)
+            assert await asyncio.wait_for(respawn, timeout=3.0) is False
+            assert t.enabled is False
+
+        assert t._recoverable() is False
+        t._respawn_at = 0.0
+        assert await t._respawn() is False  # budget spent: no further spawn
+        assert len(codex.procs) == live_stt.TRANSLATE_MAX_RESPAWNS + 1
+
+        t.submit(1, "こんにちは。")  # and captions stop entering the queue
+        assert t.queue.empty()
+        assert t.dropped_translations == 0
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_respawn_backs_off_before_the_next(monkeypatch):
+    # M14.2(c), the other half: without a cooldown every caption arriving behind a
+    # dead codex pays a full handshake, so a broken leg would cost more latency
+    # than the degrade it is repairing. The wait doubles, so a leg that stays down
+    # is probed logarithmically rather than per caption.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        await _kill(t, await _live_leg(t, codex))
+        assert t._respawn_at == 0.0  # the first attempt is immediate
+
+        respawn = asyncio.create_task(t._respawn())
+        await _serve_start(t, await _await_spawn(codex, 2), warmup=False)
+        assert await asyncio.wait_for(respawn, timeout=3.0) is False
+
+        assert t._respawn_at > time.monotonic()  # a deadline, not a free retry
+        assert t._respawn_wait == live_stt.TRANSLATE_RESPAWN_WAIT_S * 2
+        assert await t._respawn() is False  # inside the cooldown
+        assert len(codex.procs) == 2  # and it spawned nothing
+        assert t._respawns == 1  # a skipped attempt does not spend budget
+
+    asyncio.run(scenario())
+
+
+def test_a_missing_codex_binary_ends_recovery_after_one_attempt(monkeypatch, caplog):
+    # M14.2(d). codex uninstalled or upgraded out from under a live session is not
+    # a transient: there is nothing to come back to, so it must not spend the whole
+    # respawn budget rediscovering that. start() assigns _proc only once the exec
+    # succeeds, which is what separates a missing binary from a failed handshake.
+    async def scenario():
+        codex = _Codex(missing=True)
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        t._proc = _FakeProc(asyncio.StreamReader())  # type: ignore[assignment]
+        with caplog.at_level(logging.ERROR, logger="live_stt"):
+            assert await t._respawn() is False
+            assert t._recoverable() is False  # permanent, not one of the budget
+            t._respawn_at = 0.0
+            assert await t._respawn() is False
+
+    asyncio.run(scenario())
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 1 and "codex" in errors[0].getMessage()
+
+
+def test_the_shutdown_sentinel_stops_recovery(monkeypatch):
+    # M14.2(f). The drain window between submit_sentinel() and close() is the one
+    # place run() is alive with recovery armed: a caption queued just before the
+    # Ctrl+C would spend a full handshake on a session that is ending, and close()
+    # would then kill the process it had just started.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        await _kill(t, await _live_leg(t, codex))
+
+        t.submit(1, "こんにちは。")  # queued while recovery was still armed
+        assert t.queue.qsize() == 1
+        t.submit_sentinel()  # Ctrl+C / SIGHUP: no more captions are coming
+        await asyncio.wait_for(t.run(), timeout=3.0)
+        assert len(codex.procs) == 1  # the queued caption started no respawn
+
+    asyncio.run(scenario())
+
+
+def test_close_stops_recovery(monkeypatch):
+    # M14.2(f), the other latch, proved on its own: close() is the teardown
+    # primitive and a caller that reaches it without the sentinel -- any path but
+    # run_session's -- must still leave nothing able to spawn codex afterwards.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        await _kill(t, await _live_leg(t, codex))
+        assert t._recoverable() is True  # armed right up to the close
+
+        await t.close()
+
+        assert t._recoverable() is False
+        t._respawn_at = 0.0
+        assert await t._respawn() is False
+        assert len(codex.procs) == 1
+
+    asyncio.run(scenario())
+
+
+def test_the_respawned_leg_starts_with_a_clean_strike_count(monkeypatch):
+    # A leg that died carrying strikes would be one failure from a permanent
+    # disable the moment it came back, and a carried turn count rotates the fresh
+    # thread before it has served TRANSLATE_ROTATE_TURNS turns. A new process and
+    # a new thread start their own counters.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        await _kill(t, await _live_leg(t, codex))
+        t._failures = live_stt.TRANSLATE_MAX_FAILURES - 1
+        t._turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
+
+        respawn = asyncio.create_task(t._respawn())
+        await _serve_start(t, await _await_spawn(codex, 2))
+        assert await asyncio.wait_for(respawn, timeout=3.0) is True
+        assert t._failures == 0
+        assert t._turns == 0
+
+    asyncio.run(scenario())

@@ -78,13 +78,14 @@ Transcript: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.txt
 
 Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so JA and EN pairs stay matched. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
 
-If the translation leg stops for the rest of the session, live-stt writes one marker line and names the cause:
+If the translation leg stops, live-stt writes one marker line and names the cause. If the app-server exits, live-stt starts a new one on the next caption and marks that too:
 
 ```
 [2026-08-31T13:52:07+09:00] -- translation disabled: codex app-server exited
+[2026-08-31T13:52:13+09:00] -- translation restored: codex app-server respawned (attempt 1)
 ```
 
-The marker holds `--` in place of the number. JA lines continue after it. The transcript is the record that outlives the terminal, so read the marker to see why the EN lines stopped.
+A marker holds `--` in place of the number. JA lines continue after it. The transcript is the record that outlives the terminal, so read the markers to see why the EN lines stopped and whether they came back.
 
 `transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
@@ -146,6 +147,7 @@ Degradation, in order:
 - codex CLI missing / init fails → session runs JA-only from the start.
 - A caption that repeats one short unit for 40 characters or more → not translated, and no failure is counted.
 - A turn exceeds 15 s → it's aborted and skipped; 3 consecutive failures → JA-only for the rest of the session.
+- The app-server exits → the next caption starts a new one, which costs that caption about 5 s. A failed attempt doubles the wait before the next one. After 5 attempts, or if `codex` cannot be started at all, the session stays JA-only.
 - Backlog over 50 utterances → oldest dropped.
 - The thread is rotated every 100 turns to keep the cached prompt prefix small.
 
@@ -265,6 +267,8 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → JA-only |
+| `TRANSLATE_MAX_RESPAWNS` | 5 | Respawns of an exited app-server, per session |
+| `TRANSLATE_RESPAWN_WAIT_S` | 5 s | Wait after a failed respawn; doubles each time |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
 | `TRANSLATE_QUEUE_MAX` | 50 | Translation backlog cap (drop-oldest) |
 | `CAPTION_REPEAT_MAX_CHARS` | 40 | Repetition span that drops a caption before it is published |

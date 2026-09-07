@@ -142,6 +142,8 @@ TRANSLATE_SERVICE_TIER = "priority"
 TRANSLATE_TIMEOUT_S = 15.0
 CODEX_CONTROL_TIMEOUT_S = 10  # initialize + thread/start; turns use TRANSLATE_TIMEOUT_S
 TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> JA-only for the session
+TRANSLATE_MAX_RESPAWNS = 5  # bounded respawns of an exited app-server, per session
+TRANSLATE_RESPAWN_WAIT_S = 5.0  # cooldown after a failed respawn; doubles each time
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
 TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) block
 
@@ -1005,6 +1007,10 @@ class CodexTranslator:
         self.dropped_translations = 0  # captions evicted under backlog (T8.5 tdrop=)
         self.degenerate_captions = 0  # captions declined as repetition (M13.1 tskip=)
         self.enabled = False
+        self._respawns = 0  # spent recovery budget, never refunded (M14.2)
+        self._respawn_at = 0.0  # monotonic deadline; 0 = attempt on the next caption
+        self._respawn_wait = TRANSLATE_RESPAWN_WAIT_S
+        self._closing = False  # shutdown latch: a respawn must not outlive the session
 
     async def start(self) -> bool:
         argv = ["codex", "app-server"]
@@ -1037,7 +1043,7 @@ class CodexTranslator:
             await asyncio.wait_for(self._turn("こんにちは。"), TRANSLATE_TIMEOUT_S)
         except Exception as e:
             logger.warning("codex app-server init failed (%s); running JA-only", failure_cause(e))
-            await self.close()
+            await self._end_proc()  # not close(): a respawn may still retry this
             return False
         # A warm-up turn can complete and the server then die before we enable:
         # its turn/completed is consumed, the next readline hits EOF, and
@@ -1048,7 +1054,7 @@ class CodexTranslator:
         assert self._proc is not None and self._reader_task is not None
         if self._reader_task.done() or self._proc.returncode is not None:
             logger.warning("codex app-server exited during warm-up; running JA-only")
-            await self.close()
+            await self._end_proc()
             return False
         self.enabled = True
         return True
@@ -1067,6 +1073,60 @@ class CodexTranslator:
         self.enabled = False
         logger.error("translation disabled: %s; JA-only for the rest of the session", reason)
         emit_note(f"translation disabled: {reason}", self.output_file)
+
+    def _restore(self, reason: str):
+        """Mirror of _disable: a recovery has to reach both channels too.
+
+        A transcript carrying only the disable marker reads as JA-only from that
+        point on while EN lines resume below it, so afterwards the reader cannot
+        tell a recovered session from a corrupt one.
+        """
+        logger.warning("translation restored: %s", reason)
+        emit_note(f"translation restored: {reason}", self.output_file)
+
+    def _recoverable(self) -> bool:
+        """Is a respawn still on the table at all? Bounds budget and shutdown."""
+        return not self._closing and self._respawns < TRANSLATE_MAX_RESPAWNS
+
+    async def _respawn(self) -> bool:
+        """Replace an exited app-server, on a bounded backoff (M14.2).
+
+        The EOF path leaves no process to probe, so recovery is a new subprocess:
+        start() re-runs the whole handshake, which is also what carries the
+        CURRENT glossary into the new thread's developerInstructions. Measured
+        against a real codex, a successful respawn costs 4.8 s and the next turn
+        runs at normal cadence -- one caption's EN arrives late where the whole
+        rest of the session used to arrive not at all.
+        """
+        if not self._recoverable() or time.monotonic() < self._respawn_at:
+            return False
+        self._respawns += 1
+        # The EOF cleanup enqueued its wake sentinel (T8.3) and it is still
+        # queued: the warm-up turn would collect that stale {method:error} and
+        # raise, failing a respawn that had in fact succeeded. Measured against a
+        # real codex: `init failed (RuntimeError: {})` in 0.41 s.
+        while not self._notes.empty():
+            self._notes.get_nowait()
+        # A new process and a new thread start their own counters. Carried
+        # strikes leave the recovered leg one failure from a permanent disable,
+        # and a carried turn count rotates the fresh thread early.
+        self._failures = 0
+        self._turns = 0
+        # Clearing the handle is what separates a missing BINARY from a failed
+        # handshake below: start() assigns _proc only once the exec succeeds.
+        self._proc = None
+        if await self.start():
+            self._restore(f"codex app-server respawned (attempt {self._respawns})")
+            return True
+        if self._proc is None:
+            # codex was uninstalled or upgraded out from under the session, so
+            # there is nothing to come back to and retrying only costs captions.
+            self._respawns = TRANSLATE_MAX_RESPAWNS
+            logger.error("codex cannot be started; translation stays off for the session")
+            return False
+        self._respawn_at = time.monotonic() + self._respawn_wait
+        self._respawn_wait *= 2
+        return False
 
     def _instructions(self) -> str:
         """Base instructions plus the session glossary, if anything is known yet.
@@ -1163,7 +1223,11 @@ class CodexTranslator:
         self._write({"jsonrpc": "2.0", "method": method, "params": params})
 
     def submit(self, seq: int, ja: str):
-        if not self.enabled:
+        # While the leg is down but still recoverable the caption is what drives
+        # recovery: run() is parked on this queue, so nothing else wakes it. One
+        # arriving inside the backoff is discarded there rather than here, which
+        # keeps a degrade out of the backlog and out of tdrop=.
+        if not self.enabled and not self._recoverable():
             return
         span = repeat_span(ja)
         if span >= CAPTION_REPEAT_MAX_CHARS:
@@ -1194,6 +1258,11 @@ class CodexTranslator:
 
     def submit_sentinel(self):
         """Enqueue the shutdown sentinel, evicting the oldest entry if full."""
+        # No more captions are coming, so recovery has nothing left to serve.
+        # Latching it off here keeps a respawn out of the drain window between
+        # this call and close(), where it would spend a handshake on a session
+        # that is ending and close() would kill what it had just started.
+        self._closing = True
         while True:
             try:
                 self.queue.put_nowait(None)
@@ -1211,6 +1280,11 @@ class CodexTranslator:
             if item is None:
                 return
             seq, ja = item
+            # A dead leg is repaired inline, on the caption that finds it: the
+            # attempt costs this one turn ~5 s and needs no task of its own, so
+            # close() and the SIGHUP path keep the shutdown ordering they have.
+            if not self.enabled and not await self._respawn():
+                continue  # still down: JA-only for this caption
             en = await self._translate(ja)
             if en:
                 emit_line("EN", seq, en, self.output_file)
@@ -1292,7 +1366,13 @@ class CodexTranslator:
             pass
 
     async def close(self):
+        self._closing = True  # nothing may respawn codex behind a shutdown
         self.enabled = False
+        await self._end_proc()
+
+    async def _end_proc(self):
+        """Stop the reader task and the app-server, leaving recovery state alone
+        so a failed start() stays retryable."""
         if self._reader_task:
             self._reader_task.cancel()
         if self._proc and self._proc.returncode is None:

@@ -74,4 +74,6 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
   `_RESAMPLE_CACHE` ≤8, codex `_notes`/`_pending` drain per turn. Steady growth signals a leak.
 
 EN stopping while JA continues is the sanctioned JA-only degrade (D-009); the transcript marker names
-which trigger fired (`translation-leg.md`).
+which trigger fired, and a `-- translation restored:` marker below it means the leg came back
+(`translation-leg.md`). EN resuming a few seconds late after `codex app-server exited` is the
+respawn working, not a stall.

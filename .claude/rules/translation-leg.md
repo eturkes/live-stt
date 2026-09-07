@@ -59,13 +59,38 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 - **L-022 — validate liveness at the COMMIT point, not only at spawn.** `start()` re-checks
   `_reader_task.done()` / `returncode` immediately before `enabled=True`, so a warm-up health check
   that completes just before the child dies cannot strand later turns over a dead reader.
-- Both permanent-disable paths run through `_disable` ⇒ one stderr line **plus one
+- Both disable paths run through `_disable` ⇒ one stderr line **plus one
   `-- translation disabled: <reason>` marker in the transcript**, so a session stays diagnosable once
   the scrollback is gone. Reasons: `N consecutive failures (<type>)` = the 3-strike path;
   `codex app-server exited` = a codex EOF in an idle gap, which also wakes a mid-flight turn promptly.
   Startup failure deliberately marks nothing — nothing is decoded yet and a write would defeat
   `TranscriptFile`'s lazy creation. A per-block failure stays stderr-only and names its exception
   TYPE, because `TimeoutError` stringifies to `''` and `%s` alone logged `translation failed ()`.
+- **Recovery is a RESPAWN, and it is driven inline from `run()` (M14.2).** An EOF leaves no process
+  to probe, so `_respawn` re-runs `start()` whole — which is also what carries the CURRENT glossary,
+  since `_new_thread` → `_instructions` → `translator_brief`. Measured against a real app-server: a
+  respawn costs **4.8 s** and the next turn runs at normal cadence, so the caption that finds the leg
+  dead pays ~5 s where the rest of the session used to get no EN at all. The design fork was priced
+  and inline won: a background recovery task buys idle-gap repair for one more task to order against
+  `close()` and the SIGHUP path, while `run()` inherits that ordering whole.
+  - **Drain `_notes` before the handshake.** The EOF cleanup's own wake sentinel is still queued, so
+    the respawn's warm-up turn collects that `{method:error}` and raises — measured as
+    `init failed (RuntimeError: {})` in 0.41 s, throwing away a server that had in fact started.
+  - `submit` queues while the leg is down but still recoverable, because `run()` is parked on that
+    queue and nothing else wakes it; a caption arriving inside the backoff is discarded in `run()`,
+    which keeps a degrade out of the backlog and out of `tdrop=`.
+  - Bounds: `TRANSLATE_MAX_RESPAWNS`=5 per session, never refunded, and `TRANSLATE_RESPAWN_WAIT_S`=5
+    doubling per failure. `start()` assigns `_proc` only once the exec succeeds ⇒ `_proc is None`
+    after a failed respawn means the BINARY is gone (uninstalled mid-session) and recovery ends there
+    rather than spending the budget rediscovering it.
+  - **Shutdown latches recovery off at both ends**, `submit_sentinel` and `close()`, each with its own
+    lock: the drain window between them is the one place `run()` is alive with recovery armed, and a
+    respawn there would spend a handshake on a session that is ending. `start()`'s own failure path
+    calls `_end_proc()`, never `close()`, or one failed attempt would latch the rest off.
+  - `_restore` mirrors `_disable` into both channels ⇒ `-- translation restored: <reason>`. A
+    transcript carrying only the disable marker reads as JA-only from that point while EN lines
+    resume below it. A respawned leg also resets `_failures` (else it is one strike from dying) and
+    `_turns` (else the fresh thread rotates early).
 - **A repeated short unit makes the translator generate without terminating.** Measured through the
   real app-server with a fresh thread per turn, a 30 s bound and a real-speech canary after every
   degenerate turn: `"あ"+"は"*n` runs 2.9 s at 20 characters and 3.4 s at 60, then **stalls at
