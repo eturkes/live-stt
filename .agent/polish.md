@@ -1,7 +1,7 @@
 # Polish — live-stt
 
 Deferred-perfection register. `/session-polish` is its sole consumer: pick by `pri`, size-fit the
-remaining window, run one item at a time under the gate identity in `memory.md`, prune the row in the
+remaining window, run one item at a time under the gate identity in `.claude/rules/toolchain.md`, prune the row in the
 commit that lands it. Off-spine improvements are born here at deferral time with the acceptance check
 written while the evidence is fresh. Milestone/unit state stays in `roadmap.md`; nothing here gates a
 milestone.
@@ -20,7 +20,7 @@ goes under Spine flags and to the user instead of running here.
   M13.1. That reading is repeatable and currently costs a session's attention every time, while
   M13.2 and four polish fixes sit live-unvalidated because no artifact reports on them.
   **Shape:** one committed script over `transcripts/*.txt` + a stderr log, no hardware and no
-  gitignored input beyond the session's own files, reporting the observables `memory.md` § Smoke
+  gitignored input beyond the session's own files, reporting the observables `.claude/rules/live-smoke.md`
   already names: captions with no EN and why (declined / timeout / disabled / shutdown), degrade +
   re-enable markers with timestamps, `backlog peak:` high-water lines, caption length + repetition
   distributions with the longest surviving repetition, thread-rotation bumps, EN-behind-JA lag.
@@ -49,7 +49,7 @@ goes under Spine flags and to the user instead of running here.
 P-014 was CLOSED on committed data (user ruling): its exit-2 evidence pointer was wrong — a caption's
 `decode_s` is the SUM of that utterance's VAC update decodes, so its 7.420 s max is not a blockage
 and never was comparable to `AUDIO_HEADROOM_S`. The comparable instrument is CARRY, and
-`tests/test_backpressure.py` now gates it with no corpus and no skip. `memory.md` D-016(d) owns the
+`tests/test_backpressure.py` now gates it with no corpus and no skip. `.claude/rules/asr-pipeline.md` D-016(d) owns the
 numbers whole (worst carry 0.017 s of 2.000 s over 215 captions, knee ×1.541, burst 77.231 s).
 
 P-012 was PROMOTED, not pruned: re-sizing it against tree showed a milestone wearing a `size=M`
@@ -80,7 +80,7 @@ why/evidence/acceptance whole. Do not re-file it here.
   by the user, and **refuted by arms over the committed pairing trace**: it drops the CORRECT
   `神様 = God` and removes `標柱 = I` only because 標柱 is kanji, so it blocks the entire kanji-name
   class (兵十 / 加助 are kanji names in this story). No key-shape test can separate the cases,
-  because the defect's key IS name-shaped. `memory.md` D-015 carries the measurement and the one
+  because the defect's key IS name-shaped. `.claude/rules/translation-leg.md` D-015 carries the measurement and the one
   residue that stayed unfixed: a hallucinated but genuine proper noun (`Okkawa`, `Anke`) is
   unreachable by any lexical or positional rule, and `CONTEXT_EN_SUPPORT` is the only lever there.
 

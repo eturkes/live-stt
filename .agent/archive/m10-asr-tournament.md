@@ -4,7 +4,7 @@ Closed-work detail lifted out of `.agent/roadmap.md` under the attached-state ru
 
 ## How M10 closed
 
-M10 closed **by events, on user decision (2026-09-01)**, not by running its remaining units. Its outcome question — which model + local execution path anchors the next production milestone — was answered and SHIPPED outside M10's machinery by D-016 (`.agent/memory.md`): whisper large-v3-turbo int8 on OpenVINO NPU under a VAC streaming policy became the default engine in commits `1cc241a` / `23e8fa8` / `b633b0c` / `76d986d`. That also broke M10's own standing constraint, *"Preserve `k2v2` as the shipped default throughout M10"*, so the milestone could not continue as written.
+M10 closed **by events, on user decision (2026-09-01)**, not by running its remaining units. Its outcome question — which model + local execution path anchors the next production milestone — was answered and SHIPPED outside M10's machinery by D-016 (`.claude/rules/asr-pipeline.md`): whisper large-v3-turbo int8 on OpenVINO NPU under a VAC streaming policy became the default engine in commits `1cc241a` / `23e8fa8` / `b633b0c` / `76d986d`. That also broke M10's own standing constraint, *"Preserve `k2v2` as the shipped default throughout M10"*, so the milestone could not continue as written.
 
 Honest scope of the review: units M10.1–M10.5e each carried their own adversarial review at close (recorded per row below). The milestone-level cross-cutting review and the `audit` claim-replay pass that MILESTONE-REVIEW normally runs were **not** performed — M10 was closed by supersession instead. Treat the per-unit evidence as reviewed and the cross-unit integration as unreviewed.
 

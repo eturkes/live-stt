@@ -56,7 +56,7 @@ Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-
 
 | Flag | Default | Description |
 |---|---|---|
-| `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.agent/memory.md` D-016 (default), D-010 (sherpa pair) |
+| `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.claude/rules/asr-pipeline.md` D-016 (default), D-010 (sherpa pair) |
 | `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. `GPU` or `CPU` also enable session term biasing, which the NPU rejects. |
 | `--context TEXT` | empty | Japanese topic line for this session. Name anything that must be spelled correctly. The tool trusts these terms at once and keeps them for the whole run. It also learns recurring terms from its own captions, and gives both to the recognizer and to the translator. Everything is forgotten when the session ends. |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
@@ -133,7 +133,7 @@ The regression suite covers three distinct long-form shapes:
 - The shipped whisper path is paced on real NPU decode costs, one per streaming update, recorded from both pause-free clips. Both replays drop nothing: the queue peaks at 0.760 s and 1.060 s of the 2 s headroom, and no trim discards un-emitted audio. The same replays drop once every decode is slowed by 1.5x, which is the margin the measurement leaves.
 - A 14:08 narration in six pinned sections feeds each full file through production replay. The six sections give 213 natural VAD segments, and the longest pre-padded segment of any of them is 9.686 s. The corpus therefore validates long-session ingestion and endpointing, but not the >10 s chunker.
 
-Deterministic coverage now reaches 182 s of pause-free audio on the shipped path and 44.7 s on the sherpa path. A VAD segment that outlives the 60 s ring stays outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.agent/memory.md` under **Smoke checklist**.
+Deterministic coverage now reaches 182 s of pause-free audio on the shipped path and 44.7 s on the sherpa path. A VAD segment that outlives the 60 s ring stays outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.claude/rules/live-smoke.md`.
 
 ### JA → EN leg (Codex subscription)
 
@@ -189,9 +189,9 @@ live-stt/
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
 ├── spike/                   # gitignored bench WAV corpus (D-014 replay/test); superseded spike docs pruned
 ├── CLAUDE.md                # canonical Claude Code instructions
-├── .claude/                 # session slash commands + project rules
+├── .claude/                 # session slash commands + the durable project rules
 ├── .serena/                 # committed Serena/LSP project configuration
-└── .agent/                  # durable memory + roadmap + polish register + closed-milestone archive
+└── .agent/                  # roadmap + polish register + closed-milestone archive
 ```
 
 ### Development

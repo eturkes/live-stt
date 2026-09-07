@@ -41,7 +41,7 @@ persisted into the manifest, so the committed numbers are reproducible and
 self-substantiating; failed validation leaves the tracked manifest untouched
 (cache WAVs have already been rebuilt) and exits nonzero.
 
-Outputs (deny-listed cache constructed here, never named on a command line; the
+Outputs (gitignored cache constructed here, never named on a command line; the
 manifest sits beside real_clips.json):
     spike/backends/cache/stress_long.wav   (>=35 s continuous)
     spike/backends/cache/stress_med.wav    (~20 s continuous)

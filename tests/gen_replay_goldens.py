@@ -24,9 +24,10 @@ whisper regeneration on a box with no NPU would otherwise silently delete the
 committed whisper row. Rows outside the matrix are dropped. Both are reported.
 
 For whisper, source the accel farm and clear PYTHONPATH first (see
-.agent/memory.md); without the farm the NPU aborts on a missing compiler loader.
+.claude/rules/openvino-accel.md); without the farm the NPU aborts on a missing
+compiler loader.
 
-The bench WAVs live under the deny-listed spike/backends/cache/; this script's
+The bench WAVs live under the gitignored spike/backends/cache/; this script's
 runtime reads are unaffected (L-016), and the path is constructed here rather
 than passed on the command line. Requires models.
 """

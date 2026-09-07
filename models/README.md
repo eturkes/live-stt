@@ -61,5 +61,6 @@ licensed, from `openai/whisper-large-v3-turbo`. The sherpa model layouts need
 `sherpa-onnx` and `sherpa-onnx-core` 1.13.4 or later. That floor is the
 compatibility bound; `uv.lock` pins the exact qualified runtime.
 
-Engine selection rationale is in `.agent/memory.md`. D-016 covers the Whisper
-default and its device. D-010 covers the choice between the two sherpa engines.
+Engine selection rationale is in `.claude/rules/asr-pipeline.md`. D-016 covers
+the Whisper default and its device. D-010 covers the choice between the two
+sherpa engines.

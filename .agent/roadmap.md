@@ -103,7 +103,7 @@ ledger or other provenance machinery.
   44.722 s at RTF 0.20 on the sherpa fallback, 44.722 s + 182.482 s at real per-update NPU cost on
   the shipped VAC path (M11.4); shutdown/stage-failure/translation-degradation mechanics.
 - User-only debt: latency feel, `-o`, soak, sustained live cadence, Ctrl+C-mid-decode, and the whole
-  VAC partial-caption cadence (`.agent/memory.md` § Smoke, L-004).
+  VAC partial-caption cadence (`.claude/rules/live-smoke.md`, L-004).
 
 ## Open (do these; lowest ID first)
 
@@ -192,10 +192,10 @@ unit is script-derivable or MAIN-implementable, matching M12.3-M13.2.
   saying a phrase twice, 2.2× under the threshold. Live, the largest repetition any SPEAKER produced
   is **20** — `リソース?`×4 from `…情報源?情報源?…リソース?リソース?…あ、ソースか!`, someone hunting
   for a word — against a smallest true-loop drop of 48, so 40 sits at 2× on both sides.
-  **A memory correction the measurement forced:** M13.1 recorded "widening the unit bound to 20
+  **A recorded-rule correction the measurement forced:** M13.1 recorded "widening the unit bound to 20
   starts catching a speaker repeating a PHRASE (`、うなぎが食べたい`×2)". That unit is **9**
   characters, so the phrase is visible from bound 9 — the claim was wrong about the bound and right
-  about the danger. `memory.md` now carries the repeat-count rule instead, which is the property
+  about the danger. `.claude/rules/asr-pipeline.md` now carries the repeat-count rule instead, which is the property
   that actually bounds the widening.
   **Out of contract, registered as P-022, not fixed:** the gap M13.2 called empty no longer is.
   Three live captions repeat a phrase exactly 4× and survive at 36 / 30 / 28 chars
@@ -295,7 +295,7 @@ unit is script-derivable or MAIN-implementable, matching M12.3-M13.2.
   penalty=None **0.0583** S=33 D=35 I=0 N=1166 (D-016(e) reproduced exactly, third time) →
   penalty=1.2 **0.0609** S=36 D=35 I=0 = **3 substitutions in 1166 characters**; 1.3 is clearly
   worse (0.0789, S=40 D=48 I=4).
-  **Two API traps found by measurement, both in `memory.md`:** `no_repeat_ngram_size` is accepted
+  **Two API traps found by measurement, both in `.claude/rules/asr-pipeline.md`:** `no_repeat_ngram_size` is accepted
   and **silently ignored** on this NPU build (sizes 2/3/4/5/8 all return byte-identical baseline
   text on a clip repeating a 5-char unit ~140×), so `repetition_penalty` is the only repetition knob
   that reaches the NPU; and `WhisperPipeline` **latches its language** across calls, which kills the
@@ -541,7 +541,7 @@ unit is script-derivable or MAIN-implementable, matching M12.3-M13.2.
   `streaming.py` added to the wheel `only-include` and the sdist `include`, every sdist pattern
   root-anchored; `pyproject.toml` description realigned onto Whisper/OpenVINO; **`gate.py`** +
   `tests/test_gate.py` created; `replay.py`'s stale "matches live-stt default" claim corrected. Two
-  packaging traps are now locked and must not return (`.agent/memory.md` § File map). Pyright was
+  packaging traps are now locked and must not return (`.claude/rules/packaging-deps.md`). Pyright was
   red for four commits while being reported green — that is why the gate is an executable script.
   Limit: the in-container NPU needs `source ~/.local/app/intel-accel/env.sh` **and** a cleared
   `PYTHONPATH`; the host needs neither.
@@ -709,7 +709,7 @@ The polish register's `## Open` is **empty** — P-014, P-015, P-017 and P-020 a
 2026-09-04 and 2026-09-06. Standing options, none of them blocking and none of them M14:
 (a) **A live-mic validation pass** — still the largest untested surface and only the user can run
     it, and it grew: on top of the standing debt (latency feel, `-o`, soak, sustained cadence,
-    Ctrl+C-mid-decode, the VAC partial-caption cadence — `memory.md` § Smoke), **M13.2 and all four
+    Ctrl+C-mid-decode, the VAC partial-caption cadence — `.claude/rules/live-smoke.md`), **M13.2 and all four
     2026-09-06 polish fixes have never met a mic**. `polish.md` **P-021** would make an ordinary
     session self-evidencing instead, which is the cheaper half of this.
 (b) **A maintenance pass** (L-018) — measured this session and real but small: `sherpa-onnx`

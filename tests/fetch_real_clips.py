@@ -7,7 +7,7 @@ Sources:
 - FLEURS Japanese test: revision-pinned TSV + WAV archive, 650 read-speech
   recordings (CC-BY-4.0). Sentence IDs repeat for independently recorded reads.
 
-Verified source payloads stay in the gitignored, deny-listed cache. This script
+Verified source payloads stay in the gitignored cache. This script
 constructs ``spike/backends/cache/`` internally (L-016); canonical mono 16 kHz
 PCM16 WAVs + the detailed JSONL index live in a content-addressed directory there,
 and git receives only ``tests/short_corpus.json`` (provenance, statistics,
