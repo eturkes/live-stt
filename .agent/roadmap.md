@@ -12,19 +12,20 @@ ledger or other provenance machinery.
 
 ## Status
 
-- Milestone: **M14 the EN leg still dies permanently in live sessions** — **IN-PROGRESS**, units
-  M14.1-M14.3 enumerated; **M14.1 + M14.2 DONE, M14.3 OPEN** (the last, and the smallest).
-  **Two live sessions ended with translation off for the rest of the run, on two DIFFERENT
-  triggers.** Session 1 (`2026-09-03T14-03-43`, 241 JA / 193 EN) died at n≈194 on the 3-strike path,
-  three consecutive runaway captions. Session 6 (`2026-09-04T13-44-44`, 263 JA / 248 EN) died at
-  14:38:49 on **`codex app-server exited`** (`live_stt.py:1131`) — an EOF, which M13 does not touch.
-  So the polish flag's priced option *"keep permanent, closes as fixed upstream because M13.2
-  removed the trigger"* is **refuted by evidence**, and the two triggers need different remedies:
-  **a re-probe cannot revive an exited process, only a respawn can.** User ruled 2026-09-06:
-  recover, shape = **respawn (EOF) + cooldown re-probe (3-strike)**.
-  **The EOF half is CLOSED by M14.2** — the leg respawns inline in 4.8-5.2 s, measured live, and
-  M14.3 now inherits the whole mechanism. **M13's repeat screen escape is CLOSED by M14.1** — bound
+- Milestone: **M14 the EN leg still dies permanently in live sessions** — **IMPLEMENTED**
+  (M14.1-M14.3 all DONE). **Both triggers now recover, and both remedies are verified against a real
+  `codex app-server` rather than only against fakes.**
+  Session 1 (`2026-09-03T14-03-43`, 241 JA / 193 EN) died at n≈194 on the 3-strike path, three
+  consecutive runaway captions; session 6 (`2026-09-04T13-44-44`, 263 JA / 248 EN) died at 14:38:49
+  on **`codex app-server exited`**, an EOF. The user ruled the shape on 2026-09-06 — **respawn (EOF)
+  + cooldown re-probe (3-strike)** — and it shipped as ONE mechanism with two arms picked by whether
+  a server survived: **respawn 4.8 s** (M14.2), **probe 5.5 s** (M14.3), both inline from `run()` on
+  the caption that finds the leg down, both bounded by one 5-attempt budget and one doubling
+  cooldown, both marked in the transcript. **M13's repeat screen escape is CLOSED by M14.1** — bound
   8 → 13, three more live loops caught, no genuine caption dropped. Detail in `## Done`.
+  **What M14 leaves standing:** the recovery paths themselves are now the largest surface that has
+  never met a mic (every disable here was injected), and `.claude/rules/live-smoke.md` carries what
+  to watch for.
 - **M13.2 and every 2026-09-06 polish fix is shipped and has never met a mic.** The last live
   session predates `bdd0f28` by 2.5 h ⇒ the decode penalty, the publication drop, the VAD segment
   drain (`f105e0c`), the off-TTY meter high-water marks (`12ea603`), the degrade marker (`71f6bf1`)
@@ -108,40 +109,78 @@ ledger or other provenance machinery.
 
 ## Open (do these; lowest ID first)
 
-Each entry below IS its unit's acceptance contract (`.claude/rules/assurance-posture.md`); its
-outcome is the commit body. All three are `tier=kernel` — production code in `live_stt.py`.
+**Empty — M14 is IMPLEMENTED.** The next session's mode is PLANNING and it needs a direction; the
+standing options are in `## Decisions pending from user`.
 
-- **M14.3 — Re-probe the EN leg after a transient-failure disable. [OPEN]**
-  **Why:** the other trigger. Three consecutive failures disable the leg for the session
-  (`live_stt.py:1234`) and session 1 died that way — but single runaways at n=130 and n=138
-  translated fine, so the failures that trip it can be transient. On the 1-3 h soak target that
-  costs every later turn.
-  **Acceptance:** (a) a 3-strike disable re-probes on a cooldown, re-enabling on a healthy turn and
-  doubling the wait on a failure; (b) it reuses M14.2's mechanism rather than adding a second one;
-  (c) a genuinely dead leg costs a bounded number of probes; (d) `_failures` resets on the healthy
-  turn, so a recovered leg is not one strike from dying again; (e) markers ordered as M14.2(e);
-  (f) neutralization; (g) `python gate.py` 6/6.
-  **Size:** est 40K → cal 46K at M14.1's measured 1.15 + ~75K baseline ≈ **121K**, and M14.2's
-  actual supports the low multiplier — 196K against `est 100K → cal 160K`, i.e. work 121K on a 100K
-  estimate ⇒ **1.21**, close to M14.1's 1.15 and far under the provisional 1.6. M14.3 is the cheap
-  L-031 class outright: `_respawn`, `_recoverable`, `_restore`, the `_closing` latches and the
-  `run()` seam all exist, so the unit originates one decision — what a probe on a LIVE process is
-  (a turn, not a spawn) — and inherits the rest.
-
-**M14 sizing basis — two actuals in, both cheap.** M14.1 measured `main=181K` against
-`est 92K → cal 147K` and M14.2 `main=196K` against `est 100K → cal 160K`; backing out the ~75K
-fresh-session baseline leaves work ratios **1.15** and **1.21**, far under the provisional 1.6
-(M13.1 ≈1.63, M12 series 1.60, spread 1.34-2.14). **L-031 reads both the same way, and M14.2 is the
-sharper case**: it originated a design fork, which is nominally the expensive class, but wave 1
-settled the fork with ONE measurement (a 4.8 s respawn) instead of a spike, so the decisions the
-unit actually originated stayed at one. The predictor is decisions ORIGINATED, and a fork that a
-single probe can price does not originate them. Baseline ≈ 75K — attached state alone is 182 KB
-before any work — so a unit's usable work budget inside the 223K aim is ~148K, and neither M14 unit
-has needed its split seam. Judgment review is retired (`.claude/rules/assurance-posture.md`) ⇒ no
-review-session projection. No teammates funded: every unit is script-derivable or
-MAIN-implementable, matching M12.3-M13.2.
+**M14 sizing basis — three actuals in and the milestone never overran.** `main=` 181K / 196K / 205K
+against `est 92K → cal 147K`, `est 100K → cal 160K`, `est 40K → cal 46K`; backing out the ~75K
+fresh-session baseline leaves work ratios **1.15**, **1.21** and **3.25**. The outlier is the
+milestone's SMALLEST unit in absolute work (130K on a 40K estimate) — a small estimate divides by a
+small number, so the ratio is noise where the absolute figure is the signal, and 40K was the miss:
+the unit was priced as inheritance plus one decision and it also carried nine locks, a twelve-mutant
+matrix and a live end-to-end run. **L-031 reads all three
+the same way and M14.3 is the sharpest case**: it was sized as inheriting M14.2's mechanism whole and
+originating one decision, and that was right, but the one decision it originated (what a probe on a
+live process IS) opened a second the plan never named — that respawning a LIVE process is not merely
+slower but incorrect, since it orphans the reader task. **Decisions originated, not lines, and a
+decision that spawns a sub-decision is what a bottom-up estimate misses.** Baseline ≈ 75K — attached
+state alone is 182 KB before any work — so a unit's usable work budget inside the 223K aim is ~148K,
+and no M14 unit needed its split seam. Judgment review is retired
+(`.claude/rules/assurance-posture.md`) ⇒ no review-session projection. No teammates funded: every
+unit was script-derivable or MAIN-implementable, matching M12.3-M13.2.
 
 ## Done (ID · outcome · decisions/lessons produced)
+
+- **M14.3 — Re-probe the EN leg after a transient-failure disable. [DONE] — SHIPPED, and verified
+  against a real `codex app-server` disabled by three GENUINE 15 s stalls: the probe re-qualified
+  that same process in 5.50 s and the transcript reads `EN 1 → disabled → restored (probed) →
+  EN 2 → EN 3`, the turns behind it at 1.6-2.3 s.**
+  **The unit's one originated decision — what a probe on a LIVE process is — answered a second one
+  the plan never named, and it inverts the plan's framing.** A probe is a fresh thread plus one turn,
+  and it is not a latency optimisation: measured, a probe costs **5.50 s** against M14.2's **4.78 s**
+  respawn, so on time alone respawning everything would be the simpler design. **It is a correctness
+  requirement.** `_respawn` drops `_proc` and `start()` overwrites `_reader_task`, so respawning a
+  live server leaves it a reader task nobody owns; when that orphan finally reaches EOF its cleanup
+  calls `_disable` on the translator that by then holds the healthy new leg, and pushes a wake
+  sentinel into its notes. **Only a dead process makes that abandonment safe, and `_alive()` is what
+  gates it** — the same predicate `start()`'s T8.6 enable-guard already needed, now written once.
+  **The fresh thread is the probe, not a nicety.** A stalled turn poisons its THREAD and
+  interrupt-plus-drain does not clear it (L-026, measured in M13.1: a later real-speech control hung
+  on a thread where a fresh one ran in 3.4 s), and the 3-strike path's live cause IS that class ⇒ a
+  turn on the wedged thread would measure the wedge and report a healthy server dead. The live run is
+  the evidence: three real `"あ"+"は"*479` stalls at exactly 16.00 s each (15 s timeout + 1 s abort),
+  then a fresh thread on the same pid at full cadence.
+  **Shape, one entry point and two arms** (`live_stt.py` +88/−41). `_recover()` owns the gate
+  (`_recoverable()` + cooldown deadline), the budget spend, the `_notes` drain, the `_failures`/
+  `_turns` reset, `_restore` and the doubling backoff; `_probe()` and `_respawn()` are what differ,
+  chosen by `_alive()` at each attempt — so a server that exits under a probe hands the next attempt
+  to the respawn arm with nothing tracking which trigger opened recovery. `_handshake()` is the
+  fresh-thread-plus-warm-up-turn both arms share, extracted from `start()`. The budget is shared, so
+  a leg that dies both ways cannot spend twice; `TRANSLATE_MAX_RESPAWNS`/`TRANSLATE_RESPAWN_WAIT_S`
+  were renamed `TRANSLATE_MAX_RECOVERIES`/`TRANSLATE_RECOVERY_WAIT_S` because a name that still said
+  "respawn" would invite exactly the second budget the acceptance forbids. The restore marker names
+  the arm: `-- translation restored: codex app-server probed (attempt 1)`.
+  Suite 337 → **346 passed / 1 skipped / 15.0 s** (+9 translator locks, one per acceptance clause
+  plus the wedged-thread, late-stall-output, dies-under-probe and dies-before-enable hazards).
+  Gate 6/6.
+  All 12 predicates proved non-vacuous by neutralization (L-022), baseline and post-restore both 0,
+  source restored byte-identical from the `cp` snapshot: always-respawn 9 reds, always-probe 9,
+  `_alive` ignoring the reader task 10 (including `start()`'s own pre-existing T8.6 lock, which is
+  what proves the dedup is behaviour-preserving), no-notes-drain 7, no-budget-spend 5,
+  no-failures-reset / no-turns-reset / no-backoff-deadline / ignore-cooldown 2 each, and
+  probe-enables-blind / no-abort-on-failed-probe / one-restore-marker 1 each. **The two counter
+  mutants red the same two test NAMES**, which is L-022's broken-matrix tell — they are distinct, and
+  the assertion lines are what prove it (`assert 2 == 0` / `assert 3 == 0` for `_failures` against
+  `assert 97 == 0` / `assert 100 == 0` for `_turns`) ⇒ *record the failing assertion, not only the
+  test id, or a real matrix reads as a broken one.*
+  **A harness lesson from the live run, which was rerun because its first pass was contaminated:**
+  waiting for the translator's queue to drain does NOT mean the turn finished — `run()` pops the
+  caption first — so the probe script's own second turn raced the first on one thread and manufactured
+  a failure the stalls should have produced. Wait on the EN line itself.
+  `main=75% 205K/273K` against `est 40K → cal 46K`; no teammates funded.
+  **Did not verify (L-004):** a 3-strike disable arising from real mic captions rather than injected
+  stalls, the ~5.5 s EN latency bump as it feels live, and a probe due while a real Ctrl+C or
+  terminal close arrives.
 
 - **M14.2 — Respawn the EN leg after the app-server exits. [DONE] — SHIPPED, and the recovery is
   verified against a real `codex app-server`, not only against fakes: the leg comes back in
@@ -728,14 +767,16 @@ CER is inflated by period-vs-modern orthography in the 「ごん狐」 reference
 
 ## Decisions pending from user
 
-**None open. M14 is IN-PROGRESS; the next session runs WORK-UNIT on M14.3, the last unit.**
-The polish register's `## Open` is **empty** — P-014, P-015, P-017 and P-020 all shipped between
-2026-09-04 and 2026-09-06. Standing options, none of them blocking and none of them M14:
+**M14 is IMPLEMENTED, so the next session runs PLANNING and it needs a DIRECTION.** The polish
+register's `## Open` holds P-021 and P-022 alone (neither blocking). The standing options, unchanged
+in kind but re-weighted by M14 — (a) has grown again, since the recovery arms are themselves
+mic-unverified:
 (a) **A live-mic validation pass** — still the largest untested surface and only the user can run
     it, and it grew: on top of the standing debt (latency feel, `-o`, soak, sustained cadence,
-    Ctrl+C-mid-decode, the VAC partial-caption cadence — `.claude/rules/live-smoke.md`), **M13.2 and all four
-    2026-09-06 polish fixes have never met a mic**. `polish.md` **P-021** would make an ordinary
-    session self-evidencing instead, which is the cheaper half of this.
+    Ctrl+C-mid-decode, the VAC partial-caption cadence — `.claude/rules/live-smoke.md`), **M13.2,
+    all four 2026-09-06 polish fixes and now BOTH M14 recovery arms have never met a mic** — every
+    disable that drove M14 was injected by `kill` or by literal stall text. `polish.md` **P-021**
+    would make an ordinary session self-evidencing instead, which is the cheaper half of this.
 (b) **A maintenance pass** (L-018) — measured this session and real but small: `sherpa-onnx`
     1.13.4 → 1.13.7, `sounddevice` 0.5.5 → 0.5.6, `ruff` 0.15.21 → 0.16.6; `numpy`, `openvino`,
     `openvino-genai` and `pytest` are current. Plus pip-audit, full gate, codex-leg re-verify.

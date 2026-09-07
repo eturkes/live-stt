@@ -5,8 +5,9 @@ user smoke (L-004). What is locked here is the failure surface a refactor can
 silently break: 3-strike session disable, backlog eviction, the `_read_loop`
 dispatch/EOF branches plus its oversized-line/broken-transport guard (the sole
 non-local input boundary, T6-hardened), the transcript marker + named cause that
-make a degrade diagnosable afterwards, M13.1's degeneracy screen, and M14.2's
-bounded respawn of an exited app-server. All in memory — fake stdio over an
+make a degrade diagnosable afterwards, M13.1's degeneracy screen, and the
+bounded recovery of a disabled leg — respawn when the app-server exited
+(M14.2), probe when it outlived the turns (M14.3). All in memory — fake stdio over an
 asyncio.StreamReader, `asyncio.run` per test, no subprocess, no mic, no new
 dependency.
 """
@@ -870,7 +871,7 @@ def test_the_respawned_thread_carries_the_glossary_learned_before_the_death(monk
             ctx.observe_ja("標柱が見えました")
         await _kill(t, first)
 
-        respawn = asyncio.create_task(t._respawn())
+        respawn = asyncio.create_task(t._recover())
         second = await _await_spawn(codex, 2)
         await _serve_start(t, second)
         assert await asyncio.wait_for(respawn, timeout=3.0) is True
@@ -895,7 +896,7 @@ def test_a_stale_wake_sentinel_cannot_fail_the_respawn(monkeypatch):
         await _kill(t, await _live_leg(t, codex))
         assert t._notes.qsize() == 1  # the stale sentinel is the whole hazard
 
-        respawn = asyncio.create_task(t._respawn())
+        respawn = asyncio.create_task(t._recover())
         await _serve_start(t, await _await_spawn(codex, 2))
         assert await asyncio.wait_for(respawn, timeout=3.0) is True
         assert t.enabled is True
@@ -915,17 +916,17 @@ def test_a_dead_codex_costs_a_bounded_number_of_respawns(monkeypatch):
         t = live_stt.CodexTranslator()
         await _kill(t, await _live_leg(t, codex))
 
-        for attempt in range(1, live_stt.TRANSLATE_MAX_RESPAWNS + 1):
-            t._respawn_at = 0.0  # the backoff itself is locked separately
-            respawn = asyncio.create_task(t._respawn())
+        for attempt in range(1, live_stt.TRANSLATE_MAX_RECOVERIES + 1):
+            t._recover_at = 0.0  # the backoff itself is locked separately
+            respawn = asyncio.create_task(t._recover())
             await _serve_start(t, await _await_spawn(codex, attempt + 1), warmup=False)
             assert await asyncio.wait_for(respawn, timeout=3.0) is False
             assert t.enabled is False
 
         assert t._recoverable() is False
-        t._respawn_at = 0.0
-        assert await t._respawn() is False  # budget spent: no further spawn
-        assert len(codex.procs) == live_stt.TRANSLATE_MAX_RESPAWNS + 1
+        t._recover_at = 0.0
+        assert await t._recover() is False  # budget spent: no further spawn
+        assert len(codex.procs) == live_stt.TRANSLATE_MAX_RECOVERIES + 1
 
         t.submit(1, "こんにちは。")  # and captions stop entering the queue
         assert t.queue.empty()
@@ -944,17 +945,17 @@ def test_a_failed_respawn_backs_off_before_the_next(monkeypatch):
         monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
         t = live_stt.CodexTranslator()
         await _kill(t, await _live_leg(t, codex))
-        assert t._respawn_at == 0.0  # the first attempt is immediate
+        assert t._recover_at == 0.0  # the first attempt is immediate
 
-        respawn = asyncio.create_task(t._respawn())
+        respawn = asyncio.create_task(t._recover())
         await _serve_start(t, await _await_spawn(codex, 2), warmup=False)
         assert await asyncio.wait_for(respawn, timeout=3.0) is False
 
-        assert t._respawn_at > time.monotonic()  # a deadline, not a free retry
-        assert t._respawn_wait == live_stt.TRANSLATE_RESPAWN_WAIT_S * 2
-        assert await t._respawn() is False  # inside the cooldown
+        assert t._recover_at > time.monotonic()  # a deadline, not a free retry
+        assert t._recover_wait == live_stt.TRANSLATE_RECOVERY_WAIT_S * 2
+        assert await t._recover() is False  # inside the cooldown
         assert len(codex.procs) == 2  # and it spawned nothing
-        assert t._respawns == 1  # a skipped attempt does not spend budget
+        assert t._recoveries == 1  # a skipped attempt does not spend budget
 
     asyncio.run(scenario())
 
@@ -970,10 +971,10 @@ def test_a_missing_codex_binary_ends_recovery_after_one_attempt(monkeypatch, cap
         t = live_stt.CodexTranslator()
         t._proc = _FakeProc(asyncio.StreamReader())  # type: ignore[assignment]
         with caplog.at_level(logging.ERROR, logger="live_stt"):
-            assert await t._respawn() is False
+            assert await t._recover() is False
             assert t._recoverable() is False  # permanent, not one of the budget
-            t._respawn_at = 0.0
-            assert await t._respawn() is False
+            t._recover_at = 0.0
+            assert await t._recover() is False
 
     asyncio.run(scenario())
     errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
@@ -1014,8 +1015,8 @@ def test_close_stops_recovery(monkeypatch):
         await t.close()
 
         assert t._recoverable() is False
-        t._respawn_at = 0.0
-        assert await t._respawn() is False
+        t._recover_at = 0.0
+        assert await t._recover() is False
         assert len(codex.procs) == 1
 
     asyncio.run(scenario())
@@ -1034,10 +1035,328 @@ def test_the_respawned_leg_starts_with_a_clean_strike_count(monkeypatch):
         t._failures = live_stt.TRANSLATE_MAX_FAILURES - 1
         t._turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
 
-        respawn = asyncio.create_task(t._respawn())
+        respawn = asyncio.create_task(t._recover())
         await _serve_start(t, await _await_spawn(codex, 2))
         assert await asyncio.wait_for(respawn, timeout=3.0) is True
         assert t._failures == 0
         assert t._turns == 0
+
+    asyncio.run(scenario())
+
+
+# --- M14.3: re-probe the EN leg after a transient-failure disable ------------
+
+
+def _sent(proc: _FakeProc, method: str) -> list[dict]:
+    """Every JSON-RPC message of one method the translator wrote to this proc."""
+    return [m for m in (json.loads(w) for w in proc.stdin.writes) if m.get("method") == method]
+
+
+async def _strike_out(t: live_stt.CodexTranslator, proc: _FakeProc):
+    """The session-1 death: TRANSLATE_MAX_FAILURES turn failures take the leg
+    down while the app-server itself keeps running -- the state a probe is for.
+
+    Driven through the real _translate/_turn/error-note path, with _abort_turn
+    stubbed to its no-op shape: its 1 s drain wait is real time in a fast suite,
+    and what it drains is locked by the tests above.
+    """
+
+    async def no_wait():
+        return
+
+    t._abort_turn = no_wait  # type: ignore[assignment]
+    for _ in range(live_stt.TRANSLATE_MAX_FAILURES):
+        turn = asyncio.create_task(t._translate("失敗する。"))
+        await _answer(t, proc.stdout, {}, 0)  # turn/start; nothing else is pending
+        proc.stdout.feed_data(_rpc_note("error", {}))
+        assert await asyncio.wait_for(turn, timeout=3.0) == ""
+    assert t.enabled is False
+    assert t._alive()  # the server outlived the turns: this is not the EOF path
+
+
+async def _serve_probe(t: live_stt.CodexTranslator, proc: _FakeProc, healthy: bool = True) -> int:
+    """Answer the two requests a probe issues; `healthy=False` fails its turn."""
+    tier = live_stt.TRANSLATE_SERVICE_TIER
+    thread = {"thread": {"id": "th-probe"}, "serviceTier": tier}
+    rid = await _answer(t, proc.stdout, thread, 0)  # nothing else is pending
+    rid = await _answer(t, proc.stdout, {}, rid)  # the probe turn/start
+    proc.stdout.feed_data(_rpc_note("turn/completed" if healthy else "error", {}))
+    return rid
+
+
+def test_a_three_strike_disable_is_probed_on_the_surviving_server(tmp_path, monkeypatch):
+    # M14.3(a)+(b)+(e). Session 1 lost translation at n=194 to three consecutive
+    # runaway captions, yet single runaways at n=130 and n=138 translated fine --
+    # so what disabled the leg was transient and the app-server is still there.
+    # Recovery must therefore re-qualify THAT server: respawning would spend
+    # 4.8 s throwing away a healthy one. The transcript records the re-enable in
+    # order, or a saved session reads JA-only while EN lines resume below it.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
+        t = live_stt.CodexTranslator(output_file=transcript)
+        proc = await _live_leg(t, codex)
+        await _strike_out(t, proc)
+
+        run_task = asyncio.create_task(t.run())
+        t.submit(9, "こんにちは。")  # the caption that finds the leg disabled
+        rid = await _serve_probe(t, proc)
+        rid = await _answer(t, proc.stdout, {}, rid)  # the caption's own turn
+        item = {"item": {"type": "agentMessage", "text": "Hello."}}
+        proc.stdout.feed_data(_rpc_note("item/completed", item))
+        proc.stdout.feed_data(_rpc_note("turn/completed", {}))
+
+        t.submit_sentinel()
+        await asyncio.wait_for(run_task, timeout=3.0)
+        assert t.enabled is True
+        assert len(codex.procs) == 1  # the healthy app-server was not replaced
+        transcript.close()
+
+    asyncio.run(scenario())
+    body = (tmp_path / "session.txt").read_text(encoding="utf-8").splitlines()
+    events = [ln.split("] ", 1)[1] for ln in body]
+    assert events[0] == "-- translation disabled: 3 consecutive failures (RuntimeError: {})"
+    assert events[1].startswith("-- translation restored: codex app-server probed")
+    assert events[2] == "EN 9: Hello."  # the caption that paid for the probe
+
+
+def test_recovery_routes_on_the_surviving_process_not_on_the_trigger(monkeypatch):
+    # M14.3(b). One entry point, two arms, and _alive() is the whole
+    # discriminator -- which is what keeps the second trigger from growing a
+    # second mechanism with its own budget, backoff and markers to keep in step.
+    # Routing the live process to _respawn would not merely cost a comparable
+    # 4.8 s: it drops _proc and overwrites _reader_task, leaving the surviving
+    # server a reader no one owns, whose eventual EOF disables the healthy leg
+    # this very recovery just produced.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        reader = t._reader_task
+        await _strike_out(t, proc)
+
+        probe = asyncio.create_task(t._recover())
+        await _serve_probe(t, proc)
+        assert await asyncio.wait_for(probe, timeout=3.0) is True
+        assert len(codex.procs) == 1  # alive -> probed
+        assert t._proc is proc and t._reader_task is reader  # kept, not abandoned
+
+        await _kill(t, proc)
+        t._recover_at = 0.0
+        respawn = asyncio.create_task(t._recover())
+        await _serve_start(t, await _await_spawn(codex, 2))
+        assert await asyncio.wait_for(respawn, timeout=3.0) is True
+        assert len(codex.procs) == 2  # dead -> respawned
+
+        assert t._recoveries == 2  # and both arms spend the one budget
+
+    asyncio.run(scenario())
+
+
+def test_the_probe_opens_a_fresh_thread_carrying_the_current_glossary(monkeypatch):
+    # A stalled turn poisons its THREAD and interrupt-plus-drain does not clear
+    # it (L-026: on one shared thread a stalled turn made a later real-speech
+    # control hang, where a fresh thread measured 3.4 s). The three strikes are
+    # exactly that class, so a probe reusing the thread would measure the wedge
+    # and report a healthy server dead. The fresh thread is also what re-carries
+    # the terms learned since startup, since the glossary rides only there.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        ctx = live_stt.SessionContext()
+        t = live_stt.CodexTranslator(ctx)
+        proc = await _live_leg(t, codex)
+        wedged = t._thread_id
+        await _strike_out(t, proc)
+        for _ in range(live_stt.CONTEXT_TERM_SUPPORT):  # captions keep learning
+            ctx.observe_ja("標柱が見えました")
+
+        probe = asyncio.create_task(t._recover())
+        await _serve_probe(t, proc)
+        assert await asyncio.wait_for(probe, timeout=3.0) is True
+
+        opened = _sent(proc, "thread/start")
+        assert len(opened) == 2 and t._thread_id != wedged
+        assert "標柱" in opened[1]["params"]["developerInstructions"]
+        assert t._brief == ctx.translator_brief()  # and the rotation check agrees
+        assert _sent(proc, "turn/start")[-1]["params"]["threadId"] == t._thread_id
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_probe_backs_off_before_the_next(monkeypatch):
+    # M14.3(a). A server that answers but cannot finish a turn must not be probed
+    # once per caption: every attempt costs its caption a turn's latency, so the
+    # wait doubles and a leg that stays down is re-probed logarithmically.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        await _strike_out(t, proc)
+        del t._abort_turn  # the real one back: this test is what locks its call
+        assert t._recover_at == 0.0  # the first attempt is immediate
+
+        probe = asyncio.create_task(t._recover())
+        await _serve_probe(t, proc, healthy=False)
+        assert await asyncio.wait_for(probe, timeout=3.0) is False
+        assert t.enabled is False
+        # A probe turn that failed is still running server-side, and an
+        # un-interrupted one converts every later turn into a timeout (L-026) --
+        # which would make the next probe fail for the previous probe's reason.
+        assert len(_sent(proc, "turn/interrupt")) == 1
+
+        assert t._recover_at > time.monotonic()  # a deadline, not a free retry
+        assert t._recover_wait == live_stt.TRANSLATE_RECOVERY_WAIT_S * 2
+        assert await t._recover() is False  # inside the cooldown
+        assert len(_sent(proc, "thread/start")) == 2  # and it opened no thread
+        assert t._recoveries == 1  # a skipped attempt does not spend budget
+
+    asyncio.run(scenario())
+
+
+def test_a_wedged_app_server_costs_a_bounded_number_of_probes(monkeypatch):
+    # M14.3(c). A server that stays alive and stays broken is the case a probe
+    # cannot distinguish from a transient one, so the budget is what ends it --
+    # shared with the respawn arm, so a leg that dies both ways cannot spend
+    # twice. submit() stops queueing at the same moment, keeping a permanently
+    # dead leg clear of the backlog and of the tdrop= counter that means real
+    # backpressure.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        await _strike_out(t, proc)
+
+        for _ in range(live_stt.TRANSLATE_MAX_RECOVERIES):
+            t._recover_at = 0.0  # the backoff itself is locked separately
+            probe = asyncio.create_task(t._recover())
+            await _serve_probe(t, proc, healthy=False)
+            assert await asyncio.wait_for(probe, timeout=3.0) is False
+
+        assert t._recoverable() is False
+        t._recover_at = 0.0
+        assert await t._recover() is False  # budget spent: no further probe
+        assert len(_sent(proc, "thread/start")) == 1 + live_stt.TRANSLATE_MAX_RECOVERIES
+
+        t.submit(1, "こんにちは。")  # and captions stop entering the queue
+        assert t.queue.empty()
+        assert t.dropped_translations == 0
+
+    asyncio.run(scenario())
+
+
+def test_the_probed_leg_starts_with_a_clean_strike_count(monkeypatch):
+    # M14.3(d). The probe arm reaches recovery carrying a FULL strike count by
+    # construction -- three consecutive failures are what disabled the leg -- so
+    # without the reset the very next failure would disable it again, permanently
+    # this time in all but name, and each probe would cost a whole cooldown to
+    # buy one caption. The fresh thread wants its own turn count for the same
+    # reason a respawned one does: a carried count rotates it early.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        t._turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
+        await _strike_out(t, proc)
+        assert t._failures == live_stt.TRANSLATE_MAX_FAILURES
+
+        probe = asyncio.create_task(t._recover())
+        await _serve_probe(t, proc)
+        assert await asyncio.wait_for(probe, timeout=3.0) is True
+        assert t._failures == 0
+        assert t._turns == 0
+
+    asyncio.run(scenario())
+
+
+def test_the_stalled_turns_late_output_cannot_fail_the_probe(monkeypatch):
+    # A turn that STALLS rather than errors keeps running server-side: its
+    # deltas and its eventual error arrive after _abort_turn has drained, so the
+    # queue the probe turn reads from is not empty. The probe would collect that
+    # tail instead of its own turn/completed and raise, failing a recovery that
+    # had in fact succeeded -- the EOF arm's measured `init failed
+    # (RuntimeError: {})` with a live server as the cause.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        await _strike_out(t, proc)
+
+        proc.stdout.feed_data(_rpc_note("item/agentMessage/delta", {"delta": "late"}))
+        proc.stdout.feed_data(_rpc_note("error", {}))
+        for _ in range(200):  # let _read_loop file both notes
+            await asyncio.sleep(0)
+            if t._notes.qsize() == 2:
+                break
+        assert t._notes.qsize() == 2  # the tail is the whole hazard
+
+        probe = asyncio.create_task(t._recover())
+        await _serve_probe(t, proc)
+        assert await asyncio.wait_for(probe, timeout=3.0) is True
+        assert t.enabled is True
+
+    asyncio.run(scenario())
+
+
+def test_a_server_that_dies_under_the_probe_is_respawned_next(monkeypatch):
+    # The two triggers compose: a wedged server that then exits must not keep
+    # being probed, and nothing tracks which trigger fired -- _alive() is read at
+    # each attempt, so the arm follows the process's current state rather than
+    # the one that opened recovery.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        await _strike_out(t, proc)
+
+        probe = asyncio.create_task(t._recover())
+        rid = await _answer(t, proc.stdout, {}, 0)  # thread/start, answered by EOF
+        proc.stdout.feed_eof()
+        assert await asyncio.wait_for(probe, timeout=3.0) is False
+        assert rid not in t._pending  # the EOF failed it, not a timeout
+        assert len(codex.procs) == 1
+
+        t._recover_at = 0.0
+        respawn = asyncio.create_task(t._recover())
+        await _serve_start(t, await _await_spawn(codex, 2))
+        assert await asyncio.wait_for(respawn, timeout=3.0) is True
+        assert t.enabled is True
+
+    asyncio.run(scenario())
+
+
+def test_a_server_that_dies_between_the_probe_turn_and_the_enable_stays_off(monkeypatch):
+    # T8.6 on the probe path. The probe turn completes, its turn/completed is
+    # consumed, and the next readline hits EOF -- so a probe that enabled on the
+    # turn alone would hand every later caption to a server that is gone, each
+    # one waiting out TRANSLATE_TIMEOUT_S on a request no one will resolve. The
+    # enable is guarded by the same liveness read that routes the arms.
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        proc = await _live_leg(t, codex)
+        await _strike_out(t, proc)
+
+        probe = asyncio.create_task(t._recover())
+        tier = live_stt.TRANSLATE_SERVICE_TIER
+        thread = {"thread": {"id": "th-probe"}, "serviceTier": tier}
+        rid = await _answer(t, proc.stdout, thread, 0)
+        rid = await _answer(t, proc.stdout, {}, rid)
+        # One synchronous burst, so _read_loop has certainly processed the EOF
+        # before _probe reads liveness: readline() returns a buffered line
+        # without yielding (L-022's deterministic async-EOF technique).
+        proc.stdout.feed_data(_rpc_note("turn/completed", {}))
+        proc.stdout.feed_eof()
+
+        assert await asyncio.wait_for(probe, timeout=3.0) is False
+        assert t.enabled is False  # a completed turn is not a live server
 
     asyncio.run(scenario())

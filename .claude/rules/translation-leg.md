@@ -66,31 +66,46 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   Startup failure deliberately marks nothing — nothing is decoded yet and a write would defeat
   `TranscriptFile`'s lazy creation. A per-block failure stays stderr-only and names its exception
   TYPE, because `TimeoutError` stringifies to `''` and `%s` alone logged `translation failed ()`.
-- **Recovery is a RESPAWN, and it is driven inline from `run()` (M14.2).** An EOF leaves no process
-  to probe, so `_respawn` re-runs `start()` whole — which is also what carries the CURRENT glossary,
-  since `_new_thread` → `_instructions` → `translator_brief`. Measured against a real app-server: a
-  respawn costs **4.8 s** and the next turn runs at normal cadence, so the caption that finds the leg
-  dead pays ~5 s where the rest of the session used to get no EN at all. The design fork was priced
-  and inline won: a background recovery task buys idle-gap repair for one more task to order against
-  `close()` and the SIGHUP path, while `run()` inherits that ordering whole.
-  - **Drain `_notes` before the handshake.** The EOF cleanup's own wake sentinel is still queued, so
-    the respawn's warm-up turn collects that `{method:error}` and raises — measured as
+- **Recovery is `_recover()`, driven inline from `run()` on the caption that finds the leg down, and
+  `_alive()` picks its arm (M14.2, M14.3).** Both permanent degrades come through one gate, one
+  budget, one backoff and one marker pair; what differs is whether a server survived.
+  - **EOF ⇒ `_respawn`.** Nothing is left to talk to, so `start()` re-runs whole. **4.8 s** measured
+    against a real app-server, next turn at normal cadence.
+  - **3 strikes ⇒ `_probe`**: a fresh thread plus one turn on the SURVIVING process. Measured after
+    three genuine 15 s stalls: probe **5.5 s**, the turns behind it 1.6-2.3 s. Latency is not the
+    argument — respawning a live process is WRONG. `_respawn` drops `_proc` and `start()` overwrites
+    `_reader_task`, leaving the survivor a reader no one owns whose eventual EOF calls `_disable` on
+    a translator that by then holds a healthy leg, and enqueues a wake sentinel into its notes. Only
+    a dead process makes that abandonment safe.
+  - **The fresh thread is the probe, not an extra.** A stalled turn poisons its THREAD and
+    interrupt-plus-drain does not clear it (L-026), so a turn on the thread that took the three
+    strikes measures the wedge and reports a healthy server dead. `_new_thread` → `_instructions` →
+    `translator_brief` is also the only channel the CURRENT glossary rides, on either arm.
+  - The design fork was priced and inline won: a background recovery task buys idle-gap repair for
+    one more task to order against `close()` and the SIGHUP path, while `run()` inherits that
+    ordering whole.
+  - **Drain `_notes` before the handshake**, on both arms. The EOF cleanup's own wake sentinel is
+    still queued, and a turn that STALLED rather than errored keeps emitting after `_abort_turn`
+    drained; the probe turn collects that `{method:error}` and raises — measured as
     `init failed (RuntimeError: {})` in 0.41 s, throwing away a server that had in fact started.
   - `submit` queues while the leg is down but still recoverable, because `run()` is parked on that
     queue and nothing else wakes it; a caption arriving inside the backoff is discarded in `run()`,
     which keeps a degrade out of the backlog and out of `tdrop=`.
-  - Bounds: `TRANSLATE_MAX_RESPAWNS`=5 per session, never refunded, and `TRANSLATE_RESPAWN_WAIT_S`=5
+  - Bounds, shared by both arms so a leg that dies two ways cannot spend twice:
+    `TRANSLATE_MAX_RECOVERIES`=5 per session, never refunded, and `TRANSLATE_RECOVERY_WAIT_S`=5
     doubling per failure. `start()` assigns `_proc` only once the exec succeeds ⇒ `_proc is None`
     after a failed respawn means the BINARY is gone (uninstalled mid-session) and recovery ends there
-    rather than spending the budget rediscovering it.
+    rather than spending the budget rediscovering it. A wedged-but-alive server is re-probed until
+    the budget runs out; if it exits under a probe, the next attempt routes itself to `_respawn`.
   - **Shutdown latches recovery off at both ends**, `submit_sentinel` and `close()`, each with its own
     lock: the drain window between them is the one place `run()` is alive with recovery armed, and a
     respawn there would spend a handshake on a session that is ending. `start()`'s own failure path
     calls `_end_proc()`, never `close()`, or one failed attempt would latch the rest off.
-  - `_restore` mirrors `_disable` into both channels ⇒ `-- translation restored: <reason>`. A
-    transcript carrying only the disable marker reads as JA-only from that point while EN lines
-    resume below it. A respawned leg also resets `_failures` (else it is one strike from dying) and
-    `_turns` (else the fresh thread rotates early).
+  - `_restore` mirrors `_disable` into both channels ⇒ `-- translation restored: codex app-server
+    probed|respawned (attempt N)`, naming the arm. A transcript carrying only the disable marker
+    reads as JA-only from that point while EN lines resume below it. A recovered leg resets
+    `_failures` (else it is one strike from dying, and the probe arm arrives carrying a FULL count by
+    construction) and `_turns` (else the fresh thread rotates early).
 - **A repeated short unit makes the translator generate without terminating.** Measured through the
   real app-server with a fresh thread per turn, a 30 s bound and a real-speech canary after every
   degenerate turn: `"あ"+"は"*n` runs 2.9 s at 20 characters and 3.4 s at 60, then **stalls at
