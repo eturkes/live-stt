@@ -28,6 +28,7 @@ INVENTORY = [
     ("ruff-format", True),
     ("pyright", True),
     ("pyright-tests", True),
+    ("secrets", True),
     ("import", True),
 ]
 BLOCKING = [name for name, blocking in INVENTORY if blocking]
@@ -81,6 +82,10 @@ def seed(tmp: Path, step: str) -> None:
         # Seed both targets; --only selects which one is under test.
         (tmp / "live_stt.py").write_text('x: int = "s"\n')
         (tmp / "tests" / "seed.py").write_text('y: int = "s"\n')
+    elif step == "secrets":
+        # A credential shape the scan must catch with the hex plugin off.
+        key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # pragma: allowlist secret
+        (tmp / "leak.py").write_text(f'aws_secret_access_key = "{key}"\n')
     elif step == "import":
         (tmp / "live_stt.py").write_text('raise RuntimeError("seeded")\n')
     else:

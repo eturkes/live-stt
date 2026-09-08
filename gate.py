@@ -38,7 +38,56 @@ PROD_FILES = ["live_stt.py", "replay.py", "cer.py", "streaming.py", "session_rep
 PYRIGHT = ["uvx", "pyright@1.1.410", "--project", "."]
 # `ruff` is not on PATH; the module form works from any environment that has it.
 RUFF = [sys.executable, "-m", "ruff"]
+# detect-secrets reads a SHA-256 as a secret, and this repo's evidence layer is
+# MADE of them -- corpus fingerprints, content-addressed cache names, pinned
+# download digests (L-017) -- so the hex plugin is off and the committed evidence
+# JSON is out of scope. Pragma-ing each site instead would be a guard escaped
+# every time it fires (L-032), and the idiom grows with every corpus. Every
+# provider pattern, the private-key detector and the keyword detector stay on,
+# which is what a leaked codex or GitHub credential trips. Coverage limit: a bare
+# hex credential is invisible, and so is anything inside `tests/*.json`.
+SECRETS = [
+    sys.executable,
+    "-m",
+    "detect_secrets.pre_commit_hook",
+    "--disable-plugin",
+    "HexHighEntropyString",
+]
+# Bulk the scan must not walk: weights, bench corpora, venvs and caches, none of
+# them tracked. Pruning by name is what keeps the walk off several GB.
+SCAN_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        ".venv-host",
+        ".venv-npu",
+        ".direnv",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".scratch",
+        "__pycache__",
+        "models",
+        "spike",
+        "transcripts",
+    }
+)
 ENV = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+
+
+def scan_files() -> list[str]:
+    """Files the secret scan reads: the tree minus bulk, minus evidence JSON.
+
+    The hook takes explicit filenames and its own `--exclude-files` does not
+    filter them, so the exclusion has to happen here.
+    """
+    found: list[str] = []
+    for root, dirs, names in os.walk("."):
+        dirs[:] = sorted(d for d in dirs if d not in SCAN_SKIP_DIRS)
+        for name in sorted(names):
+            if os.path.basename(root) == "tests" and name.endswith(".json"):
+                continue
+            found.append(os.path.join(root, name))
+    return found
 
 
 @dataclass(frozen=True)
@@ -55,6 +104,7 @@ def steps() -> list[Step]:
         Step("ruff-format", True, [*RUFF, "format", "--check", "."]),
         Step("pyright", True, [*PYRIGHT, *PROD_FILES]),
         Step("pyright-tests", True, [*PYRIGHT, "tests/"]),
+        Step("secrets", True, [*SECRETS, *scan_files()]),
         Step("import", True, [sys.executable, "-c", "import live_stt"]),
     ]
 

@@ -1,0 +1,21 @@
+# Dependency update automation. This is the ONLY thing under .github/: CI stays
+# rejected (upstream-sync.md, L-019) because the .githooks/ pre-commit hook (D-007)
+# already runs the same gate on every commit. Dependabot is here because it does
+# the one thing a local hook structurally cannot -- watch an advisory feed between
+# commits -- which is also why `gate.py` stays hermetic and pip-audit runs in the
+# L-018 maintenance recipe instead of as a gate step (packaging-deps.md).
+#
+# `uv`, not `pip`: the pip ecosystem edits pyproject.toml without regenerating
+# uv.lock, which leaves the committed lockfile out of sync with its own manifest.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # One grouped PR: this is a single-user tool whose whole dependency set is
+    # re-verified together by the L-018 recipe, so per-package PRs buy nothing.
+    groups:
+      dependencies:
+        patterns:
+          - "*"

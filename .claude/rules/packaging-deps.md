@@ -29,3 +29,9 @@ hook grows past one or two commands.
 in which case raise it deliberately → run the full gate → re-verify the codex leg, which pytest does not
 cover, with a synthetic `CodexTranslator` turn (`start()` warm-up + `_translate`). Keep package versions
 out of durable prose; they drift.
+
+`pip-audit` lives HERE and not in `gate.py` because it needs an advisory feed and the gate is
+hermetic (`toolchain.md`). The offline half of the scan already runs on every commit — ruff `S`
+inside `ruff-check`, plus the `secrets` step — so this recipe owns the dependency-CVE arm alone.
+Dependabot (`.github/dependabot.yml`) raises the same bumps between passes; a grouped PR it opens is
+this recipe's input, never a substitute for running it.

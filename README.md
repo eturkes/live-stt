@@ -219,7 +219,7 @@ live-stt/
 ### Development
 
 ```sh
-uv run python gate.py                         # the quality gate (tests, lint, format, typecheck, import)
+uv run python gate.py                         # the quality gate (tests, lint, format, typecheck, secrets, import)
 uv run pytest                                 # just the test suite
 git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 ```

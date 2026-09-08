@@ -47,6 +47,7 @@ live-stt = "live_stt:main"
 
 [dependency-groups]
 dev = [
+    "detect-secrets>=1.5.0",
     "pytest>=8.0",
     "ruff>=0.8",
 ]
@@ -93,7 +94,20 @@ select = [
     "I",   # isort
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
+    "S",   # flake8-bandit: the static-analysis half of the security scan
 ]
+# `assert` is this repo's type-narrowing idiom in production -- pyright reads it
+# to discharge `Optional` on subprocess pipes -- and the assertion form in 850+
+# tests. Nothing here runs under `python -O`, so none of them are stripped.
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# The gate spawns a fixed argv it builds itself; no input reaches it.
+"gate.py" = ["S603"]
+# Acquisition scripts fetch revision-addressed corpora over pinned https URLs and
+# verify SHA-256 on arrival (L-017); the suite spawns the real app and pty on
+# purpose, and one fixture carries a literal /tmp path as test DATA.
+"tests/*" = ["S310", "S603", "S606", "S108"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

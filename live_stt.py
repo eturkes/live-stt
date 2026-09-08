@@ -1433,7 +1433,7 @@ class CodexTranslator:
             await asyncio.sleep(1.0)
             while not self._notes.empty():
                 self._notes.get_nowait()
-        except Exception:
+        except Exception:  # noqa: S110 -- draining a dead leg; nothing to report
             pass
 
     async def close(self):
@@ -1885,7 +1885,7 @@ async def run_session(args):
         try:
             stream.stop()
             stream.close()
-        except Exception:
+        except Exception:  # noqa: S110 -- PortAudio may already be gone at exit
             pass
         # worker() may already be dead. A blocking put could then strand
         # shutdown behind a saturated queue, so land the sentinel with the
@@ -1905,7 +1905,7 @@ async def run_session(args):
         meter_task.cancel()
         try:
             await meter_task
-        except (asyncio.CancelledError, Exception):
+        except (asyncio.CancelledError, Exception):  # noqa: S110 -- awaiting our own cancel
             pass
         if output_file:
             output_file.close()

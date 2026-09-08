@@ -22,8 +22,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
   `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` · `--asr-device`.
 - `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
-- `gate.py` — THE gate, 6 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
-  `-v`). Green = 6 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
+- `gate.py` — THE gate, 7 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
+  `-v`). Green = 7 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
   prelude).
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
@@ -52,6 +52,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-014** deterministic WAV replay is the regression harness. **D-015** `observe_en` learns an
   English rendering keyed on the JA string the recogniser produced.
 - **D-007** pre-commit via `.githooks/` + `core.hooksPath`, not the `pre-commit` framework.
+- **D-017** security scanning splits by hermeticity: ruff `S` (in `ruff-check`) + a `detect-secrets`
+  `secrets` step run offline in the gate; `pip-audit` stays in the L-018 recipe. Update automation =
+  `.github/dependabot.yml` (`uv`, weekly, grouped), the only `.github/` file — CI stays REJECTED
+  (`upstream-sync.md`). Scan scoping + its coverage limit → `toolchain.md`.
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
 - Utterances stay **UNCAPPED** — one utterance is one line and one turn, at any length.

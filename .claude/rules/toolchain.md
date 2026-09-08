@@ -1,6 +1,6 @@
 # Toolchain
 
-**Gate = `uv run --no-sync python gate.py`** — 6 blocking steps, `--only NAME` runs one, `-v` prints
+**Gate = `uv run --no-sync python gate.py`** — 7 blocking steps, `--only NAME` runs one, `-v` prints
 step output. The script owns the exact step set and file list and `tests/test_gate.py` locks the
 inventory, so read the script instead of restating it: a gate that lives in prose gets silently
 shortened, which is how four commits reported a passing gate while its pyright step stayed red. Every
@@ -26,6 +26,20 @@ uv run python -c "import live_stt"                 # cheap import smoke-check
 uv run python replay.py WAV [--engine E] [--json]  # replay a WAV through the live pipeline
 uvx pyright@1.1.410 --project . live_stt.py replay.py cer.py streaming.py   # typecheck
 ```
+
+**Security scanning is split by hermeticity.** Static analysis rides the existing `ruff-check` step
+(ruff's `S` / flake8-bandit ruleset). The `secrets` step runs `detect-secrets` over a tree walk
+`gate.py` owns — both offline, so the gate keeps its no-network contract. `pip-audit` needs an
+advisory feed and stays in the L-018 recipe (`packaging-deps.md`); Dependabot
+(`.github/dependabot.yml`, `package-ecosystem: uv`) watches between commits.
+
+**The secret scan runs with `HexHighEntropyString` off and skips `tests/*.json`.** This repo's
+evidence layer is MADE of SHA-256 — corpus fingerprints, content-addressed cache names, pinned
+download digests (L-017) — so that plugin fires only false positives and the idiom grows with every
+corpus; pragma-ing each site would be a guard escaped every time it fires (L-032). Every provider
+pattern, the private-key detector and the keyword detector stay on, which is what a leaked codex or
+GitHub credential trips. **Coverage limit: a bare hex credential is invisible, as is anything inside
+`tests/*.json`.** A deliberate fake credential in a fixture carries `# pragma: allowlist secret`.
 
 `ruff` is not on `PATH` — the module form (`python -m ruff`) works from any environment that has it.
 `uvx` is self-contained; the `~/.local` pyright is dangling. Keep test files pyright-clean too (the

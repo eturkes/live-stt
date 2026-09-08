@@ -5,7 +5,7 @@ clauses it overrides. Where the template and a rules file disagree, the rules fi
 
 **User ruling: personal tool, not an industrial product** — the apparatus reached ~11,100 lines
 around a 2,108-line tool and was cut with zero production change (`becc22b`, L-032). Verification =
-`python gate.py` (6 blocking steps, invocation → `toolchain.md`) + `replay.py` goldens +
+`python gate.py` (7 blocking steps, invocation → `toolchain.md`) + `replay.py` goldens +
 `tests/eval_cer.py` on demand. A unit closes when its acceptance holds under the gate and, where the
 unit touches decode quality, a CER number the commit body records.
 
