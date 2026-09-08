@@ -28,6 +28,9 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
+- `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + a redirected
+  stderr log; no hardware, weights or network, and it imports the shipped screen rather than
+  restating it. `uv run python session_report.py [--log F] [--json]`.
 - `tests/` — fast locks (`uv run pytest -q`) + on-demand evaluators `eval_cer.py`,
   `eval_long_form.py`, `eval_backpressure.py`, `eval_retention.py`.
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
@@ -70,37 +73,28 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 Rank = funding order; acceptance written at deferral time.
 
-1. **Make a live session self-evidencing.** One committed script over `transcripts/*.txt` + a stderr
-   log, no hardware and no gitignored input beyond the session's own files, reporting what
-   `live-smoke.md` names: captions with no EN and why (declined / timeout / disabled / shutdown),
-   degrade + re-enable markers with timestamps, `backlog peak:` high-water lines, caption length +
-   repetition distributions with the longest surviving repetition, thread-rotation bumps,
-   EN-behind-JA lag. **Accept:** against the six saved sessions it re-derives without hand-reading —
-   1073 captions, 26 caught at unit bound 8, session 1 dying at n≈194 on 3 strikes, session 6 on
-   `codex app-server exited` at 14:38:49, caption 263 escaping the screen — and a fresh clone with no
-   `transcripts/` exits clean.
-2. **Cut end-to-end latency on the shipped NPU path.** Today ≈2.5 s voice→JA, EN ≈1 s later.
+1. **Cut end-to-end latency on the shipped NPU path.** Today ≈2.5 s voice→JA, EN ≈1 s later.
    **Accept:** a committed measurement of the current per-stage budget (VAC update decode, commit
    lag, publication, translate turn) on a replayed WAV, then a shipped change that moves the total
    with retention CER no worse than 0.0609 and `tests/eval_backpressure.py` carry unchanged.
-3. **Rule on `CAPTION_REPEAT_MAX_CHARS`=40's known false negatives.** Three live captions repeat a
+2. **Rule on `CAPTION_REPEAT_MAX_CHARS`=40's known false negatives.** Three live captions repeat a
    phrase exactly 4× and survive at 36 / 30 / 28 chars; the largest repetition a SPEAKER produced is
    20, so the usable range is 21..36. **Accept:** re-derive the live population at the candidate
    threshold, adjudicate every newly dropped caption as loop or speech, keep a ≥1.5× margin over the
    largest genuine repetition — or record the refusal with that margin as the reason.
    `tests/test_translator.py`'s corpus + boundary locks and `test_shipped_path.py`'s pass-list move
    with it.
-4. **Maintenance + security pass** (L-018 recipe, `packaging-deps.md`). `sherpa-onnx` 1.13.4 →
+3. **Maintenance + security pass** (L-018 recipe, `packaging-deps.md`). `sherpa-onnx` 1.13.4 →
    1.13.7, `sounddevice` 0.5.5 → 0.5.6, `ruff` 0.15.21 → 0.16.6; `numpy`, `openvino`,
    `openvino-genai`, `pytest` current. **Accept:** pip-audit clean, full gate green, codex leg
    re-verified against a real app-server, `uv.lock` committed.
-5. **Live-mic validation pass** — user-only (L-004), the largest untested surface: M13.2, the four
+4. **Live-mic validation pass** — user-only (L-004), the largest untested surface: M13.2, the four
    2026-09-06 polish fixes and BOTH M14 recovery arms have never met a mic; standing debt = latency
    feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence. **Accept:** the
    user runs `live-smoke.md` and reports; each item lands verified or defective.
-6. **Parameterize source language** (T2.2) — Japanese-only by design. **Accept:** re-open only if the
+5. **Parameterize source language** (T2.2) — Japanese-only by design. **Accept:** re-open only if the
    use-case expands.
-7. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+6. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis.

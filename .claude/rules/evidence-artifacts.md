@@ -74,6 +74,22 @@ neither, because they replay committed traces — a fresh clone runs them in und
   two-stage path, the VAC arm on recorded real NPU costs (`max_segment_depth == 0`), the `SCALE_LADDER`
   margin, and the carry arm over `caption_trace.json` — which needs no corpus and no skip, so the
   shipped path's real-time reserve stays checkable in a fresh clone.
+- `session_report.py` + `test_session_report.py` — what a LIVE session did, re-derived from the two
+  files that session already wrote (`transcripts/*.txt` + redirected stderr). No hardware, no
+  weights, no network, and it imports the shipped `repeat_span`/`caption_defect` rather than
+  restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
+  names: captions with no EN and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
+  degrade + restore markers with timestamps, `backlog peak:` high-water lines, caption length +
+  repetition distributions, EN-behind-JA lag, and slow turns tagged with whether they sit on a
+  `TRANSLATE_ROTATE_TURNS` boundary. Two rules the live corpus forced: **a session owns log time
+  from its own start until the next session starts**, never to its last caption, because
+  `codex app-server exited` fires after the final caption by construction; and **once the leg is
+  down, `disabled` outranks the text screen**, since a screen verdict behind a degrade is a
+  counterfactual and rides `screened_now` instead of explaining the loss. Over the six saved
+  sessions: 1073 captions, 1001 translated, 72 without EN; unit-bound sweep 26 caught at 6-8, 27 at
+  9-11 (the newly-caught one being the 9-character loop that escaped bound 8), 29 at 13-21, 30 at
+  22+; session 1 inferring a 3-strike degrade at last EN n=194, session 6 reading
+  `codex app-server exited` off the log at 14:38:49.
 - `test_gate.py` locks `gate.py`'s step inventory with one seeded defect per blocking step, in a
   throwaway tree.
 
@@ -173,6 +189,7 @@ neither, because they replay committed traces — a fresh clone runs them in und
 ## On-demand commands
 
 ```sh
+uv run python session_report.py [--log F] [--json]      # re-derive a live session from its own files
 uv run python tests/eval_vac_lag.py                     # caption lag from the committed trace, <1 s
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware
 uv run python tests/eval_en_pairing.py [--live]         # what a real translator pairs; default <1 s

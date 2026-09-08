@@ -33,7 +33,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-PROD_FILES = ["live_stt.py", "replay.py", "cer.py", "streaming.py"]
+PROD_FILES = ["live_stt.py", "replay.py", "cer.py", "streaming.py", "session_report.py"]
 # uvx is self-contained and version-pinned; the ~/.local pyright is dangling.
 PYRIGHT = ["uvx", "pyright@1.1.410", "--project", "."]
 # `ruff` is not on PATH; the module form works from any environment that has it.

@@ -155,6 +155,26 @@ Degradation, in order:
 
 Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the meter line in place; with stderr redirected (`live-stt 2> errors.log`) the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
 
+### Session report
+
+To review a finished session, run `session_report.py`. It reads the saved transcript and the redirected log. It needs no microphone, no weights and no network.
+
+```sh
+live-stt 2> stt.log                              # redirect stderr to keep the counters
+uv run python session_report.py --log stt.log    # defaults to transcripts/*.txt
+```
+
+The report shows:
+
+- caption and translation totals, per session and overall
+- every caption that has no `EN` line, and the reason for it
+- the point where translation stopped or came back, with timestamps
+- the backlog high-water marks from the log
+- caption length and repetition distributions
+- how far behind its `JA` line each `EN` line arrived
+
+Add `--json` for machine-readable output. With no saved sessions the report prints `no transcripts found` and exits 0.
+
 ### Display
 
 ```
@@ -182,6 +202,7 @@ live-stt/
 ├── streaming.py             # streaming hypothesis buffer for the default engine
 ├── replay.py                # deterministic WAV replay through the live pipeline (dev/regression)
 ├── cer.py                   # character-error-rate scorer shared by the evaluators
+├── session_report.py        # what a live session did, from its transcript + stderr log
 ├── gate.py                  # the quality gate (dev tool, not shipped in the wheel)
 ├── models/                  # STT weights (gitignored; README.md has download cmds)
 ├── transcripts/             # saved sessions, one file per run (gitignored, created on first line)

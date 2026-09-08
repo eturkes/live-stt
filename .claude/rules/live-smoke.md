@@ -73,6 +73,10 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 - **Memory** (external `ps`/`top`): RSS flat — ring, audio headroom and segment queue are bounded,
   `_RESAMPLE_CACHE` ≤8, codex `_notes`/`_pending` drain per turn. Steady growth signals a leak.
 
+**Run `uv run python session_report.py --log stt.log` after any soak** — it answers every question in
+this section mechanically off the saved transcript and the redirected stderr, so a session stays
+diagnosable once the scrollback is gone. Redirect stderr (`> stt.log 2>&1`) to give it the counters.
+
 EN stopping while JA continues is the sanctioned JA-only degrade (D-009); the transcript marker names
 which trigger fired, and a `-- translation restored: codex app-server probed|respawned` marker below
 it means the leg came back and names the arm (`translation-leg.md`). One caption's EN arriving ~5-6 s

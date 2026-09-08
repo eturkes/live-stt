@@ -46,7 +46,13 @@ def test_inventory_is_the_contract():
 
 def test_production_pyright_file_list():
     """streaming.py is a production module; leaving it off the list is how it went unchecked."""
-    assert PROD_FILES == ["live_stt.py", "replay.py", "cer.py", "streaming.py"]
+    assert PROD_FILES == [
+        "live_stt.py",
+        "replay.py",
+        "cer.py",
+        "streaming.py",
+        "session_report.py",
+    ]
     argv = {s.name: s.argv for s in steps()}["pyright"]
     for name in PROD_FILES:
         assert name in argv
