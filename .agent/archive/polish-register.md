@@ -1,10 +1,10 @@
-# Polish — live-stt
+# Archived — polish register
 
-Deferred-perfection register. `/session-polish` is its sole consumer: pick by `pri`, size-fit the
-remaining window, run one item at a time under the gate identity in `.claude/rules/toolchain.md`, prune the row in the
-commit that lands it. Off-spine improvements are born here at deferral time with the acceptance check
-written while the evidence is fresh. Milestone/unit state stays in `roadmap.md`; nothing here gates a
-milestone.
+**CLOSED historical record; superseded by `.agent/spec.md` § Deferred.** Its two live rows moved
+there: **P-021** (make a live session self-evidencing) is `Deferred` 1 and **P-022**
+(`CAPTION_REPEAT_MAX_CHARS` false negatives) is `Deferred` 3. The `P-<n>` numbering, the
+`pri`/`size` grades and the register's own consumer are retired. Read this for the evidence and the
+refutations behind a closed row — above all the shapes marked "do not re-propose".
 
 Row shape: `P-<n>` monotonic and never reused (pruning leaves gaps) · `pri` 1 = do first … 3 =
 whenever · `size` S ≈ ≤15 % of a window, M ≈ ≤35 %, L = the session. An item whose evidence pointer

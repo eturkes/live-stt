@@ -69,7 +69,7 @@ include = [
     "/streaming.py",
     "/README.md",
     "/models/README.md",
-    "/.agent/roadmap.md",
+    "/.agent/spec.md",
 ]
 
 [tool.pyright]

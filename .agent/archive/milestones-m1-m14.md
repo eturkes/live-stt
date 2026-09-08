@@ -1,14 +1,10 @@
-# Roadmap — live-stt
+# Archived — milestones M1-M14
 
-Canonical plan + status. Pick the lowest-numbered OPEN unit; restate its acceptance before coding.
-Trajectory: single-file personal tool, simplicity over completeness — no frameworks, no config, no
-premature abstraction. Milestone states: UNPLANNED · IN-PROGRESS · IMPLEMENTED (terminal) · PARKED;
-REVIEWED is historical (M9, M10). Unit states: OPEN · BLOCKED · DONE.
-
-**Assurance posture = `.claude/rules/assurance-posture.md`**, auto-loaded beside `CLAUDE.md` every
-session and binding over the command files: a unit closes on `python gate.py` plus, where it touches
-decode quality, a CER number the commit body records — no per-unit acceptance contract, review
-ledger or other provenance machinery.
+**CLOSED historical record; superseded by `.agent/spec.md`.** Every milestone here is IMPLEMENTED.
+The roadmap flow — milestone/unit states, MODE dispatch, sized planning sessions — is retired with
+this file: live plan + state = `.agent/spec.md`, live law = `.claude/rules/`. Read this for the
+evidence behind a closed decision, never for what to do next. Assurance posture is unchanged and
+lives in `.claude/rules/assurance-posture.md`.
 
 ## Status
 

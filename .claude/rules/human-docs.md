@@ -8,7 +8,7 @@ paths:
 
 **L-021 — `CLAUDE.md`'s human register applies to human-facing surfaces ALONE.** Those surfaces are
 `README.md`, `models/README.md`, and the user-facing CLI strings in `live_stt.py`. Everything else —
-`.agent/*`, `.claude/rules/`, `.claude/commands/`, code comments — stays agent-dense, em-dashes
+`.agent/*`, `.claude/rules/`, code comments — stays agent-dense, em-dashes
 deliberate. Confirm the dash rule with `command grep -nP '[\x{2013}\x{2014}]' README.md`, and keep any
 literal duplicated between code and README in sync.
 

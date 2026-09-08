@@ -191,9 +191,8 @@ live-stt/
 ├── .envrc                   # direnv: per-layer uv venv selection (container vs host)
 ├── spike/                   # gitignored bench WAV corpus (D-014 replay/test); superseded spike docs pruned
 ├── CLAUDE.md                # canonical Claude Code instructions
-├── .claude/                 # session slash commands + the durable project rules
-├── .serena/                 # committed Serena/LSP project configuration
-└── .agent/                  # roadmap + polish register + closed-milestone archive
+├── .claude/                 # the durable project rules
+└── .agent/                  # the project spec + the closed-milestone archive
 ```
 
 ### Development
@@ -277,11 +276,11 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 
 ## Notes
 
-- Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/roadmap.md` § Deferred).
+- Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/spec.md` § Deferred).
 - `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
 - Closing the terminal runs that same shutdown. The screen is gone, so the last utterance and its translation land in the transcript file only.
 - Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window. The "Fast" service tier trades quota for speed ("1.5x speed, increased usage"), so it burns that window faster than the per-turn token counts alone suggest; set `TRANSLATE_SERVICE_TIER = "default"` to drop back to the standard tier.
-- Claude Code is this project's development agent. See `CLAUDE.md`, `.claude/`, `.serena/`, and `.agent/` for its workflow and context.
+- Claude Code is this project's development agent. See `CLAUDE.md`, `.claude/`, and `.agent/` for its workflow and context.
 
 ## License
 

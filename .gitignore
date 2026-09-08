@@ -38,9 +38,7 @@ CLAUDE.local.md
 # Headroom live-wrap marker (ephemeral: pid/port/env key; written per live session, removed on exit)
 .claude/.headroom_wrap_marker.json
 
-# .serena/ is committed as-is via its own .serena/.gitignore
-
-# Session workspace: teammate roster/reports + per-teammate git worktrees (.claude/commands/session-roadmap.md); nothing durable
+# Session workspace: teammate roster/reports + per-teammate git worktrees (global CLAUDE.md "Subagents"); nothing durable
 .scratch/
 
 # Environment / secrets

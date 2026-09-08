@@ -56,7 +56,7 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   sentinel onto `_notes`, so a turn parked mid-collect raises at once instead of waiting out
   `TRANSLATE_TIMEOUT_S`. The enabled→disabled flip logs once. `submit` counts backlog evictions into
   `dropped_translations` (meter `tdrop=`; `TRANSLATE_QUEUE_MAX`=50, drop-oldest).
-- **L-022 — validate liveness at the COMMIT point, not only at spawn.** `start()` re-checks
+- **L-033 — validate liveness at the COMMIT point, not only at spawn.** `start()` re-checks
   `_reader_task.done()` / `returncode` immediately before `enabled=True`, so a warm-up health check
   that completes just before the child dies cannot strand later turns over a dead reader.
 - Both disable paths run through `_disable` ⇒ one stderr line **plus one

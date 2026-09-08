@@ -23,14 +23,13 @@ codex degrades to JA-only — a hard requirement, never a cloud fallback.
 - `models/` — gitignored weights; `models/README.md` carries the download commands.
 - `transcripts/` — gitignored saved sessions, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, together with the CLI strings in `live_stt.py`.
-- `.agent/roadmap.md` = plan + status · `.agent/polish.md` = deferred-perfection register. Both ride
-  every session whole ⇒ keep them minimal. `.agent/archive/<record>.md` = closed-milestone detail,
-  committed, outside that attached set, read on demand.
-- `.claude/rules/` = this law, the sole carrier of what a teammate must hold. `CLAUDE.md` +
-  `.claude/commands/` are refreshed byte-for-byte from upstream ⇒ never write a project delta into
-  them (`assurance-posture.md`). `.scratch/` = gitignored session workspace, nothing durable.
-- `.serena/` = committed project configuration; its own `.gitignore` owns `cache/` +
-  `project.local.yml` (D-013). Serena memories carry no project memory; these rules do.
+- `.agent/spec.md` = Intent · Artifacts · Decisions · Deferred · Phase; the sole attached state,
+  imported by `CLAUDE.md` ⇒ it rides every session whole. Keep it ≤ 8 KB.
+  `.agent/archive/<record>.md` = closed-milestone detail, committed, outside that attached set, read
+  on demand.
+- `.claude/rules/` = this law, the sole carrier of what a teammate must hold. `CLAUDE.md` is
+  refreshed byte-for-byte from upstream ⇒ never write a project delta into it (`upstream-sync.md`).
+  `.scratch/` = gitignored session workspace, nothing durable.
 
 `D-###` / `L-###` ids anchor a code or test comment to the rule that explains it. They live in these
 rules files, numbering monotonic with gaps where a rule died; keep an id while a citer still names it.
@@ -44,7 +43,7 @@ rules files, numbering monotonic with gaps where a rule died; keep an id while a
   file for "LLM readability"; denser naming saves ~30 tokens at every call site's expense (D-006,
   L-001).
 - Edit code only when you can name the failure mode the edit prevents (L-001). A refactor pass over
-  mature guarded code correctly yields almost nothing — record the rejects in `roadmap.md` instead of
+  mature guarded code correctly yields almost nothing — record the rejects in `spec.md` instead of
   manufacturing edits against the pink-elephant pull (L-019).
 - D-002 — one file. A further split needs a cohesive one-way subsystem boundary named out loud;
   `streaming.py` is the one taken, on being pure text-in/text-out with no app config, state or
@@ -53,4 +52,4 @@ rules files, numbering monotonic with gaps where a rule died; keep an id while a
 - A single user preference is state, not an `always` law: record placement and config choices with
   their source, and ask before reversing one (L-008).
 
-`rg` skips dotdirs → pass `--hidden --glob '!.git/**'` to reach `.agent/`, `.claude/`, `.serena/`.
+`rg` skips dotdirs → pass `--hidden --glob '!.git/**'` to reach `.agent/` + `.claude/`.

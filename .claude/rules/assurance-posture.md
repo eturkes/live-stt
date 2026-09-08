@@ -1,9 +1,7 @@
 # Assurance posture
 
-`CLAUDE.md` + `.claude/commands/*.md` are refreshed byte-for-byte from upstream `~/agents/claude/`
-(`CLAUDE.project.md` + `slash-commands/`) → a sync is a pure `cp` and a delta written into either is
-lost at the next one. **Every project-specific override lives in this file**, which upstream does not
-ship; it loads beside `CLAUDE.md` for MAIN + teammates alike. Where the two disagree, this file wins.
+This file owns what assurance the repo actually runs; `upstream-sync.md` tables the `CLAUDE.md`
+clauses it overrides. Where the template and a rules file disagree, the rules file wins.
 
 **User ruling: personal tool, not an industrial product** — the apparatus reached ~11,100 lines
 around a 2,108-line tool and was cut with zero production change (`becc22b`, L-032). Verification =
@@ -15,6 +13,10 @@ unit touches decode quality, a CER number the commit body records.
 change touching `sd.InputStream`, `audio_callback`, real-time latency, Ctrl+C or multi-hour behaviour
 closes with a "**Did not verify (L-004)**" list naming each path for the user; never claim "done"
 without it. The procedure those items point at is `live-smoke.md`.
+
+**D-012 — judgment review is retired; a unit's check set closes inside the session that implements
+it.** No review ledger, no separate review pass, no milestone review state. The unit's `Deferred` row
+in `.agent/spec.md` is its acceptance contract and the commit body is its outcome.
 
 **L-031 — size work by the decisions it forces, not by its line count.** Measured over six closed
 M11 units: Spearman **-0.395** between insertions and context cost, and the extremes invert — the
@@ -33,36 +35,33 @@ individually-pinned migration clause in three consecutive units**, each waving t
 code change. *A guard that must be escaped every time it fires is not a guard.* The cut deleted
 21,038 lines and took the suite from 466 tests / 48 s to 207 / 14.6 s with zero production change.
 
-Retired — never reintroduce (roadmap `## Out of scope`):
+Retired — never reintroduce:
 
-- `.agent/contracts/` ⇒ WORK-UNIT wave 1 writes no contract file: **the acceptance contract IS the
-  unit's roadmap entry**, its outcome the commit body. Close appends no verdict table and tags no
-  `archive/m<m>u<u>-<role>`; a `test`/`orc`/`diff` brief cites the roadmap entry as its contract.
-- MILESTONE-REVIEW + `.agent/review-m<m>.md` + the `rev`/`rev2`/`audit` roles ⇒ **IMPLEMENTED is the
-  terminal milestone state**. MODE dispatch: all units DONE ⇒ PLANNING for the next milestone.
-  `REVIEWED` is historical (M9, M10) and no milestone earns it again. A unit's own check set belongs
-  to its WORK-UNIT session, so `/session-polish` routes one back there rather than to a review mode.
+- `.agent/contracts/` ⇒ a unit writes no contract file: **the acceptance contract IS its `Deferred`
+  row in `.agent/spec.md`**, its outcome the commit body. Close appends no verdict table and tags no
+  `archive/…` ref; a `test`/`orc`/`diff` brief cites the `Deferred` row as its contract.
+- A review pass, `.agent/review*.md`, and the `rev`/`rev2`/`audit` roles (D-012). Every other
+  teammate role the template names stays live.
 - Contract fingerprints · claim registries · mutation matrices.
 - A separate project-memory file under `.agent/` ⇒ its law lives in these rules files, which reach
-  MAIN and every teammate on their own. Where the upstream command files name **memory** — as a scope
-  source beside the roadmap, as the gate toolchain-env recipe's home, or as a conformance target —
-  read `.claude/rules/`. The
-  attached set is `.agent/roadmap.md` + `.agent/polish.md` alone: both are MAIN-owned mutable ledgers
-  written mid-session, so they stay attached rather than moving here, where a frozen snapshot would
-  read as current.
-
-Live, per the command files: assurance tiers · MVP-spine units · `.agent/polish.md` · worktree
-isolation · every role the command file names except the retired three · two-tier reports ·
-Close order · commit convention.
+  MAIN and every teammate on their own. The attached set is **`.agent/spec.md` alone**: a MAIN-owned
+  mutable ledger written mid-session, so it stays attached rather than moving here, where a frozen
+  snapshot would read as current. Closed-milestone detail lives in `.agent/archive/`, outside the
+  attached set, read on demand.
 
 Adversarial review (`CLAUDE.md` review-termination rule) fixes its check set before reading the diff,
 then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its subchecks: adjudicate every
 subcheck, and route whatever a tool can decide into `gate.py` rather than a review row. The cap
 bounds presentation, never coverage — a check set that will not fit means the unit is oversized
-(L-031) ⇒ report that and let MAIN split it, which is also PLANNING's calibration input. The report
-is the whole record; no ledger carries rows between sessions.
+(L-031) ⇒ report that and let MAIN split it. The report is the whole record; no ledger carries rows
+between sessions.
 
 `<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): **273K**
 now, `/240K` in every gauge M11-M13 recorded. Compare units by absolute K; the percentage is
-denominator-relative. Those recorded `main=` actuals stay live sizing analogs ⇒ PLANNING sizes new
-units bottom-up against them plus the global reserve, never against a literal written here.
+denominator-relative. **The last three closed units measured `main=` 181K / 196K / 205K** against
+bottom-up estimates of 92K / 100K / 40K, work ratios 1.15 / 1.21 / 3.25 once a **fresh-session
+baseline of ≈75K** is backed out — and the 3.25 outlier is the milestone's SMALLEST unit by
+estimate, where a small denominator makes the ratio noise and the absolute 130K is the signal. Those
+actuals stay the sizing analogs ⇒ size a new unit bottom-up against them plus the global reserve,
+never against a literal written here. **Re-measure the baseline on the first unit of this phase**:
+that ≈75K carried 182 KB of attached state, which `.agent/spec.md` replaces at ≤8 KB.
