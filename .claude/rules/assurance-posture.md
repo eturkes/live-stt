@@ -52,18 +52,19 @@ Retired — never reintroduce:
   Neither is project memory: the queue is a monotonic funding list, so attaching it would make it a
   permanent growth term on every context.
 
-Adversarial review runs as a `rev` dispatch on the unit's own diff, inside the unit's session: the
-teammate reads a worktree, MAIN adjudicates every row, and a sustained finding lands as a red test.
-Phase close adds no review of its own — it is the last unit's. A diff whose vocabulary is
-security-flavoured (the `secrets` step, credential handling) stays MAIN-side, because the provider
-classifier kills a sol teammate on that material and every successor that reads it.
+Global `Subagents` b1 owns dispatch; the bindings this repo adds are these. A `rev` runs inside the
+unit that authored the diff, docs and law units included — D-012 retired the separate pass and the
+ledger, never the second reader. Phase close adds no review of its own; it is the last unit's. A diff
+whose vocabulary is security-flavoured (the `secrets` step, credential handling) stays MAIN-side
+under the security-vocabulary licence, because the provider classifier kills a sol teammate on that
+material and every successor that reads it.
 
-Its report (`CLAUDE.md` review-termination rule) fixes the check set before reading the diff, then
-folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its subchecks: adjudicate every
-subcheck, and route whatever a tool can decide into `gate.py` rather than a review row. The cap
-bounds presentation, never coverage — a check set that will not fit means the unit is oversized
-(L-031) ⇒ report that and let MAIN split it. The report is the whole record; no ledger carries rows
-between sessions.
+Its report (`CLAUDE.md` review-termination rule, evidence bar → global `Subagents`) fixes the check
+set before reading the diff, then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its
+subchecks: adjudicate every subcheck, and route whatever a tool can decide into `gate.py` rather than
+a review row. The cap bounds presentation, never coverage — a check set that will not fit means the
+unit is oversized (L-031) ⇒ report that and let MAIN split it. The report is the whole record; no
+ledger carries rows between sessions.
 
 `<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): **273K**
 now, `/240K` in every gauge M11-M13 recorded. Compare units by absolute K; the percentage is

@@ -19,6 +19,14 @@ cannot see gets its own lock — the seeded tree holds a single root-level file,
 `test_secret_scan_reaches_the_real_tree` pins the walk to production, a nested file and a dotdir
 file. Feature locks prove themselves by neutralization instead (L-022), never by seeding.
 
+`tests/test_law_consistency.py` rides the pytest step and locks the two deferral-queue invariants a
+tool can decide: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row with its rank, title
+verbatim, and no scanned law file names a row by `rank N` at all. It needs no seeded fixture — the
+tree was the input that fired it, red on two renamed spine titles and on three rank references, one
+already retargeted onto the wrong unit. Pairing is checked ORDERED because independent rank/title
+membership passes a swap of two titles; that swap and the `at rank N` evasion form are both proven
+red by mutation, restoring from a `cp` snapshot rather than `git checkout` (L-022).
+
 **Pin the venv layer in every agent command.** `.venv` = container (agent dev + test), `.venv-host` =
 host (live-mic runtime, lowest latency). A venv path-bakes its layer, so a bare `uv run` from the
 wrong one rebuilds and clobbers the other. `.envrc` selects by path prefix but direnv acts in hooked

@@ -81,12 +81,18 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Deferred
 
-Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time; the `/goal`
-body names the row it funds. Rank 1 = cut the EN-leg thread-rotation tax.
+Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
+row = that unit's whole contract; the `/goal` body names the row it funds.
 
-Blocking the spine: the **live-mic validation pass** (rank 4) is user-only (L-004) — M13.2, the four
-polish fixes and both M14 recovery arms have never met a mic, so every agent-side claim about the
-live path stays provisional until the user runs `live-smoke.md`.
+The spine, in funding order: **1** Cut the EN-leg thread-rotation tax · **2** Rule on
+`CAPTION_REPEAT_MAX_CHARS`=40's known false negatives · **3** Maintenance + security pass · **4**
+Live-mic validation pass · **5** Probe the two open NPU constructor properties · **6** Parameterize
+source language · **7** M10 candidate-screen remainder. The last two sit there because their
+acceptance is a re-open condition, not work.
+
+Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
+and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays
+provisional until the user runs `live-smoke.md`.
 
 ## Phase
 

@@ -102,7 +102,8 @@ paths:
   speculative/draft decoding**. And `"NPU"` now defaults to the **stateful** implementation
   (`STATIC_PIPELINE=false`), yet `whisper_generate` calls `decoder->reset_state()` after every audio
   chunk ⇒ **no KV reuse across the growing buffer's repeated `generate()` calls**. Do not re-derive
-  these; the open candidates are the two constructor properties in `.agent/deferred.md` rank 5.
+  these; the open candidates are the two constructor properties in `.agent/deferred.md` → *Probe the
+  two open NPU constructor properties*.
 - **Repetition-loop cause + free repro.** The recogniser is pinned to Japanese, so audio it cannot
   account for is emitted as Japanese tokens until `max_length`=448 — the 444-char live captions. The
   trigger is neither laughter nor room tone: synthetic non-speech (digital silence, −60 dB noise,
@@ -223,7 +224,8 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   Every candidate below 0.75 s needs the fixed 0.35 s term cut first.
 - Translation is **2.330 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
   bare turn, this one is production order over 215 captions. 39 of those turns opened a fresh thread
-  on a glossary change and cost 3.900 s against 2.085 s steady (`.agent/deferred.md` rank 2).
+  on a glossary change and cost 3.900 s against 2.085 s steady (`.agent/deferred.md` → *Cut the
+  EN-leg thread-rotation tax*).
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 
