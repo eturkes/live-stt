@@ -8,7 +8,7 @@ paths:
 
 Fast locks run in the gate. **The eight `eval_*.py` scripts are ON-DEMAND and never gate steps**: four
 need gitignored weights and minutes of compute, so run one when a decode change raises an accuracy
-question. `eval_vac_lag.py`, `eval_term_census.py` and `eval_en_pairing.py` (default mode) need
+question. `eval_latency.py`, `eval_term_census.py` and `eval_en_pairing.py` (default mode) need
 neither, because they replay committed traces — a fresh clone runs them in under a second each.
 
 ## Committed artifacts and what each certifies
@@ -37,7 +37,7 @@ neither, because they replay committed traces — a fresh clone runs them in und
   scoring is `--score`-only and a section keeps recorded rows while its WAV + reference hashes hold, so
   acquisition reruns without re-decoding. Downstream consumers resolve their section from the artifact
   (`source.wav`), never from a constant.
-- `vac_decode_trace.json` + `build_vac_trace.py` + `eval_vac_lag.py` — per-update `(buffer_s, decode_s)`
+- `vac_decode_trace.json` + `build_vac_trace.py` + `eval_latency.py` — per-update `(buffer_s, decode_s)`
   **plus the hypothesis that produced each one**. Storing the hypotheses is what makes the trace
   replayable: `StreamingProcessor` is a pure function of decode outputs + buffer lengths, so replaying
   them reproduces the measured commit/trim trajectory with no model, and `divergences == 0` certifies
@@ -191,7 +191,7 @@ neither, because they replay committed traces — a fresh clone runs them in und
 
 ```sh
 uv run python session_report.py [--log F] [--json]      # re-derive a live session from its own files
-uv run python tests/eval_vac_lag.py                     # caption lag from the committed trace, <1 s
+uv run python tests/eval_latency.py                     # per-stage latency budget, traces only, <1 s
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware
 uv run python tests/eval_en_pairing.py [--live]         # what a real translator pairs; default <1 s
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)

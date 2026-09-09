@@ -175,6 +175,38 @@ paths:
   unhealthy device; `run_session` + `--list-devices` own those imports and offline replay/test stays
   hardware-independent.
 
+## Latency budget — per stage, `tests/eval_latency.py`
+
+Every figure re-derives from `vac_decode_trace.json` + `en_pairing_trace.json` in under a second, no
+hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_long` (44.7 s) runs
+0.1-0.2 s cheaper on every row.
+
+| stage | p50 | p90 | max | what it is |
+| --- | --- | --- | --- | --- |
+| update decode | 0.645 | 0.814 | 1.006 | one `process()` |
+| commit lag | 2.535 | 4.600 | 8.157 | voice → committed character on the meter |
+| provisional lag | 1.187 | 1.615 | 2.385 | voice → the same character shown UNCONFIRMED |
+| publication | 1.173 | 1.444 | 1.444 | speech end → `JA n:` = `VAD_MIN_SILENCE_S` + final decode |
+| translate turn | 2.330 | 4.190 | 6.200 | `JA n:` → `EN n:` (steady 2.085, rotating 3.900) |
+
+- **Decode cost is `0.417 s fixed + 7.15 ms/char`** (`stress_long`: 0.360 + 5.77). The fixed term is
+  Whisper's encoder over a 30 s window, measured FLAT at 0.31 s for buffers of 1.0 s through 28.0 s
+  via `perf_metrics.get_encode_inference_duration`; feature extraction adds ~1.8 ms per buffer second
+  and `return_timestamps=True` is free (`get_word_level_timestamps_processing_duration` = 0). So
+  shortening the buffer touches the MARGINAL half only — 11.25 s → 5 s buys ~0.15 s — and 0.35 s is
+  the floor under any update cadence.
+- **The commit lag is a DISPLAY POLICY cost, not a compute cost.** `lag = audio-time holdback +
+  decode_s`, and the holdback (p50 1.207 s) is LocalAgreement-2 withholding text until a second decode
+  confirms it. The same decode already held that text: showing its unconfirmed tail costs nothing and
+  takes p50 to 1.187 s, max to 2.385 s. `provisional_lag_s` is that arm, run on the same virtual clock
+  and the same per-character placement as the committed arm, so their difference is the policy alone.
+- **`VAC_CHUNK_S` is floored by decode cost, not by taste.** Work rate = `decode_s / VAC_CHUNK_S`:
+  0.645 today, 0.86 at 0.75 s, **1.29 at 0.5 s** — past real time, so the audio queue never drains.
+  Every candidate below 0.75 s needs the fixed 0.35 s term cut first.
+- Translation is **2.330 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
+  bare turn, this one is production order over 215 captions. 39 of those turns opened a fresh thread
+  on a glossary change and cost 3.900 s against 2.085 s steady (`.agent/deferred.md` rank 2).
+
 ## Real-time cost — the instrument is CARRY (D-016(d))
 
 VAC awaits each decode inside the coroutine draining `audio_q`, so unlike the sherpa two-stage worker

@@ -4,7 +4,7 @@
 D-015's `observe_en` keys a learned English spelling on the JA string the
 RECOGNISER produced, so the key is a hypothesis, not the name. Two questions
 follow and this answers both from `caption_trace.json` alone -- no model, no
-accelerator, no audio, under a second -- the way `eval_vac_lag.py` derives
+accelerator, no audio, under a second -- the way `eval_latency.py` derives
 caption lag, so a fresh clone can rerun it:
 
     uv run python tests/eval_term_census.py [--term 兵十] [--floor 3] [--json]

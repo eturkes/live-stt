@@ -235,7 +235,7 @@ uv run python tests/eval_cer.py               # 2-engine CER + RTF over the shor
 uv run --with soundfile python tests/eval_long_form.py  # build the pinned 14:08 narration (--score adds CER)
 uv run python tests/eval_backpressure.py      # paced replay: bounded queues, drop-free
 uv run python tests/eval_retention.py         # shipped path over 182 s of pause-free speech
-uv run python tests/eval_vac_lag.py           # per-character caption lag of the streaming path
+uv run python tests/eval_latency.py           # per-stage end-to-end latency budget, from traces
 uv run python tests/eval_term_census.py       # what the recognizer gives session context as a key
 ```
 
