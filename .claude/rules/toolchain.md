@@ -8,6 +8,17 @@ step is fast and hermetic — no weights, no hardware, no network — and clears
 skip**, the whisper NPU replay golden, which needs the prelude below; anything more skipping means
 absent weights or corpus.
 
+**Every step ships the input that fires it, and the gate runs those inputs on itself.**
+`tests/test_gate.py` seeds one defect of each step's own class into a throwaway tree and asserts
+`gate FAILED: <step>` — pytest an `assert False`, ruff-check an `F401`, ruff-format bad spacing,
+pyright and pyright-tests `x: int = "s"`, secrets an AWS-shaped key, import a module that raises. The
+seeds ride the pytest step, so a green gate is simultaneously its own positive control: a step that
+stopped being able to fail turns the gate red instead of quietly green. One scope hole that seeding
+cannot see gets its own lock — the seeded tree holds a single root-level file, so an over-grown
+`SCAN_SKIP_DIRS` or `tests/` exclusion would still catch it while the real tree went unscanned ⇒
+`test_secret_scan_reaches_the_real_tree` pins the walk to production, a nested file and a dotdir
+file. Feature locks prove themselves by neutralization instead (L-022), never by seeding.
+
 **Pin the venv layer in every agent command.** `.venv` = container (agent dev + test), `.venv-host` =
 host (live-mic runtime, lowest latency). A venv path-bakes its layer, so a bare `uv run` from the
 wrong one rebuilds and clobbers the other. `.envrc` selects by path prefix but direnv acts in hooked

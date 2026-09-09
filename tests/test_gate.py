@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from gate import PROD_FILES, Step, run, steps
+from gate import PROD_FILES, Step, run, scan_files, steps
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "gate.py"
@@ -62,6 +62,22 @@ def test_production_pyright_file_list():
 def test_format_step_traverses_the_repository():
     """Traversal is what skips .json/.md; an explicit path of either exits 1 as Python."""
     assert {s.name: s.argv for s in steps()}["ruff-format"][-3:] == ["format", "--check", "."]
+
+
+def test_secret_scan_reaches_the_real_tree(monkeypatch):
+    """The seeded control below cannot see the scan's scope shrink.
+
+    Its throwaway tree holds one root-level `leak.py`, so a skip list that grew
+    to prune subdirectories, dotdirs or the whole repo would still catch it while
+    the real tree went unscanned -- and an unscanned clean tree prints the same
+    green. Pin the scope against the tree the gate actually runs on.
+    """
+    monkeypatch.chdir(ROOT)
+    found = set(scan_files())
+    # A production file, a nested one, and a dotdir one: dotdirs carry the rules.
+    assert {"./live_stt.py", "./tests/test_gate.py", "./.claude/rules/toolchain.md"} <= found
+    assert "./tests/replay_goldens.json" not in found  # the declared evidence-JSON exclusion
+    assert not [p for p in found if p.startswith("./models")]  # the declared bulk prune
 
 
 def seed(tmp: Path, step: str) -> None:

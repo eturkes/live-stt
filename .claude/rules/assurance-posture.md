@@ -40,8 +40,9 @@ Retired — never reintroduce:
 - `.agent/contracts/` ⇒ a unit writes no contract file: **the acceptance contract IS its `Deferred`
   row in `.agent/spec.md`**, its outcome the commit body. Close appends no verdict table and tags no
   `archive/…` ref; a `test`/`orc`/`diff` brief cites the `Deferred` row as its contract.
-- A review pass, `.agent/review*.md`, and the `rev`/`rev2`/`audit` roles (D-012). Every other
-  teammate role the template names stays live.
+- A separate review pass, `.agent/review*.md`, and the `rev2`/`audit` roles (D-012). **`rev` itself
+  is live INSIDE the unit that implements the diff** — what L-032 cut was apparatus, not a second
+  reader. Every other teammate role the template names stays live.
 - Contract fingerprints · claim registries · mutation matrices.
 - A separate project-memory file under `.agent/` ⇒ its law lives in these rules files, which reach
   MAIN and every teammate on their own. The attached set is **`.agent/spec.md` alone**: a MAIN-owned
@@ -49,8 +50,14 @@ Retired — never reintroduce:
   snapshot would read as current. Closed-milestone detail lives in `.agent/archive/`, outside the
   attached set, read on demand.
 
-Adversarial review (`CLAUDE.md` review-termination rule) fixes its check set before reading the diff,
-then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its subchecks: adjudicate every
+Adversarial review runs as a `rev` dispatch on the unit's own diff, inside the unit's session: the
+teammate reads a worktree, MAIN adjudicates every row, and a sustained finding lands as a red test.
+Phase close adds no review of its own — it is the last unit's. A diff whose vocabulary is
+security-flavoured (the `secrets` step, credential handling) stays MAIN-side, because the provider
+classifier kills a sol teammate on that material and every successor that reads it.
+
+Its report (`CLAUDE.md` review-termination rule) fixes the check set before reading the diff, then
+folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its subchecks: adjudicate every
 subcheck, and route whatever a tool can decide into `gate.py` rather than a review row. The cap
 bounds presentation, never coverage — a check set that will not fit means the unit is oversized
 (L-031) ⇒ report that and let MAIN split it. The report is the whole record; no ledger carries rows

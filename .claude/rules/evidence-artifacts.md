@@ -91,7 +91,8 @@ neither, because they replay committed traces — a fresh clone runs them in und
   22+; session 1 inferring a 3-strike degrade at last EN n=194, session 6 reading
   `codex app-server exited` off the log at 14:38:49.
 - `test_gate.py` locks `gate.py`'s step inventory with one seeded defect per blocking step, in a
-  throwaway tree.
+  throwaway tree, plus the secret scan's real-tree scope, which that throwaway tree cannot see
+  shrink (`toolchain.md`).
 
 ## Rules that keep the evidence honest
 
