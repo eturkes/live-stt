@@ -1086,13 +1086,71 @@ def test_a_status_without_a_caption_writes_no_separator(monkeypatch):
 
 
 def test_a_status_filling_the_line_drops_the_caption_whole(monkeypatch):
-    """`room` hitting 0 must suppress the caption: `partial[-0:]` is the WHOLE
-    string, so the truthiness guard is what stops a full-width wrap."""
+    """`room` hitting 0 must suppress the caption, or the status line wraps."""
     state = live_stt.State()
     state.partial = "".join(str(i % 10) for i in range(200))
     state.dropped = 4
 
     assert run_meter(monkeypatch, state, columns=12)[0] == f"{live_stt._LINE_CLEAR}  drop=4"
+
+
+def test_a_fully_settled_caption_carries_no_escape_codes(monkeypatch):
+    """Nothing withheld means nothing to distinguish, so the body stays plain."""
+    state = live_stt.State()
+    state.partial = "settled"
+
+    assert run_meter(monkeypatch, state)[0] == f"{live_stt._LINE_CLEAR}   settled"
+
+
+def test_the_withheld_tail_of_a_caption_is_dimmed(monkeypatch):
+    """The reader must be able to tell settled text from text still being revised.
+
+    Showing the tail at all is what took per-character lag from 2.535 s to
+    1.187 s p50; dimming it is what keeps that affordable, because the dim run
+    is the only part a later decode may rewrite.
+    """
+    state = live_stt.State()
+    state.partial = "settled"
+    state.provisional = "tail"
+
+    written = run_meter(monkeypatch, state)[0]
+
+    assert written == f"{live_stt._LINE_CLEAR}   settled{live_stt._DIM}tail{live_stt._UNDIM}"
+
+
+def test_a_truncated_caption_dims_exactly_the_surviving_tail(monkeypatch):
+    """Truncation cuts from the left, so the dim run must be re-found, not stored."""
+    state = live_stt.State()
+    state.partial = "0123456789"
+    state.provisional = "abcde"
+
+    # room = (12 - 1) - 0 status - 3 separator = 8 columns.
+    assert (
+        run_meter(monkeypatch, state, columns=12)[0]
+        == f"{live_stt._LINE_CLEAR}   789{live_stt._DIM}abcde{live_stt._UNDIM}"
+    )
+    # room = 2: the cut reaches past the settled text entirely. A fresh state,
+    # because the screen stub stops the meter it was handed.
+    narrow = live_stt.State()
+    narrow.partial, narrow.provisional = "0123456789", "abcde"
+    assert (
+        run_meter(monkeypatch, narrow, columns=6)[0]
+        == f"{live_stt._LINE_CLEAR}   {live_stt._DIM}de{live_stt._UNDIM}"
+    )
+
+
+def test_a_japanese_caption_is_cut_to_columns_not_characters(monkeypatch):
+    """One kana is TWO terminal columns.
+
+    Cutting by character count fits twice the columns available, the line wraps,
+    and `_LINE_CLEAR` erases only the row the cursor sits on -- so the wrapped
+    remainder stays on screen as residue for the rest of the session.
+    """
+    state = live_stt.State()
+    state.partial = "あいうえおかきくけこ"  # 10 characters, 20 columns
+
+    # room = (14 - 1) - 3 = 10 columns, which is the newest FIVE kana.
+    assert run_meter(monkeypatch, state, columns=14)[0] == f"{live_stt._LINE_CLEAR}   かきくけこ"
 
 
 # --- CLI flags (P1 defaults, mutual exclusion) --------------------------------

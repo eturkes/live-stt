@@ -32,7 +32,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   stderr log; no hardware, weights or network, and it imports the shipped screen rather than
   restating it. `uv run python session_report.py [--log F] [--json]`.
 - `tests/` — fast locks (`uv run pytest -q`) + on-demand evaluators `eval_cer.py`,
-  `eval_long_form.py`, `eval_backpressure.py`, `eval_retention.py`.
+  `eval_long_form.py`, `eval_backpressure.py`, `eval_retention.py`, and `eval_latency.py`, the
+  per-stage end-to-end latency budget (committed traces only, no hardware, <1 s).
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
@@ -58,6 +59,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   (`upstream-sync.md`). Scan scoping + its coverage limit → `toolchain.md`.
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
+- The status line shows the whole latest decode: committed text normal, the tail LocalAgreement-2
+  still withholds **dimmed**. Per-character lag 2.535 → 1.187 s p50, 8.157 → 2.385 s max, at zero
+  compute and zero CER cost. The published line and the transcript stay committed-only + append-only.
 - Utterances stay **UNCAPPED** — one utterance is one line and one turn, at any length.
 - A runaway caption is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
@@ -76,7 +80,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
 ## Deferred
 
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time; the `/goal`
-body names the row it funds. Rank 1 = cut end-to-end latency on the shipped NPU path.
+body names the row it funds. Rank 1 = cut the EN-leg thread-rotation tax.
 
 Blocking the spine: the **live-mic validation pass** (rank 4) is user-only (L-004) — M13.2, the four
 polish fixes and both M14 recovery arms have never met a mic, so every agent-side claim about the
@@ -84,6 +88,7 @@ live path stays provisional until the user runs `live-smoke.md`.
 
 ## Phase
 
-**IMPLEMENT.** M1-M14 shipped and closed (`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs. Each
-`/goal` body I paste = one unit from `.agent/deferred.md`, closed under `python gate.py` plus, where
+**IMPLEMENT.** M1-M14 shipped and closed (`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs. The
+latency budget is committed and re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`).
+Each `/goal` body I paste = one unit from `.agent/deferred.md`, closed under `python gate.py` plus, where
 it touches decode quality, a CER number the commit body records.

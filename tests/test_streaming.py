@@ -257,21 +257,29 @@ class _StubRec:
         return text, [Segment(0.0, float(seconds), text)]
 
 
-def _run_vac(script, window=1600):
-    """Drive _vac_segments over one utterance described by `script`."""
+def _run_vac(script, window=1600, screen=None):
+    """Drive _vac_segments over one utterance described by `script`.
+
+    `screen` collects `(partial, provisional)` once per streaming update. It is
+    the only way to see the meter's unconfirmed tail, which finalize clears.
+    """
     rec, vad = _StubRec(), _StubVad(script)
     state = live_stt.State()
     lines = []
+    sink: list[tuple[str, str]] = screen if screen is not None else []
     q = asyncio.Queue()
     for _ in script:
         q.put_nowait(np.zeros(window, dtype=np.float32))
     q.put_nowait(None)
 
+    def hook(*_a):
+        sink.append((state.partial, state.provisional))
+
     async def scenario():
         original = live_stt.emit_line
         live_stt.emit_line = lambda tag, seq, text, f: lines.append((tag, seq, text))
         try:
-            await live_stt._vac_segments(rec, vad, window, q, state, None)
+            await live_stt._vac_segments(rec, vad, window, q, state, None, on_update=hook)
         finally:
             live_stt.emit_line = original
 
@@ -285,6 +293,22 @@ def test_vac_emits_one_numbered_line_per_utterance():
     assert lines[0][1] == 1
     assert lines[0][2]
     assert state.partial == ""  # cleared once the utterance is published
+
+
+def test_vac_offers_the_meter_the_whole_latest_hypothesis():
+    """Settled text plus the withheld tail must equal the decode that produced them.
+
+    LocalAgreement-2 holds a hypothesis back until a second decode confirms it,
+    and that hold IS the latency: showing the tail took per-character lag from
+    2.535 s to 1.187 s p50 (`tests/eval_latency.py`). Publishing stays append-only
+    -- `state.partial` alone is what reaches the numbered line and the transcript.
+    """
+    screen: list[tuple[str, str]] = []
+    _, state, rec = _run_vac([True] * 40 + [False], screen=screen)
+
+    assert [settled + tail for settled, tail in screen] == rec.seen
+    assert any(tail for _, tail in screen), "nothing was ever withheld, so nothing is proved"
+    assert state.provisional == ""  # publication clears it alongside state.partial
 
 
 def test_vac_publishes_an_utterance_still_open_at_flush():

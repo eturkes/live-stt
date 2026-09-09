@@ -218,6 +218,9 @@ _CODEX_CONFIG = {
 
 # ANSI: carriage-return + erase-line. Lets block output overwrite the status line.
 _LINE_CLEAR = "\r\x1b[2K"
+# ANSI: faint, then back to normal intensity. 22 rather than 0 because 0 would
+# also reset any colour the user's terminal applied around us.
+_DIM, _UNDIM = "\x1b[2m", "\x1b[22m"
 # Gate stdout's status-line rewrites on a TTY so redirected stdout stays ANSI-clean.
 _STDOUT_TTY = sys.stdout.isatty()
 
@@ -561,6 +564,7 @@ class State:
         self.segment_queue_depth = 0
         self.max_segment_queue_depth = 0
         self.partial = ""  # streaming caption still settling; the meter renders it
+        self.provisional = ""  # its unconfirmed tail; meter-only, rewritten each decode
         self.stopping = False
         self.stop_event: asyncio.Event = None  # type: ignore[assignment]
 
@@ -1591,6 +1595,14 @@ async def _vac_segments(
         if commit:
             utterance += commit
             state.partial = utterance
+        # This decode already produced the text LocalAgreement-2 is still
+        # withholding, so showing it costs no compute and no accuracy: measured
+        # over both pinned clips it takes the reader's wait from 2.535 s to
+        # 1.187 s p50 and 8.157 s to 2.385 s max (tests/eval_latency.py). It is
+        # METER-ONLY -- the next decode may rewrite it, while `utterance`, which
+        # is what the numbered line and the transcript carry, stays append-only.
+        # finish() sets emitted = previous, so a final update empties this.
+        state.provisional = processor.previous[len(processor.emitted) :]
         if on_update is not None:
             on_update(buffer_s, buffer_end_s, commit_audio_s, commit, final, decode_s)
 
@@ -1760,6 +1772,35 @@ def _backlog(queued_samples, segments, state, translator=None) -> str:
     return f"{audio_pending}{segment_pending}{dropped}{tdrop}{skip}{tskip}"
 
 
+def caption_body(settled: str, provisional: str, room: int) -> str:
+    """The newest caption text that fits `room` columns, unconfirmed part dimmed.
+
+    Cut by WIDTH from the right, not by character count: one kana occupies two
+    terminal columns, so a 40-character caption is 80 columns and wraps, and
+    _LINE_CLEAR erases only the row the cursor sits on -- the wrapped remainder
+    stays on screen as residue. Cutting from the right keeps the newest text,
+    which is the part the reader is waiting for.
+
+    The dim run is what separates settled text from text the next decode may
+    rewrite. Nothing is emitted around a body that is entirely settled, so the
+    common case stays byte-identical to a plain caption.
+    """
+    text = settled + provisional
+    width = 0
+    cut = len(text)
+    while cut > 0:
+        char_width = 2 if unicodedata.east_asian_width(text[cut - 1]) in "WF" else 1
+        if width + char_width > room:
+            break
+        width += char_width
+        cut -= 1
+    text = text[cut:]
+    tail = min(len(provisional), len(text))
+    if not tail:
+        return text
+    return f"{text[: len(text) - tail]}{_DIM}{text[len(text) - tail :]}{_UNDIM}"
+
+
 async def meter(state, audio_q, translator=None):
     # Self-refreshing status line: backlog/drop counters only (each shown when
     # nonzero). _LINE_CLEAR erases the whole line per tick so a shrinking width
@@ -1774,11 +1815,9 @@ async def meter(state, audio_q, translator=None):
                 translator,
             )
             status = f" {live}".rstrip()
-            # Tail-truncate the settling caption: it grows past the terminal width
-            # and a wrapped line would survive the next _LINE_CLEAR as residue.
             room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
-            partial = state.partial[-room:] if room and state.partial else ""
-            write_stdout(f"{_LINE_CLEAR}{status}{'   ' + partial if partial else ''}")
+            body = caption_body(state.partial, state.provisional, room)
+            write_stdout(f"{_LINE_CLEAR}{status}{'   ' + body if body else ''}")
         else:
             # Off a TTY the carriage-return rewrites would corrupt a redirected
             # stream (L-006), so the counters ride the log instead -- and as

@@ -6,10 +6,11 @@ is written at deferral time while the evidence is fresh, and the funded row is t
 contract (`assurance-posture.md`). The `/goal` body the user pastes names the row it funds; a row
 dies in the commit that closes it.
 
-1. **Cut end-to-end latency on the shipped NPU path.** Today ≈2.5 s voice→JA, EN ≈1 s later.
-   **Accept:** a committed measurement of the current per-stage budget (VAC update decode, commit
-   lag, publication, translate turn) on a replayed WAV, then a shipped change that moves the total
-   with retention CER no worse than 0.0609 and `tests/eval_backpressure.py` carry unchanged.
+1. **Cut the EN-leg thread-rotation tax.** A glossary change opens a fresh codex thread inline, and
+   the committed 215-caption trace pays it on 39 turns: 3.900 s p50 against 2.085 s steady, 18 % of
+   the stream. **Accept:** rotations below 15 per 215 captions with rendering consistency unchanged
+   (`eval_en_pairing.py` distinct spellings 1/1/1) and turn p90 under 3.5 s — or a recorded refusal
+   naming the glossary-staleness cost. Budget + producer → `asr-pipeline.md`, `tests/eval_latency.py`.
 2. **Rule on `CAPTION_REPEAT_MAX_CHARS`=40's known false negatives.** Three live captions repeat a
    phrase exactly 4× and survive at 36 / 30 / 28 chars; the largest repetition a SPEAKER produced is
    20, so the usable range is 21..36. **Accept:** re-derive the live population at the candidate
