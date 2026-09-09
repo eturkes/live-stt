@@ -123,7 +123,7 @@ paths:
   12, **29 at 13**, flat to 21, 30 at 22. The largest repetition any SPEAKER produced is **20**
   (`リソース?`×4). Known false negatives: 3 captions repeat a phrase 4× at 36/30/28 characters and
   survive, so 40 sits 2× above the largest genuine repetition rather than 6× — lowering it is a
-  `spec.md` `Deferred` row, not a free win.
+  `.agent/deferred.md` row, not a free win.
 - Latin ratio: the 23 latin-dominant live captions split cleanly — 17 true English at ≤0.15
   Japanese-per-character, 6 Japanese-carrying-loanwords at ≥0.27, nothing between. A 1:1 rule
   (`latin > japanese`) drops **6 genuine Japanese captions**, because a Latin letter is one phoneme

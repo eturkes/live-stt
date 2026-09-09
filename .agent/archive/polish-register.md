@@ -1,8 +1,8 @@
 # Archived — polish register
 
-**CLOSED historical record; superseded by `.agent/spec.md` § Deferred.** Its two live rows moved
-there: **P-021** (make a live session self-evidencing) is `Deferred` 1 and **P-022**
-(`CAPTION_REPEAT_MAX_CHARS` false negatives) is `Deferred` 3. The `P-<n>` numbering, the
+**CLOSED historical record; superseded by `.agent/deferred.md`.** Its two live rows left it:
+**P-021** (make a live session self-evidencing) SHIPPED as `session_report.py` (`f398818`), and
+**P-022** (`CAPTION_REPEAT_MAX_CHARS` false negatives) is a queue row. The `P-<n>` numbering, the
 `pri`/`size` grades and the register's own consumer are retired. Read this for the evidence and the
 refutations behind a closed row — above all the shapes marked "do not re-propose".
 

@@ -15,8 +15,8 @@ closes with a "**Did not verify (L-004)**" list naming each path for the user; n
 without it. The procedure those items point at is `live-smoke.md`.
 
 **D-012 — judgment review is retired; a unit's check set closes inside the session that implements
-it.** No review ledger, no separate review pass, no milestone review state. The unit's `Deferred` row
-in `.agent/spec.md` is its acceptance contract and the commit body is its outcome.
+it.** No review ledger, no separate review pass, no milestone review state. The unit's row in
+`.agent/deferred.md` is its acceptance contract and the commit body is its outcome.
 
 **L-031 — size work by the decisions it forces, not by its line count.** Measured over six closed
 M11 units: Spearman **-0.395** between insertions and context cost, and the extremes invert — the
@@ -37,9 +37,9 @@ code change. *A guard that must be escaped every time it fires is not a guard.* 
 
 Retired — never reintroduce:
 
-- `.agent/contracts/` ⇒ a unit writes no contract file: **the acceptance contract IS its `Deferred`
-  row in `.agent/spec.md`**, its outcome the commit body. Close appends no verdict table and tags no
-  `archive/…` ref; a `test`/`orc`/`diff` brief cites the `Deferred` row as its contract.
+- `.agent/contracts/` ⇒ a unit writes no contract file: **the acceptance contract IS its row in
+  `.agent/deferred.md`**, its outcome the commit body. Close appends no verdict table and tags no
+  `archive/…` ref; a `test`/`orc`/`diff` brief cites the queue row as its contract.
 - A separate review pass, `.agent/review*.md`, and the `rev2`/`audit` roles (D-012). **`rev` itself
   is live INSIDE the unit that implements the diff** — what L-032 cut was apparatus, not a second
   reader. Every other teammate role the template names stays live.
@@ -47,8 +47,10 @@ Retired — never reintroduce:
 - A separate project-memory file under `.agent/` ⇒ its law lives in these rules files, which reach
   MAIN and every teammate on their own. The attached set is **`.agent/spec.md` alone**: a MAIN-owned
   mutable ledger written mid-session, so it stays attached rather than moving here, where a frozen
-  snapshot would read as current. Closed-milestone detail lives in `.agent/archive/`, outside the
-  attached set, read on demand.
+  snapshot would read as current. Closed-milestone detail lives in `.agent/archive/` and the
+  deferral queue in `.agent/deferred.md` — both committed, outside the attached set, read on demand.
+  Neither is project memory: the queue is a monotonic funding list, so attaching it would make it a
+  permanent growth term on every context.
 
 Adversarial review runs as a `rev` dispatch on the unit's own diff, inside the unit's session: the
 teammate reads a worktree, MAIN adjudicates every row, and a sustained finding lands as a red test.
@@ -71,4 +73,4 @@ baseline of ≈75K** is backed out — and the 3.25 outlier is the milestone's S
 estimate, where a small denominator makes the ratio noise and the absolute 130K is the signal. Those
 actuals stay the sizing analogs ⇒ size a new unit bottom-up against them plus the global reserve,
 never against a literal written here. **Re-measure the baseline on the first unit of this phase**:
-that ≈75K carried 182 KB of attached state, which `.agent/spec.md` replaces at ≤8 KB.
+that ≈75K carried 182 KB of attached state, which `.agent/spec.md` replaces at ~6 KB.

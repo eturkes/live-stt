@@ -71,6 +71,7 @@ include = [
     "/README.md",
     "/models/README.md",
     "/.agent/spec.md",
+    "/.agent/deferred.md",
 ]
 
 [tool.pyright]

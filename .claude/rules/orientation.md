@@ -24,9 +24,10 @@ codex degrades to JA-only — a hard requirement, never a cloud fallback.
 - `transcripts/` — gitignored saved sessions, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, together with the CLI strings in `live_stt.py`.
 - `.agent/spec.md` = Intent · Artifacts · Decisions · Deferred · Phase; the sole attached state,
-  imported by `CLAUDE.md` ⇒ it rides every session whole. Keep it ≤ 8 KB.
-  `.agent/archive/<record>.md` = closed-milestone detail, committed, outside that attached set, read
-  on demand.
+  imported by `CLAUDE.md` ⇒ it rides every session whole. Every line binds current or future work, so
+  each unit prunes what its own close made dead; size is emergent. `.agent/deferred.md` = the
+  deferral queue and `.agent/archive/<record>.md` = closed-milestone detail — both committed, outside
+  that attached set, read on demand.
 - `.claude/rules/` = this law, the sole carrier of what a teammate must hold. `CLAUDE.md` is
   refreshed byte-for-byte from upstream ⇒ never write a project delta into it (`upstream-sync.md`).
   `.scratch/` = gitignored session workspace, nothing durable.
