@@ -186,6 +186,7 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
 | update decode | 0.645 | 0.814 | 1.006 | one `process()` |
 | commit lag | 2.535 | 4.600 | 8.157 | voice → committed character on the meter |
 | provisional lag | 1.187 | 1.615 | 2.385 | voice → the same character shown UNCONFIRMED |
+| redraw bound | 2.114 | 5.192 | 9.131 | upper bound: every redraw of a slot recharged as a fresh wait |
 | publication | 1.173 | 1.444 | 1.444 | speech end → `JA n:` = `VAD_MIN_SILENCE_S` + final decode |
 | translate turn | 2.330 | 4.190 | 6.200 | `JA n:` → `EN n:` (steady 2.085, rotating 3.900) |
 
@@ -200,6 +201,14 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   confirms it. The same decode already held that text: showing its unconfirmed tail costs nothing and
   takes p50 to 1.187 s, max to 2.385 s. `provisional_lag_s` is that arm, run on the same virtual clock
   and the same per-character placement as the committed arm, so their difference is the policy alone.
+- **Both arms measure FIRST APPEARANCE ⇒ the gap is NOT a settled-text speedup.** Settled text still
+  lands at 2.535 s p50 — `emitted` is append-only and the published line is unchanged — and the gap
+  buys an earlier UNSETTLED rendering of the same character. `redraws` carries that cost: **105 of
+  180 updates** on `retention_probe` (20 of 44 on `stress_long`) diverge from their predecessor
+  before it ended, i.e. rewrite already-visible characters, which land in the dimmed tail by
+  construction. `redraw_bound_s` is that cost charged as a fresh wait per redraw — a loose UPPER
+  bound, double-counting by construction — and reads p50 2.114 / p90 5.192 / max 9.131. Quote 1.187 s
+  for time-to-first-glimpse and 2.535 s for time-to-settled; neither alone describes the screen.
 - **`VAC_CHUNK_S` is floored by decode cost, not by taste.** Work rate = `decode_s / VAC_CHUNK_S`:
   0.645 today, 0.86 at 0.75 s, **1.29 at 0.5 s** — past real time, so the audio queue never drains.
   Every candidate below 0.75 s needs the fixed 0.35 s term cut first.

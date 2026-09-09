@@ -50,6 +50,14 @@ their difference is exactly the display policy and nothing else:
 - `provisional` -- the whole latest hypothesis, its unconfirmed tail included.
   The tail is rewritten by the next decode, so this is a status-line-only policy;
   the published `JA n:` line and the transcript are the committed text either way.
+
+Both arms measure FIRST APPEARANCE: when a character reaches the screen. Neither
+measures when it stops moving, and the two are not the same character-for-character
+under the provisional arm, whose text is by definition unsettled. `redraws` is that
+qualifier, so the gap is never read as a settled-text speedup: it counts updates
+whose hypothesis diverges from its predecessor before the predecessor ended, i.e.
+where already-visible characters were rewritten. Committed text cannot be among
+them -- `emitted` is append-only -- so a redraw always lands in the dimmed tail.
 """
 
 from __future__ import annotations
@@ -65,6 +73,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from live_stt import VAC_CHUNK_S, VAD_MIN_SILENCE_S  # noqa: E402
+from streaming import common_prefix  # noqa: E402
 
 TRACE = ROOT / "tests" / "vac_decode_trace.json"
 PAIRING = ROOT / "tests" / "en_pairing_trace.json"
@@ -102,8 +111,10 @@ def clip_lags(
     """Per-character lags for one clip, with the counts that qualify them."""
     lags: list[float] = []
     counts = {"updates": 0, "commits": 0, "unplaced": 0, "non_monotone": 0, "finals": 0}
+    counts["redraws"] = 0
     now = 0.0
     start: float | None = None
+    seen = ""  # previous update's hypothesis, for the redraw qualifier
     for row in clip["series"]:
         counts["updates"] += 1
         now = max(now, row["buffer_end_s"]) + row["decode_s"]
@@ -117,6 +128,9 @@ def clip_lags(
             # reached. A final update's flushed tail still ends at the buffer end.
             reach: float = row["buffer_end_s"] if row["final"] else _hypothesis_end(row)
             text = hypothesis(row)
+            if common_prefix(text, seen) < len(seen):
+                counts["redraws"] += 1
+            seen = "" if row["final"] else text
             covered = reach - (row["buffer_end_s"] - row["buffer_s"])
             fresh = (
                 round(len(text) * (reach - since) / covered) if reach > since and covered > 0 else 0
@@ -142,6 +156,32 @@ def clip_lags(
             counts["finals"] += 1
             start = None
     return lags, counts
+
+
+def redraw_bound_lags(clip: dict[str, Any]) -> list[float]:
+    """Pessimistic companion to the provisional arm: a redrawn slot waits again.
+
+    `clip_lags(provisional=True)` charges a character once, at the update that
+    first put it on screen. This charges every character at or past the common
+    prefix on EVERY update, so a slot rewritten five times pays five waits. That
+    double-counts by construction and is a loose UPPER bound, not a measured
+    reader experience -- it exists so the first-appearance figure is never read
+    as the whole story. Placement is over each hypothesis's own span, because a
+    redraw repaints the whole tail rather than extending it.
+    """
+    lags: list[float] = []
+    now = 0.0
+    seen = ""
+    for row in clip["series"]:
+        now = max(now, row["buffer_end_s"]) + row["decode_s"]
+        text = hypothesis(row)
+        offset_s = float(row["buffer_end_s"]) - float(row["buffer_s"])
+        reach = float(row["buffer_end_s"] if row["final"] else _hypothesis_end(row))
+        span = max(reach - offset_s, 0.0)
+        for i in range(common_prefix(text, seen), len(text)):
+            lags.append(now - (offset_s + span * (i + 0.5) / len(text)))
+        seen = "" if row["final"] else text
+    return lags
 
 
 def decode_fit(clip: dict[str, Any]) -> dict[str, float]:
@@ -177,7 +217,8 @@ def report(trace: dict[str, Any], pairing: dict[str, Any] | None) -> dict[str, A
     for name, clip in trace["clips"].items():
         series = clip["series"]
         committed, counts = clip_lags(clip)
-        provisional, _ = clip_lags(clip, provisional=True)
+        provisional, pcounts = clip_lags(clip, provisional=True)
+        counts["redraws"] = pcounts["redraws"]
         finals = [row["decode_s"] for row in series if row["final"]]
         out["clips"][name] = {
             "audio_s": clip["audio_s"],
@@ -190,6 +231,7 @@ def report(trace: dict[str, Any], pairing: dict[str, Any] | None) -> dict[str, A
             "carry_s": _quantiles([row["decode_s"] - VAC_CHUNK_S for row in series]),
             "commit_lag_s": _quantiles(committed),
             "provisional_lag_s": _quantiles(provisional),
+            "redraw_bound_s": _quantiles(redraw_bound_lags(clip)),
             # Speech end -> `JA n:`. silero needs VAD_MIN_SILENCE_S of silence to
             # close the utterance, then one full decode publishes it. Its own
             # detection granularity (one 32 ms window) is not in the trace.
@@ -222,7 +264,14 @@ def render(out: dict[str, Any]) -> str:
     for name, row in out["clips"].items():
         fit = row["decode_fit"]
         lines.append(f"  {name}: audio={row['audio_s']:.3f}s utterances={row['utterances']}")
-        for stage in ("decode_s", "commit_lag_s", "provisional_lag_s", "publication_s", "carry_s"):
+        for stage in (
+            "decode_s",
+            "commit_lag_s",
+            "provisional_lag_s",
+            "redraw_bound_s",
+            "publication_s",
+            "carry_s",
+        ):
             q = row[stage]
             lines.append(
                 f"      {stage:<18} n={q['n']:<5} p50={q['p50']:>7.3f}  p90={q['p90']:>7.3f}  "
@@ -235,7 +284,8 @@ def render(out: dict[str, Any]) -> str:
         )
         lines.append(
             f"      updates={row['updates']} commits={row['commits']} finals={row['finals']} "
-            f"unplaced={row['unplaced']} non_monotone={row['non_monotone']}"
+            f"unplaced={row['unplaced']} non_monotone={row['non_monotone']} "
+            f"redraws={row['redraws']}"
         )
     turn = out.get("translate_turn_s")
     if turn:

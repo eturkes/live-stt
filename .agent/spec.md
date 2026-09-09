@@ -60,8 +60,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
 - The status line shows the whole latest decode: committed text normal, the tail LocalAgreement-2
-  still withholds **dimmed**. Per-character lag 2.535 → 1.187 s p50, 8.157 → 2.385 s max, at zero
-  compute and zero CER cost. The published line and the transcript stay committed-only + append-only.
+  still withholds **dimmed**. Time-to-FIRST-GLIMPSE 2.535 → 1.187 s p50, 8.157 → 2.385 s max, at zero
+  compute and zero CER cost (retention CER 0.0609, unmoved). Time-to-SETTLED is unchanged at 2.535 s
+  and the dim tail is rewritten on 105 of 180 updates (`redraws`, `eval_latency.py`) — quote the two
+  numbers separately. The published line and the transcript stay committed-only + append-only.
 - Utterances stay **UNCAPPED** — one utterance is one line and one turn, at any length.
 - A runaway caption is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
