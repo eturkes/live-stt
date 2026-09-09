@@ -94,6 +94,15 @@ paths:
   and ruled out by the user — do not re-propose.**
 - `ASRDecodedResults` fields: `chunks, language, perf_metrics, scores, texts, words`. There is no
   `og.WhisperDecodedResults`.
+- **The 0.35-0.42 s fixed decode term is structural in genai 2026.3.1 — three levers are closed at
+  the source, not untried.** The feature extractor always pads to 30 s = 3000 mel frames and the NPU
+  reshape fixes batch/features while leaving the model's time axis alone ⇒ **a shorter encoder window
+  is unreachable through public config**, which is why the encoder measures FLAT at 0.31 s from a
+  1.0 s buffer to a 28.0 s one. Whisper validation asserts `!is_assisting_generation()` ⇒ **no
+  speculative/draft decoding**. And `"NPU"` now defaults to the **stateful** implementation
+  (`STATIC_PIPELINE=false`), yet `whisper_generate` calls `decoder->reset_state()` after every audio
+  chunk ⇒ **no KV reuse across the growing buffer's repeated `generate()` calls**. Do not re-derive
+  these; the open candidates are the two constructor properties in `.agent/deferred.md` rank 5.
 - **Repetition-loop cause + free repro.** The recogniser is pinned to Japanese, so audio it cannot
   account for is emitted as Japanese tokens until `max_length`=448 — the 444-char live captions. The
   trigger is neither laughter nor room tone: synthetic non-speech (digital silence, −60 dB noise,
