@@ -67,7 +67,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - Utterances stay **UNCAPPED** — one utterance is one line and one turn, at any length.
 - A runaway caption is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
-  0.0583 → 0.0609. `CAPTION_REPEAT_UNIT_CHARS`=13. Language gate is **text-side only**
+  0.0583 → 0.0609. `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
+  adjudicated over 1409 live captions and REFUSED, the tripling invariant flooring it at 40 and
+  excluding the whole 31..36 admissible band. Language gate is **text-side only**
   (`latin > 4 × japanese`); a whisper LID gate is measured, feasible and REFUSED.
 - EN-leg recovery = **respawn (app-server EOF) + cooldown re-probe (3-strike disable)**, one
   mechanism, arm picked by `_alive()`, 5-attempt budget, doubling cooldown, marked in the transcript.
@@ -84,11 +86,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
-The spine, in funding order: **1** Cut the EN-leg thread-rotation tax · **2** Rule on
-`CAPTION_REPEAT_MAX_CHARS`=40's known false negatives · **3** Maintenance + security pass · **4**
-Live-mic validation pass · **5** Probe the two open NPU constructor properties · **6** Parameterize
-source language · **7** M10 candidate-screen remainder. The last two sit there because their
-acceptance is a re-open condition, not work.
+The spine, in funding order: **1** Cut the EN-leg thread-rotation tax · **2** Maintenance + security
+pass · **3** Live-mic validation pass · **4** Probe the two open NPU constructor properties · **5**
+Parameterize source language · **6** M10 candidate-screen remainder. The last two sit there because
+their acceptance is a re-open condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

@@ -742,6 +742,9 @@ def test_a_phrase_said_three_times_survives_at_every_size_the_screen_scans():
     # four. 13 is the last bound that does (3x13=39), which is why widening
     # stopped there — at 14 a tripled phrase drops, and a live caption shows the
     # shape (完全にどころから…x2 followed by a unique third sentence).
+    # This also FLOORS CAPTION_REPEAT_MAX_CHARS at 40 and is what closed the
+    # false-negative row: adjudicating 1409 live captions put the admissible
+    # band at 31..36, which this invariant excludes whole (asr-pipeline.md).
     unit = live_stt.CAPTION_REPEAT_UNIT_CHARS
 
     assert unit * 3 < live_stt.CAPTION_REPEAT_MAX_CHARS

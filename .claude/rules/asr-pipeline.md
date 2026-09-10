@@ -123,7 +123,9 @@ paths:
 - Thresholds, corpus-picked against 1073 live JA captions over 6 sessions (`transcripts/*.txt` is
   gitignored, so these numbers are the durable record; `session_report.py` re-derives every one):
   `CAPTION_REPEAT_UNIT_CHARS`=13 · `CAPTION_REPEAT_MAX_CHARS`=40 · `CAPTION_LATIN_RATIO`=4. Combined
-  drop rate **4.3 %**.
+  drop rate **4.3 %** there, **3.26 %** re-derived over the 1409 captions of 7 sessions — the same 46
+  drops, because the 336-caption session that followed `ASR_REPETITION_PENALTY`=1.2 contributed none
+  (largest span in it 14, one caption ≥13).
 - **The unit bound is bounded by the REPEAT COUNT, not by the phrase length.** A drop takes
   `ceil(40/size)` repeats ⇒ 13 is the last size needing FOUR (3×13=39) and 14 lets a TRIPLED phrase
   drop; at 20-22 a mere doubling drops, and a live caption pays for it (a 22-char sentence doubled,
@@ -131,9 +133,22 @@ paths:
   + the Aozora reference (10.7 K chars): `、うなぎが食べたい`×2, a speaker saying a phrase twice — a
   9-character unit, so it is visible from bound 9. Sweep over the 1073: 26 caught at 8, 27 at 9, 28 at
   12, **29 at 13**, flat to 21, 30 at 22. The largest repetition any SPEAKER produced is **20**
-  (`リソース?`×4). Known false negatives: 3 captions repeat a phrase 4× at 36/30/28 characters and
-  survive, so 40 sits 2× above the largest genuine repetition rather than 6× — lowering it is a
-  `.agent/deferred.md` row, not a free win.
+  (`リソース?`×4).
+- **`CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED — measured, then REFUSED.** Re-derived over 1409 captions
+  / 7 sessions, the entire adjudication surface is 4 captions with 21 ≤ span < 40. Three are drops
+  worth making: `イメージの質問は、`×4 (s1 n=213, span 36) and `翌日は翌日です`×4 (s1 n=197, 28) are
+  wholly degenerate captions, and `3 months`×4 (s1 n=206, 32) the latin rule already drops. The
+  fourth refutes the row's premise — `つもい`×10 (s6 n=103, 30) is a 30-character loop sitting inside
+  **301 characters of genuine speech**, and the screen drops WHOLE (never truncates), so any bound
+  reaching it costs 271 real characters. P-022 read that caption as a decode loop; the loop is real
+  but the CAPTION is not, and "is the repetition a loop" is therefore the wrong question to adjudicate.
+  Admissible band = **31..36**: ≥31 to spare n=103, ≤36 to catch n=213. **The tripling invariant
+  floors the bound at 40** — a drop needs `ceil(bound/size)` repeats, so `unit*3 < bound` is what
+  keeps a 13-character phrase said three times out of the screen
+  (`test_a_phrase_said_three_times_survives_at_every_size_the_screen_scans`), demanding ≥40.
+  31..36 ∩ [40,∞) = ∅ ⇒ no bound satisfies both. Forgone by refusing: exactly ONE caption, n=213.
+  Re-open only by redesigning the screen to count REPEATS per unit size rather than characters, which
+  is a different screen, not a threshold move.
 - Latin ratio: the 23 latin-dominant live captions split cleanly — 17 true English at ≤0.15
   Japanese-per-character, 6 Japanese-carrying-loanwords at ≥0.27, nothing between. A 1:1 rule
   (`latin > japanese`) drops **6 genuine Japanese captions**, because a Latin letter is one phoneme
