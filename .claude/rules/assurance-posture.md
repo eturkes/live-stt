@@ -9,6 +9,30 @@ around a 2,108-line tool and was cut with zero production change (`becc22b`, L-0
 `tests/eval_cer.py` on demand. A unit closes when its acceptance holds under the gate and, where the
 unit touches decode quality, a CER number the commit body records.
 
+**Verification integrity binds every check here**; the template's `prototype/` carve-out is inert,
+this repo having none. Three things it fixes locally:
+
+- **A test counts once seen RED, and L-022 neutralization is the witness.** The fix is still
+  uncommitted when the lock is written, so "the unfixed revision" is the working tree with the fix
+  neutralized and restored from a `cp` snapshot — never `git checkout`, which reverts the fix itself
+  and re-runs the un-fixed baseline for every later mutant. The commit body records the mutation and
+  the command that reddened.
+- **The grading check is FIXED for the unit running under it.** The funded `.agent/deferred.md` row
+  is the approval, so a threshold, case or gate moves only where that row's acceptance names the
+  move, and the change records the original check's firing. A mid-unit wish to move one is a question
+  for the user. The graders this holds: the `replay.py` goldens, `gate.py`'s step inventory,
+  `test_backpressure.py`'s `AUDIO_HEADROOM_S` and `SEGMENT_QUEUE_MAX` bounds, the
+  `CAPTION_REPEAT_*` locks, the retention CER 0.0609 a decode change must re-derive, and every
+  `eval_*.py` threshold that exits or raises — `eval_cer.py`'s `MAX_CER` 0.15 and
+  `MAX_EXCESS_DEL_RATE` 0.04, `eval_long_form.py`'s `SURFACE_BUDGET` 0.10, `eval_backpressure.py`'s
+  bounds. Read that list as a starting point and check the script: where an evaluator only REPORTS,
+  moving its number is a claim to re-measure rather than a grader to escape.
+- **A skip is a demotion unless a resource is absent, and `gate.py` decides which** — a resource gate
+  opens its reason with `absent: `, an xfail fails outright (`toolchain.md`). Writing that prefix is
+  the declaration itself, not an L-032 escape; the escape is a demotion, and that is exactly the
+  moment the queue row and the user's approval are owed. `green` names the checks run AND passed,
+  with skipped, not-run and missing ones named or `none`.
+
 **L-004 — mic and real-terminal paths are agent-unverifiable.** No mic, no interactive TTY here. A
 change touching `sd.InputStream`, `audio_callback`, real-time latency, Ctrl+C or multi-hour behaviour
 closes with a "**Did not verify (L-004)**" list naming each path for the user; never claim "done"

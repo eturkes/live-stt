@@ -4,16 +4,38 @@
 step output. The script owns the exact step set and file list and `tests/test_gate.py` locks the
 inventory, so read the script instead of restating it: a gate that lives in prose gets silently
 shortened, which is how four commits reported a passing gate while its pyright step stayed red. Every
-step is fast and hermetic — no weights, no hardware, no network — and clears `PYTHONPATH` itself. A green run still reports **one
-skip**, the whisper NPU replay golden, which needs the prelude below; anything more skipping means
-absent weights or corpus.
+step is fast and hermetic — no weights, no hardware, no network — and clears `PYTHONPATH` itself. A
+green run still reports **one skip**, the whisper NPU replay golden, which needs the prelude below;
+anything more skipping means absent weights or corpus.
+
+**Every skip declares itself, because pytest exits 0 on a skipped case.** The step runs `-rsxX` and
+`gate.py`'s `undeclared_demotions` reads the summary: a resource gate opens its reason with
+`absent: ` and keeps its case live, while a bare `pytest.mark.skip`, an `xfail` or an `xpass` fails
+the step. That is what a demotion is, and a demotion earns a `.agent/deferred.md` row and the user's
+approval first (`assurance-posture.md`). The gate also names its skips in `-v` output, so `green`
+reports them rather than leaving the count to prose — which is where the invariant sat while any new
+skip rode green. **The step owns its effective options, because `--no-summary` and `--runxfail` each
+empty that input in silence:** `-o addopts=` drops project-configured ones, `PYTEST_ADDOPTS` is
+stripped from the step env, and the closing tally is cross-checked against what the summary named, so
+whatever else suppresses the detail turns the step red instead of quiet — the tally is read off the
+LAST tallying line, so a plugin trailer printed after it cannot displace it. **Coverage limits, all
+three loud or out of reach rather than silently green:** the checker reads emitted
+`SKIPPED`/`XFAIL`/`XPASS` lines, so a DELETED case and a demoted tier leave no trace and stay under
+the approval law alone; in-tree pytest configuration outranks it, since a `conftest.py` setting
+`config.option.runxfail` reconfigures pytest itself and this repo ships no conftest at all; and a
+directory named with a `:<digits>: ` inside it false-REDS a declared skip, pytest's `location: reason`
+line being genuinely ambiguous there.
 
 **Every step ships the input that fires it, and the gate runs those inputs on itself.**
 `tests/test_gate.py` seeds one defect of each step's own class into a throwaway tree and asserts
 `gate FAILED: <step>` — pytest an `assert False`, ruff-check an `F401`, ruff-format bad spacing,
 pyright and pyright-tests `x: int = "s"`, secrets an AWS-shaped key, import a module that raises. The
 seeds ride the pytest step, so a green gate is simultaneously its own positive control: a step that
-stopped being able to fail turns the gate red instead of quietly green. One scope hole that seeding
+stopped being able to fail turns the gate red instead of quietly green. The skip rule seeds four more
+pytest trees: `@pytest.mark.skip("flaky")`, the same tree under `addopts = "--no-summary --runxfail"`,
+a `PYTEST_ADDOPTS`-suppressed summary the tally still catches, and a declared-`absent:` twin as the
+positive control — without that twin, a check that flagged EVERY skip would pass the seed. A path
+holding `": "` is locked too, since the location ends at its line number. One scope hole that seeding
 cannot see gets its own lock — the seeded tree holds a single root-level file, so an over-grown
 `SCAN_SKIP_DIRS` or `tests/` exclusion would still catch it while the real tree went unscanned ⇒
 `test_secret_scan_reaches_the_real_tree` pins the walk to production, a nested file and a dotdir

@@ -182,7 +182,7 @@ SHORT_PATHS = tuple(CACHE / f"{cid}.wav" for cid in SHORT_CLIPS)
 
 
 @pytest.mark.skipif(
-    not _resources_ready((LONG_PATH,)), reason="silero model or stressor WAV absent"
+    not _resources_ready((LONG_PATH,)), reason="absent: silero model or stressor WAV"
 )
 def test_long_paced_replay_is_drop_free_with_bounded_two_stage_queues():
     report = paced_wav(LONG_PATH)
@@ -193,7 +193,7 @@ def test_long_paced_replay_is_drop_free_with_bounded_two_stage_queues():
 
 
 @pytest.mark.skipif(
-    not _resources_ready(SHORT_PATHS), reason="silero model or short replay corpus absent"
+    not _resources_ready(SHORT_PATHS), reason="absent: silero model or short replay corpus"
 )
 def test_short_corpus_is_drop_free_and_pacing_is_deterministic():
     reports = {cid: paced_wav(path) for cid, path in zip(SHORT_CLIPS, SHORT_PATHS, strict=True)}
@@ -220,7 +220,7 @@ def _vac_run(clip: str, **kwargs) -> dict:
 
 
 @pytest.mark.skipif(
-    not _resources_ready(VAC_PATHS), reason="silero model or VAC trace corpus absent"
+    not _resources_ready(VAC_PATHS), reason="absent: silero model or VAC trace corpus"
 )
 @pytest.mark.parametrize("clip", VAC_TRACE_CLIPS)
 def test_vac_paced_replay_is_drop_free_at_measured_decode_cost(clip):
@@ -241,7 +241,7 @@ def test_vac_paced_replay_is_drop_free_at_measured_decode_cost(clip):
 
 @pytest.mark.skipif(
     not _resources_ready((CACHE / f"{STRESSOR}.wav",)),
-    reason="silero model or stressor WAV absent",
+    reason="absent: silero model or stressor WAV",
 )
 def test_vac_trajectory_guard_catches_a_shifted_series():
     """The divergence counter, not the drop counter, is what certifies the costs.
@@ -258,7 +258,7 @@ def test_vac_trajectory_guard_catches_a_shifted_series():
 
 @pytest.mark.skipif(
     not _resources_ready((CACHE / f"{STRESSOR}.wav",)),
-    reason="silero model or stressor WAV absent",
+    reason="absent: silero model or stressor WAV",
 )
 def test_vac_paced_replay_drops_when_decode_is_scaled_past_the_headroom():
     """Non-vacuity: the same clip and policy must drop once decode outruns capture."""

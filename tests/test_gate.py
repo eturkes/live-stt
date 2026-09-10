@@ -10,13 +10,22 @@ suite and recurse.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from gate import PROD_FILES, Step, run, scan_files, steps
+from gate import (
+    PROD_FILES,
+    SKIP_DECLARATION,
+    Step,
+    run,
+    scan_files,
+    steps,
+    undeclared_demotions,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "gate.py"
@@ -115,6 +124,102 @@ def test_blocking_step_failure_fails_the_gate(step, tmp_path):
     assert done.returncode != 0, done.stdout + done.stderr
     assert f"FAIL {step}" in done.stdout
     assert f"gate FAILED: {step}" in done.stdout
+
+
+def _skipping_tree(tmp: Path, marker: str, addopts: str = "", subdir: str = "tests") -> None:
+    """A throwaway suite whose one case skips for `marker`, carrying its own testpaths."""
+    ini = '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+    (tmp / "pyproject.toml").write_text(ini + (f'addopts = "{addopts}"\n' if addopts else ""))
+    (tmp / subdir).mkdir(parents=True)
+    (tmp / subdir / "test_seed.py").write_text(
+        f'import pytest\n\n\n@pytest.mark.skip("{marker}")\ndef test_seed():\n    pass\n'
+    )
+
+
+def test_an_undeclared_skip_fails_the_pytest_step(tmp_path):
+    """pytest exits 0 on a skipped case, so this defect is invisible to the step itself.
+
+    A demotion earns a `.agent/deferred.md` row and the user's approval first;
+    the gate is what refuses one that arrived without them.
+    """
+    _skipping_tree(tmp_path, "flaky")
+    done = gate(tmp_path, "--only", "pytest")
+    assert done.returncode != 0, done.stdout + done.stderr
+    assert "undeclared demotion" in done.stdout
+    assert "gate FAILED: pytest" in done.stdout
+
+
+def test_a_declared_resource_gate_still_passes(tmp_path):
+    """The control the seed above needs: the step rejects demotions, not every skip."""
+    _skipping_tree(tmp_path, f"{SKIP_DECLARATION}seeded weights")
+    done = gate(tmp_path, "--only", "pytest")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "pass pytest" in done.stdout
+
+
+def test_configured_options_cannot_switch_the_skip_report_off(tmp_path):
+    """`--runxfail` turns a passing xfail into an ordinary pass, emitting no XPASS line.
+
+    The tally cannot see that one -- the case is counted as passed -- so `-o
+    addopts=` is what holds here, and this is the seed that isolates it.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\ntestpaths = ["tests"]\naddopts = "--runxfail"\n'
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_seed.py").write_text(
+        'import pytest\n\n\n@pytest.mark.xfail(reason="flaky")\ndef test_seed():\n    pass\n'
+    )
+    done = gate(tmp_path, "--only", "pytest")
+    assert done.returncode != 0, done.stdout + done.stderr
+    assert "gate FAILED: pytest" in done.stdout
+
+
+def test_a_suppressed_summary_is_caught_by_the_tally(tmp_path):
+    """The backstop for whatever else can suppress the detail: a conftest, a plugin.
+
+    `PYTEST_ADDOPTS` reaches pytest past `-o addopts=`, so it stands in here for
+    that class -- the tally still reports the skip the summary no longer names.
+    """
+    _skipping_tree(tmp_path, f"{SKIP_DECLARATION}seeded weights")
+    step = next(s for s in steps() if s.name == "pytest")
+    done = subprocess.run(
+        step.argv,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTEST_ADDOPTS": "--no-summary"},
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout  # a declared skip; only the report is gone
+    for trailer in ("", "plugin trailer\n"):  # a trailer must not displace the tally
+        complaint = undeclared_demotions(done.stdout + trailer)
+        assert complaint is not None and "summary suppressed" in complaint, done.stdout
+
+
+def test_an_inherited_pytest_addopts_cannot_blind_the_step(tmp_path):
+    """`PYTEST_ADDOPTS` reaches pytest past `-o addopts=`, so the step env drops it.
+
+    Green here means the summary survived: leave the variable in and the tally
+    outruns what the summary named, which reds this declared skip instead.
+    """
+    _skipping_tree(tmp_path, f"{SKIP_DECLARATION}seeded weights")
+    done = subprocess.run(
+        [sys.executable, str(GATE), "--only", "pytest"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTEST_ADDOPTS": "--no-summary"},
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_a_path_holding_a_colon_still_reads_as_declared(tmp_path):
+    """The location ends at its line number; splitting on the first ": " cut inside it."""
+    _skipping_tree(tmp_path, f"{SKIP_DECLARATION}seeded weights", subdir="tests/odd: dir")
+    done = gate(tmp_path, "--only", "pytest")
+    assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_non_blocking_runner_still_labels_and_tolerates_a_failure(capsys):

@@ -20,7 +20,11 @@ skipped the declared sub-dependency. Read `uv.lock` for dependency work alone, t
 one line (`uv run pytest -q`); the framework adds schema, per-hook venv cache and network bootstrap for
 nothing at this scope. Each clone opts in once
 (`git config --local core.hooksPath .githooks`); `--no-verify` bypasses in an emergency. Revisit if the
-hook grows past one or two commands.
+hook grows past one or two commands. **Coverage limit: the hook runs the suite, not `gate.py`**, so the
+skip-declaration check (`toolchain.md`) reaches a demotion at the unit's closing gate rather than at the
+commit that introduced it. Routing the hook through `gate.py --only pytest` would close that, at the cost
+of replacing pytest's live progress with one line printed after the run — the human at the terminal is
+who the hook reports to, so the suite stays.
 
 **L-018 — maintenance-pass recipe.** Inventory with `uv tree --outdated --depth 1` → CVE-scan with
 `uv export --format requirements-txt --all-groups --no-emit-project >/tmp/reqs.txt && uvx pip-audit -r

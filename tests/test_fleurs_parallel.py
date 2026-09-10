@@ -327,7 +327,7 @@ def test_cached_references_match_manifest_and_japanese_index_when_present():
     ja_relative = PurePosixPath(MANIFEST["inputs"]["japanese_corpus_index"]["path"])
     ja_index = ROOT.joinpath(*ja_relative.parts)
     if not reference_index.is_file() or not ja_index.is_file():
-        pytest.skip("ignored FLEURS parallel or Japanese corpus cache absent")
+        pytest.skip("absent: ignored FLEURS parallel or Japanese corpus cache")
 
     index_bytes = reference_index.read_bytes()
     assert hashlib.sha256(index_bytes).hexdigest() == MANIFEST["cache"]["index_sha256"]

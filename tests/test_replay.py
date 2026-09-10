@@ -196,7 +196,7 @@ def test_replay_golden(engine, clip_id):
     stale = _stale_device(engine, golden)
     assert stale is None, stale
     if reason := _not_ready(engine, clip_id):
-        pytest.skip(reason)
+        pytest.skip(f"absent: {reason}")
     report = replay.replay_wav(CACHE / f"{clip_id}.wav", engine)
     assert report["n_segments"] == golden["n_segments"]
     got, exp = report["segments"], golden["segments"]

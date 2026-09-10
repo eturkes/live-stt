@@ -96,6 +96,19 @@ neither, because they replay committed traces — a fresh clone runs them in und
 
 ## Rules that keep the evidence honest
 
+- **A resource gate declares itself: `absent: <what>`.** Every skip in this suite gates on absent
+  weights, corpus or accelerator, and the reason carries that prefix so `gate.py` can tell a live
+  case from a demotion — a bare `pytest.mark.skip` or any xfail fails the pytest step
+  (`assurance-posture.md`). Write the prefix into the `skipif` reason or the `pytest.skip()` call
+  when adding a gate; demoting a real case needs a `.agent/deferred.md` row and the user's approval
+  first.
+- **The goldens and traces ARE contract-owned expected output, not a table smuggled past a contract.**
+  `replay_goldens.json` is D-014's characterization snapshot and the committed traces are recorded
+  measurements, so both answer "did the output change" for a contract that owns them. What the
+  template's verification-integrity clause forbids is the opposite direction: an implementation that
+  returns a fixture's expected value, detects the gate, or is graded against a table written to match
+  whatever it already emits.
+
 - **D-014 — deterministic WAV replay is the regression harness.** `replay.py` drives the real
   `live_stt.worker` through an optional observation-only `on_segment` hook, chosen over
   freeze-and-reimplement precisely because a reimplemented loop is what drifted before. It feeds 1 s
