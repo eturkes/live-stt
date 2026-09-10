@@ -428,6 +428,32 @@ def test_a_timed_out_turn_logs_the_cause_it_used_to_swallow(caplog, monkeypatch)
     assert "TimeoutError" in warnings[0].getMessage()
 
 
+def test_the_app_server_is_spawned_detached_from_the_terminal(monkeypatch):
+    # Ctrl+C delivers SIGINT to the terminal's whole FOREGROUND PROCESS GROUP.
+    # A same-group app-server dies on it, and it dies before run()'s drain
+    # reaches the last caption -- so the final EN line is lost. Four of seven
+    # saved sessions ended exactly that way, the last of them logging
+    # `codex app-server exited` two seconds after its final JA. Measured on a
+    # real app-server: child returncode -2 in-group against alive detached.
+    # Without start_new_session=True this records None.
+    recorded: dict = {}
+
+    async def scenario():
+        reader = asyncio.StreamReader()
+        reader.feed_eof()  # handshake fails at once; the spawn already happened
+
+        async def fake_exec(*_a, **kw):
+            recorded.update(kw)
+            return _FakeProc(reader)
+
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", fake_exec)
+        started = await asyncio.wait_for(live_stt.CodexTranslator().start(), timeout=3.0)
+        assert started is False
+
+    asyncio.run(scenario())
+    assert recorded.get("start_new_session") is True
+
+
 def test_start_refuses_dead_server_after_warmup(monkeypatch):
     # T8.6: the warm-up turn completes, then the server dies before start()
     # enables (its turn/completed is consumed, the next readline hits EOF). The

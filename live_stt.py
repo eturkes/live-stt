@@ -1026,6 +1026,13 @@ class CodexTranslator:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
+                # Ctrl+C signals the terminal's whole foreground process group, so
+                # a same-group app-server dies before run()'s drain can translate
+                # the last caption: the final EN was lost in 4 of 7 saved sessions.
+                # Measured: child returncode -2 in-group, alive detached, with the
+                # handshake and a real turn unaffected. _end_proc() closes stdin
+                # and the child exits 0, so detaching orphans nothing.
+                start_new_session=True,
             )
         except (FileNotFoundError, OSError) as e:
             logger.warning("codex CLI unavailable (%s); running JA-only", failure_cause(e))

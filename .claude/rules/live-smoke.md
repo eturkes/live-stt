@@ -46,7 +46,11 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    pairs matched; `--no-translate` suppresses every EN line.
 6. **Ctrl+C mid-utterance** — start speaking, Ctrl+C while still talking. Pass: the in-progress `JA n:`
    still prints (the worker flushes the VAD in `finally`), its `EN n:` still lands if Codex is up (the
-   translator drains last), then `Stopped.` with no hang.
+   translator drains last), then `Stopped.` with no hang. **The last `EN` is the load-bearing half** —
+   it was lost in 4 of 7 saved sessions, because Ctrl+C killed the app-server along with the terminal's
+   process group before the drain could use it (`translation-leg.md`). A missing final `EN`, or a
+   `-- translation disabled: codex app-server exited` marker at the foot of the transcript, is that
+   regression.
 7. **Ctrl+C mid-decode** — `uv run live-stt --engine parakeet`, speak continuously for >20 s, pause, then
    Ctrl+C while the slower long-block decode runs. Pass: that block's `JA n:` still lands, its `EN n:`
    follows if Codex is up, then `Stopped.` with no hang — VAD feeder and sequential decoder both drain

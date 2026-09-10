@@ -101,6 +101,14 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
     lock: the drain window between them is the one place `run()` is alive with recovery armed, and a
     respawn there would spend a handshake on a session that is ending. `start()`'s own failure path
     calls `_end_proc()`, never `close()`, or one failed attempt would latch the rest off.
+  - **The app-server spawns `start_new_session=True`, OUT of the terminal's process group.** Ctrl+C
+    signals the whole foreground group, so a same-group child dies before the drain reaches the last
+    caption and that caption's EN is lost — the shape in 4 of 7 saved sessions, the last logging
+    `codex app-server exited` 2 s after its final JA while `run()` was still mid-turn. Latching
+    recovery off at shutdown is what makes the loss permanent, correctly: the leg is not coming back
+    inside a session that is ending, so the child must not die in the first place. Measured: child
+    returncode -2 in-group against alive detached, handshake and a real turn unaffected, and
+    `_end_proc()` closes stdin so the child still exits 0 ⇒ detaching orphans nothing.
   - `_restore` mirrors `_disable` into both channels ⇒ `-- translation restored: codex app-server
     probed|respawned (attempt N)`, naming the arm. A transcript carrying only the disable marker
     reads as JA-only from that point while EN lines resume below it. A recovered leg resets
