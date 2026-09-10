@@ -19,13 +19,32 @@ cannot see gets its own lock — the seeded tree holds a single root-level file,
 `test_secret_scan_reaches_the_real_tree` pins the walk to production, a nested file and a dotdir
 file. Feature locks prove themselves by neutralization instead (L-022), never by seeding.
 
-`tests/test_law_consistency.py` rides the pytest step and locks the two deferral-queue invariants a
-tool can decide: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row with its rank, title
-verbatim, and no scanned law file names a row by `rank N` at all. It needs no seeded fixture — the
-tree was the input that fired it, red on two renamed spine titles and on three rank references, one
-already retargeted onto the wrong unit. Pairing is checked ORDERED because independent rank/title
-membership passes a swap of two titles; that swap and the `at rank N` evasion form are both proven
-red by mutation, restoring from a `cp` snapshot rather than `git checkout` (L-022).
+`tests/test_law_consistency.py` rides the pytest step and locks the three law invariants a tool can
+decide. Two are the deferral queue's: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row
+with its rank, title verbatim, and no scanned law file names a row by `rank N` at all. Pairing is
+checked ORDERED because independent rank/title membership passes a swap of two titles; that swap and
+the `at rank N` evasion form are both proven red by mutation, restoring from a `cp` snapshot rather
+than `git checkout` (L-022).
+
+The third locks `upstream-sync.md`'s override table, which a refresh re-reads against the template.
+Three things hold: the table opens on its exact header and every row sits in that one contiguous
+block, so a row below the prose or in a second table fails instead of going unchecked; every key
+quotes a phrase of at least 12 characters; and every such anchor occurs verbatim in `CLAUDE.md` or in
+the global `CLAUDE.md`. Any pipe outside the block counts as that escape, because GFM builds a table
+out of `a|b` with no spaces too ⇒ a pipe wanted in that file's prose fails loudly rather than quietly
+reopening the hole. An unquoted prose key cannot be rechecked at all, and a reworded or deleted
+clause leaves its row overriding nothing while still reading as live law — both silent in prose.
+**It does not decide that an anchor is still its own row's clause**: membership is literal, so a
+phrase surviving elsewhere in the template reads as live. The 12-character floor is what keeps a key
+off a word like `rev`, which occurs everywhere and identifies nothing; the rest is a reader's call.
+
+None of the three locks needs a seeded fixture — the tree itself was the firing input, red on two
+renamed spine titles, three rank references (one already retargeted onto the wrong unit) and one
+prose-keyed row whose clause upstream had long dropped. Mutation-proven red for the third: a dead
+anchor, a generic short anchor, curly quotes, a changed header cell, a parse that yields no rows, and
+a row moved below the prose, into a pipe-less table or into a second table — each escape in both the
+spaced and the no-space pipe form. Every mutant is restored from a `cp` snapshot (L-022). **Coverage limit: the global half of the haystack needs `~/.claude/CLAUDE.md`** — present in
+every session here, so the check reports absence as a failure naming the anchor rather than skipping.
 
 **Pin the venv layer in every agent command.** `.venv` = container (agent dev + test), `.venv-host` =
 host (live-mic runtime, lowest latency). A venv path-bakes its layer, so a bare `uv run` from the
