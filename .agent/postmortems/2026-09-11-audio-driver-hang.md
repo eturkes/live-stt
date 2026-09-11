@@ -3,7 +3,8 @@
 **Status: unresolved; terminals recovered, audio-driver recovery unverified.**
 Incident: 2026-09-11, host time **JST (UTC+09:00)**. Scope of this change = evidence + investigation
 handoff, not an implementation fix. Observations below came from the affected host, `/proc`, `ps`,
-installed package metadata, and source inspection; hypotheses are labeled separately.
+installed package metadata, source inspection, and the separately labeled user follow-up;
+hypotheses are labeled separately.
 
 ## Summary + impact
 
@@ -13,10 +14,40 @@ process. Stopping each `uv` launcher and its multiprocessing helpers returned th
 shell, but left the main process blocked with `SIGKILL` pending. A second launch was also blocked;
 relaunching was not a demonstrated recovery.
 
-Actual transcription activity, the last printed startup line, transcript loss, and impact on other
-audio applications were not established. No audio-service restart, driver reset, reboot, dependency
+Actual transcription activity, transcript loss, and impact on other audio applications were not
+established. The user later supplied launch output below; whether it was the final output from
+either captured PID remains unconfirmed. No audio-service restart, driver reset, reboot, dependency
 change, or fresh reproduction was performed. A reboot was suggested as a possible recovery, not
 tested or proven necessary.
+
+## User follow-up: startup banner + concurrent workloads
+
+The user supplied this terminal excerpt and suspected that its “no network” text might be relevant:
+
+```text
+[12:50:54]─[~/P/live-stt]─[main]─> uv run live-stt
+Engine: whisper (local OpenVINO NPU, no network)
+```
+
+The user reported having network connectivity, although possibly a “weird connection,”
+and running several other things on the computer. Workload identities, active audio clients, and
+CPU/memory/GPU/NPU utilization at the hang were not supplied or measured. Preserve concurrent load
+as a possible contention factor, not a demonstrated cause.
+
+**Banner interpretation, confirmed in source:** `main()` prints this fixed text after model/device
+preflight. “No network” describes the local speech-recognition engine; it is **not** a connectivity
+check, network-error message, or assertion that the computer is offline. The optional Codex
+translation leg starts later and prints its own status. The excerpt provides no evidence of failed
+connectivity or of a connection problem causing the observed kernel audio waits.
+
+**Conditional localization:** the next session operation is `import sounddevice`; only after that
+returns does `Loading whisper model...` print. If the quoted banner was the final visible line,
+with no loading message afterward, import-time PortAudio initialization becomes the leading
+startup boundary to trace. The excerpt alone does not establish that no later output appeared.
+
+The supplied prompt time, **12:50:54**, differs from both recorded process starts (**13:02:57** and
+**13:05:49**). Associate the excerpt with a specific launch/PID before merging the timelines; it may
+describe a different attempt. The original process timestamps remain unchanged.
 
 ## Environment snapshot
 
@@ -94,6 +125,7 @@ Line numbers refer to the inspected revision of [live_stt.py](../../live_stt.py)
 
 | Entry point | Relevant ordering / gap |
 | --- | --- |
+| `main` banner, around line 2050 | Fixed `Engine: ... (local ..., no network)` text, then `asyncio.run(run_session(args))`; no connectivity result is encoded in the banner. |
 | `run_session`, lines 1848–1857 | Synchronous `import sounddevice` → recognizer/VAD initialization → `sd.query_devices(...)`, before application signal handlers. |
 | Signal setup, around line 1902 | `_install_signal_handlers(state)` follows device query and translator startup. Its asyncio callbacks require the event loop to run. |
 | Stream lifecycle, lines 1907–1934 | Synchronous `sd.InputStream(...)` construction is before the cleanup `try`; `start()`, `stop()`, and `close()` also execute in the event-loop thread. |
@@ -129,15 +161,18 @@ live/device entry points still perform that initialization in the main process.
    Python/native backtrace or syscall trace was captured.
 2. **Locate the boundary.** Add flushed before/after markers around import/initialization, query,
    stream construction/start/stop/close, and audio-library teardown in a controlled diagnostic run.
-   Record the last visible marker, exact input/host API, active audio clients, and recent
-   suspend/resume or device changes. These conditions were not captured for this incident.
+   Establish whether the user's banner excerpt was the last visible output and which launch it
+   describes. Record the exact input/host API, concurrent workloads, active audio clients, resource
+   pressure, and recent suspend/resume or device changes; these details remain uncaptured.
 3. **Research from the captured stack.** Compare the actual kernel/firmware/PortAudio versions with
    upstream reports for those symbols and this card. A dependency upgrade alone is not evidence of
    a fix; the existing maintenance queue's `sounddevice` update has not been linked to this fault.
 4. **Reproduce after host recovery, with the user.** Cover a cold default launch, `--list-devices`,
    the selected-input path, interruption during startup, and close/relaunch. Follow the existing
    [live-smoke boundary](../../.claude/rules/live-smoke.md); record actual results. Avoid accumulating
-   additional blocked processes while the original driver state persists.
+   additional blocked processes while the original driver state persists. Compare a baseline with
+   the user's usual concurrent workloads, recording audio-device use and resource pressure rather
+   than attributing a difference to generic “load.”
 
 Useful read-only capture after selecting a freshly verified PID:
 
@@ -161,6 +196,8 @@ from host-driver repair.
   probing as the trigger. Preserve working device selection, capture format, latency, and local STT.
 - Evaluate duplicate-start protection before backend initialization. Bound retries and report any
   residual blocked PID; a restart loop would multiply this incident rather than recover from it.
+- Consider clearer startup wording such as “speech recognition runs locally.” Keep that statement
+  distinct from translation/network status; the reported wording caused a connectivity misreading.
 - Keep driver resets/reboots as explicit host-recovery operations coordinated with the user.
   Preserve available evidence first; document the observed result rather than promising recovery.
 
