@@ -19,10 +19,12 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import sys
 import time
 import unicodedata
 from collections.abc import Sequence
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import SupportsFloat, cast
@@ -47,6 +49,13 @@ AUDIO_HEADROOM_S = 2.0
 # pushes back into the measured audio headroom and surfaces as ``drop=``.
 SEGMENT_QUEUE_MAX = 8
 NUM_THREADS = 4  # onnxruntime intra-op threads (8-core box; decode RTF ~0.05)
+# Audio calls can sleep in the kernel even with SIGKILL pending. Only a separate
+# process can keep the CLI responsive; neither asyncio cancellation nor a thread
+# timeout can interrupt that sleep. Model compilation is NOT on this deadline.
+AUDIO_OPERATION_TIMEOUT_S = 15.0
+SESSION_STOP_TIMEOUT_S = 45.0  # Allow the final decode plus the translator's 20 s drain.
+SESSION_KILL_WAIT_S = 1.0
+_SESSION_STATUS_FD: int | None = None
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 VAD_MODEL = MODELS_DIR / "silero_vad.onnx"
@@ -1845,16 +1854,204 @@ async def meter(state, audio_q, translator=None):
         await asyncio.sleep(METER_INTERVAL if _STDOUT_TTY else METER_LOG_INTERVAL)
 
 
+def _write_session_status(fd: int, phase: str):
+    message = json.dumps({"pid": os.getpid(), "phase": phase, "since": time.monotonic()})
+    os.pwrite(fd, message.encode().ljust(512, b" "), 0)
+
+
+@contextmanager
+def _audio_operation(phase: str):
+    if _SESSION_STATUS_FD is not None:
+        _write_session_status(_SESSION_STATUS_FD, phase)
+    try:
+        yield
+    finally:
+        if _SESSION_STATUS_FD is not None:
+            _write_session_status(_SESSION_STATUS_FD, "")
+
+
+def _session_process(pid: int):
+    try:
+        fields = (Path("/proc") / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()
+        return int(fields[1]), fields[19], fields[0]  # parent, start identity, state
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _stop_session(proc: subprocess.Popen) -> list[int]:
+    """Bound even the post-SIGKILL wait; include the detached Codex descendant.
+
+    Recheck process start identities before signaling. The main child owns a new
+    process group, but Codex owns another so normal Ctrl+C can drain EN. This
+    Python build does not expose os.pidfd_open, so use /proc start identities.
+    """
+    parents = {}
+    for path in Path("/proc").iterdir():
+        if not path.name.isdigit():
+            continue
+        if info := _session_process(int(path.name)):
+            parents[int(path.name)] = info
+    family = {proc.pid}
+    while more := {pid for pid, info in parents.items() if info[0] in family} - family:
+        family.update(more)
+    identities = {pid: parents[pid][1] for pid in family if pid in parents}
+
+    def alive(pid):
+        info = _session_process(pid)
+        return info is not None and info[1] == identities[pid] and info[2] != "Z"
+
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for pid in identities:
+            if alive(pid):
+                try:
+                    os.kill(pid, sig)
+                except ProcessLookupError:
+                    pass
+        deadline = time.monotonic() + SESSION_KILL_WAIT_S
+        try:
+            proc.wait(timeout=SESSION_KILL_WAIT_S)
+        except subprocess.TimeoutExpired:
+            continue
+        # The parent may exit before its detached helpers. Give the whole family
+        # the same bounded grace, rather than misreporting a still-exiting helper
+        # as an unkillable process immediately after sending SIGKILL.
+        while any(alive(pid) for pid in identities) and time.monotonic() < deadline:
+            time.sleep(0.01)
+    return [pid for pid in identities if alive(pid)]
+
+
+def _supervise_session(args) -> int:
+    import fcntl  # Linux CLI only; offline imports and other platforms stay independent.
+
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", str(Path.home() / ".cache"))) / "live-stt"
+    runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(runtime / "session.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    proc = None
+    old_handlers = {}
+    requested = 0
+    force = False
+    handled = False
+
+    def request_stop(sig, _frame):
+        nonlocal requested, force
+        if requested:
+            force = True
+        else:
+            requested = sig
+
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                owner = json.loads(os.pread(fd, 512, 0))
+                detail = f"PID {owner['pid']}, {owner['phase'] or 'session active'}"
+            except (ValueError, KeyError):
+                detail = "another session holds the audio lock"
+            print(
+                f"Error: live-stt is already running or still stopping ({detail}).", file=sys.stderr
+            )
+            return 1
+        # The child inherits this locked open-file description. Close, never
+        # LOCK_UN/unlink: a D-state child must keep later launches out even after
+        # the supervisor has returned the terminal to the user.
+        _write_session_status(fd, "starting session")
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            old_handlers[sig] = signal.signal(sig, request_stop)
+        proc = subprocess.Popen(  # noqa: S603 -- fixed Python entry point; args are JSON data
+            [
+                sys.executable,
+                "-u",
+                "-c",
+                "import sys; from live_stt import _session_child; "
+                "_session_child(int(sys.argv[1]), sys.argv[2])",
+                str(fd),
+                json.dumps(vars(args)),
+            ],
+            pass_fds=(fd,),
+            start_new_session=True,
+        )
+        status = {"phase": "starting session", "since": time.monotonic()}
+        stop_deadline = None
+        interrupted_phase = ""
+        failure = ""
+        while proc.poll() is None:
+            try:
+                status = json.loads(os.pread(fd, 512, 0))
+            except ValueError:  # A concurrent status write is retried on the next poll.
+                pass
+            now = time.monotonic()
+            phase = status["phase"]
+            if requested and stop_deadline is None:
+                proc.send_signal(requested)
+                interrupted_phase = phase
+                grace = SESSION_KILL_WAIT_S if phase else SESSION_STOP_TIMEOUT_S
+                stop_deadline = now + grace
+            if force:
+                failure = f"Interrupted during {phase or 'session shutdown'}."
+                break
+            if stop_deadline is not None and now >= stop_deadline:
+                failure = (
+                    f"Interrupted during {interrupted_phase}."
+                    if interrupted_phase
+                    else "Session shutdown timed out."
+                )
+                break
+            limit = 30.0 if phase == "starting session" else AUDIO_OPERATION_TIMEOUT_S
+            if phase and now - status["since"] >= limit:
+                failure = f"{phase.capitalize()} timed out after {limit:g} seconds."
+                break
+            time.sleep(0.05)
+        if failure:
+            remaining = _stop_session(proc)
+            handled = True
+            print(f"Error: {failure}", file=sys.stderr)
+            if remaining:
+                print(
+                    f"Processes still present after SIGKILL: {remaining}. "
+                    "The audio driver may need recovery or a reboot. "
+                    "If the session still holds the audio lock, another launch is refused. "
+                    "Do not remove the lock file.",
+                    file=sys.stderr,
+                )
+            return 128 + requested if requested else 1
+        handled = True
+        code = proc.returncode
+        return code if code >= 0 else 128 - code
+    finally:
+        if proc is not None and not handled:
+            _stop_session(proc)
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
+        os.close(fd)
+
+
+def _session_child(fd: int, arguments: str):
+    global _SESSION_STATUS_FD
+    _SESSION_STATUS_FD = fd
+    os.set_inheritable(fd, False)
+    _write_session_status(fd, "")
+    try:
+        _run_cli(argparse.Namespace(**json.loads(arguments)))
+    finally:
+        # sounddevice registers Pa_Terminate with atexit. Its native teardown
+        # needs the same bound as import, including the --list-devices path.
+        _write_session_status(fd, "closing audio backend")
+
+
 async def run_session(args):
     # PortAudio probes host audio devices at import. Keep that side effect out of
     # replay/evaluator processes, which import this module but never touch a mic.
-    import sounddevice as sd
+    print("Initializing audio...", flush=True)
+    with _audio_operation("initializing audio"):
+        import sounddevice as sd
 
     print(f"Loading {args.engine} model...")
     rec = load_recognizer(args.engine, getattr(args, "asr_device", ASR_DEVICE))
     vad, window = make_vad()
 
-    dev_info = sd.query_devices(args.device, kind="input")
+    with _audio_operation("selecting the microphone"):
+        dev_info = sd.query_devices(args.device, kind="input")
     native_rate = int(dev_info["default_samplerate"])
     if args.device is not None:
         dev_label = f"#{args.device} {dev_info['name']}"
@@ -1904,15 +2101,16 @@ async def run_session(args):
     print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
     print("-" * 60)
 
-    stream = sd.InputStream(
-        device=args.device,
-        samplerate=native_rate,
-        channels=1,
-        dtype="float32",
-        blocksize=0,
-        latency="high",
-        callback=audio_callback,
-    )
+    with _audio_operation("opening the microphone"):
+        stream = sd.InputStream(
+            device=args.device,
+            samplerate=native_rate,
+            channels=1,
+            dtype="float32",
+            blocksize=0,
+            latency="high",
+            callback=audio_callback,
+        )
 
     meter_task = asyncio.create_task(meter(state, audio_q, translator))
     worker_task = asyncio.create_task(
@@ -1921,7 +2119,8 @@ async def run_session(args):
     translator_task = asyncio.create_task(translator.run()) if translator else None
 
     try:
-        stream.start()
+        with _audio_operation("starting the microphone"):
+            stream.start()
         await state.stop_event.wait()
     finally:
         # Order matters: stop the mic first so the queue stops growing, then
@@ -1929,8 +2128,10 @@ async def run_session(args):
         # still decodes and persists what was already spoken (T1.4 behavior).
         # The translator drains last so flushed tail blocks still get EN lines.
         try:
-            stream.stop()
-            stream.close()
+            with _audio_operation("stopping the microphone"):
+                stream.stop()
+            with _audio_operation("closing the microphone"):
+                stream.close()
         except Exception:  # noqa: S110 -- PortAudio may already be gone at exit
             pass
         # worker() may already be dead. A blocking put could then strand
@@ -2035,10 +2236,24 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.list_devices:
-        import sounddevice as sd
+    if sys.platform == "linux":
+        code = _supervise_session(args)
+        if code:
+            sys.exit(code)
+    else:
+        _run_cli(args)
 
-        print(sd.query_devices())
+
+def _run_cli(args):
+    _configure_logging()
+
+    if args.list_devices:
+        print("Initializing audio...", flush=True)
+        with _audio_operation("initializing audio"):
+            import sounddevice as sd
+
+        with _audio_operation("listing audio devices"):
+            print(sd.query_devices())
         return
 
     err = check_models(args.engine) or check_device(args.engine, args.asr_device)
@@ -2047,7 +2262,7 @@ def main():
         sys.exit(1)
 
     backend = f"OpenVINO {args.asr_device}" if args.engine in WHISPER_ENGINES else "sherpa-onnx"
-    print(f"Engine: {args.engine} (local {backend}, no network)")
+    print(f"Engine: {args.engine} (local {backend}; speech recognition runs offline)")
 
     try:
         asyncio.run(run_session(args))

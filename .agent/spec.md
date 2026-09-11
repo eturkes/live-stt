@@ -38,6 +38,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
   `polish-register.md`, plus four evidence records.
+- [Audio-hang post-mortem](postmortems/2026-09-11-audio-driver-hang.md) — SoundWire kernel Oops,
+  Linux session containment, regression evidence, and the successful user-run live check.
 
 ## Decisions
 
@@ -74,6 +76,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - EN-leg recovery = **respawn (app-server EOF) + cooldown re-probe (3-strike disable)**, one
   mechanism, arm picked by `_alive()`, 5-attempt budget, doubling cooldown, marked in the transcript.
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out.
+- Linux live/device entry points isolate the audio session with deadlines and an inherited lock
+  (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
+  JA/EN drain remain in the session, validated by regression tests and the user-run live check.
 - Japanese-only source. Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
@@ -88,10 +93,8 @@ row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Cut the EN-leg thread-rotation tax · **2** Maintenance + security
 pass · **3** Live-mic validation pass · **4** Probe the two open NPU constructor properties · **5**
-Parameterize source language · **6** M10 candidate-screen remainder · **7** Investigate the unkillable
-live-audio hang. Source-language and candidate-screen acceptance are re-open conditions, not work.
-Audio-hang evidence + fixing-agent handoff →
-[post-mortem](postmortems/2026-09-11-audio-driver-hang.md); unresolved, terminals recovered only.
+Parameterize source language · **6** M10 candidate-screen remainder. The last two sit there because
+their acceptance is a re-open condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

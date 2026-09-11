@@ -1180,6 +1180,7 @@ def run_cli(monkeypatch, *argv):
     monkeypatch.setattr(live_stt, "check_models", check_models)
     monkeypatch.setattr(live_stt, "check_device", check_device)
     monkeypatch.setattr(live_stt, "run_session", run_session)
+    monkeypatch.setattr(live_stt, "_supervise_session", lambda args: live_stt._run_cli(args) or 0)
     live_stt.main()
     return seen
 
@@ -1188,7 +1189,10 @@ def test_a_bare_run_announces_whisper_on_the_shipped_accelerator(monkeypatch, ca
     seen = run_cli(monkeypatch)
 
     assert seen["preflight"] == "whisper"
-    assert "Engine: whisper (local OpenVINO NPU, no network)" in capsys.readouterr().out
+    assert (
+        "Engine: whisper (local OpenVINO NPU; speech recognition runs offline)"
+        in capsys.readouterr().out
+    )
 
 
 def test_the_asr_device_flag_reaches_the_session_and_the_banner(monkeypatch, capsys):
@@ -1205,7 +1209,10 @@ def test_a_sherpa_engine_is_announced_as_sherpa_not_openvino(monkeypatch, capsys
     seen = run_cli(monkeypatch, "--engine", "parakeet")
 
     assert seen["preflight"] == "parakeet"
-    assert "Engine: parakeet (local sherpa-onnx, no network)" in capsys.readouterr().out
+    assert (
+        "Engine: parakeet (local sherpa-onnx; speech recognition runs offline)"
+        in capsys.readouterr().out
+    )
 
 
 def test_every_engine_directory_is_selectable_from_the_command_line(monkeypatch):
@@ -1256,6 +1263,7 @@ def test_a_missing_model_stops_the_run_before_the_session_starts(monkeypatch, ca
         started.append(args)
 
     monkeypatch.setattr(live_stt, "run_session", run_session)
+    monkeypatch.setattr(live_stt, "_supervise_session", lambda args: live_stt._run_cli(args) or 0)
 
     with pytest.raises(SystemExit) as exit_info:
         live_stt.main()

@@ -199,6 +199,12 @@ paths:
   during `sounddevice` import, so an eager app-module import can hang model-only evaluators on an
   unhealthy device; `run_session` + `--list-devices` own those imports and offline replay/test stays
   hardware-independent.
+  Linux CLI entry points run those operations in a supervised session: 15 s per audio operation,
+  45 s for normal stop/drain, bounded TERM/KILL cleanup. The child inherits the locked status FD;
+  close it without explicit unlock/unlink so a D-state child continues to exclude duplicate starts.
+  Model compilation stays outside the audio deadline. `tests/test_audio_startup.py` covers the
+  process boundary and terminal-signal forwarding; the existing callback, queues and drain order stay
+  in the child. This contains a broken driver; it does not make SIGKILL interrupt kernel sleep.
 
 ## Latency budget — per stage, `tests/eval_latency.py`
 

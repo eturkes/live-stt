@@ -1,10 +1,61 @@
 # Post-mortem: live-stt stuck in kernel audio calls
 
-**Status: unresolved; terminals recovered, audio-driver recovery unverified.**
-Incident: 2026-09-11, host time **JST (UTC+09:00)**. Scope of this change = evidence + investigation
-handoff, not an implementation fix. Observations below came from the affected host, `/proc`, `ps`,
+**Status: application containment implemented and verified, including the user-run live check.
+Earlier SoundWire kernel crash identified; the kernel driver itself is not patched.**
+Incident: 2026-09-11, host time **JST (UTC+09:00)**. Observations below came from the affected host, `/proc`, `ps`,
 installed package metadata, source inspection, and the separately labeled user follow-up;
 hypotheses are labeled separately.
+
+## Investigation + containment update
+
+- The user confirmed that the engine banner was the **last line** before the hang. With the observed
+  kernel audio waits, this localizes the startup stall to import-time `sounddevice` initialization,
+  before `Loading whisper model...` and before translation startup.
+- The user rebooted and reported one successful run of the unchanged program. After the mitigation,
+  the user ran `uv run live-stt --list-devices`, then `uv run live-stt`, spoke, and pressed Ctrl+C.
+  Device listing, transcription/translation, and shutdown all worked and stopped cleanly. These
+  establish recovery and a healthy-path check, not elimination of the kernel trigger.
+- Privileged journal access recovered an **earlier kernel Oops at 12:12:36 JST**, in boot
+  `0625b76b5cff4904897befcef4af6a7c`. PipeWire PID `3616` hit a divide error in
+  `sdw_compute_params` (`soundwire_generic_allocation`), immediately after RT1318/SoundWire playback
+  configuration errors. The crash predates the supplied 12:50 banner and both inspected live-stt
+  processes. [Selected kernel evidence](2026-09-11-soundwire-oops.txt) includes its reproduction command.
+- During shutdown at 13:28:25, PipeWire did not stop on SIGTERM; systemd killed it at 13:29:55 after
+  its timeout. Source: `journalctl -b 0625b76b5cff4904897befcef4af6a7c --user-unit=pipewire.service`.
+  A damaged shared audio stack is therefore supported by evidence beyond live-stt. Exact lock
+  ownership after the Oops was not captured; neither a network cause nor generic resource exhaustion
+  was established.
+
+**Application mitigation:** Linux runs the existing session in a separate process, retaining the
+same microphone callback, recognizer, queues, and JA/EN drain. The supervisor never imports the
+audio binding. Synchronous audio import, query, open/start/stop/close, and library exit report their
+phase through an inherited locked status file. Each audio operation has a **15 s** deadline;
+forced cleanup waits at most **1 s after SIGTERM + 1 s after SIGKILL**. Interpreter startup has a
+separate 30 s bound; model compilation is outside the audio deadline. Normal signal-driven shutdown
+gets **45 s** for the final decode and translation drain; a second signal forces cleanup.
+
+The child inherits the audio lock, so an unkillable child still excludes another launch after its
+supervisor exits. The file is neither unlinked nor explicitly unlocked; stale contents alone do not
+block a new session after all holders exit. Forced cleanup checks process start identities and covers
+the detached Codex descendant as well as the session's other helpers. Residual processes are reported
+as still present, never as successfully killed. Non-Linux execution retains the inline session path.
+
+The banner now says “speech recognition runs offline,” and `Initializing audio...` appears before
+the risky import. This removes the connection-status ambiguity and exposes the startup boundary.
+
+**Verification:** the import-hang regression failed against `fb018f1` (CLI still blocked after 8 s),
+then passed with containment. Eleven hardware-free regressions cover direct/uv launch, import and
+library-exit hangs, duplicate launches, interruption during startup, a post-kill wait that never
+completes, a surviving child's lock, detached-descendant cleanup, and real-pty Ctrl+C/SIGHUP forwarding
+with the final EN preserved. The full seven-step `gate.py` passed on the final implementation.
+The user confirmed the live checks above. Simulated
+faults and a successful live run do not demonstrate repair of the SoundWire driver; multi-hour soak
+and deliberate real-driver fault reproduction were not performed.
+
+Primary references used for the design: [PortAudio initialization scans devices](https://files.portaudio.com/docs/v19-doxydocs/initializing_portaudio.html);
+[Python subprocess timeout and process-session semantics](https://docs.python.org/3/library/subprocess.html).
+In particular, `subprocess.run(timeout=...)` waits for the killed child before returning, so it is
+not the supervisor's recovery primitive for a kernel-blocked child.
 
 ## Summary + impact
 
@@ -14,11 +65,10 @@ process. Stopping each `uv` launcher and its multiprocessing helpers returned th
 shell, but left the main process blocked with `SIGKILL` pending. A second launch was also blocked;
 relaunching was not a demonstrated recovery.
 
-Actual transcription activity, transcript loss, and impact on other audio applications were not
-established. The user later supplied launch output below; whether it was the final output from
-either captured PID remains unconfirmed. No audio-service restart, driver reset, reboot, dependency
-change, or fresh reproduction was performed. A reboot was suggested as a possible recovery, not
-tested or proven necessary.
+At initial containment, transcription activity and transcript loss were not established. The agent
+stopped only the requested process families, without restarting audio services or rebooting the
+host. The subsequent user reboot, banner confirmation, and recovered driver evidence are recorded
+above; correlation of the quoted launch with a specific captured PID remains unknown.
 
 ## User follow-up: startup banner + concurrent workloads
 
@@ -40,10 +90,10 @@ check, network-error message, or assertion that the computer is offline. The opt
 translation leg starts later and prints its own status. The excerpt provides no evidence of failed
 connectivity or of a connection problem causing the observed kernel audio waits.
 
-**Conditional localization:** the next session operation is `import sounddevice`; only after that
-returns does `Loading whisper model...` print. If the quoted banner was the final visible line,
-with no loading message afterward, import-time PortAudio initialization becomes the leading
-startup boundary to trace. The excerpt alone does not establish that no later output appeared.
+**Confirmed follow-up:** the user explicitly confirmed that the quoted banner was the last line.
+The next session operation was `import sounddevice`; only after that returns does
+`Loading whisper model...` print. This supports import-time PortAudio initialization as the blocking
+boundary, consistent with the observed audio-driver wait channels.
 
 The supplied prompt time, **12:50:54**, differs from both recorded process starts (**13:02:57** and
 **13:05:49**). Associate the excerpt with a specific launch/PID before merging the timelines; it may
@@ -121,7 +171,8 @@ important distinction from an ordinary Python cancellation/shutdown hang.
 
 ## Source findings; exact blocking phase still unknown
 
-Line numbers refer to the inspected revision of [live_stt.py](../../live_stt.py).
+This table preserves pre-mitigation findings. Line numbers refer to revision
+`0674ca5ef7e804a11e483f0edddbad9b33e329cc` of [live_stt.py](../../live_stt.py), not the updated file.
 
 | Entry point | Relevant ordering / gap |
 | --- | --- |
@@ -152,17 +203,18 @@ live/device entry points still perform that initialization in the main process.
 - Neither multiprocessing helpers, translation, nor OpenVINO are established causes. Their presence
   or absence alone is insufficient attribution.
 
-## Evidence gaps + next investigation
+## Original investigation checklist + remaining gaps
 
 1. **Capture the blocked stack before recovery.** Obtain per-thread kernel stacks, syscall state,
    and kernel ALSA/SOF/SoundWire messages with the necessary host access. The attempted unprivileged
    `journalctl -k --since '15 minutes ago' --no-pager -n 250` reported restricted journal visibility
    and yielded no usable kernel evidence. This is missing evidence, not a clean kernel log. No
-   Python/native backtrace or syscall trace was captured.
+   Python/native backtrace or syscall trace of live-stt was captured. The later privileged journal
+   retrieval recovered the PipeWire/SoundWire crash above, resolving the kernel-log visibility gap.
 2. **Locate the boundary.** Add flushed before/after markers around import/initialization, query,
    stream construction/start/stop/close, and audio-library teardown in a controlled diagnostic run.
-   Establish whether the user's banner excerpt was the last visible output and which launch it
-   describes. Record the exact input/host API, concurrent workloads, active audio clients, resource
+   The user confirmed the banner was the last visible output; its launch/PID association is still
+   unknown. Record the exact input/host API, concurrent workloads, active audio clients, resource
    pressure, and recent suspend/resume or device changes; these details remain uncaptured.
 3. **Research from the captured stack.** Compare the actual kernel/firmware/PortAudio versions with
    upstream reports for those symbols and this card. A dependency upgrade alone is not evidence of
@@ -183,7 +235,7 @@ rg '^(State|PPid|Threads|SigPnd|ShdPnd|SigCgt):' "/proc/$live_stt_pid/status"
 cat "/proc/$live_stt_pid/wchan"
 ```
 
-## Candidate mitigation + acceptance for the fixing agent
+## Mitigation options considered + acceptance
 
 Choose the smallest mitigation justified by the captured boundary; separate application containment
 from host-driver repair.
@@ -219,5 +271,5 @@ from host-driver repair.
    If real-driver verification is unavailable, label the result unverified at that boundary rather
    than declaring this incident fixed.
 
-This report adds no runtime fix. Transcripts, models, dependencies, and unrelated workspace files
-were left unchanged.
+The shipped change contains the application hang; it does not repair the prior SoundWire kernel
+Oops. Transcripts, models, dependencies, and unrelated workspace files were left unchanged.

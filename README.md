@@ -297,6 +297,9 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 
 ## Notes
 
+- The startup phrase “speech recognition runs offline” describes local STT. It does not report your network status. Translation still uses the network.
+- On Linux, the app allows one live or device-listing session at a time. Audio setup and cleanup operations have 15-second limits. Forced cleanup waits at most two additional seconds. Model compilation does not use the audio timeout.
+- A normal Linux shutdown gets up to 45 seconds to finish pending work. A second `Ctrl+C` forces cleanup. A kernel fault can leave a process blocked. The app reports its PID and refuses another session while that process holds the audio lock. A reboot may be needed to recover the audio driver.
 - Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/deferred.md`).
 - `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
 - Closing the terminal runs that same shutdown. The screen is gone, so the last utterance and its translation land in the transcript file only.
