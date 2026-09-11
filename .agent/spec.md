@@ -88,8 +88,10 @@ row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Cut the EN-leg thread-rotation tax · **2** Maintenance + security
 pass · **3** Live-mic validation pass · **4** Probe the two open NPU constructor properties · **5**
-Parameterize source language · **6** M10 candidate-screen remainder. The last two sit there because
-their acceptance is a re-open condition, not work.
+Parameterize source language · **6** M10 candidate-screen remainder · **7** Investigate the unkillable
+live-audio hang. Source-language and candidate-screen acceptance are re-open conditions, not work.
+Audio-hang evidence + fixing-agent handoff →
+[post-mortem](postmortems/2026-09-11-audio-driver-hang.md); unresolved, terminals recovered only.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

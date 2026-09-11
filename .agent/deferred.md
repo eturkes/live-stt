@@ -35,3 +35,10 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.
+7. **Investigate the unkillable live-audio hang** — two host sessions remained in audio-driver `D`
+   state with `SIGKILL` pending; stopping their launchers freed the terminals, not the driver.
+   Evidence + handoff → [post-mortem](postmortems/2026-09-11-audio-driver-hang.md).
+   **Accept:** identify the evidenced blocking layer; verify the smallest fix/mitigation with
+   relevant regression coverage; preserve existing shutdown/drain behavior; record
+   user-run host recovery/startup/interruption/relaunch results, distinguishing containment from a
+   demonstrated trigger fix. Hardware-unverified results remain explicit.
