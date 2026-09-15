@@ -102,10 +102,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
-The spine, in funding order: **1** Live-mic validation pass · **2** Probe the two open NPU
-constructor properties · **3** Prove EN rendering consistency on the raw stream · **4** M10
-candidate-screen remainder. Row 4 sits there because its acceptance is a re-open condition,
-not work.
+The spine, in funding order: **1** Live-mic validation pass · **2** Prove EN rendering consistency
+on the raw stream · **3** M10 candidate-screen remainder. Row 3 sits there because its acceptance is
+a re-open condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

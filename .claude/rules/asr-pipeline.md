@@ -102,8 +102,30 @@ paths:
   speculative/draft decoding**. And `"NPU"` now defaults to the **stateful** implementation
   (`STATIC_PIPELINE=false`), yet `whisper_generate` calls `decoder->reset_state()` after every audio
   chunk ⇒ **no KV reuse across the growing buffer's repeated `generate()` calls**. Do not re-derive
-  these; the open candidates are the two constructor properties in `.agent/deferred.md` → *Probe the
-  two open NPU constructor properties*.
+  these.
+- **The two constructor properties are MEASURED and REFUSED; the fixed term stands.** Method, because
+  the naive one cannot work: decode varies ~20 % run to run, so a per-arm p50 cannot see the tens of
+  ms at stake. Caption text and VAD boundaries reproduce byte-identically across NPU runs ⇒ update k
+  of one arm decodes the same buffer as update k of every other, making the per-update delta a PAIRED
+  sample; 3 interleaved reps × 180 updates on `retention_probe`, one arm per process. **Decoded text
+  was byte-identical across every arm and rep**, so CER is unmoved by construction and needed no
+  re-derivation.
+  - `NPU_TURBO=true` — median p50 0.5453 → 0.5329 s, paired median **−2.3 ms** per update (mean
+    −14.9 ms, p10 −35.2 / p90 +24.1 over n=540). That is 0.4 % of an update, inside the paired
+    spread, and it costs a full cold recompile (~126 s) on first use. **Not adopted.**
+  - `NPUW_LLM_GENERATE_HINT="BEST_PERF"` — cold compile succeeds (95.9 s) and decodes, then loading
+    the resulting CACHED blob **SIGSEGVs, 3 of 3 reps**, with no Python traceback. A property that
+    cannot survive its own cache is unusable in a tool that constructs at every startup. **Not
+    adopted.** Set beside `NPU_TURBO` it loads fine and buys nothing (paired median −0.8 ms).
+  - Baseline note: base measures 0.5453 s here against the committed trace's 0.645 s. That is machine
+    state (the ~20 % band), not a regression — never re-baseline a committed trace from a scratch run.
+- **Two processes cold-compiling the SAME cache key concurrently write a blob that SIGSEGVs on load.**
+  Cost 3 wasted arms and two crashes before it was identified. `OPENVINO_CACHE_DIR` is fully
+  regenerable, so the repair is `rm -rf models/openvino/cache`; the guard is to never run a second
+  whisper process against the cache while one is compiling. Concurrency also inflates decode itself —
+  two pipelines on this one NPU measured 0.564 → 1.218 s per update before segfaulting.
+- A resident whisper large-v3-turbo int8 pipeline costs **~2.0 GB RSS** (2253 MB held, 225 MB after
+  release), which is what a design holding two of them at once has to budget.
 - **Repetition-loop cause + free repro.** The recogniser is pinned to Japanese, so audio it cannot
   account for is emitted as Japanese tokens until `max_length`=448 — the 444-char live captions. The
   trigger is neither laughter nor room tone: synthetic non-speech (digital silence, −60 dB noise,
