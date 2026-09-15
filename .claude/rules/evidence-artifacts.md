@@ -59,12 +59,23 @@ neither, because they replay committed traces — a fresh clone runs them in und
   not the degradation path — `restarts: 0` = production-identical. The trace is ONE sample of sampled
   model output ⇒ its verdicts are structural, never rates — a per-turn rate, a p90 or a latency
   ranking read off it describes that sample and binds nothing.
-  **Coverage limit: rendering CONSISTENCY is not measured here.** `translation-leg.md`'s 9-of-9
-  distinct-spellings figure was counted on the RAW EN stream of a separate arm, and this evaluator
-  exposes no such metric: `SessionContext` stores ONE rendering per term by construction, so any
-  check reading `renderings` is tautological and stays green while the EN stream spells the term
-  three ways. Closing that hole is queued (`.agent/deferred.md` → *Prove EN rendering consistency on
-  the raw stream*); until it lands, never cite this trace for consistency.
+  **Rendering consistency is measured on the RAW stream, never off `renderings`.** `SessionContext`
+  stores ONE rendering per term by construction, so any check reading it is tautological and stays
+  green while the EN stream spells the term three ways. `raw_spellings` walks the recorded turns
+  through a fresh context and reads `turns[*].en`, attributing on `observe_en`'s own gate MINUS the
+  `t not in self.renderings` clause, which is what lets a paired term keep being read. On this trace
+  no paired term carries more than one SUPPORTED spelling — `multi_spelled == []`, and ゴン
+  `Gon`×8, 標柱 `Heijū`×9 +
+  `Gon`×1, カスケ `Gon`×1 + `Kasuke`×1, 神様 `God`×2 over 8/38, 10/26, 2/4 and 2/3 attributable
+  readings. **Read `readings` against `turns` as COVERAGE, never as disagreement**: a turn naming two
+  trusted terms, or whose English carries two names, is unattributable, so the census is a lower
+  bound on evidence. **And read a lone stray as NOISE**: the gate is a substring test on the JA, so a
+  標柱-only caption whose English names `Gon` reads as one stray spelling of 標柱 — which is why the
+  histogram ships with counts and why `supported` (`CONTEXT_EN_SUPPORT` agreeing turns) exists
+  alongside `distinct`. `turns` counts a term only while it is already trusted, the population
+  `readings` is drawn from; the trust-blind count is two higher for seven of this trace's eight terms
+  and THREE higher for 二人, whose first sighting aged out of `CONTEXT_TERM_MEMORY` before the next
+  one — read that delta as a per-term measurement, never as a constant.
 - `eval_term_census.py` + `test_term_census.py` — what the recogniser gives `SessionContext` as a key,
   and whether a key dies with a rendering on it. Occurrences are located by `cer.alignment` against the
   reference — never by searching for guessed spellings — one alignment per SECTION, then widened to the

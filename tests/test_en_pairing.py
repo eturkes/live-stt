@@ -15,6 +15,7 @@ NEIGHBOURS' openings -- interference the best case removes by construction.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 import pytest
 
@@ -24,12 +25,14 @@ from live_stt import (
     CONTEXT_TERM_LEASE,
     CONTEXT_TERM_SUPPORT,
 )
+from tests import eval_en_pairing
 from tests.eval_en_pairing import (
     CANDIDATES,
     CONTROL,
     TURNS,
     caption_stream,
     replay,
+    report,
     verdict,
 )
 from tests.eval_term_census import learner
@@ -37,6 +40,7 @@ from tests.eval_term_census import learner
 TERM = "兵十"
 COMMON = "The marker post arrived."  # no capital that is not sentence-initial
 PROPER = "The visitor was Hyoju."
+HEADLINE = "no paired term has MORE THAN ONE supported spelling on the raw stream"
 
 
 def _captions(*texts: str) -> list[dict]:
@@ -49,6 +53,165 @@ def _turns(captions: list[dict], en: str) -> list[dict]:
 
 def _episodes(captions: list[dict], en: str) -> dict[str, dict]:
     return {e["term"]: e for e in replay(captions, _turns(captions, en))["episodes"]}
+
+
+def _raw_spellings(turns: list[dict]) -> dict[str, dict]:
+    return eval_en_pairing.raw_spellings(turns)  # type: ignore[attr-defined]
+
+
+def _re_trusted_unpaired() -> tuple[list[dict], list[dict]]:
+    """Pairs, spells itself two SUPPORTED ways, expires with its lease, re-trusts unpaired."""
+    names = ["Hyoju"] * CONTEXT_EN_SUPPORT + ["Gon"] * CONTEXT_EN_SUPPORT
+    caps = _captions(
+        *["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + len(names)),
+        *["そうですね。"] * (CONTEXT_TERM_LEASE + 1),  # hiragana only: no candidate at all
+        *["兵十がきた。"] * CONTEXT_TERM_SUPPORT,
+    )
+    turns = _turns(caps, "")
+    paired_window = turns[CONTEXT_TERM_SUPPORT : CONTEXT_TERM_SUPPORT + len(names)]
+    for turn, name in zip(paired_window, names, strict=True):
+        turn["en"] = f"The visitor was {name}."
+    return caps, turns
+
+
+def test_two_trusted_terms_count_a_turn_without_a_spelling_reading():
+    """Two JA candidates make attribution unsafe, but both still expose coverage."""
+    caps = _captions(
+        *["兵十がきた。"] * CONTEXT_TERM_SUPPORT,
+        *["加助がきた。"] * CONTEXT_TERM_SUPPORT,
+        "兵十と加助。",
+    )
+    turns = _turns(caps, "")
+    turns[-1]["en"] = PROPER
+    empty = {"turns": 1, "readings": 0, "spellings": {}, "distinct": 0, "supported": 0}
+    assert _raw_spellings(turns) == {TERM: empty, "加助": empty}
+
+
+def test_two_english_names_count_a_turn_without_a_spelling_reading():
+    """Two EN proper nouns make attribution unsafe while the turn stays visible."""
+    caps = _captions(*["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + 1))
+    turns = _turns(caps, "")
+    turns[-1]["en"] = "The visitors saw Hyoju and Gon."
+    assert _raw_spellings(turns)[TERM] == {
+        "turns": 1,
+        "readings": 0,
+        "spellings": {},
+        "distinct": 0,
+        "supported": 0,
+    }
+
+
+def test_a_term_keeps_contributing_readings_after_it_pairs():
+    """The raw census must not inherit `observe_en`'s tautological paired-term filter."""
+    caps = _captions(*["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + CONTEXT_EN_SUPPORT + 1))
+    turns = _turns(caps, "")
+    for turn in turns[CONTEXT_TERM_SUPPORT:]:
+        turn["en"] = PROPER
+    assert _raw_spellings(turns)[TERM] == {
+        "turns": CONTEXT_EN_SUPPORT + 1,
+        "readings": CONTEXT_EN_SUPPORT + 1,
+        "spellings": {"Hyoju": CONTEXT_EN_SUPPORT + 1},
+        "distinct": 1,
+        "supported": 1,
+    }
+
+
+def test_supported_counts_only_spellings_that_reach_the_pairing_bar():
+    """One stray spelling stays visible without becoming a supported inconsistency."""
+    caps = _captions(*["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + CONTEXT_EN_SUPPORT * 2 - 1))
+    turns = _turns(caps, "")
+    names = ["Hyoju"] * CONTEXT_EN_SUPPORT + ["Gon"] * (CONTEXT_EN_SUPPORT - 1)
+    for turn, name in zip(turns[CONTEXT_TERM_SUPPORT:], names, strict=True):
+        turn["en"] = f"The visitor was {name}."
+    assert _raw_spellings(turns)[TERM] == {
+        "turns": len(names),
+        "readings": len(names),
+        "spellings": {"Hyoju": CONTEXT_EN_SUPPORT, "Gon": CONTEXT_EN_SUPPORT - 1},
+        "distinct": 2,
+        "supported": 1,
+    }
+
+
+def test_spellings_are_ordered_by_count_then_name():
+    """Stable reports rank frequent spellings first and break ties lexically."""
+    names = ["Gon", "Hyoju", "Anke", "Hyoju", "Gon", "Anke", "Hyoju"]
+    caps = _captions(*["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + len(names)))
+    turns = _turns(caps, "")
+    for turn, name in zip(turns[CONTEXT_TERM_SUPPORT:], names, strict=True):
+        turn["en"] = f"The visitor was {name}."
+    spelling_counts = _raw_spellings(turns)[TERM]["spellings"]
+    assert list(spelling_counts.items()) == [("Hyoju", 3), ("Anke", 2), ("Gon", 2)]
+
+
+def test_two_supported_spellings_are_already_multi_spelled():
+    """The bar is `supported > 1`, not `> CONTEXT_EN_SUPPORT`.
+
+    Two spellings that EACH reached the pairing bar already contradict the one
+    rendering the learned map holds, so the second one must not have to clear the
+    bar twice. Raising the threshold to `CONTEXT_EN_SUPPORT` leaves the rest of
+    this file green, which is why this case exists.
+    """
+    names = ["Hyoju"] * CONTEXT_EN_SUPPORT + ["Gon"] * CONTEXT_EN_SUPPORT
+    caps = _captions(*["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + len(names)))
+    turns = _turns(caps, "")
+    for turn, name in zip(turns[CONTEXT_TERM_SUPPORT:], names, strict=True):
+        turn["en"] = f"The visitor was {name}."
+    assert _raw_spellings(turns)[TERM]["supported"] == 2
+    assert verdict(caps, turns)["multi_spelled"] == [TERM]
+
+
+def test_a_term_that_re_trusts_unpaired_keeps_its_raw_inconsistency():
+    """`verdict()` keeps ONE episode per term; the census spans the session.
+
+    A term that paired, spelled itself two supported ways, expired with its lease
+    and then re-trusted on captions the translator never answered survives in
+    `verdict()` carrying the LAST episode, whose `rendering` is None. Gating
+    `multi_spelled` on that row hides exactly the inconsistency the metric exists
+    to find.
+    """
+    caps, turns = _re_trusted_unpaired()
+    result = verdict(caps, turns)
+    row = next(r for r in result["episodes"] if r["term"] == TERM)
+    assert row["rendering"] is None  # the surviving episode never paired
+    assert row["spellings"]["supported"] == 2  # while the raw stream spelled it twice
+    assert result["multi_spelled"] == [TERM]
+
+
+def test_the_report_headline_states_the_verdict_its_own_rows_carry(
+    capsys: pytest.CaptureFixture[str],
+):
+    """`report()` is the human surface and its headline branch was unlocked.
+
+    Swapping the branch condition for anything the committed trace satisfies
+    (`not result["multi_spelled"]` -> `result["episodes"]`) leaves today's output
+    byte-identical while every future FAILING run prints the clean headline. The
+    histogram rides the same case: `multi_spelled` reads `ever_paired`, so a term
+    whose surviving episode carries no rendering is still named by the headline
+    and must appear in the table under it.
+    """
+    caps, turns = _re_trusted_unpaired()
+    report(verdict(caps, turns), None)
+    failing = capsys.readouterr().out
+    histogram = [line for line in failing.splitlines() if TERM in line and "readings" in line]
+    clean = _captions(*["兵十がきた。"] * (CONTEXT_TERM_SUPPORT + CONTEXT_EN_SUPPORT))
+    clean_turns = _turns(clean, "")
+    for turn in clean_turns[CONTEXT_TERM_SUPPORT:]:
+        turn["en"] = PROPER
+    report(verdict(clean, clean_turns), None)
+    passing = capsys.readouterr().out
+    assert [
+        f"MULTI-SPELLED on the raw stream: {TERM}" in failing,
+        HEADLINE in failing,
+        [" ".join(line.split()) for line in histogram],
+        HEADLINE in passing,
+        "MULTI-SPELLED" in passing,
+    ] == [
+        True,
+        False,
+        [f"{TERM} -> - 4/4 readings 2 distinct, 2 supported Gon x2, Hyoju x2"],
+        True,
+        False,
+    ]
 
 
 def test_english_common_nouns_never_pair_a_key():
@@ -184,3 +347,107 @@ def test_the_committed_run_still_yields_m125s_verdict():
     assert result["candidates_paired"] == []
     assert set(result["dead_pairings"]["best"]) == set(CANDIDATES)
     assert CONTROL not in result["dead_pairings"]["live"]
+
+
+def test_the_committed_run_rederives_the_raw_spelling_table():
+    """The trace fixes each learned term's raw coverage, noise, and support counts."""
+    captions = caption_stream()
+    trace = json.loads(TURNS.read_text(encoding="utf-8"))
+    census = _raw_spellings(trace["turns"])
+    result = verdict(captions, trace["turns"])
+    expected = {
+        "ゴン": {
+            "turns": 38,
+            "readings": 8,
+            "spellings": {"Gon": 8},
+            "distinct": 1,
+            "supported": 1,
+        },
+        "標柱": {
+            "turns": 26,
+            "readings": 10,
+            "spellings": {"Heijū": 9, "Gon": 1},
+            "distinct": 2,
+            "supported": 1,
+        },
+        "カスケ": {
+            "turns": 4,
+            "readings": 2,
+            "spellings": {"Gon": 1, "Kasuke": 1},
+            "distinct": 2,
+            "supported": 0,
+        },
+        "神様": {
+            "turns": 3,
+            "readings": 2,
+            "spellings": {"God": 2},
+            "distinct": 1,
+            "supported": 1,
+        },
+    }
+    renderings = {"ゴン": "Gon", "標柱": "Heijū", "カスケ": "Kasuke", "神様": "God"}
+    learned_rows = {row["term"]: row for row in result["episodes"] if row["rendering"]}
+    assert {
+        "raw": {term: census[term] for term in expected},
+        "reported": {
+            term: {"rendering": row["rendering"], **row["spellings"]}
+            for term, row in learned_rows.items()
+        },
+        "multi_spelled": result["multi_spelled"],
+    } == {
+        "raw": expected,
+        "reported": {
+            term: {"rendering": renderings[term], **spellings}
+            for term, spellings in expected.items()
+        },
+        "multi_spelled": [],
+    }
+
+
+def test_raw_spellings_refute_the_learned_map_tautology():
+    """The named mutation must move raw consistency while every old proof stays green."""
+    captions = caption_stream()
+    trace = json.loads(TURNS.read_text(encoding="utf-8"))
+    baseline = verdict(captions, trace["turns"])
+    paired_at = next(
+        row["paired_at"]["live"] for row in baseline["episodes"] if row["term"] == CONTROL
+    )
+    mutated_turns = deepcopy(trace["turns"])
+    replacement_i = 0
+    for turn in mutated_turns:
+        if turn["idx"] > paired_at and "Gon" in turn["en"]:
+            turn["en"] = turn["en"].replace("Gon", ("Gawn", "Ghone")[replacement_i % 2])
+            replacement_i += 1
+    changed = verdict(captions, mutated_turns)
+    baseline_census = _raw_spellings(trace["turns"])
+    changed_census = _raw_spellings(mutated_turns)
+    learned_before = {
+        row["term"]: row["rendering"] for row in baseline["episodes"] if row["rendering"]
+    }
+    learned_after = {
+        row["term"]: row["rendering"] for row in changed["episodes"] if row["rendering"]
+    }
+    learned = {"ゴン": "Gon", "標柱": "Heijū", "カスケ": "Kasuke", "神様": "God"}
+    assert {
+        "learned": (learned_before, learned_after),
+        "control_paired": (baseline["control_paired"], changed["control_paired"]),
+        "candidates_paired": (baseline["candidates_paired"], changed["candidates_paired"]),
+        "raw_gon_before": (
+            set(baseline_census[CONTROL]["spellings"]),
+            baseline_census[CONTROL]["distinct"],
+            baseline_census[CONTROL]["supported"],
+        ),
+        "raw_gon_after": (
+            set(changed_census[CONTROL]["spellings"]),
+            changed_census[CONTROL]["distinct"],
+            changed_census[CONTROL]["supported"],
+        ),
+        "multi_spelled": (baseline["multi_spelled"], changed["multi_spelled"]),
+    } == {
+        "learned": (learned, learned),
+        "control_paired": (True, True),
+        "candidates_paired": ([], []),
+        "raw_gon_before": ({"Gon"}, 1, 1),
+        "raw_gon_after": ({"Gon", "Gawn", "Ghone"}, 3, 3),
+        "multi_spelled": ([], [CONTROL]),
+    }

@@ -315,14 +315,16 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   content rotations any further would delay an add, a rendering or a drop from reaching the model
   until the next cadence rotation. Today's design pays a rotation for every content change and so
   never briefs a stale glossary; what was removed is re-sending an identical one.
-- **The row's rendering-consistency half is UNPROVEN, not passed.** Its acceptance cited
-  "`eval_en_pairing.py` distinct spellings 1/1/1" and that metric does not exist in the evaluator.
+- **The row's rendering-consistency half is now MEASURED, on the raw stream.** Its acceptance cited
+  "`eval_en_pairing.py` distinct spellings 1/1/1" and no such metric existed; `raw_spellings` is it.
   `SessionContext` stores ONE rendering per term by construction, so any check reading `renderings`
   is tautological: mutating the raw EN after pairing (`Gon` → `Gawn`/`Ghone`) leaves both the learned
-  map and the M12.5 verdict green. Real consistency is a property of the RAW EN stream — the figure
-  `translation-leg.md` quotes comes from counting distinct spellings of one recurring proper noun
-  across a session's English. Carried forward as its own queue row; never re-cite the learned map as
-  evidence of it.
+  map and M12.5's structural verdict green while the raw census goes `distinct` 1 → 3 and `multi_spelled`
+  `[]` → `["ゴン"]`. On the committed trace NO paired term carries more than one supported spelling
+  (`multi_spelled == []`) — ゴン `Gon`×8, 標柱 `Heijū`×9 against one stray `Gon`, カスケ one `Kasuke`
+  and one stray `Gon` with neither supported, 神様 `God`×2. **Never re-cite the learned map as evidence of
+  consistency**, and read `readings` against `turns` as coverage and a sub-support spelling as noise
+  (`evidence-artifacts.md`).
 - Counter-cost, DESCRIPTIVE not causal: the new run's surviving rotations are dearer (p50 3.900 →
   **4.695 s**, max 5.600) and its totals read rotation time 160.4 → **64.7 s**, wall 568.8 →
   542.3 s. Those are sample totals of two independent runs, never attributable savings — the runs

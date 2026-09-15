@@ -179,6 +179,17 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   3 sessions/arm through the real translator: distinct spellings of one recurring proper noun 1/1/1 in
   **9 of 9** paired sessions against 3/5/2 · 1/1/1 · 4/1/1 unpaired; adequacy held at Δ **−0.018**
   [−0.089, +0.050]. A rendering expires with its term's lease, which is what bounds the dict.
+  **That 9-of-9 figure was counted on the RAW EN stream and is not re-derivable in-tree; the
+  committed `en_pairing_trace.json` is what is.** `eval_en_pairing.py`'s `raw_spellings` re-derives it
+  offline — NO paired term carries more than one supported spelling (`multi_spelled == []`), and the
+  census is what says so: ゴン `Gon`×8 and
+  神様 `God`×2 clean, 標柱 `Heijū`×9 against one stray `Gon`, カスケ one `Kasuke` and one stray `Gon`
+  with neither reaching support. **Never quote a consistency number off `renderings`**: it holds one
+  spelling per term by construction, so the mutation that spells ゴン three ways
+  (`Gon` → `Gawn`/`Ghone` after `paired_at`) leaves the learned map AND M12.5's STRUCTURAL verdict
+  untouched — `trust_identical`, `same_episodes`, `control_paired`, `candidates_paired`, `paired`,
+  `dead_pairings`, while the reported `names_at_openings` payloads do move for 4 terms — as the raw
+  census goes `distinct` 1 → 3 and `multi_spelled` `[]` → `["ゴン"]`.
 - **`_EN_STOP` (the pronoun "I" + its four contractions) and `_EN_SENTENCE` are the shipped fix for
   `標柱 = I`.** English capitalizes its first-person pronoun, so "I" passed the not-sentence-initial
   rule and was the most common sole proper noun in a real run — 20 of the 63 single-proper-noun turns,

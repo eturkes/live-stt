@@ -71,17 +71,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    input does not close this row. `TRANSLATOR_INSTRUCTIONS` pins the leg
    Japanese→English and declares every turn "one block of transcribed Japanese speech", so the EN→JA
    direction needs its own instructions and its own degrade story.
-4. **Prove EN rendering consistency on the raw stream.** The rotation-tax row's acceptance cited
-   `eval_en_pairing.py` "distinct spellings 1/1/1" and no such metric exists there. `SessionContext`
-   keeps ONE rendering per term by construction, so every check reading `renderings` is tautological:
-   mutating post-pairing EN (`Gon` → `Gawn`/`Ghone`) leaves both the learned map and the M12.5
-   verdict green while a one-spelling assertion reddens. Consistency is a property of the RAW EN
-   stream, which is where `translation-leg.md`'s 9-of-9 figure was counted. **Accept:**
-   `eval_en_pairing.py` grows a raw-stream metric counting distinct spellings of each learned term's
-   rendering across `turns[*].en`, reported per run and locked by a test proven red under that exact
-   mutation; the committed trace then re-derives one spelling per paired term, or the divergence is
-   recorded as the real number.
-5. **Attribute drops that precede the first caption.** `attach_logs` gives a session the wall clock
+4. **Attribute drops that precede the first caption.** `attach_logs` gives a session the wall clock
    from `Session.start` onward, and `Session.start` is the transcript FILENAME — which `-o PATH`
    replaces with a free name, falling back to the earliest caption. So under `-o PATH` every log
    event before the first caption is unclaimed and never reaches `attribute_drops`, which is exactly
@@ -95,7 +85,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    that increase to the screened caption, locked by a test proven red against today's code, with the
    multi-session case locked too — an event before the first caption of session 2 must not land on
    session 1.
-6. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+5. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.

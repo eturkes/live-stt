@@ -58,7 +58,12 @@ ROOT = TESTS.parent
 sys.path[:0] = [str(TESTS), str(ROOT)]
 
 import live_stt  # noqa: E402
-from live_stt import CodexTranslator, SessionContext, _en_names  # noqa: E402
+from live_stt import (  # noqa: E402
+    CONTEXT_EN_SUPPORT,
+    CodexTranslator,
+    SessionContext,
+    _en_names,
+)
 from tests.eval_term_census import learner, pinned_sections  # noqa: E402
 
 TRACE = TESTS / "caption_trace.json"
@@ -108,10 +113,84 @@ def replay(captions: list[dict], turns: list[dict]) -> dict:
     return learner(captions, lambda caption, unpaired: by_idx[caption["idx"]]["en"])
 
 
+_NO_SPELLINGS = {"turns": 0, "readings": 0, "spellings": {}, "distinct": 0, "supported": 0}
+
+
+def raw_spellings(turns: list[dict]) -> dict[str, dict]:
+    """How many ways the RAW English spelled each trusted term, pairing ignored.
+
+    `SessionContext.renderings` holds ONE spelling per term by construction, so
+    every check reading it is tautological: mutate the English after a term pairs
+    and both the learned map and M12.5's verdict stay green. Consistency is a
+    property of the stream the translator produced -- which is what
+    `translation-leg.md`'s 9-of-9 figure was counted on -- so this walks the
+    recorded turns through a fresh production context and reads `turns[*].en`.
+
+    Attribution is `observe_en`'s own gate minus the one clause that makes it
+    tautological. `observe_en` reads
+    `[t for t in self.terms() if t in ja and t not in self.renderings]`; dropping
+    `t not in self.renderings` is what lets a PAIRED term keep being read, and
+    the census predicate below never consults `renderings`. `observe_en` still
+    runs, because production runs it and it is what expires a rendering with its
+    term's lease; what it writes is read by nothing here.
+
+    Both costs of that rule are REPORTED, never hidden. COVERAGE: a turn naming
+    two trusted terms, or whose English carries two names, is unattributable and
+    contributes to `turns` alone, so `readings` sits far below it -- 8 of 38 for
+    ゴン on the committed trace, making the census a lower bound on evidence.
+    NOISE: the gate is a substring test on the JA, so a caption whose only trusted
+    term is 標柱 while its English names `Gon` reads as one stray spelling of 標柱.
+    That is why the histogram ships with counts and why `supported` exists: one
+    stray against nine is visible, where `distinct` alone would read as an
+    inconsistency that is not one.
+
+    `turns` counts a term only while it is already TRUSTED, because `reads` is
+    drawn from `context.terms()`; the trust-blind count would inflate the
+    coverage cost with turns the gate could never have attributed. It is two
+    higher for seven of this trace's eight terms (`CONTEXT_TERM_SUPPORT`=3
+    promotes on the third sighting) and THREE higher for 二人, whose first
+    sighting at turn 111 aged out of `CONTEXT_TERM_MEMORY`=40 before the next at
+    turn 158 -- so read the delta as a per-term measurement, never as a constant.
+    """
+    context = SessionContext()
+    seen: dict[str, int] = {}
+    counts: dict[str, dict[str, int]] = {}
+    for turn in turns:
+        ja, en = turn["ja"], turn["en"]
+        context.observe_ja(ja)
+        if not en:
+            continue
+        reads = [t for t in context.terms() if t in ja]
+        names = list(dict.fromkeys(_en_names(en)))
+        for term in reads:
+            seen[term] = seen.get(term, 0) + 1
+            counts.setdefault(term, {})
+        if len(reads) == 1 and len(names) == 1:
+            counts[reads[0]][names[0]] = counts[reads[0]].get(names[0], 0) + 1
+        context.observe_en(ja, en)
+    census = {}
+    for term, spellings in counts.items():
+        ordered = dict(sorted(spellings.items(), key=lambda kv: (-kv[1], kv[0])))
+        census[term] = {
+            "turns": seen[term],
+            "readings": sum(ordered.values()),
+            "spellings": ordered,
+            "distinct": len(ordered),
+            "supported": sum(1 for n in ordered.values() if n >= CONTEXT_EN_SUPPORT),
+        }
+    return census
+
+
 def verdict(captions: list[dict], turns: list[dict]) -> dict:
     """M12.3's simulated pairings against the live ones, episode by episode."""
     best = {e["term"]: e for e in learner(captions)["episodes"]}
-    live = {e["term"]: e for e in replay(captions, turns)["episodes"]}
+    live_episodes = replay(captions, turns)["episodes"]
+    live = {e["term"]: e for e in live_episodes}
+    # The census spans the SESSION while `live` keeps one episode per term, so a
+    # term that paired, then expired and re-trusted unpaired, survives here with
+    # `rendering=None`. Gate `multi_spelled` on whether the term EVER paired, or
+    # that term's raw inconsistency reports as nothing at all.
+    ever_paired = {e["term"] for e in live_episodes if e["rendering"]}
     by_idx = recorded(turns)
     # Every field the English side can move, `openings_before_quiet` included --
     # it counts openings, so leaving it out of this set would report the arms as
@@ -124,6 +203,11 @@ def verdict(captions: list[dict], turns: list[dict]) -> dict:
         "sightings_after_paired",
         "dead_pairing",
     }
+    # The census rides the ROW and is deliberately not merged into the episode
+    # dicts below: those are what `trust_identical` compares, and a key read off
+    # the English would report the arms as differing in TRUST the moment the raw
+    # stream moved. Merging it in later means adding it to `moving` too.
+    census = raw_spellings(turns)
     rows = []
     for term, episode in live.items():
         rows.append(
@@ -138,6 +222,7 @@ def verdict(captions: list[dict], turns: list[dict]) -> dict:
                 },
                 "paired_at": {"best": best[term]["paired_at"], "live": episode["paired_at"]},
                 "rendering": episode["rendering"],
+                "spellings": census.get(term, _NO_SPELLINGS),
                 "dead_pairing": {
                     "best": best[term]["dead_pairing"],
                     "live": episode["dead_pairing"],
@@ -176,6 +261,16 @@ def verdict(captions: list[dict], turns: list[dict]) -> dict:
         },
         "control_paired": live[CONTROL]["paired_at"] is not None if CONTROL in live else None,
         "candidates_paired": [t for t in CANDIDATES if t in live and live[t]["paired_at"]],
+        # The tautology's refutation: a term that PAIRED and whose raw stream
+        # still spelled it more than one SUPPORTED way. Empty = NO paired term
+        # has more than one supported spelling, which is the claim
+        # `translation-leg.md` makes -- never "every term has one", which カスケ
+        # (supported=0) already falsifies. The bar is >1, never
+        # >CONTEXT_EN_SUPPORT: two spellings that each reached support are
+        # already a contradiction of the learned map.
+        "multi_spelled": sorted(
+            t for t in ever_paired if census.get(t, _NO_SPELLINGS)["supported"] > 1
+        ),
     }
 
 
@@ -314,6 +409,37 @@ def report(result: dict, run: dict | None) -> None:
         f"  learned live: {', '.join(learned) or 'NOTHING'}\n"
         f"  dead pairings: best case {result['dead_pairings']['best']}, "
         f"live {result['dead_pairings']['live'] or 'NONE'}"
+    )
+    print(
+        "  raw EN spellings, pairing ignored -- a term is read only where it is the JA's "
+        "sole trusted term and the EN carries one name, so readings < turns is coverage, "
+        "not disagreement:"
+    )
+    # A term that paired, expired and then re-trusted unpaired keeps its raw
+    # inconsistency (`multi_spelled` reads `ever_paired`) while its surviving
+    # episode carries no rendering, so it is displayed too -- otherwise the
+    # headline names a term the histogram above it never shows.
+    shown = [
+        r for r in result["episodes"] if r["rendering"] or r["term"] in result["multi_spelled"]
+    ]
+    for row in shown:
+        census = row["spellings"]
+        histogram = ", ".join(f"{n} x{c}" for n, c in census["spellings"].items()) or "none"
+        print(
+            f"    {row['term']:<10} -> {row['rendering'] or '-':<8} "
+            f"{census['readings']:>3}/{census['turns']:<3} readings  "
+            f"{census['distinct']} distinct, {census['supported']} supported  {histogram}"
+        )
+    if any(row["spellings"]["distinct"] > row["spellings"]["supported"] for row in shown):
+        print(
+            "    a `distinct` above `supported` is NOISE, not disagreement: the gate is a "
+            "substring test on the JA,\n    so a caption whose only trusted term is A while its "
+            "English names B reads as one stray B for A"
+        )
+    print(
+        "  no paired term has MORE THAN ONE supported spelling on the raw stream"
+        if not result["multi_spelled"]
+        else f"  MULTI-SPELLED on the raw stream: {', '.join(result['multi_spelled'])}"
     )
     if result["control_paired"] and not result["candidates_paired"]:
         print(
