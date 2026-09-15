@@ -156,3 +156,13 @@ spike` + `cp -al <primary>/models/*/ <primary>/models/*.onnx models/` reproduces
 exactly (~5.7 GB linked in under a second). Use `cp -al`, never symlinks — git refuses pathspecs
 beyond a symbolic link, so the acquisition-provenance tests fail `git check-ignore` with rc=128.
 Hardlinks share inodes ⇒ treat a linked tree as read-only and re-acquire weights in the primary tree.
+
+**A teammate commits inside its worktree with `git -c core.hooksPath=/dev/null commit`.** The
+pre-commit hook (D-007) runs a bare `uv run`, which re-points the shared `.venv`'s editable
+`live-stt` install at the worktree and breaks `uv run live-stt` machine-wide until a primary-tree
+`UV_PROJECT_ENVIRONMENT=.venv uv sync` restores it. The teammate's own gate run covers what the hook
+would have checked, and `PYTHONPATH`-free `import live_stt` from a directory outside the repo prints
+the live target, so read `__file__` there rather than trusting the absence of a warning. Harvesting a
+worktree that GENERATED gitignored payloads takes two more steps: `cp -al` each payload directory
+into the primary cache, then rerun the producing script in the primary tree and require
+byte-identical manifests (`sha256sum -c`), which is what credits the artifact.

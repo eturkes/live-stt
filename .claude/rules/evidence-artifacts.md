@@ -21,6 +21,15 @@ neither, because they replay committed traces — a fresh clone runs them in und
 - `short_corpus.json` + `fetch_real_clips.py` + `real_clips.json` + `test_corpus.py` — pinned Common
   Voice / FLEURS PCM corpus, compact evidence plus fail-closed locks. The real-recorded clips expose
   engine divergence the synthetic TTS corpus could not: 松井/松居, バック/パック, 午後七時/午後7時.
+- `en_clips.json` + `fetch_real_clips.py`'s `en_us` arm + `test_en_corpus.py` — the pinned FLEURS
+  **English** corpus, 647 clips / 6387.900 s of 16 kHz mono PCM16 under
+  `spike/backends/cache/en_clips-v1-1b13a64fdc119f6c/`, `EN_EXPECTED_INDEX_SHA256` pinning the whole
+  index. It exists because every other corpus here is Japanese, so an English-pinned decode had no
+  scoreable input; FLEURS pairs it with the `ja_jp` side L-028 characterized, which is what lets a
+  JA/EN arm differ in the language token and nothing else. One script and a second config, never a
+  second copy — and `test_japanese_corpus_identity_is_unchanged` pins `EXPECTED_INDEX_SHA256`
+  (`98e0d8a4…`) plus both JA manifests, so an English-side edit that moved the Japanese corpus turns
+  red instead of re-qualifying it silently.
 - `stressor_clips.json` + `build_stressor.py` — the 44.7 s genuinely-continuous stressor: silero-trimmed
   speech extents joined by ~10 ms equal-power crossfades (gap-concat leaves clip-edge quiet the VAD
   rightly splits on). Prove continuity honestly — every crossfade-join offset sits inside a cap-OFF VAD

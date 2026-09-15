@@ -60,7 +60,10 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    corpus here is Japanese (`ja_asr.common_voice_8_0`, 「ごん狐」, `retention_probe`), so the row
    acquires an English set under L-017 (`evidence-artifacts.md`) — FLEURS `en_us` pairs with the
    `ja_jp` side L-028 already characterized — and scores EN-pinned against JA-pinned decode with
-   `cer.py`. `.scratch/jfk.flac` (11 s, public domain, `curl` line in `asr-pipeline.md`) is the
+   `cer.py`. **The English set is ACQUIRED** — `tests/en_clips.json`, 647 clips / 6387.900 s, index
+   `1b13a64f…` (`evidence-artifacts.md`), the Japanese manifests fingerprint-locked unchanged beside
+   it; what (ii) still owes is the scored EN arm on that input.
+   `.scratch/jfk.flac` (11 s, public domain, `curl` line in `asr-pipeline.md`) is the
    zero-cost SMOKE check only; one clip cannot carry this number.
    (iii) CO-RESIDENCY — peak RSS with two pipelines constructed and both compiled, against the
    measured 2253 MB single-pipeline figure, plus per-update decode p50 while alternating between them,

@@ -1,0 +1,101 @@
+{
+  "audio": {
+    "channels": 1,
+    "encoding": "PCM16",
+    "sample_rate_hz": 16000
+  },
+  "builder": {
+    "dependencies": {
+      "libsndfile": "1.2.2",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.0",
+      "soundfile": "0.14.0"
+    },
+    "script": "tests/fetch_real_clips.py"
+  },
+  "cache": {
+    "directory": "spike/backends/cache/en_clips-v1-1b13a64fdc119f6c",
+    "index": "index.jsonl",
+    "index_sha256": "1b13a64fdc119f6c4c760a6750c80c6211d11b61e47f39327542a5842165814a",
+    "rows": 647
+  },
+  "schema_version": 1,
+  "sources": {
+    "fleurs": {
+      "attribution": "FLEURS authors and recording contributors; cite Conneau et al. (2022)",
+      "citation": "https://arxiv.org/abs/2205.12446",
+      "dataset": "google/fleurs",
+      "dataset_card": "https://huggingface.co/datasets/google/fleurs/blob/70bb2e84b976b7e960aa89f1c648e09c59f894dd/README.md",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "limitations": [
+        "read speech; not an unseen production-speech proxy",
+        "repeated sentences have one or two independent recordings",
+        "training overlap with evaluated models is unknown",
+        "gender labels are corpus metadata, not stable speaker identities"
+      ],
+      "payloads": [
+        {
+          "path": "data/en_us/test.tsv",
+          "sha256": "74c046239374deeb60fa63f258f907388093a32bcaa3140965f70ef05c79f7ca",
+          "size_bytes": 367864,
+          "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/test.tsv"
+        },
+        {
+          "path": "data/en_us/audio/test.tar.gz",
+          "sha256": "d9c2e37b41aacd41bc283554a0a82b5476b36887049774ecb2819dcaaa55a356",
+          "size_bytes": 289851356,
+          "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/audio/test.tar.gz"
+        }
+      ],
+      "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd",
+      "source_identity": "en_us/test[0:647]",
+      "speaker_metadata": "gender only; no speaker ID",
+      "statistics": {
+        "audio_hours": 1.774417,
+        "duration_seconds": {
+          "buckets": {
+            "0-5": 28,
+            "10-20": 273,
+            "20+": 10,
+            "5-10": 336
+          },
+          "max": 29.3,
+          "mean": 9.873107,
+          "min": 3.6,
+          "total": 6387.9
+        },
+        "fingerprints": {
+          "pcm_sha256": "f54ee2d5813e9f448decaeeb3a1d97ca3be46acdc693dcbaefc558cbefd836d1",
+          "references_sha256": "c4a792f3a2f8bf17f9d3a1da2ace6895df6e799fa1f7de504fc79c2aa8c5ebd9"
+        },
+        "gender": {
+          "female": {
+            "audio_seconds": 3691.14,
+            "rows": 412
+          },
+          "male": {
+            "audio_seconds": 2696.76,
+            "rows": 235
+          }
+        },
+        "pcm": {
+          "duplicate_groups": 0,
+          "duplicate_rows": 0,
+          "unique": 647
+        },
+        "references": {
+          "duplicate_groups": 297,
+          "duplicate_rows": 297,
+          "max_recordings_per_reference": 2,
+          "recordings_per_reference": {
+            "1": 53,
+            "2": 297
+          },
+          "unique": 350
+        },
+        "rows": 647
+      }
+    }
+  }
+}

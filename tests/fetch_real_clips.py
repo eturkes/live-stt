@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Build the complete pinned Japanese short-form evaluation corpus.
+"""Build the pinned Japanese short-form and English evidence corpora.
 
 Sources:
 - Common Voice 8 Japanese test: revision-pinned Parquet mirror of the complete
   4,483-row crowd-recorded split (CC0-1.0). The mirror exposes no speaker fields.
 - FLEURS Japanese test: revision-pinned TSV + WAV archive, 650 read-speech
   recordings (CC-BY-4.0). Sentence IDs repeat for independently recorded reads.
+- FLEURS English test: the same revision's 647 en_us recordings, kept separate
+  so bilingual experiments can name their English input without moving JA evidence.
 
-Verified source payloads stay in the gitignored cache. This script
-constructs ``spike/backends/cache/`` internally (L-016); canonical mono 16 kHz
-PCM16 WAVs + the detailed JSONL index live in a content-addressed directory there,
-and git receives only ``tests/short_corpus.json`` (provenance, statistics,
-fingerprints).
+Verified source payloads stay in the gitignored cache. This script constructs
+``spike/backends/cache/`` internally (L-016); canonical mono 16 kHz PCM16 WAVs +
+the detailed JSONL indexes live in content-addressed directories there. Git receives
+only the compact ``tests/short_corpus.json`` and ``tests/en_clips.json`` fingerprints.
 The seven historical Common Voice replay clips + ``tests/real_clips.json`` remain
-compatibility outputs of the same verified rows.
+compatibility outputs of the same verified Japanese rows.
 
 Run from the repository root:
 
@@ -48,6 +49,7 @@ from live_stt import SAMPLE_RATE, resample  # noqa: E402
 
 CACHE = ROOT / "spike" / "backends" / "cache"
 MANIFEST = ROOT / "tests" / "short_corpus.json"
+EN_MANIFEST = ROOT / "tests" / "en_clips.json"
 REPLAY_MANIFEST = ROOT / "tests" / "real_clips.json"
 SCHEMA_VERSION = 1
 DOWNLOAD_TIMEOUT_S = 90
@@ -58,6 +60,7 @@ BUILD_DEPENDENCIES = {
     "soundfile": "0.14.0",
 }
 EXPECTED_INDEX_SHA256 = "98e0d8a40fbc2d6e819ddd8db22fd23c2d7f050ac2da5773ac207a1bd0a14d36"
+EN_EXPECTED_INDEX_SHA256 = "1b13a64fdc119f6c4c760a6750c80c6211d11b61e47f39327542a5842165814a"
 
 CV_DATASET = "japanese-asr/ja_asr.common_voice_8_0"
 CV_REVISION = "bf8819e8d9a5feb51b0c718686bd20ea67a3c729"
@@ -69,6 +72,10 @@ FLEURS_REVISION = "70bb2e84b976b7e960aa89f1c648e09c59f894dd"
 FLEURS_CONFIG = "ja_jp"
 FLEURS_SPLIT = "test"
 FLEURS_ROWS = 650
+EN_FLEURS_CONFIG = "en_us"
+EN_FLEURS_ROWS = 647
+EN_FLEURS_SAMPLES = 102_206_400
+EN_CACHE_PREFIX = "en_clips-v1"
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,26 @@ FLEURS_AUDIO = SourceSpec(
     ),
     sha256="5de465fa7aaafc4e2c13aba44771550b8cd2dd29bb9b265daeb6d92ca8e0c136",
     size=448_762_391,
+)
+EN_FLEURS_TSV = SourceSpec(
+    filename="fleurs_en_test.tsv",
+    path="data/en_us/test.tsv",
+    url=(
+        f"https://huggingface.co/datasets/{FLEURS_DATASET}/resolve/"
+        f"{FLEURS_REVISION}/data/en_us/test.tsv"
+    ),
+    sha256="74c046239374deeb60fa63f258f907388093a32bcaa3140965f70ef05c79f7ca",
+    size=367_864,
+)
+EN_FLEURS_AUDIO = SourceSpec(
+    filename="fleurs_en_test.tar.gz",
+    path="data/en_us/audio/test.tar.gz",
+    url=(
+        f"https://huggingface.co/datasets/{FLEURS_DATASET}/resolve/"
+        f"{FLEURS_REVISION}/data/en_us/audio/test.tar.gz"
+    ),
+    sha256="d9c2e37b41aacd41bc283554a0a82b5476b36887049774ecb2819dcaaa55a356",
+    size=289_851_356,
 )
 
 # Historical replay fixtures derived from exact Common Voice row offsets.
@@ -349,7 +376,17 @@ def _cv_rows(path: Path):
         raise RuntimeError(f"incomplete Common Voice scan: {source_row} != {CV_ROWS}")
 
 
-def parse_fleurs_tsv(path: Path, *, expected_rows: int = FLEURS_ROWS) -> list[FleursRow]:
+def parse_fleurs_tsv(
+    path: Path, *, config: str = FLEURS_CONFIG, expected_rows: int | None = None
+) -> list[FleursRow]:
+    if config == FLEURS_CONFIG:
+        language, declared_rows = "ja", FLEURS_ROWS
+    elif config == EN_FLEURS_CONFIG:
+        language, declared_rows = "en", EN_FLEURS_ROWS
+    else:
+        raise RuntimeError(f"unsupported FLEURS config: {config!r}")
+    if expected_rows is None:
+        expected_rows = declared_rows
     rows: list[FleursRow] = []
     seen_filenames: set[str] = set()
     seen_corpus_ids: set[str] = set()
@@ -381,9 +418,15 @@ def parse_fleurs_tsv(path: Path, *, expected_rows: int = FLEURS_ROWS) -> list[Fl
         reference = reference.strip()
         transcription = transcription.strip()
         normalized = normalize(reference)
-        if not normalized or normalized != normalize(transcription):
+        # en_us normalizes words into symbols ("percent" → "%"); both fields stay required.
+        transcription_normalized = normalize(transcription)
+        if (
+            not normalized
+            or not transcription_normalized
+            or (config == FLEURS_CONFIG and normalized != transcription_normalized)
+        ):
             raise RuntimeError(f"invalid FLEURS reference at row {source_row}")
-        corpus_id = f"fleurs-ja-test-{name.stem}"
+        corpus_id = f"fleurs-{language}-test-{name.stem}"
         if filename in seen_filenames or corpus_id in seen_corpus_ids:
             raise RuntimeError(f"duplicate FLEURS audio identity at row {source_row}")
         seen_filenames.add(filename)
@@ -680,6 +723,54 @@ def _manifest(entries: list[CorpusEntry], index_sha256: str, corpus_dir: Path) -
     }
 
 
+def _en_manifest(entries: list[CorpusEntry], index_sha256: str, corpus_dir: Path) -> dict:
+    if (
+        len(entries) != EN_FLEURS_ROWS
+        or sum(entry["duration_samples"] for entry in entries) != EN_FLEURS_SAMPLES
+    ):
+        raise RuntimeError(f"incomplete English corpus: rows={len(entries)}")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "audio": {"channels": 1, "encoding": "PCM16", "sample_rate_hz": SAMPLE_RATE},
+        "builder": {
+            "dependencies": BUILD_DEPENDENCIES,
+            "script": "tests/fetch_real_clips.py",
+        },
+        "cache": {
+            "directory": corpus_dir.relative_to(ROOT).as_posix(),
+            "index": "index.jsonl",
+            "index_sha256": index_sha256,
+            "rows": len(entries),
+        },
+        "sources": {
+            "fleurs": {
+                "attribution": (
+                    "FLEURS authors and recording contributors; cite Conneau et al. (2022)"
+                ),
+                "citation": "https://arxiv.org/abs/2205.12446",
+                "dataset_card": (
+                    f"https://huggingface.co/datasets/{FLEURS_DATASET}/blob/"
+                    f"{FLEURS_REVISION}/README.md"
+                ),
+                "dataset": FLEURS_DATASET,
+                "license": "CC-BY-4.0",
+                "license_url": "https://creativecommons.org/licenses/by/4.0/",
+                "limitations": [
+                    "read speech; not an unseen production-speech proxy",
+                    "repeated sentences have one or two independent recordings",
+                    "training overlap with evaluated models is unknown",
+                    "gender labels are corpus metadata, not stable speaker identities",
+                ],
+                "payloads": [_payload(EN_FLEURS_TSV), _payload(EN_FLEURS_AUDIO)],
+                "revision": FLEURS_REVISION,
+                "source_identity": (f"{EN_FLEURS_CONFIG}/{FLEURS_SPLIT}[0:{EN_FLEURS_ROWS}]"),
+                "speaker_metadata": "gender only; no speaker ID",
+                "statistics": summarize(entries),
+            }
+        },
+    }
+
+
 def _json_bytes(value: object, *, compact: bool = False) -> bytes:
     separators = (",", ":") if compact else None
     return (
@@ -862,6 +953,22 @@ def _load_cached() -> tuple[list[CorpusEntry], Path] | None:
     return entries, corpus_dir
 
 
+def _load_cached_en() -> tuple[list[CorpusEntry], Path] | None:
+    corpus_dir = CACHE / f"{EN_CACHE_PREFIX}-{EN_EXPECTED_INDEX_SHA256[:16]}"
+    if not corpus_dir.exists():
+        return None
+    entries = validate_cached_index(corpus_dir, EN_EXPECTED_INDEX_SHA256)
+    expected = _en_manifest(entries, EN_EXPECTED_INDEX_SHA256, corpus_dir)
+    if EN_MANIFEST.is_file():
+        try:
+            manifest = json.loads(EN_MANIFEST.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"cannot read committed English manifest: {exc}") from exc
+        if manifest != expected:
+            raise RuntimeError("committed English manifest disagrees with cached corpus")
+    return entries, corpus_dir
+
+
 def _install_replay(entries: list[CorpusEntry], replay_pcm: dict[int, bytes]) -> None:
     staging = CACHE / "replay_clips.part"
     shutil.rmtree(staging, ignore_errors=True)
@@ -914,6 +1021,77 @@ def _build_fresh(
         raise
 
 
+def _build_fleurs_cache(
+    source: Path,
+    rows: list[FleursRow],
+    *,
+    cache: Path,
+    directory_prefix: str,
+    expected_rows: int,
+    expected_samples: int,
+    expected_index_sha256: str | None = None,
+) -> tuple[list[CorpusEntry], Path, str]:
+    staging = cache / f"{directory_prefix}.part"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True)
+    try:
+        entries = _materialize_fleurs(source, rows, staging)
+        actual_samples = sum(entry["duration_samples"] for entry in entries)
+        if len(entries) != expected_rows or actual_samples != expected_samples:
+            raise RuntimeError(
+                f"incomplete FLEURS corpus: rows={len(entries)} != {expected_rows}, "
+                f"samples={actual_samples} != {expected_samples}"
+            )
+        index_bytes = _index_bytes(entries)
+        index_sha256 = hashlib.sha256(index_bytes).hexdigest()
+        if expected_index_sha256 is not None and index_sha256 != expected_index_sha256:
+            raise RuntimeError(
+                f"FLEURS index drift: expected {expected_index_sha256}, got {index_sha256}"
+            )
+        write_atomic(staging / "index.jsonl", [index_bytes])
+        validate_cached_index(staging, index_sha256)
+        corpus_dir = cache / f"{directory_prefix}-{index_sha256[:16]}"
+        if corpus_dir.exists():
+            existing = validate_cached_index(corpus_dir, index_sha256)
+            if existing != entries:
+                raise RuntimeError(f"content-addressed cache collision/corruption: {corpus_dir}")
+            shutil.rmtree(staging)
+        else:
+            staging.replace(corpus_dir)
+        return entries, corpus_dir, index_sha256
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def _install_en_corpus() -> None:
+    tsv_source = fetch_source(EN_FLEURS_TSV)
+    audio_source = fetch_source(EN_FLEURS_AUDIO)
+    rows = parse_fleurs_tsv(tsv_source, config=EN_FLEURS_CONFIG)
+    cached = _load_cached_en()
+    if cached is None:
+        entries, corpus_dir, index_sha256 = _build_fleurs_cache(
+            audio_source,
+            rows,
+            cache=CACHE,
+            directory_prefix=EN_CACHE_PREFIX,
+            expected_rows=EN_FLEURS_ROWS,
+            expected_samples=EN_FLEURS_SAMPLES,
+            expected_index_sha256=EN_EXPECTED_INDEX_SHA256,
+        )
+        mode = "built"
+    else:
+        entries, corpus_dir = cached
+        index_sha256 = EN_EXPECTED_INDEX_SHA256
+        mode = "cached + verified"
+    manifest = _en_manifest(entries, index_sha256, corpus_dir)
+    write_atomic(EN_MANIFEST, [_json_bytes(manifest)])
+    print(
+        f"English corpus: {mode}; rows={len(entries)}, index={index_sha256}, "
+        f"manifest={EN_MANIFEST.relative_to(ROOT)}"
+    )
+
+
 def main() -> None:
     _check_build_dependencies()
     CACHE.mkdir(parents=True, exist_ok=True)
@@ -940,6 +1118,7 @@ def main() -> None:
         f"corpus: {mode}; rows={len(entries)}, index={manifest['cache']['index_sha256']}, "
         f"manifest={MANIFEST.relative_to(ROOT)}"
     )
+    _install_en_corpus()
 
 
 if __name__ == "__main__":
