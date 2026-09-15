@@ -69,8 +69,39 @@ def test_production_pyright_file_list():
 
 
 def test_format_step_traverses_the_repository():
-    """Traversal is what skips .json/.md; an explicit path of either exits 1 as Python."""
+    """Traversal is what skips .json; an explicit path of one exits 1 as Python.
+
+    Markdown is no longer skipped: ruff 0.16 formats the python blocks inside it,
+    so the step's scope grew to repo prose on a bare version bump. The two tests
+    below own that scope.
+    """
     assert {s.name: s.argv for s in steps()}["ruff-format"][-3:] == ["format", "--check", "."]
+
+
+def test_the_format_step_reaches_a_markdown_code_block(tmp_path):
+    """The scope ruff 0.16 added, held by its own seed rather than by the release note."""
+    (tmp_path / "doc.md").write_text("# Doc\n\n```python\nx   =    1\n```\n")
+    done = gate(tmp_path, "--only", "ruff-format")
+    assert done.returncode != 0, done.stdout + done.stderr
+    assert "gate FAILED: ruff-format" in done.stdout
+
+
+def test_the_upstream_files_stay_out_of_the_format_step(tmp_path):
+    """CLAUDE.md is refreshed byte-for-byte, so a block it carries may not redden the gate.
+
+    Production's own `extend-exclude` is what is under test, so the tree copies
+    the real pyproject.toml. The doc.md twin is the positive control: an exclusion
+    that had swallowed every .md would pass the first half alone.
+    """
+    block = "# Doc\n\n```python\nx   =    1\n```\n"
+    (tmp_path / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
+    (tmp_path / "CLAUDE.md").write_text(block)
+    (tmp_path / "CLAUDE.local.md").write_text(block)
+    assert gate(tmp_path, "--only", "ruff-format").returncode == 0
+    (tmp_path / "doc.md").write_text(block)
+    done = gate(tmp_path, "--only", "ruff-format")
+    assert done.returncode != 0, done.stdout + done.stderr
+    assert "gate FAILED: ruff-format" in done.stdout
 
 
 def test_secret_scan_reaches_the_real_tree(monkeypatch):

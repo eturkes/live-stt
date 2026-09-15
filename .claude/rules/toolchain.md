@@ -41,6 +41,16 @@ cannot see gets its own lock — the seeded tree holds a single root-level file,
 `test_secret_scan_reaches_the_real_tree` pins the walk to production, a nested file and a dotdir
 file. Feature locks prove themselves by neutralization instead (L-022), never by seeding.
 
+**`ruff-format` governs Markdown too, and `CLAUDE.md` is carved out of it.** ruff 0.16 formats python
+blocks inside `.md`, so a bare version bump moved the step from 39 files to 62 — every repo `.md`,
+`CLAUDE.md` included, which `upstream-sync.md` forbids editing. `[tool.ruff] extend-exclude` in
+`pyproject.toml` carves out `CLAUDE.md` + `CLAUDE.local.md`; repo-owned prose keeps the coverage. Two
+locks own that scope: `test_the_format_step_reaches_a_markdown_code_block` seeds a misformatted block
+and demands `gate FAILED: ruff-format`, and `test_the_upstream_files_stay_out_of_the_format_step`
+copies production's own `pyproject.toml` into the tree, so the carve-out under test is the shipped
+one, with a `doc.md` twin as the positive control against an exclusion that swallowed every `.md`.
+**A `python`-tagged block in repo prose is now gate-governed** — write it formatted, or tag it `sh`.
+
 `tests/test_law_consistency.py` rides the pytest step and locks the three law invariants a tool can
 decide. Two are the deferral queue's: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row
 with its rank, title verbatim, and no scanned law file names a row by `rank N` at all. Pairing is
@@ -84,7 +94,7 @@ uv run live-stt --list-devices                     # enumerate audio devices, ne
 uv run pytest -q                                   # the fast suite alone
 uv run python -c "import live_stt"                 # cheap import smoke-check
 uv run python replay.py WAV [--engine E] [--json]  # replay a WAV through the live pipeline
-uvx pyright@1.1.410 --project . live_stt.py replay.py cer.py streaming.py   # typecheck
+uvx pyright@1.1.414 --project . live_stt.py replay.py cer.py streaming.py   # typecheck
 ```
 
 **Security scanning is split by hermeticity.** Static analysis rides the existing `ruff-check` step
