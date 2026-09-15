@@ -51,14 +51,23 @@ copies production's own `pyproject.toml` into the tree, so the carve-out under t
 one, with a `doc.md` twin as the positive control against an exclusion that swallowed every `.md`.
 **A `python`-tagged block in repo prose is now gate-governed** — write it formatted, or tag it `sh`.
 
-`tests/test_law_consistency.py` rides the pytest step and locks the three law invariants a tool can
-decide. Two are the deferral queue's: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row
+`tests/test_law_consistency.py` rides the pytest step and locks the four law invariants a tool can
+decide. Three are the deferral queue's: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row
 with its rank, title verbatim, and no scanned law file names a row by `rank N` at all. Pairing is
 checked ORDERED because independent rank/title membership passes a swap of two titles; that swap and
 the `at rank N` evasion form are both proven red by mutation, restoring from a `cp` snapshot rather
 than `git checkout` (L-022).
 
-The third locks `upstream-sync.md`'s override table, which a refresh re-reads against the template.
+The third is the same hole in the other direction: **law may name a queue row, and a row dies at its
+close while the pointer at it does not.** Every reference in the scanned files that names
+`.agent/deferred.md` and then italicises a row title must resolve to a live row, matched on
+whitespace-squashed text since prose wrapping splits one across a line. `_QUEUE_LINK` in the test
+owns the exact form, and prose must not restate it — this paragraph would match its own example. A rank retargets onto the wrong unit; a title survives its unit and reads as
+live law describing queued work that no longer exists, which is what `upstream-sync.md` did to
+*Maintenance + security pass* for a whole phase. Mutation-proven red by restoring exactly that
+pointer, from a `cp` snapshot (L-022).
+
+The fourth locks `upstream-sync.md`'s override table, which a refresh re-reads against the template.
 Three things hold: the table opens on its exact header and every row sits in that one contiguous
 block, so a row below the prose or in a second table fails instead of going unchecked; every key
 quotes a phrase of at least 12 characters; and every such anchor occurs verbatim in `CLAUDE.md` or in
@@ -70,9 +79,10 @@ clause leaves its row overriding nothing while still reading as live law — bot
 phrase surviving elsewhere in the template reads as live. The 12-character floor is what keeps a key
 off a word like `rev`, which occurs everywhere and identifies nothing; the rest is a reader's call.
 
-None of the three locks needs a seeded fixture — the tree itself was the firing input, red on two
-renamed spine titles, three rank references (one already retargeted onto the wrong unit) and one
-prose-keyed row whose clause upstream had long dropped. Mutation-proven red for the third: a dead
+None of the four locks needs a seeded fixture — the tree itself was the firing input, red on two
+renamed spine titles, three rank references (one already retargeted onto the wrong unit), one
+prose-keyed row whose clause upstream had long dropped, and one pointer at a closed queue row.
+Mutation-proven red for the fourth: a dead
 anchor, a generic short anchor, curly quotes, a changed header cell, a parse that yields no rows, and
 a row moved below the prose, into a pipe-less table or into a second table — each escape in both the
 spaced and the no-space pipe form. Every mutant is restored from a `cp` snapshot (L-022). **Coverage limit: the global half of the haystack needs `~/.claude/CLAUDE.md`** — present in
@@ -119,6 +129,16 @@ LSP and a `--project . tests/` run flag them); the house idiom for a fake→type
 **Whisper, NPU or GPU work needs BOTH prelude halves, every time:**
 `source /var/home/eturkes/.local/app/intel-accel/env.sh` **and** `unset PYTHONPATH` (or
 `env -u PYTHONPATH …`). Failure modes + the accelerator's shape: `openvino-accel.md`.
+
+**Never run two whisper processes against one cache while either is compiling.** Two processes
+cold-compiling the SAME `OPENVINO_CACHE_DIR` key concurrently write a blob that SIGSEGVs on every
+later load, with no Python traceback, so the damage outlives the run that caused it. Concurrency also
+inflates decode itself — two pipelines on this one NPU measured 0.564 → 1.218 s per update before
+segfaulting. The cache is fully regenerable ⇒ repair is `rm -rf models/openvino/cache` and the next
+run recompiles (~95-126 s). This matters here because **an agent Bash call can invoke one command
+TWICE CONCURRENTLY**: shell `flock -n` does not catch it and in-process `fcntl.flock` does, so a
+harness that must hold the NPU takes its lock inside the worker process and re-checks for completed
+work after acquiring it.
 
 `sounddevice` dlopens system PortAudio on the live and device entry paths; without it they fail
 `OSError: PortAudio library not found` → `sudo apt-get install libportaudio2` (Debian). Offline

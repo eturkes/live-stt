@@ -35,9 +35,11 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + a redirected
   stderr log; no hardware, weights or network, and it imports the shipped screen rather than
   restating it. `uv run python session_report.py [--log F] [--json] [--source-lang L]`.
-- `tests/` — fast locks (`uv run pytest -q`) + on-demand evaluators `eval_cer.py`,
-  `eval_long_form.py`, `eval_backpressure.py`, `eval_retention.py`, and `eval_latency.py`, the
-  per-stage end-to-end latency budget (committed traces only, no hardware, <1 s).
+- `tests/` — fast locks (`uv run pytest -q`) + eight on-demand evaluators, inventory and per-file
+  contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
+  `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
+  `eval_latency.py`, `eval_term_census.py` and `eval_en_pairing.py` replay committed traces and run
+  in under a second in a fresh clone.
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
@@ -52,8 +54,11 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ JA-only degrade, never a cloud
   STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-5.6-luna`.
 - **D-016** whisper large-v3-turbo int8 on OpenVINO **NPU** is the shipped recogniser; `hotwords`
-  forfeited with that choice. Engine/model selection is closed. **D-010** sherpa k2v2/parakeet stay
-  as the `--engine` CPU fallback (VAD-segment decode, no partials).
+  forfeited with that choice. Engine/model selection is closed, and so are its two constructor
+  properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
+  `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
+  re-derive (`asr-pipeline.md`). **D-010** sherpa k2v2/parakeet stay as the `--engine` CPU fallback
+  (VAD-segment decode, no partials).
 - **D-002** one file: `live_stt.py` + `streaming.py`. A further split needs a cohesive one-way
   subsystem boundary named out loud. **D-006** never re-densify `live_stt.py` for "LLM readability".
 - **D-014** deterministic WAV replay is the regression harness. **D-015** `observe_en` learns an
@@ -88,8 +93,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   recogniser is pinned to Japanese; the repetition screen still runs. `en` is transcribe-only:
   `TRANSLATOR_INSTRUCTIONS` pins the leg Japanese→English and declares every turn "one block
   of transcribed Japanese speech", so English input has no defined behaviour there.
-  **Two-way translation is the next unit and live-stt must stay usable throughout it** (user
-  ruling): every step lands behind a default-off flag, JA→EN green at every commit.
+  **Two-way translation is queued, research first, and live-stt must stay usable throughout it**
+  (user ruling): every step lands behind a default-off flag, JA→EN green at every commit.
 - Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
@@ -102,9 +107,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
-The spine, in funding order: **1** Live-mic validation pass · **2** Prove EN rendering consistency
-on the raw stream · **3** M10 candidate-screen remainder. Row 3 sits there because its acceptance is
-a re-open condition, not work.
+The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
+**3** Two-way translation (JA↔EN), research first · **4** Prove EN rendering consistency on the raw
+stream · **5** M10 candidate-screen remainder. Row 5 sits there because its acceptance is a re-open
+condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays
@@ -112,7 +118,16 @@ provisional until the user runs `live-smoke.md`.
 
 ## Phase
 
-**IMPLEMENT.** M1-M14 shipped and closed (`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs. The
-latency budget is committed and re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`).
-Each `/goal` body I paste = one unit from `.agent/deferred.md`, closed under `python gate.py` plus, where
-it touches decode quality, a CER number the commit body records.
+**MAINTAIN.** M1-M14 shipped and closed (`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs, the
+latency budget is committed and re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`),
+and IMPLEMENT closed with the spine above carrying what it did not fund.
+
+One `/goal` per request, the body naming the `.agent/deferred.md` row it funds or the maintenance
+task it wants, each closing gate-green under `uv run --no-sync python gate.py` with this file current
+— plus, where the request touches decode quality, a CER number the commit body records. The standing
+MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018
+(`packaging-deps.md`); Dependabot files the advisories between requests.
+
+**Live-stt in its current form must stay usable through every unit** (user ruling): a feature that
+takes more than one unit lands behind a default-off flag and the shipped JA→EN path is green at every
+commit.

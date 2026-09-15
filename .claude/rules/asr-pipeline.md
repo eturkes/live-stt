@@ -130,11 +130,27 @@ paths:
   account for is emitted as Japanese tokens until `max_length`=448 — the 444-char live captions. The
   trigger is neither laughter nor room tone: synthetic non-speech (digital silence, −60 dB noise,
   60 Hz hum) reproduces the hallucination PHRASES (`ご視聴ありがとうございました`) but not the loop,
-  while **English speech loops it every time**. Repro without an artifact: `curl -sSL -o
+  while **English speech looped it every time it was tried — on ONE clip**, which is the qualifier
+  that claim needs. Live, 26 minutes of spoken English into the JA-pinned recogniser published 143
+  captions of at most **139 characters** (p50 10, p90 44, p99 92) with **zero at or above 200**, and
+  screened 20 more, against the 444-char captions the loop rule was sized on. The screened split is
+  unrecoverable — that session kept no stderr log, only a sampled `backlog peak:` digest — so a screen
+  firing does not evidence a loop, the latin rule catching plain English being the other arm. Two
+  structural statements, and no rate: the loop reproduces deterministically on that clip, and a live
+  session of English produced no published caption anywhere near the 444-char scale. Repro without an
+  artifact:
+  `curl -sSL -o
   .scratch/jfk.flac https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac` (11 s, public
   domain), resample 44.1k→16k, pad 1 s of silence each end, `replay.py --engine whisper` ⇒ segment 3 is
   a 528-char loop at **RTF 1.106** — a runaway costs more than real time. `soundfile` is absent from
   `.venv`; add `--with soundfile` to read the FLAC.
+- **One unreplicated ambient capture produced nothing at all.** A single 10 min 20 s live capture of
+  handling noise and room ambience published zero captions, logged zero lines and dropped zero
+  blocks. Nothing downstream is established by that — it kept no artifact, so even "the VAD never
+  opened" is inference, not record. It has not been repeated ⇒ read it as ONE observation consistent
+  with the synthetic result above,
+  not as a guarantee that a quiet room costs the pipeline nothing. What it does not license: a claim
+  about loudness, about rooms in general, or about any ambience richer than the one sampled.
 
 ## Publication screen — `caption_defect()`
 
@@ -328,6 +344,22 @@ clips against a 1 s update cadence, with the trim rule capping the buffer at 11.
 - Rerun cost varies ~20 % run to run, and the burst is machine state rather than a path property: the
   same clip/section/device at RTF 1.098 (`git show f25cfb5:tests/caption_trace.json`) carries
   **77.231 s** where the current trace carries 0.000 s.
+- **The 0.017 s reserve is a CLOSED-utterance figure, and live sessions drop audio for a cause the
+  surviving evidence cannot name.** Carry drains at every VAD close and the 215 narration captions it
+  was measured over all closed. A 26-minute live session (143 captions, 1563 s) ended at
+  `backlog peak: q=2.00s drop=9033 skip=20`. Supported: all 12 drop-counter increases sit inside a
+  publication gap of ≥17 s, and each of the 4 largest has a `skip=` increase within 11 s (separations
+  0, 1, 1 and 11 s — quote the separations, since any ratio here is an artifact of the window chosen).
+  **REFUTED, do not re-derive it — duration alone is NOT the cause:** 16 of the 20 gaps >20 s dropped
+  nothing, the longest among them (81 s), and the paced VAC arm runs 182 s of pause-free speech
+  drop-free at an audio-queue peak of 1.060 s of the 2.000 s headroom. The surviving correlate is a
+  SCREENED caption, which is as far as the evidence goes: `caption_defect` has two arms, and only one
+  of them — a repetition runaway — costs more than real time (RTF 1.106), while plain English caught
+  by the latin rule costs nothing extra. Separating them needs the `caption dropped (…)` lines, and
+  that session kept no stderr log, only a sampled digest of its `backlog peak:` lines ⇒ no mechanism
+  is established. `drop=` counts backend-sized callback BLOCKS of captured audio, never samples and
+  never speech, so it converts to seconds only with a block size the digest does not record — quote
+  blocks. Queued: `.agent/deferred.md` → *Explain the live audio drops*.
 
 ## Known caveats
 

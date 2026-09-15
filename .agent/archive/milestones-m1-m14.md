@@ -339,6 +339,7 @@ unit was script-derivable or MAIN-implementable, matching M12.3-M13.2.
   non-speech (digital silence, −60 dB noise, 60 Hz hum) reproduces the *hallucination phrases*
   (`ご視聴ありがとうございました`) but **not** the loop — English speech is what loops it. Live
   corroboration: runaways follow 13-47 s silence gaps and cluster around English speech.
+  **Qualified since:** that generality rests on one clip; `asr-pipeline.md` carries the live limits.
   **Hypothesis (a) is confirmed and (b) is moot.** The knob sweep, through the shipped VAC path on
   the NPU:
 

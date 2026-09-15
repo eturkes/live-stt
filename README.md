@@ -5,7 +5,7 @@ Real-time Japanese speech-to-text + English translation. **No API keys.**
 - **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) large-v3-turbo (INT8) on the Intel NPU through OpenVINO. Japanese appears while you are still speaking, about 2.5 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
 - **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to JA-only.
 
-On the default engine, Japanese builds on the status line while you speak, about 1.2 s behind your voice. The numbered `JA n:` line lands when you stop, and its `EN n:` line follows about 1 s later. The sherpa engines show no partial text: they wait for the pause, then print `JA n:` about 0.6 s after you stop.
+On the default engine, Japanese builds on the status line while you speak, about 1.2 s behind your voice. The numbered `JA n:` line lands when you stop, and its `EN n:` line follows about 1 s later. In a live session the median is nearer 2 s. The cause is not known: only 13 of 143 captions in the measured session were waiting behind an earlier translation. The sherpa engines show no partial text: they wait for the pause, then print `JA n:` about 0.6 s after you stop.
 
 ## Requirements
 
@@ -100,6 +100,8 @@ A marker holds `--` in place of the number. JA lines continue after it. The tran
 4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. Showing it cut the wait to SEE a character from 2.535 s to 1.187 s (median) and from 8.157 s to 2.385 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 105 of 180 decodes rewrote part of it. The numbered `JA n:` line carries the committed text only, and follows at the end of the utterance. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 11.2 s on the measured clips. Decode RTF is 0.48-0.61 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture buffers into the 2 s queue meanwhile. Measured on the NPU, the longest single wait was 1.006 s over 182 s of pause-free speech, and nothing was dropped. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
+
+   **Known defect: a live session can still discard audio, and the cause is not yet known.** One 26-minute session dropped 9033 blocks of captured audio in 12 bursts. Every burst fell inside a gap of 17 s or more between published lines, but 16 of the 20 longest gaps dropped nothing, so length alone does not explain it. Watch for `drop=` on the meter. If you see it, run the session again as `live-stt > stt.log 2>&1` and keep the log. The meter writes its `backlog peak:` counters to the log only when stdout is not a terminal. That redirect gives up the live status line, and it is the only way to record the counters the cause will be read from.
 5. **Screen.** A caption the recognizer invented is dropped whole, before anything else sees it. See the next section.
 6. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
@@ -158,10 +160,12 @@ Runtime warnings/errors go to stderr via Python `logging`. On a terminal each me
 
 ### Session report
 
-To review a finished session, run `session_report.py`. It reads the saved transcript and the redirected log. It needs no microphone, no weights and no network.
+To review a finished session, run `session_report.py`. It reads the saved transcript and the redirected log. It needs no microphone, no weights and no network. Give it `--source-lang en` if the session ran with `--source-lang en`. A transcript does not record that flag, and the report must apply the same caption screen the session did.
+
+Redirect both streams. The meter writes its `backlog peak:` counters to the log only when stdout is not a terminal, so `2> stt.log` alone keeps the status line and records no counters.
 
 ```sh
-live-stt 2> stt.log                              # redirect stderr to keep the counters
+live-stt > stt.log 2>&1                          # counters, in place of the live status line
 uv run python session_report.py --log stt.log    # defaults to transcripts/*.txt
 ```
 

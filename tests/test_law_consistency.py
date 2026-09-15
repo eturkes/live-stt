@@ -33,6 +33,9 @@ TEMPLATE = ROOT / "CLAUDE.md"
 GLOBAL_TEMPLATE = Path.home() / ".claude" / "CLAUDE.md"
 
 _QUEUE_ROW = re.compile(r"^(\d+)\. \*\*(.+?)\*\*", re.MULTILINE)
+# How law names a queue row: ``.agent/deferred.md` → *Title*`, which prose wrapping can split across
+# a line, so match against whitespace-squashed text rather than the raw file.
+_QUEUE_LINK = re.compile(r"`\.agent/deferred\.md` → \*([^*]+)\*")
 _SPINE_RANK = re.compile(r"\*\*(\d+)\*\*")
 _RANK_REFERENCE = re.compile(r"\branks?\s+\d", re.IGNORECASE)
 _OVERRIDE_HEADER = "| template clause | repo ruling |"
@@ -101,6 +104,26 @@ def test_every_override_row_keys_on_a_live_template_anchor():
         assert anchors, f"key needs a quoted anchor of {_ANCHOR_MIN}+ chars, not prose: {key!r}"
         for anchor in anchors:
             assert anchor in haystack, f"override row keys on a dead clause: {anchor!r}"
+
+
+def test_every_queue_link_resolves_to_a_live_row():
+    """A row dies at its close; a pointer at it does not, and still reads as live law.
+
+    Naming by rank is already banned (below) because a rank retargets. A TITLE cannot retarget, so
+    it fails the other way: `upstream-sync.md` spent this phase naming *Maintenance + security pass*
+    after that row closed, describing queued work that no longer existed. Rank references and dead
+    titles are the same hole in two directions, and both are decidable.
+    """
+    rows = _QUEUE_ROW.findall(QUEUE.read_text(encoding="utf-8"))
+    live = {_squash(title).rstrip(".") for _, title in rows}
+    assert live, "no queue rows parsed"
+    dead = [
+        f"{path.relative_to(ROOT)}: {title.strip()}"
+        for path in _scanned_files()
+        for title in _QUEUE_LINK.findall(re.sub(r"\s+", " ", path.read_text(encoding="utf-8")))
+        if _squash(title).rstrip(".") not in live
+    ]
+    assert not dead, f"law points at queue rows that no longer exist: {dead}"
 
 
 def test_no_rank_reference_outside_the_queue():

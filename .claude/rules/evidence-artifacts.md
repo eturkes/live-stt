@@ -57,7 +57,14 @@ neither, because they replay committed traces — a fresh clone runs them in und
   verdict from the trace offline. **Deviation from production, reported per run:** a leg disabled by
   `TRANSLATE_MAX_FAILURES` is restarted against the same context, since this measures the learner and
   not the degradation path — `restarts: 0` = production-identical. The trace is ONE sample of sampled
-  model output ⇒ its verdicts are structural, never rates.
+  model output ⇒ its verdicts are structural, never rates — a per-turn rate, a p90 or a latency
+  ranking read off it describes that sample and binds nothing.
+  **Coverage limit: rendering CONSISTENCY is not measured here.** `translation-leg.md`'s 9-of-9
+  distinct-spellings figure was counted on the RAW EN stream of a separate arm, and this evaluator
+  exposes no such metric: `SessionContext` stores ONE rendering per term by construction, so any
+  check reading `renderings` is tautological and stays green while the EN stream spells the term
+  three ways. Closing that hole is queued (`.agent/deferred.md` → *Prove EN rendering consistency on
+  the raw stream*); until it lands, never cite this trace for consistency.
 - `eval_term_census.py` + `test_term_census.py` — what the recogniser gives `SessionContext` as a key,
   and whether a key dies with a rendering on it. Occurrences are located by `cer.alignment` against the
   reference — never by searching for guessed spellings — one alignment per SECTION, then widened to the
@@ -79,7 +86,9 @@ neither, because they replay committed traces — a fresh clone runs them in und
   weights, no network, and it imports the shipped `repeat_span`/`caption_defect` rather than
   restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
   names: captions with no EN and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
-  degrade + restore markers with timestamps, `backlog peak:` high-water lines, caption length +
+  degrade + restore markers with timestamps, `backlog peak:` high-water lines — which reach the log
+  only when STDOUT is redirected too, `meter()` logging them off a TTY alone (L-006), so a
+  `2> stt.log` session keeps its status line and reports no backlog at all — caption length +
   repetition distributions, EN-behind-JA lag, and slow turns tagged with whether they sit on a
   `TRANSLATE_ROTATE_TURNS` boundary. **A transcript records captions, not the flags that produced
   them**, so the session's language rides `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE`

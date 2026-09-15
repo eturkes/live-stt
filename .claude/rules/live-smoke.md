@@ -33,7 +33,13 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 1. **Devices** — `uv run live-stt --list-devices` prints the `sd.query_devices()` table and exits. Pass:
    your mic shows with input channels.
 2. **Capture + backlog** — `uv run live-stt`, speak. Pass: `JA n:` lines print; `q=` / `seg=` are absent
-   or brief and clear after each utterance; any `drop=N` fails.
+   or brief and clear after each utterance; any `drop=N` fails. A live session HAS produced
+   `drop=` with no established cause (`.agent/deferred.md` → *Explain the live audio drops*) ⇒ on any
+   `drop=N`, repeat the session as `uv run live-stt > stt.log 2>&1` and KEEP the log. It has to be a
+   SECOND run: `backlog peak:` logs off a TTY ALONE (L-006, `asr-pipeline.md`), so the capturing run
+   draws no status line for this item to read, and `2> stt.log` records no counters at all. The
+   surviving high-water digest of the last such session cannot attribute a drop to a caption, which is
+   why that row is still open.
 3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; capture
    works as in (2).
 4. **Latency + endpointing (VAC cadence, NOT the old 0.6 s VAD-segment rule)** — one sentence, then stop.
@@ -69,7 +75,10 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 
 - **Backlog / drops** — `q=` / `seg=` / `drop=` / `tdrop=` stay absent (`q=` / `seg=` may blip and
   clear). A standing `q=Ns` means PCM awaits VAD within `AUDIO_HEADROOM_S`=2 s; `seg=N` means completed
-  utterances await decode within `SEGMENT_QUEUE_MAX`=8; any `drop=N` means ingestion fell behind;
+  utterances await decode within `SEGMENT_QUEUE_MAX`=8; any `drop=N` means ingestion fell behind, and
+  its cause is currently UNKNOWN — a 26-minute session reached
+  `backlog peak: q=2.00s drop=9033 skip=20` with every burst inside a ≥17 s publication gap, yet 16 of
+  the 20 such gaps dropped nothing, so keep `stt.log` rather than diagnosing from the meter;
   `tdrop=N` means translation fell behind. **`tskip=N` is a CONTENT decision, never backpressure** —
   reading it as backlog corrupts the soak result. Redirected stdout carries no status line, so the same
   counters ride stderr as `backlog peak:` HIGH-WATER marks, logged only when a peak moves (a clean run
@@ -83,7 +92,8 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 
 **Run `uv run python session_report.py --log stt.log` after any soak** — it answers every question in
 this section mechanically off the saved transcript and the redirected stderr, so a session stays
-diagnosable once the scrollback is gone. Redirect stderr (`> stt.log 2>&1`) to give it the counters.
+diagnosable once the scrollback is gone. Redirect BOTH streams (`> stt.log 2>&1`) to give it the
+counters, and spend the soak's status line on them: the meter logs `backlog peak:` off a TTY alone.
 
 EN stopping while JA continues is the sanctioned JA-only degrade (D-009); the transcript marker names
 which trigger fired, and a `-- translation restored: codex app-server probed|respawned` marker below

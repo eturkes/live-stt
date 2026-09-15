@@ -123,6 +123,27 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   identical screen is the backstop, and it declines before the queue ⇒ `_turn`, `_failures` and
   `observe_en` are untouched by construction.
 
+## Live validation — 26 minutes on a real mic
+
+The leg's only mic-side evidence, and what it does and does not settle. 143 captions over 1563 s:
+**143 of 143 translated, 0 without EN, 0 failed turns, 0 degrade markers and 0 restore markers.**
+
+- **EN behind JA: p50 2 s, p90 4 s, max 11 s.** `spec.md`'s `Intent` asks for `EN n:` about a second
+  after its `JA n:`, so this is a recorded gap between the ask and the delivery. `Intent` is the
+  user's ⇒ record the gap, never re-label the ask and never edit that line.
+  **Queueing is REFUTED for the MEDIAN, and only for the median** — 130 of the 143 captions were
+  emitted with no earlier caption's EN outstanding and carry that same p50 2 s. The tail is a
+  different question and stays open: the max-lag caption did have one ahead of it, while the slowest
+  turn with nothing ahead still took 7 s. Against a warm-thread bench median of 1.38 s general /
+  1.71 s clinical, the median gap belongs to the turn rather than the backlog, and the tail is
+  unexplained.
+- **The rotation tax did not surface.** 4 turns ran ≥6 s and **none sat on a 100-turn boundary**, the
+  session crossing exactly one (turn 101). `session_report.py` tags the boundary rather than
+  asserting it, since a transcript cannot separate rotation from an ordinary slow turn — so this is
+  the absence of a visible bump at n=101, not proof the rotation was free.
+- What it does NOT cover: recovery. Neither arm fired, so `_respawn` and `_probe` keep their L-004
+  debt and their bench numbers (4.8 s / 5.5 s) stay the only evidence.
+
 ## Session context learner (D-015)
 
 Learned from the session's own captions, held in memory, discarded at exit. Locked by
