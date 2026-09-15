@@ -18,7 +18,12 @@ import json
 
 import pytest
 
-from live_stt import CONTEXT_EN_SUPPORT, CONTEXT_TERM_LEASE, CONTEXT_TERM_SUPPORT
+from live_stt import (
+    _EN_STOP,
+    CONTEXT_EN_SUPPORT,
+    CONTEXT_TERM_LEASE,
+    CONTEXT_TERM_SUPPORT,
+)
 from tests.eval_en_pairing import (
     CANDIDATES,
     CONTROL,
@@ -141,14 +146,26 @@ def test_the_committed_run_learns_every_real_name_and_no_pronoun():
     was startled…` as one sentence, so two names shut the gate and 加助, the
     story's second real character, stayed unspelled (P-020). Every correct
     rendering has to land at the caption that supplies it, and no other entry may
-    come back. 標柱 still opens the gate here, so its null is the English never
-    supplying a name, not the term going quiet.
+    come back.
+
+    **Pin the pronoun CLASS, not 標柱's null.** The trace moved when the brief
+    stopped rotating on recency, and 標柱 now pairs to `Heijū` at n=84 — the
+    correct English for the name the recogniser mis-hears as 標柱, which is D-015
+    working as designed (a rendering is keyed on the string the recogniser
+    produced, not on the string that was spoken). Asserting the null would have
+    locked the WEAKER outcome; what P-019 actually forbids is a pronoun reaching
+    the brief, and that survives any re-run.
     """
     trace = json.loads(TURNS.read_text(encoding="utf-8"))
     episodes = {e["term"]: e for e in replay(caption_stream(), trace["turns"])["episodes"]}
     learned = {t: (e["rendering"], e["paired_at"]) for t, e in episodes.items() if e["rendering"]}
-    assert learned == {"ゴン": ("Gon", 31), "カスケ": ("Kasuke", 182), "神様": ("God", 194)}
-    assert episodes["標柱"]["paired_at"] is None and episodes["標柱"]["openings"]
+    assert learned == {
+        "ゴン": ("Gon", 57),
+        "標柱": ("Heijū", 84),
+        "カスケ": ("Kasuke", 181),
+        "神様": ("God", 194),
+    }
+    assert not {r.lower().replace("’", "'") for r, _ in learned.values()} & _EN_STOP
 
 
 def test_the_committed_run_still_yields_m125s_verdict():

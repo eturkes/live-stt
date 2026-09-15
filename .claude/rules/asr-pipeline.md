@@ -219,7 +219,7 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
 | provisional lag | 1.187 | 1.615 | 2.385 | voice → the same character shown UNCONFIRMED |
 | redraw bound | 2.114 | 5.192 | 9.131 | upper bound: every redraw of a slot recharged as a fresh wait |
 | publication | 1.173 | 1.444 | 1.444 | speech end → `JA n:` = `VAD_MIN_SILENCE_S` + final decode |
-| translate turn | 2.330 | 4.190 | 6.200 | `JA n:` → `EN n:` (steady 2.085, rotating 3.900) |
+| translate turn | 2.170 | 4.310 | 6.340 | `JA n:` → `EN n:` (steady 2.140, rotating 4.695) |
 
 - **Decode cost is `0.417 s fixed + 7.15 ms/char`** (`stress_long`: 0.360 + 5.77). The fixed term is
   Whisper's encoder over a 30 s window, measured FLAT at 0.31 s for buffers of 1.0 s through 28.0 s
@@ -243,10 +243,34 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
 - **`VAC_CHUNK_S` is floored by decode cost, not by taste.** Work rate = `decode_s / VAC_CHUNK_S`:
   0.645 today, 0.86 at 0.75 s, **1.29 at 0.5 s** — past real time, so the audio queue never drains.
   Every candidate below 0.75 s needs the fixed 0.35 s term cut first.
-- Translation is **2.330 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
-  bare turn, this one is production order over 215 captions. 39 of those turns opened a fresh thread
-  on a glossary change and cost 3.900 s against 2.085 s steady (`.agent/deferred.md` → *Cut the
-  EN-leg thread-rotation tax*).
+- Translation is **2.170 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
+  bare turn, this one is production order over 215 captions.
+- **The rotation tax is CUT.** `translator_brief()` renders the glossary in content order
+  (longest-first, then lexical) instead of `terms()` recency order, so a brief changes only when its
+  CONTENT does. Reorder-only rotations are gone **by construction, not by sampling** — the lock is
+  `test_the_brief_is_a_pure_function_of_glossary_content`. Two figures, and they answer different
+  questions: **replayed over one fixed trace, old code → new code reads 40 → 13** brief changes, all
+  27 removed being reorder-only and the 8 adds / 2 drops / 3 renderings kept — that is the
+  like-for-like number. **End to end, two live runs read 39 → 14**, the new run's 14 being 8 adds /
+  4 renderings / 2 drops with zero reorder. Never quote a taxonomy across those two runs: they are
+  independent samples of a sampled translator and they learn different renderings (4 against 3).
+- **`rotations` counts GLOSSARY rotations only** — `eval_en_pairing.py` sets `rotated` from
+  `translator._brief != brief`. Production ALSO rotates on the turn cadence, so a 215-caption session
+  opens **16** threads, not 14. The cadence arm is deliberately untouched and locked by
+  `test_the_turn_cadence_rotation_is_untouched`; read the row's "below 15" against the glossary
+  metric its own baseline of 39 was measured on.
+- **The row's turn-p90-under-3.5 s half is REFUSED.** Excluding every rotation, steady p90 measures
+  3.530 s (n=201) against a 3.5 s bar, so the bar sits at or below the rotation-free floor and what
+  remains is codex turn latency rather than rotation. **This is ONE sample of sampled model output**
+  (`evidence-artifacts.md`) ⇒ read it as evidence that this lever cannot reach the bar, never as a
+  rate: a second run could place the floor either side of 3.5 s, and only a lever acting on STEADY
+  turns (brief size, effort, serviceTier) can move it. **Glossary staleness — the cost the row's
+  refusal clause requires naming — is unchanged**: every content change still rotates, so the thread
+  never carries a stale glossary. What was removed is re-sending an identical one.
+- Counter-cost, honest: surviving rotations are each dearer (p50 3.900 → **4.695 s**, max 5.600),
+  because one now batches several glossary deltas where recency spread them. Summed it still pays —
+  rotation time 160.4 → **64.7 s**, wall 568.5 → 542.3 s, and the 25 turns that stopped rotating
+  moved into steady (176 → 201 turns, 408.2 → 477.6 s).
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 
