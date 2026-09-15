@@ -316,13 +316,13 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
     )
     lengths = sorted(len(t) for t in texts)
     all_lags = [x for s in sessions for _, x in lags(s)]
-    latin_only = sum(
-        1
-        for t in texts
-        if app.repeat_span(t) < app.CAPTION_REPEAT_MAX_CHARS
-        and len(app._LATIN_RUN.findall(t))
-        > app.CAPTION_LATIN_RATIO * len(app._JAPANESE_RUN.findall(t))
-    )
+    # Split the drops off the SHIPPED verdict rather than restating the latin
+    # rule: `caption_defect` returns the repetition reason first and is gated on
+    # ASR_LANGUAGE, so the subtraction follows --source-lang where a copy of the
+    # rule silently reported a latin screen an `en` session never ran.
+    repetition_drops = sum(1 for t in texts if app.repeat_span(t) >= app.CAPTION_REPEAT_MAX_CHARS)
+    combined_drops = sum(1 for t in texts if app.caption_defect(t))
+    latin_only = combined_drops - repetition_drops
 
     per_session = []
     for s in sessions:
@@ -399,11 +399,10 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
             "unit_chars": app.CAPTION_REPEAT_UNIT_CHARS,
             "max_chars": app.CAPTION_REPEAT_MAX_CHARS,
             "latin_ratio": app.CAPTION_LATIN_RATIO,
-            "repetition_drops": sum(
-                1 for t in texts if app.repeat_span(t) >= app.CAPTION_REPEAT_MAX_CHARS
-            ),
+            "source_lang": app.ASR_LANGUAGE,
+            "repetition_drops": repetition_drops,
             "latin_drops": latin_only,
-            "combined_drops": sum(1 for t in texts if app.caption_defect(t)),
+            "combined_drops": combined_drops,
             "sweep": sweep(caps, 1, 24),
             "longest_surviving": [{"span": sp, "text": t[:40]} for sp, t in survivors[:5] if sp],
         },
@@ -481,7 +480,8 @@ def render(rep: dict) -> str:
 
     s = rep["screen"]
     out.append(
-        f"screen: unit<={s['unit_chars']} span>={s['max_chars']} latin>{s['latin_ratio']}x  ->  "
+        f"screen: unit<={s['unit_chars']} span>={s['max_chars']} "
+        f"latin>{s['latin_ratio']}x ({s['source_lang']})  ->  "
         f"{s['repetition_drops']} repetition + {s['latin_drops']} latin"
         f" = {s['combined_drops']} drops"
     )
@@ -519,7 +519,19 @@ def main() -> int:
     ap.add_argument("transcripts", nargs="*", help="Transcript files (default: transcripts/*.txt).")
     ap.add_argument("--log", action="append", default=[], help="Redirected stderr log; repeatable.")
     ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
+    ap.add_argument(
+        "--source-lang",
+        choices=["ja", "en"],
+        default=app.ASR_LANGUAGE,
+        help="Source language the session ran with (default: %(default)s).",
+    )
     args = ap.parse_args()
+
+    # The transcript records captions, not the flags that produced them, so the
+    # language rides the command line. Rebinding the module global is how the
+    # shipped screen is re-run rather than re-implemented: without it an `en`
+    # session is re-derived under a latin screen the live run never applied.
+    app.ASR_LANGUAGE = args.source_lang
 
     paths = args.transcripts or sorted(glob.glob("transcripts/*.txt"))
     if not paths:

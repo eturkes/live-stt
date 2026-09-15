@@ -81,7 +81,12 @@ neither, because they replay committed traces — a fresh clone runs them in und
   names: captions with no EN and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
   degrade + restore markers with timestamps, `backlog peak:` high-water lines, caption length +
   repetition distributions, EN-behind-JA lag, and slow turns tagged with whether they sit on a
-  `TRANSLATE_ROTATE_TURNS` boundary. Two rules the live corpus forced: **a session owns log time
+  `TRANSLATE_ROTATE_TURNS` boundary. **A transcript records captions, not the flags that produced
+  them**, so the session's language rides `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE`
+  before anything is derived: re-running the shipped screen is the point, and an `en` session read
+  under the default reported a latin screen the live run never applied. The drop split is derived
+  from `caption_defect`'s own verdict (combined − repetition) rather than restating the latin rule,
+  which is how it follows that flag. Two rules the live corpus forced: **a session owns log time
   from its own start until the next session starts**, never to its last caption, because
   `codex app-server exited` fires after the final caption by construction; and **once the leg is
   down, `disabled` outranks the text screen**, since a screen verdict behind a degrade is a
@@ -203,7 +208,7 @@ neither, because they replay committed traces — a fresh clone runs them in und
 ## On-demand commands
 
 ```sh
-uv run python session_report.py [--log F] [--json]      # re-derive a live session from its own files
+uv run python session_report.py [--log F] [--json] [--source-lang L]   # re-derive a live session
 uv run python tests/eval_latency.py                     # per-stage latency budget, traces only, <1 s
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware
 uv run python tests/eval_en_pairing.py [--live]         # what a real translator pairs; default <1 s

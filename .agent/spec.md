@@ -34,7 +34,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
 - `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + a redirected
   stderr log; no hardware, weights or network, and it imports the shipped screen rather than
-  restating it. `uv run python session_report.py [--log F] [--json]`.
+  restating it. `uv run python session_report.py [--log F] [--json] [--source-lang L]`.
 - `tests/` — fast locks (`uv run pytest -q`) + on-demand evaluators `eval_cer.py`,
   `eval_long_form.py`, `eval_backpressure.py`, `eval_retention.py`, and `eval_latency.py`, the
   per-stage end-to-end latency budget (committed traces only, no hardware, <1 s).

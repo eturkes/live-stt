@@ -6,6 +6,7 @@ the suite never reads the gitignored `transcripts/` the tool exists to explain.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -201,3 +202,42 @@ def test_the_rotation_boundary_tag_names_the_turn_that_pays_it(tmp_path):
     session = report([write(tmp_path, "s", lines)])["sessions"][0]
     tagged = {t["n"]: t["at_rotation"] for t in session["slow_turns"]}
     assert tagged == {100: False, 101: True}
+
+
+def _screen(tmp_path: Path, name: str) -> dict:
+    lines = [
+        event("10:00:01", "JA", 1, CLEAN),
+        event("10:00:03", "EN", 1, "Hello."),
+        event("10:00:10", "JA", 2, LOOP),
+        event("10:00:20", "JA", 3, ENGLISH),
+    ]
+    return report([write(tmp_path, name, lines)])
+
+
+def test_an_english_session_is_not_re_derived_under_a_screen_it_never_ran(tmp_path, monkeypatch):
+    """`--source-lang en` retires the latin rule live, so the report must retire it too.
+
+    The report imports the shipped screen precisely so a rule change moves it,
+    but the drop SPLIT restated the latin rule inline -- and that copy answered
+    to nothing, reporting an English caption as screened in a session that
+    published it. Derive the split from `caption_defect`'s own verdict instead.
+    """
+    monkeypatch.setattr(sr.app, "ASR_LANGUAGE", "ja")
+    ja = _screen(tmp_path, "ja")["screen"]
+    assert (ja["source_lang"], ja["latin_drops"], ja["combined_drops"]) == ("ja", 1, 2)
+
+    monkeypatch.setattr(sr.app, "ASR_LANGUAGE", "en")
+    en = _screen(tmp_path, "en")
+    assert (en["screen"]["source_lang"], en["screen"]["latin_drops"]) == ("en", 0)
+    assert en["screen"]["combined_drops"] == en["screen"]["repetition_drops"] == 1
+    # The English caption has an EN of its own missing, but not for that reason.
+    assert "latin letters" not in str(reasons(en["sessions"][0]))
+
+
+def test_the_source_lang_flag_reaches_the_shipped_screen(tmp_path, monkeypatch, capsys):
+    """The transcript records captions, not flags, so the language rides argv."""
+    monkeypatch.setattr(sr.app, "ASR_LANGUAGE", "ja")
+    path = write(tmp_path, "s", [event("10:00:20", "JA", 1, ENGLISH)])
+    monkeypatch.setattr(sys, "argv", ["session_report.py", path, "--source-lang", "en", "--json"])
+    assert sr.main() == 0
+    assert json.loads(capsys.readouterr().out)["screen"]["latin_drops"] == 0
