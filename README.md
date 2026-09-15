@@ -101,7 +101,7 @@ A marker holds `--` in place of the number. JA lines continue after it. The tran
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture buffers into the 2 s queue meanwhile. Measured on the NPU, the longest single wait was 1.006 s over 182 s of pause-free speech, and nothing was dropped. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 
-   **Known defect: a live session can still discard audio, and the cause is not yet known.** One 26-minute session dropped 9033 blocks of captured audio in 12 bursts. Every burst fell inside a gap of 17 s or more between published lines, but 16 of the 20 longest gaps dropped nothing, so length alone does not explain it. Watch for `drop=` on the meter. If you see it, run the session again as `live-stt > stt.log 2>&1` and keep the log. The meter writes its `backlog peak:` counters to the log only when stdout is not a terminal. That redirect gives up the live status line, and it is the only way to record the counters the cause will be read from.
+   **Known defect: a live session can still discard audio, and the cause is not yet known.** One 26-minute session dropped 9033 blocks of captured audio in 12 bursts. Every burst fell inside a gap of 17 s or more between published lines, but 16 of the 20 longest gaps dropped nothing, so length alone does not explain it. Watch for `drop=` on the meter. To record the evidence, run every session as `live-stt 2> stt.log`. Keep the log. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing, so the redirect does not hide it. Then run `uv run python session_report.py --log stt.log`. It shows each drop with the captions around it, and any caption the screen refused in that gap.
 5. **Screen.** A caption the recognizer invented is dropped whole, before anything else sees it. See the next section.
 6. **Emit.** `JA n:` prints immediately; the text is queued for translation.
 
@@ -162,10 +162,10 @@ Runtime warnings/errors go to stderr via Python `logging`. On a terminal each me
 
 To review a finished session, run `session_report.py`. It reads the saved transcript and the redirected log. It needs no microphone, no weights and no network. Give it `--source-lang en` if the session ran with `--source-lang en`. A transcript does not record that flag, and the report must apply the same caption screen the session did.
 
-Redirect both streams. The meter writes its `backlog peak:` counters to the log only when stdout is not a terminal, so `2> stt.log` alone keeps the status line and records no counters.
+Redirect stderr. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing at the same time.
 
 ```sh
-live-stt > stt.log 2>&1                          # counters, in place of the live status line
+live-stt 2> stt.log                              # counters in the log, status line on screen
 uv run python session_report.py --log stt.log    # defaults to transcripts/*.txt
 ```
 
@@ -175,6 +175,7 @@ The report shows:
 - every caption that has no `EN` line, and the reason for it
 - the point where translation stopped or came back, with timestamps
 - the backlog high-water marks from the log
+- every increase in the dropped-audio counter, with the captions around it, the gap it fell in, and any caption the screen refused inside that gap
 - caption length and repetition distributions
 - how far behind its `JA` line each `EN` line arrived
 

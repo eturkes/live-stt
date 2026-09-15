@@ -1,4 +1,4 @@
-"""Locks for the EN-leg thread-rotation tax (`.agent/deferred.md` rank 1).
+"""Locks for the EN-leg thread-rotation tax, a closed `.agent/deferred.md` row.
 
 A glossary change rotates the codex thread inline, and that part is right: a newly
 trusted term reaches the model through `developerInstructions` alone. What was

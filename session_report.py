@@ -45,6 +45,10 @@ _BLOCK_FAIL = re.compile(r"^translation failed \((.*)\); JA-only for this block$
 _DISABLED = re.compile(r"^(?:translation disabled: )?(.*?); JA-only for the rest of the session$")
 _RESTORED = re.compile(r"^translation restored: (.*)$")
 _PEAK = re.compile(r"^backlog peak:(.*)$")
+# `caption dropped (<defect>): <=24 chars>…`. Non-greedy, so the split lands on
+# the FIRST `): ` -- a defect string may carry a bare `)` and a caption may carry
+# the whole separator, and only this anchor survives both.
+_DROPPED = re.compile(r"^caption dropped \((.*?)\): (.*)$")
 
 # Why a published caption never got an EN line. Ordered by how much the evidence
 # pins it down: a logged decline is certain, a trailing gap is an inference.
@@ -211,6 +215,91 @@ def find_restores(s: Session) -> list[dict]:
     return sorted(out, key=lambda d: d["at"])
 
 
+def _counter(peak: str, name: str) -> int:
+    """One counter off a rendered `_backlog` string; absent means zero.
+
+    `_backlog` renders a counter only when it is nonzero, so a session that has
+    dropped nothing shows no `drop=` at all. The word boundary is what keeps
+    `drop` off `tdrop=` and `skip` off `tskip=`, which count different things.
+    """
+    m = re.search(rf"\b{name}=(\d+)", peak)
+    return int(m.group(1)) if m else 0
+
+
+def _at_caption(c: Caption | None) -> dict | None:
+    return None if c is None else {"n": c.n, "at": c.at.isoformat(sep=" "), "text": c.text[:40]}
+
+
+def attribute_drops(s: Session) -> list[dict]:
+    """What surrounded each `backlog peak:` drop increase.
+
+    `drop=` counts backend-sized callback BLOCKS of captured audio, never samples
+    and never speech, so every figure here is blocks. The meter re-logs the peak
+    whenever the rendered string CHANGES, for any counter, so most peak lines
+    carry no drop increase and produce no row.
+
+    A drop means ingestion fell behind, and the live evidence says the correlate
+    is a SCREENED caption rather than a long utterance (`asr-pipeline.md`): 16 of
+    the 20 publication gaps over 20 s in the one captured session dropped nothing.
+    So each increase is placed against the captions that bracket it, the gap
+    between them, and the `caption dropped (…)` lines inside that gap -- which is
+    the only record a screened caption leaves, having no number and no transcript
+    line. Separating the repetition arm from the latin arm is the whole point:
+    only the first costs more than real time.
+
+    Coverage limit: a drop BEFORE the first caption is attributable only when the
+    transcript is named for its start time, because `attach_logs` gives a session
+    the wall clock from `Session.start` and `-o PATH` makes that the first caption
+    instead. Under `-o PATH` those events stay unclaimed and never reach this
+    function (`.agent/deferred.md` → *Attribute drops that precede the first caption*).
+    """
+    peaks = [(e.at, m.group(1)) for e in s.events if (m := _PEAK.match(e.body))]
+    screened = [
+        # `removesuffix`, not `rstrip`: the logger appends exactly one ellipsis
+        # after a 24-char head, so a head that already ended in one logs `……`
+        # and `rstrip` would eat the caption's own character too.
+        (e.at, m.group(1), m.group(2).removesuffix("…"))
+        for e in s.events
+        if (m := _DROPPED.match(e.body))
+    ]
+    captions = sorted(s.ja.values(), key=lambda c: (c.at, c.n))
+    last_event = max((e.at for e in s.events), default=None)
+
+    rows: list[dict] = []
+    drop = skip = 0
+    for at, body in peaks:
+        now, skip_now = _counter(body, "drop"), _counter(body, "skip")
+        if now > drop:
+            before = next((c for c in reversed(captions) if c.at <= at), None)
+            after = next((c for c in captions if c.at > at), None)
+            # The window is the publication gap the increase sits in. Open at
+            # either end it runs to the session's own edge, because a drop before
+            # the first caption or after the last one still has screened captions
+            # to answer for.
+            lo = before.at if before else (s.start or at)
+            hi = after.at if after else max(at, last_event or at)
+            rows.append(
+                {
+                    "at": at.isoformat(sep=" "),
+                    "drop": now,
+                    "delta": now - drop,
+                    "skip_delta": skip_now - skip,
+                    "prev": _at_caption(before),
+                    "next": _at_caption(after),
+                    "gap_s": (
+                        None if not (before and after) else (after.at - before.at).total_seconds()
+                    ),
+                    "screened": [
+                        {"at": w.isoformat(sep=" "), "defect": d, "text": t}
+                        for w, d, t in screened
+                        if lo <= w <= hi
+                    ],
+                }
+            )
+        drop, skip = now, skip_now
+    return rows
+
+
 def explain_missing(s: Session) -> list[dict]:
     """Why each published caption has no EN line."""
     logged = {int(m.group(1)): m.group(2) for e in s.events if (m := _DECLINED.match(e.body))}
@@ -358,6 +447,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                 ],
                 # A peak never clears, so the LAST line is the session's worst.
                 "backlog_peak": peaks[-1] if peaks else None,
+                "drops": attribute_drops(s),
                 "lag_s": (
                     None
                     if not sl
@@ -452,6 +542,19 @@ def render(rep: dict) -> str:
         for r in p["restores"]:
             out.append(f"   RESTORE [{r['source']}] {r['at']}  {r['reason']}")
         out.append(f"   backlog peak: {p['backlog_peak'] or 'none logged'}")
+        if p["drops"]:
+            out.append(f"   drops: {len(p['drops'])} increases, {p['drops'][-1]['drop']} blocks")
+        for d in p["drops"]:
+            begin = f"n={d['prev']['n']}" if d["prev"] else "session start"
+            end = f"n={d['next']['n']}" if d["next"] else "session end"
+            gap = "gap open" if d["gap_s"] is None else f"gap {d['gap_s']:.1f}s"
+            skipped = f"  skip +{d['skip_delta']}" if d["skip_delta"] else ""
+            out.append(
+                f"     {d['at'][11:]}  +{d['delta']} blocks (drop={d['drop']})"
+                f"  {gap}  {begin} -> {end}{skipped}"
+            )
+            for w in d["screened"]:
+                out.append(f"       screened {w['at'][11:]}  {w['defect']}  {w['text']}")
         if p["missing_by_reason"]:
             summary = ", ".join(f"{k}={v}" for k, v in p["missing_by_reason"].items())
             out.append(f"   no EN: {summary}")

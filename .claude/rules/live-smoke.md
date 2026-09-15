@@ -32,14 +32,19 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 
 1. **Devices** — `uv run live-stt --list-devices` prints the `sd.query_devices()` table and exits. Pass:
    your mic shows with input channels.
-2. **Capture + backlog** — `uv run live-stt`, speak. Pass: `JA n:` lines print; `q=` / `seg=` are absent
-   or brief and clear after each utterance; any `drop=N` fails. A live session HAS produced
-   `drop=` with no established cause (`.agent/deferred.md` → *Explain the live audio drops*) ⇒ on any
-   `drop=N`, repeat the session as `uv run live-stt > stt.log 2>&1` and KEEP the log. It has to be a
-   SECOND run: `backlog peak:` logs off a TTY ALONE (L-006, `asr-pipeline.md`), so the capturing run
-   draws no status line for this item to read, and `2> stt.log` records no counters at all. The
-   surviving high-water digest of the last such session cannot attribute a drop to a caption, which is
-   why that row is still open.
+2. **Capture + backlog** — `uv run live-stt 2> stt.log`, speak, and KEEP the log. Pass: `JA n:` lines
+   print; `q=` / `seg=` are absent or brief and clear after each utterance; any `drop=N` fails. A live
+   session HAS produced `drop=` with no established cause (`.agent/deferred.md` → *Explain the live
+   audio drops*), and the surviving high-water digest of that session cannot attribute a drop to a
+   caption, which is why the row is still open. **One redirect now captures the whole timeline
+   without hiding the status line** — the peak log gates on the stream PAIR (L-006,
+   `asr-pipeline.md`), so the status line stays on screen while `backlog peak:` and
+   `caption dropped (…)` lines land in the file. What it is NOT is free: the peak re-logs whenever
+   the rendered string moves, so a moving peak can format+write+flush up to 1/`METER_INTERVAL` = 10
+   lines/s synchronously in the meter thread, unmeasured under a real drop storm. Then
+   `uv run python session_report.py --log stt.log` attributes every drop increase to the captions
+   bracketing it and to any screened caption inside that gap. Capture from the start: a drop that
+   reproduces only once is lost if the first run kept no log.
 3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; capture
    works as in (2).
 4. **Latency + endpointing (VAC cadence, NOT the old 0.6 s VAD-segment rule)** — one sentence, then stop.
@@ -80,10 +85,11 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
   `backlog peak: q=2.00s drop=9033 skip=20` with every burst inside a ≥17 s publication gap, yet 16 of
   the 20 such gaps dropped nothing, so keep `stt.log` rather than diagnosing from the meter;
   `tdrop=N` means translation fell behind. **`tskip=N` is a CONTENT decision, never backpressure** —
-  reading it as backlog corrupts the soak result. Redirected stdout carries no status line, so the same
+  reading it as backlog corrupts the soak result. Wherever the status line is not the reader's, the same
   counters ride stderr as `backlog peak:` HIGH-WATER marks, logged only when a peak moves (a clean run
-  logs nothing), which is what makes `> stt.log` a usable soak record. A peak never clears ⇒ read the
-  LAST such line as the session's worst backlog and its timestamp as when that worst arrived.
+  logs nothing), which is what makes `2> stt.log` a usable soak record while the status line keeps
+  drawing. A peak never clears ⇒ read the LAST such line as the session's worst backlog and its
+  timestamp as when that worst arrived.
 - **Thread rotation** — about every 100 EN turns one `EN` lands a few seconds slower, then cadence
   resumes with no error. EN must keep flowing across the bump.
 - **Quota** — out of band via `account/rateLimits/read`; expect ≈0 % primary-window movement.
@@ -92,8 +98,9 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 
 **Run `uv run python session_report.py --log stt.log` after any soak** — it answers every question in
 this section mechanically off the saved transcript and the redirected stderr, so a session stays
-diagnosable once the scrollback is gone. Redirect BOTH streams (`> stt.log 2>&1`) to give it the
-counters, and spend the soak's status line on them: the meter logs `backlog peak:` off a TTY alone.
+diagnosable once the scrollback is gone. Redirect stderr (`2> stt.log`) to give it the counters; the
+status line keeps drawing, so the record costs the soak no screen output — not zero work, which no
+live run has measured (item 2).
 
 EN stopping while JA continues is the sanctioned JA-only degrade (D-009); the transcript marker names
 which trigger fired, and a `-- translation restored: codex app-server probed|respawned` marker below

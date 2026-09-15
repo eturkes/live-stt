@@ -237,6 +237,9 @@ _LINE_CLEAR = "\r\x1b[2K"
 _DIM, _UNDIM = "\x1b[2m", "\x1b[22m"
 # Gate stdout's status-line rewrites on a TTY so redirected stdout stays ANSI-clean.
 _STDOUT_TTY = sys.stdout.isatty()
+# The other half of the same gate: stderr decides whether a log record erases the
+# status line in place, and whether the meter may log at all (see `meter`).
+_STDERR_TTY = sys.stderr.isatty()
 
 logger = logging.getLogger("live_stt")
 
@@ -247,11 +250,10 @@ class _StderrFormatter(logging.Formatter):
     # is omitted so the log stays free of ANSI escapes.
     def __init__(self):
         super().__init__(fmt="[%(asctime)s] %(levelname)s %(message)s")
-        self._tty = sys.stderr.isatty()
 
     def format(self, record):
         msg = super().format(record)
-        return _LINE_CLEAR + msg if self._tty else msg
+        return _LINE_CLEAR + msg if _STDERR_TTY else msg
 
 
 def _configure_logging():
@@ -1849,14 +1851,21 @@ async def meter(state, audio_q, translator=None):
             room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
             body = caption_body(state.partial, state.provisional, room)
             write_stdout(f"{_LINE_CLEAR}{status}{'   ' + body if body else ''}")
-        else:
-            # Off a TTY the carriage-return rewrites would corrupt a redirected
-            # stream (L-006), so the counters ride the log instead -- and as
-            # HIGH-WATER marks, which is what makes that affordable: a peak only
-            # grows, so one line per change is a line per thing the session
-            # learned, a clean run costs nothing, and an instantaneous q= cannot
-            # churn a line per tick. Silence here is what left a 37-minute
-            # session's drop counters unrecoverable.
+        # The counters live on the status line, so wherever that line is not the
+        # reader's they ride the log instead -- as HIGH-WATER marks, which is what
+        # makes it affordable: a peak only grows, so one line per change is a line
+        # per thing the session learned, a clean run costs nothing, and an
+        # instantaneous q= cannot churn a line per tick. Silence here is what left
+        # a 37-minute session's drop counters unrecoverable.
+        # The gate is the stream PAIR, not stdout alone. A log record does not
+        # corrupt the status line -- L-006's _LINE_CLEAR erases it and the meter
+        # redraws below -- it DUPLICATES it, and at METER_INTERVAL cadence a
+        # moving peak would push ten lines a second through the caption
+        # scrollback the status line exists to protect. Off a shared terminal
+        # neither cost applies, so `2> stt.log` now keeps both the live captions
+        # and the drop timeline a soak reads; the old stdout-only gate made those
+        # two exclusive and charged every capture run its whole status line.
+        if not (_STDOUT_TTY and _STDERR_TTY):
             peak = _backlog(
                 getattr(audio_q, "max_queued_samples", 0),
                 state.max_segment_queue_depth,

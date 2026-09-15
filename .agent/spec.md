@@ -33,8 +33,10 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
 - `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + a redirected
-  stderr log; no hardware, weights or network, and it imports the shipped screen rather than
-  restating it. `uv run python session_report.py [--log F] [--json] [--source-lang L]`.
+  stderr log (`live-stt 2> stt.log`, which keeps the status line); no hardware, weights or network,
+  and it imports the shipped screen rather than restating it. Answers include drop attribution, one
+  row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
+  [--source-lang L]`.
 - `tests/` — fast locks (`uv run pytest -q`) + eight on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
@@ -109,8 +111,8 @@ row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
 **3** Two-way translation (JA↔EN), research first · **4** Prove EN rendering consistency on the raw
-stream · **5** M10 candidate-screen remainder. Row 5 sits there because its acceptance is a re-open
-condition, not work.
+stream · **5** Attribute drops that precede the first caption · **6** M10 candidate-screen remainder.
+Row 6 sits there because its acceptance is a re-open condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

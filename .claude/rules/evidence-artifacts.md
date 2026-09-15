@@ -86,11 +86,14 @@ neither, because they replay committed traces — a fresh clone runs them in und
   weights, no network, and it imports the shipped `repeat_span`/`caption_defect` rather than
   restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
   names: captions with no EN and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
-  degrade + restore markers with timestamps, `backlog peak:` high-water lines — which reach the log
-  only when STDOUT is redirected too, `meter()` logging them off a TTY alone (L-006), so a
-  `2> stt.log` session keeps its status line and reports no backlog at all — caption length +
-  repetition distributions, EN-behind-JA lag, and slow turns tagged with whether they sit on a
-  `TRANSLATE_ROTATE_TURNS` boundary. **A transcript records captions, not the flags that produced
+  degrade + restore markers with timestamps, `backlog peak:` high-water lines and **drop
+  attribution** — one row per `backlog peak:` line whose `drop=` grew, carrying the captions that
+  bracket it, the publication gap between them, the `skip=` step, and every `caption dropped (…)`
+  line inside that gap with its defect, which is the only record a screened caption leaves — caption
+  length + repetition distributions, EN-behind-JA lag, and slow turns tagged with whether they sit on
+  a `TRANSLATE_ROTATE_TURNS` boundary. `drop=` counts callback BLOCKS, so every drop figure here is
+  blocks. Feeding it a drop timeline costs one redirect: the peak log gates on the stream PAIR, so
+  `2> stt.log` keeps the status line too (L-006, `asr-pipeline.md`). **A transcript records captions, not the flags that produced
   them**, so the session's language rides `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE`
   before anything is derived: re-running the shipped screen is the point, and an `en` session read
   under the default reported a latin screen the live run never applied. The drop split is derived

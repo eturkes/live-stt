@@ -226,13 +226,21 @@ paths:
   Third and least guessable: **CPython flushes `sys.stdout` during finalization and that flush fails
   the same way, exiting 120** on an otherwise clean shutdown ⇒ the latch also swaps in `os.devnull`.
   stderr is not implicated: its handler flushes per record, so finalization finds nothing buffered.
-- **L-006 — TTY-gate the cursor-clear (`\r\x1b[2K`) protocol per stream, evaluated once.** stderr: the
-  `logging.Formatter` prepends it gated on `sys.stderr.isatty()`, the rare ~10-line subclass that
-  beats inlining. stdout: the meter status line and `emit_line` gate on module-level `_STDOUT_TTY`, so
-  redirected stdout stays ANSI-clean and the meter DRAWS nothing off-TTY; any new stdout status writer
-  gates the same way. Gating the writer is not gating the information — the meter's counters exist
-  only there, so off-TTY they move to stderr as high-water marks (`backlog peak: …`, sampled every
-  `METER_LOG_INTERVAL`=1 s, logged only when a peak moves) rather than being dropped.
+- **L-006 — TTY-gate the cursor-clear (`\r\x1b[2K`) protocol per stream, evaluated once.** Both halves
+  are module-level constants: `_STDOUT_TTY` gates the meter status line and `emit_line`, so redirected
+  stdout stays ANSI-clean and the meter DRAWS nothing off-TTY, and `_STDERR_TTY` gates the
+  `logging.Formatter` prefix, the rare ~10-line subclass that beats inlining. Any new stdout status
+  writer gates the same way. Gating the writer is not gating the information — the meter's counters
+  exist only on that status line, so wherever it is not the reader's they move to stderr as
+  high-water marks (`backlog peak: …`, logged only when a peak moves, sampled every
+  `METER_INTERVAL`=0.1 s while a status line is drawn and `METER_LOG_INTERVAL`=1 s otherwise).
+- **The peak log gates on the stream PAIR — `not (_STDOUT_TTY and _STDERR_TTY)`, not on stdout alone.**
+  A log record does not corrupt the status line: the formatter's `_LINE_CLEAR` erases it in place and
+  the meter redraws below. It DUPLICATES it, and a moving peak would push ten lines a second through
+  the caption scrollback the status line exists to protect. Off a shared terminal neither cost
+  applies ⇒ **`2> stt.log` keeps the live captions AND the drop timeline**, where the old
+  stdout-only gate made those exclusive and charged every capture run its whole status line.
+  `live-smoke.md` item 2 reads the one-redirect form.
 - **L-010 — keep device-backend imports at device entry points.** PortAudio probes host audio controls
   during `sounddevice` import, so an eager app-module import can hang model-only evaluators on an
   unhealthy device; `run_session` + `--list-devices` own those imports and offline replay/test stays
@@ -359,7 +367,13 @@ clips against a 1 s update cadence, with the trim rule capping the buffer at 11.
   that session kept no stderr log, only a sampled digest of its `backlog peak:` lines ⇒ no mechanism
   is established. `drop=` counts backend-sized callback BLOCKS of captured audio, never samples and
   never speech, so it converts to seconds only with a block size the digest does not record — quote
-  blocks. Queued: `.agent/deferred.md` → *Explain the live audio drops*.
+  blocks. **The reader now exists and the capture now costs one redirect:**
+  `session_report.py`'s `attribute_drops` places every `backlog peak:` drop increase against the
+  captions bracketing it, the publication gap between them, and each `caption dropped (…)` line
+  inside that gap with the defect it named, and the peak log's pair gate (L-006 above) lets
+  `2> stt.log` record that timeline without spending the status line. What is still missing is a live
+  session reproducing a nonzero `drop=` with the log kept: `.agent/deferred.md` → *Explain the live
+  audio drops*.
 
 ## Known caveats
 

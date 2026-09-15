@@ -22,29 +22,20 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    of 1.060 s of 2.000 s ⇒ an arm that merely paces a long utterance would pass vacuously. The
    correlate is a SCREENED caption and no further: `caption_defect` has two arms and only the
    repetition runaway costs more than real time (RTF 1.106), plain English caught by the latin rule
-   costing nothing extra. Separating them needs the `caption dropped (…)` lines, and that session kept
-   no stderr log — only a sampled digest of its `backlog peak:` lines survived, which cannot attribute
-   a drop to a caption. A real log can: off a TTY `live_stt.py` re-logs
-   `backlog peak:` whenever the rendered string CHANGES, so every drop increase gets a timestamped
-   line at meter cadence, and `logger.warning("caption dropped (%s): %.24s…")` timestamps each screened
-   caption with its defect and first 24 characters on any stream. `session_report.py` parses the first
-   (`_PEAK`, and it keeps only the last line) and not the second at all ⇒ no production logging change
-   is needed, only a reader. **Accept:** in order, (a) `session_report.py` grows drop attribution —
-   per `backlog peak:` drop increase, the captions bracketing it, any `caption dropped (…)` line in the
-   same window with the defect it named, and the publication gap it sits in — locked by a test over a
-   synthetic transcript+log pair proven red; (b) the user runs one live session as
-   `live-stt > stt.log 2>&1` that reproduces a nonzero `drop=` — **stdout redirected too, costing the
-   live status line for that whole run**, because `meter()` draws the status line on a TTY and logs
-   `backlog peak:` only OFF one, so `2> stt.log` records no drop timeline at all and step (a) would
-   have nothing to read (`live-smoke.md` item 2 names that second run). This row may spend a
-   production change instead: the peak log gates on `_STDOUT_TTY` where what it protects is the
-   status line, which a log line corrupts only when the LOG shares that TTY ⇒ gating it on stderr
-   would let `2> stt.log` keep both. L-004 puts the choice behind the user's terminal, so it is this
-   row's to make and not a docs fix; (c) then
-   either the mechanism is named and reproduced as a
-   `tests/eval_backpressure.py` arm proven RED against today's code and fixed green with retention CER
-   ≤ 0.0609 re-derived, or the row records a refusal naming the measured headroom shortfall and what
-   the user loses. Do not skip (a) and (b): the evidence that would decide this does not exist yet.
+   costing nothing extra.
+   **(a) LANDED** — `session_report.py`'s `attribute_drops` places every `backlog peak:` drop increase
+   against the captions bracketing it, the publication gap between them, the `skip=` step across the
+   same peak line, and every `caption dropped (…)` line inside that gap with the defect it named;
+   locked over a synthetic transcript+log pair in `tests/test_session_report.py`, proven red by
+   neutralization. **The production choice this row held open is MADE, not refused** — the peak log
+   gates on the stream PAIR (`not (_STDOUT_TTY and _STDERR_TTY)`) instead of on `_STDOUT_TTY` alone, so
+   `live-stt 2> stt.log` keeps the live status line AND records the drop timeline; `live-smoke.md`
+   item 2 and the README read that one-redirect form.
+   **Still owed, both user-only** (L-004): **(b)** one live session run as `live-stt 2> stt.log` that
+   reproduces a nonzero `drop=`, with the log kept — no agent-side work creates that evidence;
+   **(c)** then either the mechanism is named and reproduced as a `tests/eval_backpressure.py` arm
+   proven RED against today's code and fixed green with retention CER ≤ 0.0609 re-derived, or the row
+   records a refusal naming the measured headroom shortfall and what the user loses.
 3. **Two-way translation (JA↔EN), research first.** Direction chosen per utterance: Japanese in →
    English out, English in → Japanese out. **Live-stt must stay usable throughout** (user ruling) ⇒
    every step lands behind a default-off flag and the JA→EN path is green at every commit; with the
@@ -90,7 +81,21 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    rendering across `turns[*].en`, reported per run and locked by a test proven red under that exact
    mutation; the committed trace then re-derives one spelling per paired term, or the divergence is
    recorded as the real number.
-5. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+5. **Attribute drops that precede the first caption.** `attach_logs` gives a session the wall clock
+   from `Session.start` onward, and `Session.start` is the transcript FILENAME — which `-o PATH`
+   replaces with a free name, falling back to the earliest caption. So under `-o PATH` every log
+   event before the first caption is unclaimed and never reaches `attribute_drops`, which is exactly
+   the startup window where a drop has no bracketing caption to be attributed to. The default
+   timestamped name covers it, so the shipped evidence path (`live-stt 2> stt.log`) is unaffected;
+   `-o PATH` sessions silently lose that one window, and the `unclaimed` count is the only tell.
+   A one-session tree could extend ownership backwards to the log's first line, but ownership is
+   bounded by start times precisely because runs are sequential, so the rule has to stay safe for a
+   log holding several sessions. **Accept:** a `-o PATH` session whose log carries a
+   `caption dropped (…)` line and a `backlog peak:` drop increase BEFORE its first caption attributes
+   that increase to the screened caption, locked by a test proven red against today's code, with the
+   multi-session case locked too — an event before the first caption of session 2 must not land on
+   session 1.
+6. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.

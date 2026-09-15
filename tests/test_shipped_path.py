@@ -952,6 +952,44 @@ def run_meter_log(monkeypatch, state, audio_q=None, translator=None):
     return logged
 
 
+def assert_meter_stream_pair(monkeypatch, stdout_tty, stderr_tty, draws, logs):
+    state = live_stt.State() if stdout_tty else _TickingState(ticks=1)
+    state.dropped = 7
+    screen = _Screen(state)
+    logged: list[str] = []
+    monkeypatch.setattr(live_stt, "_STDOUT_TTY", stdout_tty)
+    monkeypatch.setattr(live_stt, "_STDERR_TTY", stderr_tty)
+    monkeypatch.setattr(live_stt, "METER_INTERVAL", 0)
+    monkeypatch.setattr(live_stt, "METER_LOG_INTERVAL", 0)
+    monkeypatch.setattr(live_stt.logger, "info", lambda msg, *a: logged.append(msg % a))
+    monkeypatch.setattr(sys, "stdout", screen)
+
+    asyncio.run(live_stt.meter(state, asyncio.Queue()))
+
+    expected_screen = [f"{live_stt._LINE_CLEAR}  drop=7"] if draws else []
+    expected_log = ["backlog peak: drop=7"] if logs else []
+    assert screen.writes == expected_screen
+    assert logged == expected_log
+
+
+def test_a_shared_terminal_draws_the_status_line_without_logging_the_peak(monkeypatch):
+    assert_meter_stream_pair(monkeypatch, stdout_tty=True, stderr_tty=True, draws=True, logs=False)
+
+
+def test_redirected_stderr_keeps_the_status_line_and_logs_the_peak(monkeypatch):
+    assert_meter_stream_pair(monkeypatch, stdout_tty=True, stderr_tty=False, draws=True, logs=True)
+
+
+def test_redirected_stdout_logs_the_peak_without_drawing_the_status_line(monkeypatch):
+    assert_meter_stream_pair(monkeypatch, stdout_tty=False, stderr_tty=True, draws=False, logs=True)
+
+
+def test_redirecting_both_streams_logs_the_peak_without_drawing_the_status_line(monkeypatch):
+    assert_meter_stream_pair(
+        monkeypatch, stdout_tty=False, stderr_tty=False, draws=False, logs=True
+    )
+
+
 def test_the_meter_never_draws_off_a_terminal(monkeypatch):
     """Carriage returns would corrupt a redirected transcript (L-006)."""
     state = _TickingState()
