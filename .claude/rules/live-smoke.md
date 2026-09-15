@@ -44,7 +44,9 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    lines/s synchronously in the meter thread, unmeasured under a real drop storm. Then
    `uv run python session_report.py --log stt.log` attributes every drop increase to the captions
    bracketing it and to any screened caption inside that gap. Capture from the start: a drop that
-   reproduces only once is lost if the first run kept no log.
+   reproduces only once is lost if the first run kept no log. Several runs can share one log file.
+   Each run stamps `session: <transcript path>` when it starts, so the report separates them and a
+   startup drop stays with the run that made it, `-o PATH` included.
 3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; capture
    works as in (2).
 4. **Latency + endpointing (VAC cadence, NOT the old 0.6 s VAD-segment rule)** — one sentence, then stop.

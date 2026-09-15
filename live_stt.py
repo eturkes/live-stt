@@ -266,6 +266,21 @@ def _configure_logging():
     logger.propagate = False
 
 
+def log_session_marker(output_path):
+    """Stamp the run's own start into the redirected stderr log.
+
+    Nothing else in the log answers WHEN the run began: the first timestamped
+    record is already past startup, and a transcript carries its start time in
+    its name under the default naming alone -- `-o PATH` names it freely, so
+    `session_report.py` fell back to the first caption and dropped every startup
+    event, which is the window audio drops actually land in. The gate is L-006's
+    stream PAIR, the peak timeline's own: off a shared terminal no report reads
+    this stream and the live screen stays exactly as approved.
+    """
+    if not (_STDOUT_TTY and _STDERR_TTY):
+        logger.info("session: %s", output_path or "not saved (--no-save)")
+
+
 # key -> (idx_floor, idx_ceil, frac, y0, y1). y0 doubles as the output buffer.
 # Returned buffer is reused across calls — callers must consume (or copy) before
 # the next call. audio_callback copies when enqueueing.
@@ -2094,6 +2109,7 @@ async def run_session(args):
         print(f"Transcript: {output_path}")
     else:
         print("Transcript: not saved (--no-save)")
+    log_session_marker(output_path)
 
     context = SessionContext(getattr(args, "context", "") or "")
     if context.seed:

@@ -6,14 +6,18 @@ the suite never reads the gitignored `transcripts/` the tool exists to explain.
 
 from __future__ import annotations
 
+import io
 import json
+import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import live_stt as app  # noqa: E402
 import session_report as sr  # noqa: E402
 
 LOOP = "ねこ" * 30  # 60 chars of one 2-char unit -> past CAPTION_REPEAT_MAX_CHARS
@@ -35,13 +39,15 @@ def log_event(ts: str, body: str, level: str = "INFO") -> str:
     return f"[2026-09-04 {ts},000] {level} {body}"
 
 
+def read_log(tmp_path: Path, lines: list[str]) -> list[sr.LogEvent]:
+    lp = tmp_path / "run.log"
+    lp.write_text("".join(f"{ln}\n" for ln in lines), encoding="utf-8")
+    return sr.read_log(str(lp))
+
+
 def report(paths: list[str], log: list[str] | None = None, tmp_path: Path | None = None) -> dict:
     sessions = sorted((sr.read_session(p) for p in paths), key=lambda s: s.name)
-    events = []
-    if log is not None and tmp_path is not None:
-        lp = tmp_path / "run.log"
-        lp.write_text("".join(f"{ln}\n" for ln in log), encoding="utf-8")
-        events = sr.read_log(str(lp))
+    events = [] if log is None or tmp_path is None else read_log(tmp_path, log)
     unclaimed = sr.attach_logs(sessions, sorted(events, key=lambda e: e.at))
     return sr.build(sessions, unclaimed)
 
@@ -454,3 +460,190 @@ def test_render_names_drop_increases_in_blocks(tmp_path):
     assert "     14:00:10  +2 blocks (drop=2)  gap 19.0s  n=1 -> n=2  skip +1" in rendered
     assert f"       screened 14:00:11  repetition  {screened_text}" in rendered
     assert "     14:00:30  +3 blocks (drop=5)  gap 20.0s  n=2 -> n=3" in rendered
+
+
+def test_a_pre_caption_drop_increase_on_an_o_path_session_names_its_screened_caption(tmp_path):
+    screened = "ねこ" * 12
+    path = write(tmp_path, "run", [event("10:00:20", "JA", 1, CLEAN)])
+    session = sr.read_session(path)
+    events = read_log(
+        tmp_path,
+        [
+            log_event("10:00:00", f"session: {path}"),
+            log_event(
+                "10:00:05", f"caption dropped (repetition (unit=ねこ)): {screened}…", "WARNING"
+            ),
+            log_event("10:00:10", "backlog peak: q=2.00s drop=4 skip=1"),
+        ],
+    )
+    unclaimed = sr.attach_logs([session], events)
+
+    assert sr.attribute_drops(session) == [
+        {
+            "at": "2026-09-04 10:00:10",
+            "drop": 4,
+            "delta": 4,
+            "skip_delta": 1,
+            "prev": None,
+            "next": {"n": 1, "at": "2026-09-04 10:00:20", "text": CLEAN},
+            "gap_s": None,
+            "screened": [
+                {
+                    "at": "2026-09-04 10:00:05",
+                    "defect": "repetition (unit=ねこ)",
+                    "text": screened,
+                }
+            ],
+        }
+    ]
+    assert unclaimed == []
+
+
+def test_a_second_sessions_startup_events_do_not_land_on_the_first(tmp_path):
+    first_path = write(tmp_path, "2026-09-04T10-00-00", [event("10:00:10", "JA", 1, CLEAN)])
+    second_path = write(tmp_path, "run", [event("11:00:20", "JA", 1, CLEAN)])
+    first, second = sr.read_session(first_path), sr.read_session(second_path)
+    first_marker, second_marker = f"session: {first_path}", f"session: {second_path}"
+    first_eof = "codex app-server exited; JA-only for the rest of the session"
+    second_peak = "backlog peak: q=1.00s drop=2"
+    events = read_log(
+        tmp_path,
+        [
+            log_event("10:00:00", first_marker),
+            log_event("10:00:15", first_eof, "ERROR"),
+            log_event("11:00:00", second_marker),
+            log_event("11:00:05", second_peak),
+        ],
+    )
+    unclaimed = sr.attach_logs([second, first], events)
+
+    assert [e.body for e in second.events] == [second_marker, second_peak]
+    assert [e.body for e in first.events] == [first_marker, first_eof]
+    assert unclaimed == []
+
+
+def test_an_unsaved_run_between_two_sessions_owns_its_own_events(tmp_path):
+    first_path = write(tmp_path, "2026-09-04T10-00-00", [event("10:00:10", "JA", 1, CLEAN)])
+    second_path = write(tmp_path, "2026-09-04T12-00-00", [event("12:00:10", "JA", 1, CLEAN)])
+    first, second = sr.read_session(first_path), sr.read_session(second_path)
+    first_marker, second_marker = f"session: {first_path}", f"session: {second_path}"
+    unsaved_marker = "session: not saved (--no-save)"
+    unsaved_peak = "backlog peak: q=2.00s drop=7"
+    events = read_log(
+        tmp_path,
+        [
+            log_event("10:00:00", first_marker),
+            log_event("11:00:00", unsaved_marker),
+            log_event("11:00:05", unsaved_peak),
+            log_event("12:00:00", second_marker),
+        ],
+    )
+    unclaimed = sr.attach_logs([first, second], events)
+
+    assert [e.body for e in unclaimed] == [unsaved_marker, unsaved_peak]
+    assert [e.body for e in first.events] == [first_marker]
+    assert [e.body for e in second.events] == [second_marker]
+
+
+def test_a_log_without_markers_keeps_the_filename_rule(tmp_path):
+    # Characterization: the fallback the marker path must leave alone.
+    default_path = write(tmp_path, "2026-09-04T09-00-00", [event("09:00:20", "JA", 1, CLEAN)])
+    custom_path = write(tmp_path, "run", [event("10:00:20", "JA", 1, CLEAN)])
+    default, custom = sr.read_session(default_path), sr.read_session(custom_path)
+
+    assert default.start == datetime(2026, 9, 4, 9, 0, 0)
+    assert custom.start == datetime(2026, 9, 4, 10, 0, 20)
+
+    before_default = "before the filename boundary"
+    default_at_start = "at the filename boundary"
+    default_pre_caption = "default session before its first caption"
+    custom_pre_caption = "custom session before its first caption"
+    custom_at_start = "at the custom first-caption boundary"
+    custom_after_caption = "custom session after its first caption"
+    events = read_log(
+        tmp_path,
+        [
+            log_event("08:59:59", before_default),
+            log_event("09:00:00", default_at_start),
+            log_event("09:00:05", default_pre_caption),
+            log_event("10:00:05", custom_pre_caption),
+            log_event("10:00:20", custom_at_start),
+            log_event("10:00:25", custom_after_caption),
+        ],
+    )
+    unclaimed = sr.attach_logs([custom, default], events)
+
+    assert [e.body for e in unclaimed] == [before_default]
+    assert [e.body for e in default.events] == [
+        default_at_start,
+        default_pre_caption,
+        custom_pre_caption,
+    ]
+    assert [e.body for e in custom.events] == [custom_at_start, custom_after_caption]
+
+
+def test_the_marker_event_is_inert_in_every_other_answer(tmp_path):
+    path = write(
+        tmp_path,
+        "run",
+        [
+            event("10:00:10", "JA", 1, CLEAN),
+            event("10:00:12", "EN", 1, "Hello."),
+            event("10:00:20", "JA", 2, CLEAN),
+        ],
+    )
+    session = sr.read_session(path)
+    marker = f"session: {path}"
+    unclaimed = sr.attach_logs([session], read_log(tmp_path, [log_event("10:00:00", marker)]))
+    summary = sr.build([session], unclaimed)["sessions"][0]
+
+    assert unclaimed == []
+    assert [e.body for e in session.events] == [marker]
+    assert summary["backlog_peak"] is None
+    assert summary["drops"] == []
+    assert summary["degrade"] is None
+    assert summary["restores"] == []
+    assert summary["translated"] == 1
+    assert reasons(summary) == {2: sr.SHUTDOWN}
+
+
+def test_live_stt_logs_the_marker_only_when_a_stream_is_redirected(monkeypatch):
+    stream = io.StringIO()
+    logger = logging.Logger("marker", level=logging.INFO)
+    logger.addHandler(logging.StreamHandler(stream))
+    monkeypatch.setattr(app, "logger", logger)
+
+    monkeypatch.setattr(app, "_STDOUT_TTY", True)
+    monkeypatch.setattr(app, "_STDERR_TTY", True)
+    app.log_session_marker("/tmp/session.txt")
+    assert stream.getvalue() == ""
+
+    monkeypatch.setattr(app, "_STDERR_TTY", False)
+    app.log_session_marker("/tmp/session.txt")
+    monkeypatch.setattr(app, "_STDOUT_TTY", False)
+    monkeypatch.setattr(app, "_STDERR_TTY", True)
+    app.log_session_marker(None)
+    assert stream.getvalue().splitlines() == [
+        "session: /tmp/session.txt",
+        "session: not saved (--no-save)",
+    ]
+
+
+def test_the_marker_outranks_the_filename_for_a_default_named_session(tmp_path):
+    path = write(tmp_path, "2026-09-04T10-00-00", [event("10:10:20", "JA", 1, CLEAN)])
+    session = sr.read_session(path)
+    before_marker = "backlog peak: q=0.25s drop=1"
+    marker = f"session: {path}"
+    after_marker = "backlog peak: q=0.50s drop=2"
+    events = read_log(
+        tmp_path,
+        [
+            log_event("10:05:00", before_marker),
+            log_event("10:10:00", marker),
+            log_event("10:10:05", after_marker),
+        ],
+    )
+    unclaimed = sr.attach_logs([session], events)
+
+    assert [e.body for e in unclaimed] == [before_marker]
+    assert [e.body for e in session.events] == [marker, after_marker]

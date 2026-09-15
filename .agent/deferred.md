@@ -71,21 +71,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    input does not close this row. `TRANSLATOR_INSTRUCTIONS` pins the leg
    Japanese→English and declares every turn "one block of transcribed Japanese speech", so the EN→JA
    direction needs its own instructions and its own degrade story.
-4. **Attribute drops that precede the first caption.** `attach_logs` gives a session the wall clock
-   from `Session.start` onward, and `Session.start` is the transcript FILENAME — which `-o PATH`
-   replaces with a free name, falling back to the earliest caption. So under `-o PATH` every log
-   event before the first caption is unclaimed and never reaches `attribute_drops`, which is exactly
-   the startup window where a drop has no bracketing caption to be attributed to. The default
-   timestamped name covers it, so the shipped evidence path (`live-stt 2> stt.log`) is unaffected;
-   `-o PATH` sessions silently lose that one window, and the `unclaimed` count is the only tell.
-   A one-session tree could extend ownership backwards to the log's first line, but ownership is
-   bounded by start times precisely because runs are sequential, so the rule has to stay safe for a
-   log holding several sessions. **Accept:** a `-o PATH` session whose log carries a
-   `caption dropped (…)` line and a `backlog peak:` drop increase BEFORE its first caption attributes
-   that increase to the screened caption, locked by a test proven red against today's code, with the
-   multi-session case locked too — an event before the first caption of session 2 must not land on
-   session 1.
-5. **Price the EN lag behind every JA line.** The one live session (26 min, 143 captions, 143 of 143
+4. **Price the EN lag behind every JA line.** The one live session (26 min, 143 captions, 143 of 143
    translated) delivered `EN n:` at **p50 2 s, p90 4 s, max 11 s** behind its `JA n:`, against an
    `Intent` line that asks for about a second. `Intent` is the user's ⇒ record the gap, never
    re-label the ask. **Queueing is REFUTED for the MEDIAN and only for it**: 130 of the 143 captions
@@ -102,7 +88,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **User half (L-004):** a second live session's lag distribution, since one sample cannot separate
    a turn-latency level from that session. The row closes on the bench plus a written statement of
    what the live half still owes.
-6. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+5. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.

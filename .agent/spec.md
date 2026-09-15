@@ -110,9 +110,9 @@ Queue → `.agent/deferred.md`, rank = funding order, acceptance written at defe
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** Two-way translation (JA↔EN), research first · **4** Attribute drops that precede the first
-caption · **5** Price the EN lag behind every JA line · **6** M10 candidate-screen remainder. Row 6
-sits there because its acceptance is a re-open condition, not work.
+**3** Two-way translation (JA↔EN), research first · **4** Price the EN lag behind every JA line ·
+**5** M10 candidate-screen remainder. Row 5 sits there because its acceptance is a re-open
+condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

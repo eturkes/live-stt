@@ -373,7 +373,10 @@ clips against a 1 s update cadence, with the trim rule capping the buffer at 11.
   `session_report.py`'s `attribute_drops` places every `backlog peak:` drop increase against the
   captions bracketing it, the publication gap between them, and each `caption dropped (…)` line
   inside that gap with the defect it named, and the peak log's pair gate (L-006 above) lets
-  `2> stt.log` record that timeline without spending the status line. What is still missing is a live
+  `2> stt.log` record that timeline without spending the status line. That same gate carries the
+  run's own `session: <path>` marker, which is what places an increase that precedes the first
+  caption: a log without it starts an `-o PATH` session at its first caption and drops the whole
+  startup window. What is still missing is a live
   session reproducing a nonzero `drop=` with the log kept: `.agent/deferred.md` → *Explain the live
   audio drops*.
 

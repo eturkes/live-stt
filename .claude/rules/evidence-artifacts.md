@@ -109,9 +109,14 @@ neither, because they replay committed traces — a fresh clone runs them in und
   before anything is derived: re-running the shipped screen is the point, and an `en` session read
   under the default reported a latin screen the live run never applied. The drop split is derived
   from `caption_defect`'s own verdict (combined − repetition) rather than restating the latin rule,
-  which is how it follows that flag. Two rules the live corpus forced: **a session owns log time
+  which is how it follows that flag. Three rules the live corpus forced: **a session owns log time
   from its own start until the next session starts**, never to its last caption, because
-  `codex app-server exited` fires after the final caption by construction; and **once the leg is
+  `codex app-server exited` fires after the final caption by construction; **the run stamps that
+  start itself** — `live_stt.log_session_marker` logs `session: <path>` under L-006's pair gate, so
+  a marked log opens the window at the real process start instead of at the first caption, which is
+  what `-o PATH` sessions lost (a free name carries no time), and a marker naming a transcript the
+  report was not given owns a window with NO session, keeping `--no-save` events off the run before
+  it; and **once the leg is
   down, `disabled` outranks the text screen**, since a screen verdict behind a degrade is a
   counterfactual and rides `screened_now` instead of explaining the loss. Over the six saved
   sessions: 1073 captions, 1001 translated, 72 without EN; unit-bound sweep 26 caught at 6-8, 27 at

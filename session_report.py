@@ -45,6 +45,8 @@ _BLOCK_FAIL = re.compile(r"^translation failed \((.*)\); JA-only for this block$
 _DISABLED = re.compile(r"^(?:translation disabled: )?(.*?); JA-only for the rest of the session$")
 _RESTORED = re.compile(r"^translation restored: (.*)$")
 _PEAK = re.compile(r"^backlog peak:(.*)$")
+# `session: <transcript path>`, the run's own start, or `not saved (--no-save)`.
+_SESSION = re.compile(r"^session: (.*)$")
 # `caption dropped (<defect>): <=24 chars>…`. Non-greedy, so the split lands on
 # the FIRST `): ` -- a defect string may carry a bare `)` and a caption may carry
 # the whole separator, and only this anchor survives both.
@@ -80,6 +82,7 @@ class Session:
     en: dict[int, Caption] = field(default_factory=dict)
     notes: list[tuple[datetime, str]] = field(default_factory=list)
     events: list[LogEvent] = field(default_factory=list)
+    marker_start: datetime | None = None  # `session:` in the log, set by attach_logs
 
     @property
     def name(self) -> str:
@@ -87,12 +90,17 @@ class Session:
 
     @property
     def start(self) -> datetime | None:
-        """When the run began -- the filename, which predates the first caption.
+        """When the run began -- its own log marker, else the filename.
 
-        A transcript is named for its start time, so it covers the startup window
-        where a degrade can already fire. `-o PATH` names the file freely, so fall
-        back to the earliest line.
+        `live_stt` logs `session: <path>` at startup whenever stderr is redirected,
+        and that is the only exact answer. Without it the filename still covers the
+        startup window where a degrade can already fire, because a transcript is
+        named for its start time -- but `-o PATH` names the file freely, so an
+        unmarked log falls back to the earliest line and understates the start by
+        exactly that window.
         """
+        if self.marker_start:
+            return self.marker_start
         try:
             return datetime.strptime(self.name.removesuffix(".txt"), "%Y-%m-%dT%H-%M-%S")
         except ValueError:
@@ -140,8 +148,27 @@ def attach_logs(sessions: list[Session], events: list[LogEvent]) -> list[LogEven
     loses exactly the events that matter most: `codex app-server exited` fires
     after the final caption by construction, and one live session's whole cause
     of death sat 1 s past the end of its own span.
+
+    A `session: <path>` marker names the run that wrote it, so a marked log opens
+    the window at the real process start rather than at the first caption -- the
+    startup drops `-o PATH` sessions lost. A marker naming a transcript this
+    report was not given -- `--no-save`, or a file the user did not pass -- opens
+    a window owned by NO session, so its events stay unclaimed instead of landing
+    on the run before it.
     """
-    started = sorted(((s.start, s) for s in sessions if s.start), key=lambda p: p[0])
+    by_name = {s.name: s for s in sessions}
+    marked: list[tuple[datetime, Session | None]] = []
+    for e in events:
+        if m := _SESSION.match(e.body):
+            owner = by_name.get(m.group(1).rsplit("/", 1)[-1])
+            if owner:
+                owner.marker_start = e.at
+            marked.append((e.at, owner))
+    claimed = {id(s) for _, s in marked if s}
+    started = sorted(
+        marked + [(s.start, s) for s in sessions if s.start and id(s) not in claimed],
+        key=lambda p: p[0],
+    )
     unclaimed = []
     for e in events:
         owner = None
@@ -247,11 +274,11 @@ def attribute_drops(s: Session) -> list[dict]:
     line. Separating the repetition arm from the latin arm is the whole point:
     only the first costs more than real time.
 
-    Coverage limit: a drop BEFORE the first caption is attributable only when the
-    transcript is named for its start time, because `attach_logs` gives a session
-    the wall clock from `Session.start` and `-o PATH` makes that the first caption
-    instead. Under `-o PATH` those events stay unclaimed and never reach this
-    function (`.agent/deferred.md` → *Attribute drops that precede the first caption*).
+    A drop BEFORE the first caption reaches this function whenever the log carries
+    the run's own `session: <path>` marker, which is every capture a current
+    live-stt writes. Coverage limit: a log predating that marker still starts the
+    session at its filename, so under `-o PATH` -- a free name, no time in it --
+    those events stay unclaimed there.
     """
     peaks = [(e.at, m.group(1)) for e in s.events if (m := _PEAK.match(e.body))]
     screened = [
