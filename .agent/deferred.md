@@ -85,7 +85,24 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    that increase to the screened caption, locked by a test proven red against today's code, with the
    multi-session case locked too — an event before the first caption of session 2 must not land on
    session 1.
-5. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+5. **Price the EN lag behind every JA line.** The one live session (26 min, 143 captions, 143 of 143
+   translated) delivered `EN n:` at **p50 2 s, p90 4 s, max 11 s** behind its `JA n:`, against an
+   `Intent` line that asks for about a second. `Intent` is the user's ⇒ record the gap, never
+   re-label the ask. **Queueing is REFUTED for the MEDIAN and only for it**: 130 of the 143 captions
+   were emitted with no earlier EN outstanding and carry that same p50 2 s, while the warm-thread
+   bench median is 1.38 s general / 1.71 s clinical (`translation-leg.md`) ⇒ the ~0.6 s median gap
+   belongs to the TURN, not the backlog. The tail is unexplained: the max-lag caption did have one
+   ahead of it, and the slowest turn with nothing ahead still took 7 s. **Accept, agent-side half:**
+   a bench through the real `codex app-server` under L-026's rules — fresh thread per measured turn,
+   a real-input canary behind every risky one, configs sequential, repetitions interleaved — pricing
+   the SHIPPED turn against a bare thread over one input set, one cumulative arm per candidate, so
+   each of the `developerInstructions` + `translator_brief` payload, a `serviceTier` echo that did
+   not land, thread age across a `TRANSLATE_ROTATE_TURNS` boundary, and the emit path between
+   `turn/completed` and `emit_line` is ATTRIBUTED or REFUTED by a paired median rather than assumed.
+   **User half (L-004):** a second live session's lag distribution, since one sample cannot separate
+   a turn-latency level from that session. The row closes on the bench plus a written statement of
+   what the live half still owes.
+6. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.

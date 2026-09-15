@@ -136,7 +136,9 @@ The leg's only mic-side evidence, and what it does and does not settle. 143 capt
   different question and stays open: the max-lag caption did have one ahead of it, while the slowest
   turn with nothing ahead still took 7 s. Against a warm-thread bench median of 1.38 s general /
   1.71 s clinical, the median gap belongs to the turn rather than the backlog, and the tail is
-  unexplained.
+  unexplained. Both halves are queued: `.agent/deferred.md` → *Price the EN lag behind every JA
+  line*, whose agent-side arm prices the shipped turn against a bare thread and whose tail arm needs
+  a second live session (L-004).
 - **The rotation tax did not surface.** 4 turns ran ≥6 s and **none sat on a 100-turn boundary**, the
   session crossing exactly one (turn 101). `session_report.py` tags the boundary rather than
   asserting it, since a transcript cannot separate rotation from an ordinary slow turn — so this is
