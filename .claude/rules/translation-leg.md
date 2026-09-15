@@ -151,15 +151,61 @@ The leg's only mic-side evidence, and what it does and does not settle. 143 capt
   different question and stays open: the max-lag caption did have one ahead of it, while the slowest
   turn with nothing ahead still took 7 s. Against a warm-thread bench median of 1.38 s general /
   1.71 s clinical, the median gap belongs to the turn rather than the backlog, and the tail is
-  unexplained. Both halves are queued: `.agent/deferred.md` → *Price the EN lag behind every JA
-  line*, whose agent-side arm prices the shipped turn against a bare thread and whose tail arm needs
-  a second live session (L-004).
+  unexplained. The agent-side arm is now priced — next section — while the tail arm still needs a
+  second live session (L-004): `.agent/deferred.md` → *Price the EN lag behind every JA line*.
 - **The rotation tax did not surface.** 4 turns ran ≥6 s and **none sat on a 100-turn boundary**, the
   session crossing exactly one (turn 101). `session_report.py` tags the boundary rather than
   asserting it, since a transcript cannot separate rotation from an ordinary slow turn — so this is
   the absence of a visible bump at n=101, not proof the rotation was free.
 - What it does NOT cover: recovery. Neither arm fired, so `_respawn` and `_probe` keep their L-004
   debt and their bench numbers (4.8 s / 5.5 s) stay the only evidence.
+
+## What the EN lag is made of — 300 real turns through the app-server
+
+The agent-side half of that queue row, run under L-026: 12 committed captions from
+`tests/caption_trace.json` × 5 reps × 5 cumulative arms, arms sequential, reps interleaved, a fresh
+thread per measured turn for A0-A3, a real-input canary after every measured turn, paired bootstrap
+95 % CIs. 300 valid turns + 300 canaries, 0 auth or quota gates, 1 invalid pair — an A2 measured turn
+timed out, so its canary never ran; it was drained with the real `_abort_turn()`, the server
+restarted, A4 re-aged and the pair rerun. Raw `.scratch/spike-2-turns.json`; p90 is linear-
+interpolated.
+
+| arm | what it adds | median | p90 | max |
+| --- | --- | --- | --- | --- |
+| A0 | bare thread, model only | 6.081 s | 9.235 s | 11.597 s |
+| A1 | + `developerInstructions` = `TRANSLATOR_INSTRUCTIONS` | 4.649 s | 8.255 s | 12.318 s |
+| A2 | + the glossary brief — **the shipped payload** | 4.472 s | 7.770 s | 12.471 s |
+| A3 | + `serviceTier` — **the shipped request**, fresh thread | 2.998 s | 4.825 s | 9.122 s |
+| A4 | A3 on a thread past `TRANSLATE_ROTATE_TURNS` (turns 101-191) | **1.549 s** | **2.218 s** | 2.991 s |
+
+- **Every candidate the row suspected came back NEGATIVE: the shipped configuration is FASTER than
+  the bare thread, not slower.** Paired medians, 95 % bootstrap CIs, all excluding zero — the
+  instructions + brief payload **−1.169 s** `[-1.696, -0.598]`, the `serviceTier` request
+  **−1.246 s** `[-2.320, -0.430]`, thread age across the rotation boundary **−1.455 s**
+  `[-1.827, -1.287]`. Read that last one as its positive twin: **a fresh rotation-boundary turn costs
+  +1.455 s**, and it is the only shipped term here that could be removed. Inside the payload the
+  split is `A1 − A0` = −0.891 s `[-1.616, -0.259]` for the base instructions against `A2 − A1` =
+  −0.134 s `[-1.010, +0.240]` for this 94-character brief ⇒ the instructions are attributed, the
+  brief increment is refuted on this input, and the prespecified bundled verdict is what P1 reports.
+- **`serviceTier` DOES land — that suspicion is retired.** `thread/start` echoed the field on every
+  thread opened: `default` for A0-A2, `priority` for A3-A4, matching what each arm requested.
+- **The emit path is REFUTED as a lag term by six orders of magnitude.** `turn/completed` read →
+  `emit_line` returns, instrumented on the real `CodexTranslator.run → _translate → _turn →
+  emit_line` including the `TranscriptFile` write + flush: p50 **5.609 µs**, p90 6.593 µs, max
+  139.631 µs over n=100. The p50 is 0.00028 % of a 2 s lag.
+- **The residual IS the bare turn, and it dwarfs every isolated term.** Subtracting the three
+  attributed deltas from the shipped medians leaves **~5.42 s** of bare model + transport — 5.414 s
+  reconstructing fresh A3, 5.419 s reconstructing aged A4, the 6 ms difference being median
+  non-additivity rather than a fifth term. No sub-factor inside it was isolated and nothing here says
+  which server-side operation owns it.
+- **What this explains about the live session, and what it does not.** A4 + emit = 1.549 s = **77 %
+  of the live p50 (2 s)**, leaving 0.451 s; **55 % of the p90 (4 s)**, leaving 1.782 s; **27 % of the
+  max (11 s)**, leaving 8.009 s. A4 is the honest comparator because the live session crossed exactly
+  one rotation over 143 captions, so at most 2 of its turns were fresh — but A4 is equally a
+  counterfactual past the shipped 100-turn rotation, which is why both rows are published. **The
+  live TAIL stays unexplained**: even crediting fresh A3's own 9.122 s max leaves 1.878 s. One bench
+  on one machine against one live session cannot separate a turn-latency level from that session, so
+  the second live distribution is still owed (L-004).
 
 ## Session context learner (D-015)
 
