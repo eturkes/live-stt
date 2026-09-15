@@ -49,6 +49,21 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   a container login does not carry over.
 - Revisit the whole choice if Luna latency or entitlement changes, if sustained quota burn on the
   shared bucket contradicts ~0 % window movement, or if a leaner instructions channel is sanctioned.
+- **Two-way (JA↔EN) rides TWO immutable direction-specific threads in the ONE app-server, never a
+  bidirectional instruction and never a second process.** The protocol makes threads independently
+  addressable: `turn/start` is keyed by `threadId`, and `thread/start` / `thread/resume` /
+  `thread/list` all live in one initialized server, so the cost of the reverse direction is
+  startup-only — one uncached ~2.7-3 s warm-up when two-way mode opens, with normal turns still
+  sequential and still in JA order. Each thread gets its own `developerInstructions`, and both get
+  the SAME canonical glossary rendered in their own direction, because splitting threads also splits
+  dialogue history. **Letting the translator infer direction from the text is REJECTED**: the source
+  language is already settled by the audio LID upstream, and a wrong whisper token yields FLUENT
+  text in the conditioned script (`asr-pipeline.md`), so a text-side re-decision is asked to recover
+  evidence the recogniser has already erased. Degrade scope follows ownership — an app-server EOF
+  disables both directions and a respawn recreates both threads, while a poisoned or stalled turn
+  replaces only its own direction's thread; on any failure the transcript stays source-only, which
+  is today's JA-only contract unchanged. No `gpt-5.6-luna` one-thread-versus-two quality A/B exists
+  anywhere, so this is a design ruling on measured protocol facts, not a measured quality win.
 
 ## Degradation contract (locked by `tests/test_translator.py`)
 

@@ -95,8 +95,11 @@ Detail → `.claude/rules/`, which each `D-###` names.
   recogniser is pinned to Japanese; the repetition screen still runs. `en` is transcribe-only:
   `TRANSLATOR_INSTRUCTIONS` pins the leg Japanese→English and declares every turn "one block
   of transcribed Japanese speech", so English input has no defined behaviour there.
-  **Two-way translation is queued, research first, and live-stt must stay usable throughout it**
-  (user ruling): every step lands behind a default-off flag, JA→EN green at every commit.
+  **Two-way translation is queued, its research CLOSED, and live-stt must stay usable throughout it**
+  (user ruling): every step lands behind `--two-way`, default OFF, JA→EN green at every commit. The
+  architecture the research picked is law — ONE resident whisper pipeline handed an EXPLICIT language
+  token per utterance by a standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), the settled
+  label also selecting one of two immutable direction-specific threads (`translation-leg.md`).
 - Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
@@ -110,7 +113,7 @@ Queue → `.agent/deferred.md`, rank = funding order, acceptance written at defe
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** Two-way translation (JA↔EN), research first · **4** Price the EN lag behind every JA line ·
+**3** Two-way translation (JA↔EN), implementation · **4** Price the EN lag behind every JA line ·
 **5** M10 candidate-screen remainder. Row 5 sits there because its acceptance is a re-open
 condition, not work.
 

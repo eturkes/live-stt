@@ -36,44 +36,49 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **(c)** then either the mechanism is named and reproduced as a `tests/eval_backpressure.py` arm
    proven RED against today's code and fixed green with retention CER ≤ 0.0609 re-derived, or the row
    records a refusal naming the measured headroom shortfall and what the user loses.
-3. **Two-way translation (JA↔EN), research first.** Direction chosen per utterance: Japanese in →
-   English out, English in → Japanese out. **Live-stt must stay usable throughout** (user ruling) ⇒
-   every step lands behind a default-off flag and the JA→EN path is green at every commit; with the
-   flag absent, construct only today's JA pipeline and keep passing `"<|ja|>"`. Architectures priced
-   so far: text-side routing is REJECTED as a production design — a JA-pinned decode can return
-   English as Japanese-script hallucination, so a script ratio has unobservable false negatives;
-   fresh-pipeline-per-utterance is REJECTED at ~1.00 s of setup+detect before normal decode (0.46 s
-   construct p50, 0.54 s detect); the two live candidates are ONE resident pipeline with per-call
-   autodetection on the first voiced VAC update, and TWO resident pipelines behind a cheap standalone
-   LID (VoxLingua107 ECAPA on CPU/OpenVINO the leading candidate). Budget the second pipeline at the
-   MEASURED ~2.0 GB resident RSS (2253 MB held, 225 MB after release — `asr-pipeline.md`), never at a
-   compiled-blob size on disk, which is not evidence of allocated memory. The fork is a
-   single measurement: `openvino-genai==2026.3.1.0` source copies per-call Whisper config and
-   re-detects when `language` is absent, which contradicts this repo's measured NPU language latch,
-   and measurement governs. **Accept:** a `res`/`spike` wave lands four numbers, each on a named
-   input, then WRITES the implementation row's acceptance from them; no production edit lands until
-   that row exists. (i) LATCH — one `WhisperPipeline` instance on NPU decodes the same buffer three
-   times, `language="<|ja|>"` then `"<|en|>"` then the argument omitted, in the token form
-   `live_stt.py` already passes, 3 reps. Read the pipeline's OWN reported language where the API
-   exposes it: decoded-text equality alone does not say which language was applied, only that the
-   output did not move. (ii) ENGLISH QUALITY — **this repo has no committed English audio**; every
-   corpus here is Japanese (`ja_asr.common_voice_8_0`, 「ごん狐」, `retention_probe`), so the row
-   acquires an English set under L-017 (`evidence-artifacts.md`) — FLEURS `en_us` pairs with the
-   `ja_jp` side L-028 already characterized — and scores EN-pinned against JA-pinned decode with
-   `cer.py`. **The English set is ACQUIRED** — `tests/en_clips.json`, 647 clips / 6387.900 s, index
-   `1b13a64f…` (`evidence-artifacts.md`), the Japanese manifests fingerprint-locked unchanged beside
-   it; what (ii) still owes is the scored EN arm on that input.
-   `.scratch/jfk.flac` (11 s, public domain, `curl` line in `asr-pipeline.md`) is the
-   zero-cost SMOKE check only; one clip cannot carry this number.
-   (iii) CO-RESIDENCY — peak RSS with two pipelines constructed and both compiled, against the
-   measured 2253 MB single-pipeline figure, plus per-update decode p50 while alternating between them,
-   paired per update against the single-pipeline control over `retention_probe` using Unit C's
-   interleaved method (`asr-pipeline.md`). (iv) LID, only if (i) says the latch holds — JA/EN
-   confusion matrix and abstention rate of the selected detector over that acquired English set and
-   the Japanese corpus, at the utterance durations the VAD actually produces. A number without its
-   input does not close this row. `TRANSLATOR_INSTRUCTIONS` pins the leg
-   Japanese→English and declares every turn "one block of transcribed Japanese speech", so the EN→JA
-   direction needs its own instructions and its own degrade story.
+3. **Two-way translation (JA↔EN), implementation.** Research is CLOSED and its four numbers are law.
+   An EXPLICIT language token always beats the NPU pipeline's latch, so ONE resident whisper pipeline
+   switches direction per utterance for free. A wrong token costs 41× CER on JA audio and 26× on EN
+   and never degrades gracefully ⇒ a detector that guesses under uncertainty is worse than one that
+   abstains. A second resident pipeline costs +2015 MB and +0.050 s per update and buys nothing ⇒
+   unfunded fallback. The detector is ECAPA VoxLingua107 on ONNX Runtime CPU, first decision at 2.0 s
+   of voiced buffer, 0 false routes in 1,516 two-second views at 11.74 % abstention;
+   `asr-pipeline.md` carries every threshold, rate, cost and non-measurement, and the settled label
+   also picks one of two immutable direction-specific `codex app-server` threads
+   (`translation-leg.md`). **Live-stt stays usable throughout** (user ruling) ⇒ every unit lands
+   behind `--two-way`, default OFF: with the flag absent the process constructs today's JA pipeline,
+   opens ONE thread and keeps passing `"<|ja|>"`, and JA→EN is green at every commit.
+   **Accept, four units, one commit each:**
+   **(1) the detector.** `models/lid/d2-ecapa/` acquired by the pinned command in `asr-pipeline.md`
+   with its SHA-256 verified, wrapped as a raw-PCM scorer returning label + score + margin, and the
+   three-part gate at its named thresholds — global 107-way argmax ∈ {`ja`, `en`}, score ≥0.35,
+   margin ≥0.35, never renormalized. The unit MEASURES the 2 s inference cost on this box and records
+   it, the spike having timed only 1 s and VAD-final. Locks: flag-off constructs no detector and
+   opens no ONNX session; the gate's decision table over recorded scores, including the 1 s buffer
+   that routes EN→`ja` at 0.9822 and must never be scored.
+   **(2) the schedule.** No LID call before 2.0 s of voiced buffer, a retry on each later VAC update
+   until one accepts, the accepted label FROZEN for the rest of the utterance and reset at VAD close.
+   Text decoded before acceptance renders wholly DIM and commits nothing, and an accepted label
+   differing from the token that produced that text resets the `StreamingProcessor`. An utterance
+   that never accepts — 409 of 1,926, and 93.17 % of the 410 finals shorter than 2 s — decodes and
+   translates under the HELD label (JA at startup) and is MARKED the way a degrade is marked; no
+   caption is ever withheld, because withholding a fifth of utterances breaks the standing usability
+   ruling. The row records that this hold is UNPROVEN on the corpus, which carries no bilingual
+   sequence: it beats forcing the pairwise winner only while the switch rate among abstentions stays
+   under 3.93 %. Withholding the first commit until update 2 shifts time-to-SETTLED ⇒ re-derive it
+   offline by replaying `vac_decode_trace.json` under the new commit rule, which needs no hardware.
+   **(3) the token.** The frozen label selects `"<|ja|>"`/`"<|en|>"` on every `generate()`;
+   `--source-lang` stays the manual override and pins the label outright when given. Retention
+   CER ≤ 0.0609 re-derived, this being the unit that touches decode.
+   **(4) the reverse leg.** A second immutable thread with its own EN→JA `developerInstructions` and
+   the same glossary rendered in its direction, the settled label routing each turn; app-server EOF
+   disables BOTH directions, a poisoned turn replaces only its own thread, and the transcript stays
+   source-only on failure.
+   **NOT owned by this row:** a measured `gpt-5.6-luna` one-thread-vs-two quality comparison, which
+   exists nowhere; and everything the LID spike could not measure — live-mic or known-user speech,
+   accents, room noise, overlap, code-switching inside one utterance, real third-language speech, and
+   the cost of running the CPU detector concurrently with NPU whisper. Those close with the user
+   under L-004, never here.
 4. **Price the EN lag behind every JA line.** The one live session (26 min, 143 captions, 143 of 143
    translated) delivered `EN n:` at **p50 2 s, p90 4 s, max 11 s** behind its `JA n:`, against an
    `Intent` line that asks for about a second. `Intent` is the user's ⇒ record the gap, never

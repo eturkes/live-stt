@@ -85,13 +85,39 @@ paths:
   `return_timestamps=True` markedly reduces (never eliminates) looping. Shipped
   `ASR_REPETITION_PENALTY`=1.2 costs 3 substitutions in 1,166 characters ⇒ retention CER **0.0609**
   shipped, 0.0583 penalty-free.
-- **`WhisperPipeline` LATCHES its language for the life of the instance.** `generate(language=…)`
-  persists into every later call, and an auto-detect call latches the detected language too. Neither
-  `language=None` nor `''` clears it (both raise), nor `set_generation_config()`, nor a positional
-  config. **Only a fresh pipeline re-detects**, so any per-utterance LID gate costs one construct per
-  utterance (0.46 s p50 / 0.60 s max construct + 0.54 s detect, RSS flat at 201 MB over 40). LID is
-  reliable on the NPU from 1 s of audio, but silence and −30 dB noise both detect as `en`. **Measured
-  and ruled out by the user — do not re-propose.**
+- **`WhisperPipeline` latches OMITTED language and nothing else; an EXPLICIT token always wins.**
+  That split is the whole architecture of two-way, so read both halves. `generate(language=…)`
+  persists into every later call and an auto-detect call latches what it detected, so a call that
+  OMITS `language` inherits the latch instead of re-detecting — 3 of 3 reps on JA audio through an
+  en-latched instance. No reset exists: `language=None` raises
+  `Check '!value.is_none()' failed`, `language=""` raises `Check 'lang_to_id.count(*language)'
+  failed`, a fresh `WhisperGenerationConfig` raises `ValueError: vector::reserve`,
+  `set_generation_config()` and a positional config do not clear it either. But passing
+  `"<|ja|>"` to that same en-latched instance returns correct Japanese at **0.983 s against a
+  0.971 s cold control** ⇒ switching an existing pipeline explicitly is free, and the design that
+  follows is ONE resident pipeline plus a standalone LID choosing the token per utterance.
+  Evidence `.scratch/latch-probe.json`, `.scratch/latch-reset.log`.
+  What is refused is **whisper's OWN detector as the gate**: it needs a fresh pipeline to re-detect
+  (0.46 s p50 / 0.60 s max construct + 0.54 s detect, RSS flat at 201 MB over 40), it is reliable
+  from 1 s of real audio, and silence and −30 dB noise both detect as `en`. **Measured and ruled out
+  by the user — do not re-propose it, and do not read that ruling as covering a standalone detector
+  that hands whisper an explicit token.**
+- **A wrong language token is CATASTROPHIC in both directions and graceful in neither.** 150 FLEURS
+  clips per language on the shipped NPU whisper, both tokens on the same audio, scored with `cer.py`
+  (`.scratch/en_quality_probe.py`, result `.scratch/en-quality.json`):
+
+  | audio | `<\|ja\|>` CER | `<\|en\|>` CER | ref chars | decode p50 |
+  | --- | --- | --- | --- | --- |
+  | JA (`fleurs-ja-`) | **0.0502** | **2.0552** | 7,593 | 0.92 / 0.78 s |
+  | EN (`fleurs-en-`) | **0.6710** | **0.0263** | 15,390 | 0.85 / 0.82 s |
+
+  Two things follow. **English is the recogniser's better language** — 0.0263 against 0.0502, so
+  nothing about the EN direction is blocked by decode quality. And a misroute costs **41×** on JA
+  audio and **26×** on EN audio, the JA row past 1.0 because a wrong token hallucinates insertions
+  rather than degrading ⇒ an LID that guesses under uncertainty is worse than one that abstains and
+  holds the previous token. The JA row reproduced to the digit across two independent runs, which is
+  the determinism this table rests on; decode p50 moved ~20 % between them, the known machine-state
+  band.
 - `ASRDecodedResults` fields: `chunks, language, perf_metrics, scores, texts, words`. There is no
   `og.WhisperDecodedResults`.
 - **The 0.35-0.42 s fixed decode term is structural in genai 2026.3.1 — three levers are closed at
@@ -126,6 +152,64 @@ paths:
   two pipelines on this one NPU measured 0.564 → 1.218 s per update before segfaulting.
 - A resident whisper large-v3-turbo int8 pipeline costs **~2.0 GB RSS** (2253 MB held, 225 MB after
   release), which is what a design holding two of them at once has to budget.
+- **Two resident pipelines cost +2015 MB and +0.050 s per update, and buy nothing the explicit token
+  does not.** Measured on this machine: VmRSS 2237 → 4252 MB and VmHWM 3870 → 5885 MB when the
+  second pipeline is constructed and compiled, and alternating decodes between them costs a paired
+  median **+0.050 s per update** against a single-pipeline control, ABBA drift-cancelled
+  (`.scratch/coresidency_probe2.py`, `.scratch/coresidency2.json`). Run 1's +0.224 s figure was not
+  drift-cancelled and is **RETRACTED — never quote it.** Since one pipeline switches language
+  explicitly for free, the second copy is an unfunded fallback that only an explicit-switch
+  regression would justify.
+- **A standalone spoken LID settles that token, and its operating point is measured: ECAPA
+  VoxLingua107 on ONNX Runtime CPU, first decision at 2.0 s.** 21M params / 86.657 MB, Apache-2.0,
+  an end-to-end raw-PCM ONNX graph with FBANK + per-utterance CMVN folded in, so it shares nothing
+  with the NPU recogniser:
+
+  ```sh
+  mkdir -p models/lid/d2-ecapa
+  base=https://huggingface.co/crash-sv/scribe-ecapa-voxlingua107/resolve/13a135951a7352386984030d35531563f3473aaa
+  for f in voxlingua107.onnx lang_map.json manifest.json; do
+    curl --fail --location --retry 3 "$base/$f?download=true" -o "models/lid/d2-ecapa/$f"
+  done  # voxlingua107.onnx sha256 e2c3c3da39b99e3f9196d15fceef6a65f702320038bbc08813a4f21280255ce8
+  ```
+
+  **The decision rule has three parts and no fourth.** The global 107-way argmax must itself be `ja`
+  or `en`; its score must be ≥0.35; the absolute `ja`-vs-`en` margin must be ≥0.35. Never
+  renormalize over `{ja, en}` — the global argmax IS the non-target rejection, and it rejected 25 of
+  25 synthetic silence, noise and hum probes. An absolute cap on the best non-target score changes
+  no cell after that argmax and is deliberately not in the gate.
+  **Score nothing before 2.0 s of voiced buffer.** At that gate, over the 1,030 JA + 896 EN
+  production-VAD buffers cut from the two committed FLEURS corpora: **0 false routes in 1,516
+  two-second views**, 1,338 correct, 178 abstentions (11.74 %); held out on the hash-parity split
+  the thresholds never saw, 690/776 correct, 0 false, 86 abstain. **1 s is refused and no threshold
+  rescues it** — one EN buffer routes to `ja` carrying score 0.9822 and margin 0.9822, and 1 s
+  accepts only 948 of 1,925 at all. Retry each later prefix that exists, stop at the first
+  acceptance: first-correct lands at 2 s for 1,338 utterances, 3 s for 120, 5 s for 20, 8 s for 2,
+  VAD-final for 37, and **409 of 1,926 never accept**. Label flips between accepted prefixes of one
+  utterance are **0** once 1 s is suppressed (0/4,528 adjacent pairs, 0/4,535 across a held
+  abstention) ⇒ freezing the first accepted label costs nothing measurable here.
+  **Abstention is the common case on short speech and its fallback is UNPROVEN.** 410 of 1,926
+  VAD-final buffers are shorter than 2 s and the gate accepts only 28 of them, abstaining on 93.17 %,
+  so "hold the last accepted label, JA at startup" carries roughly a fifth of utterances. This
+  corpus cannot score that rule: it holds no bilingual sequence and therefore no switch rate.
+  Holding beats a coin guess only where language persistence exceeds 50 %, and beats forcing the
+  pairwise winner only where the switch rate among abstentions stays under **3.93 %** — forcing
+  those 178 costs 7 false routes.
+  **Cost 27.415 ms p50 at 1 s, 137.559 ms p50 at VAD-final** (p90 29.257 / 239.959) on 4 intra-op /
+  1 inter-op threads, 184 MB RSS at 1 s and 434 MB on the longest 22.384 s buffer.
+  **The runtime is ONNX Runtime `CPUExecutionProvider`, not OpenVINO**, against this repo's usual
+  preference: the same graph under OpenVINO CPU retains shape-specialized state to a 2,418 MB peak,
+  and exact `GPU.0` is 7.5 ms at a fixed 1 s but recompiles variable VAD-final shapes into a 1.68 s
+  p50. Both rejected alternates, so neither is re-priced: NVIDIA AmberNet (29M) matches the accuracy
+  but ships under NGC terms rather than an OSI licence and exports only a feature-input core, so
+  using it means porting NeMo's PCM frontend first; Silero-95 (4.7M, MIT, deprecated) reaches zero
+  false routes only by abstaining on 1,047 of 1,516.
+  **Not measured — the implementation must assume none of it:** no live-mic or known-user speech, no
+  accents, room noise or overlap, no code-switching inside one utterance, no real third-language
+  speech, no cost of running this CPU detector concurrently with NPU whisper, and no timing at 2 s
+  itself, since only 1 s and VAD-final were timed. The held-out zero is one sample result, never a
+  zero-error guarantee. Ledger `.scratch/spike-1-lid.md`, operating points
+  `.scratch/spike-3-operating-points.json`.
 - **Repetition-loop cause + free repro.** The recogniser is pinned to Japanese, so audio it cannot
   account for is emitted as Japanese tokens until `max_length`=448 — the 444-char live captions. The
   trigger is neither laughter nor room tone: synthetic non-speech (digital silence, −60 dB noise,
