@@ -256,7 +256,8 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   independent samples of a sampled translator and they learn different renderings (4 against 3).
 - **`rotations` counts GLOSSARY rotations only** — `eval_en_pairing.py` sets `rotated` from
   `translator._brief != brief`. Production ALSO rotates on the turn cadence, so a 215-caption session
-  opens **16** threads, not 14. The cadence arm is deliberately untouched and locked by
+  rotates **16** times (14 glossary + 2 cadence) and opens 17 threads counting `start()`'s own. The
+  cadence arm is deliberately untouched and locked by
   `test_the_turn_cadence_rotation_is_untouched`; read the row's "below 15" against the glossary
   metric its own baseline of 39 was measured on.
 - **The row's turn-p90-under-3.5 s half is REFUSED.** Excluding every rotation, steady p90 measures
@@ -264,13 +265,25 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   remains is codex turn latency rather than rotation. **This is ONE sample of sampled model output**
   (`evidence-artifacts.md`) ⇒ read it as evidence that this lever cannot reach the bar, never as a
   rate: a second run could place the floor either side of 3.5 s, and only a lever acting on STEADY
-  turns (brief size, effort, serviceTier) can move it. **Glossary staleness — the cost the row's
-  refusal clause requires naming — is unchanged**: every content change still rotates, so the thread
-  never carries a stale glossary. What was removed is re-sending an identical one.
-- Counter-cost, honest: surviving rotations are each dearer (p50 3.900 → **4.695 s**, max 5.600),
-  because one now batches several glossary deltas where recency spread them. Summed it still pays —
-  rotation time 160.4 → **64.7 s**, wall 568.5 → 542.3 s, and the 25 turns that stopped rotating
-  moved into steady (176 → 201 turns, 408.2 → 477.6 s).
+  turns (brief size, effort, serviceTier) can move it. **The refusal's cost, named:** suppressing
+  content rotations any further would delay an add, a rendering or a drop from reaching the model
+  until the next cadence rotation. Today's design pays a rotation for every content change and so
+  never briefs a stale glossary; what was removed is re-sending an identical one.
+- **The row's rendering-consistency half is UNPROVEN, not passed.** Its acceptance cited
+  "`eval_en_pairing.py` distinct spellings 1/1/1" and that metric does not exist in the evaluator.
+  `SessionContext` stores ONE rendering per term by construction, so any check reading `renderings`
+  is tautological: mutating the raw EN after pairing (`Gon` → `Gawn`/`Ghone`) leaves both the learned
+  map and the M12.5 verdict green. Real consistency is a property of the RAW EN stream — the figure
+  `translation-leg.md` quotes comes from counting distinct spellings of one recurring proper noun
+  across a session's English. Carried forward as its own queue row; never re-cite the learned map as
+  evidence of it.
+- Counter-cost, DESCRIPTIVE not causal: the new run's surviving rotations are dearer (p50 3.900 →
+  **4.695 s**, max 5.600) and its totals read rotation time 160.4 → **64.7 s**, wall 568.8 →
+  542.3 s. Those are sample totals of two independent runs, never attributable savings — the runs
+  share their JA but only **46 of 215** EN outputs, 26 old rotations disappear while 1 new one
+  appears rather than the same turns moving, and replayed over ONE fixed trace the semantic changes
+  fall on the **same 13 turns** under both orderings. So no batching effect exists to explain the
+  per-rotation rise; it is run-to-run variation in a sampled model.
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 

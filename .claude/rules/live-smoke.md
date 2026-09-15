@@ -50,7 +50,10 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    it was lost in 4 of 7 saved sessions, because Ctrl+C killed the app-server along with the terminal's
    process group before the drain could use it (`translation-leg.md`). A missing final `EN`, or a
    `-- translation disabled: codex app-server exited` marker at the foot of the transcript, is that
-   regression.
+   regression. **M14's `start_new_session=True` fix is VALIDATED on a real mic** over a 26-minute
+   143-caption session: `JA 143` then `EN 143` six seconds later, drain order JA 142 → JA 143 →
+   EN 142 → EN 143, zero `-- translation` markers, `Stopped.`, no hang, process fully exited. That
+   retires this item's L-004 debt; items 1, 3, 4, 5, 7 and 8 stay outstanding.
 7. **Ctrl+C mid-decode** — `uv run live-stt --engine parakeet`, speak continuously for >20 s, pause, then
    Ctrl+C while the slower long-block decode runs. Pass: that block's `JA n:` still lands, its `EN n:`
    follows if Codex is up, then `Stopped.` with no hang — VAD feeder and sequential decoder both drain
