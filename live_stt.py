@@ -926,14 +926,23 @@ class SessionContext:
         A term carries its learned English spelling once observe_en has one, because
         the list alone cannot hold a name to one spelling: it says which names matter,
         not how to write them.
+
+        Ordered by CONTENT, never by recency, though terms() is ordered by both:
+        _translate compares this string against the live thread's own brief, so a
+        reorder of an unchanged glossary opened a fresh codex thread on 26 of the
+        39 rotations over the 215-caption trace, at 3.900 s against 2.085 s steady.
+        Recency still orders terms() itself, where it spends the recogniser's
+        bounded prompt budget and drives eviction.
         """
         lines = []
         if self.seed:
             lines.append(f"Topic of this session: {self.seed}")
-        if self.terms():
-            listed = [
-                f"{t} = {self.renderings[t]}" if t in self.renderings else t for t in self.terms()
-            ]
+        learned = sorted(self._learned, key=lambda t: (-len(t), t))
+        listed = [
+            f"{t} = {self.renderings[t]}" if t in self.renderings else t
+            for t in (*self.seed_terms, *learned)
+        ]
+        if listed:
             lines.append("Terms recurring in this session: " + ", ".join(listed))
         if not lines:
             return ""

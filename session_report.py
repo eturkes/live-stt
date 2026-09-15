@@ -368,8 +368,18 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                         "max": max(sl),
                     }
                 ),
+                # _translate tests `_turns % TRANSLATE_ROTATE_TURNS` BEFORE the
+                # increment, so the rotation is paid by the 101st turn, not the
+                # 100th: tagging n % 100 made this read the wrong caption and
+                # "0 of 75 slow turns at a boundary" (f398818) constrained nothing.
+                # Limit: n is a caption number, and a declined caption never became
+                # a turn, so the two drift apart by the session's decline count.
                 "slow_turns": [
-                    {"n": n, "lag_s": x, "at_rotation": n % app.TRANSLATE_ROTATE_TURNS == 0}
+                    {
+                        "n": n,
+                        "lag_s": x,
+                        "at_rotation": n > 1 and (n - 1) % app.TRANSLATE_ROTATE_TURNS == 0,
+                    }
                     for n, x in lags(s)
                     if x >= 6
                 ],

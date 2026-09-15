@@ -186,3 +186,18 @@ def test_repeat_span_at_restores_the_shipped_bound(monkeypatch):
     with pytest.raises(RuntimeError):
         sr.repeat_span_at("ねこ", 2)
     assert sr.app.CAPTION_REPEAT_UNIT_CHARS == before
+
+
+def test_the_rotation_boundary_tag_names_the_turn_that_pays_it(tmp_path):
+    """`_translate` tests the cadence BEFORE incrementing `_turns` ⇒ the 101st turn rotates.
+
+    Tagging `n % 100` read the 100th, which is why f398818's "0 of 75 slow turns
+    at a boundary" could not constrain the tax it was quoted against.
+    """
+    lines = []
+    for n, at in ((100, "10:00"), (101, "10:01")):
+        lines.append(event(f"{at}:00", "JA", n, CLEAN))
+        lines.append(event(f"{at}:07", "EN", n, "Hello"))
+    session = report([write(tmp_path, "s", lines)])["sessions"][0]
+    tagged = {t["n"]: t["at_rotation"] for t in session["slow_turns"]}
+    assert tagged == {100: False, 101: True}
