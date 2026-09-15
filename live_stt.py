@@ -83,6 +83,11 @@ OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
 # accepted and then SILENTLY IGNORED on this build -- sizes 2..8 all return the
 # baseline text -- so this is the only repetition knob that reaches the NPU.
 ASR_REPETITION_PENALTY = 1.2
+# Source language. Whisper large-v3-turbo is multilingual; the pin exists because
+# this is a Japanese captioner, and the caption screen below is pinned with it.
+# Annotated `str`, not inferred: --source-lang rebinds it, and a bare literal
+# narrows to Literal["ja"], which makes pyright drop every non-ja branch unread.
+ASR_LANGUAGE: str = "ja"
 # VAC (silero as a controller around the streaming policy). Waiting for a VAD
 # segment to close bounds first-caption latency by the utterance length, which on
 # pause-free speech measured 15.5 s median / 36.6 s max; re-decoding the utterance
@@ -397,7 +402,7 @@ class WhisperEngine:
             # declares the narrower Sequence[SupportsFloat]. Converting for real
             # would copy every sample of every decode into a Python list.
             cast("Sequence[SupportsFloat]", samples),
-            language="<|ja|>",
+            language=f"<|{ASR_LANGUAGE}|>",
             task="transcribe",
             return_timestamps=timestamps,
             **keywords,
@@ -978,7 +983,8 @@ def caption_defect(text: str) -> str | None:
     Both defects are the same failure wearing two faces: the recognizer is pinned
     to Japanese, so audio it cannot account for still comes back as Japanese
     tokens. Sometimes that is a loop, sometimes it is the English that was
-    actually spoken, and neither belongs in a Japanese transcript.
+    actually spoken, and neither belongs in a Japanese transcript. The latin rule
+    is that pin, so --source-lang en retires it while the loop rule stays.
     """
     span = repeat_span(text)
     if span >= CAPTION_REPEAT_MAX_CHARS:
@@ -988,7 +994,7 @@ def caption_defect(text: str) -> str | None:
     # caption (320) counts on neither side and stays.
     latin = len(_LATIN_RUN.findall(text))
     japanese = len(_JAPANESE_RUN.findall(text))
-    if latin > CAPTION_LATIN_RATIO * japanese:
+    if ASR_LANGUAGE == "ja" and latin > CAPTION_LATIN_RATIO * japanese:
         return f"{latin} latin letters against {japanese} japanese characters"
     return None
 
@@ -2085,7 +2091,13 @@ async def run_session(args):
         print(f"Context: {context.seed}")
 
     translator = None
-    if not args.no_translate:
+    # TRANSLATOR_INSTRUCTIONS pins the leg to Japanese->English and declares every
+    # turn "one block of transcribed Japanese speech", so English input has no
+    # defined behaviour there. --source-lang en therefore implies transcribe-only
+    # rather than trusting the operator to add --no-translate.
+    if ASR_LANGUAGE != "ja":
+        print(f"Translation: disabled (--source-lang {ASR_LANGUAGE} is transcribe-only)")
+    elif not args.no_translate:
         t = CodexTranslator(context, output_file)
         if await t.start():
             translator = t
@@ -2205,6 +2217,16 @@ def main():
         help="Transcribe only (skip the Codex translation leg).",
     )
     parser.add_argument(
+        "--source-lang",
+        choices=("ja", "en"),
+        default=ASR_LANGUAGE,
+        help=(
+            "Spoken language (default: ja). en transcribes English directly, "
+            "retires the Japanese-only caption screen, and is transcribe-only: "
+            "the translation leg is Japanese-to-English."
+        ),
+    )
+    parser.add_argument(
         "--context",
         type=str,
         default="",
@@ -2254,6 +2276,9 @@ def main():
 
 
 def _run_cli(args):
+    global ASR_LANGUAGE
+
+    ASR_LANGUAGE = args.source_lang
     _configure_logging()
 
     if args.list_devices:

@@ -14,6 +14,10 @@ translation turn, `EN n:` ~1 s later; every run saves a transcript.
   performant as possible.
 - Bar = performance + correctness for one known user on one known machine. Skip robustness and
   flexibility aimed at unpredictable users or use-cases.
+- **Expanding to two-way**: translate Japanese→English AND English→Japanese, direction chosen per
+  utterance. It arrives incrementally and **the shipped one-way tool stays usable the whole time** —
+  I need live-stt working while that feature is built. `--source-lang en` is today's transcribe-only
+  half of it.
 
 ## Artifacts
 
@@ -79,7 +83,14 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
   (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
   JA/EN drain remain in the session, validated by regression tests and the user-run live check.
-- Japanese-only source. Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
+- Source language is a flag, Japanese by default (`--source-lang ja|en`). `en` transcribes
+  English directly and retires the text-side latin screen, which exists only because the
+  recogniser is pinned to Japanese; the repetition screen still runs. `en` is transcribe-only:
+  `TRANSLATOR_INSTRUCTIONS` pins the leg Japanese→English and declares every turn "one block
+  of transcribed Japanese speech", so English input has no defined behaviour there.
+  **Two-way translation is the next unit and live-stt must stay usable throughout it** (user
+  ruling): every step lands behind a default-off flag, JA→EN green at every commit.
+- Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
   speaker diarization · web UI · auth / multi-user · metrics beyond the backlog/drop counters ·
@@ -92,9 +103,9 @@ Queue → `.agent/deferred.md`, rank = funding order, acceptance written at defe
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Probe the two open NPU
-constructor properties · **3** Parameterize source language · **4** Prove EN rendering consistency on
-the raw stream · **5** M10 candidate-screen remainder. Rows 3 and 5 sit there because their
-acceptance is a re-open condition, not work.
+constructor properties · **3** Prove EN rendering consistency on the raw stream · **4** M10
+candidate-screen remainder. Row 4 sits there because its acceptance is a re-open condition,
+not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

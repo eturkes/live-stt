@@ -20,9 +20,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `decode_s` p50 on `retention_probe` re-derived per arm against the committed 0.645 s, adopting only
    a cut that holds retention CER ≤ 0.0609 — or a recorded refusal carrying both measured deltas.
    Expect tens of ms, not the whole fixed term; a null result closes the row.
-3. **Parameterize source language** (T2.2) — Japanese-only by design. **Accept:** re-open only if the
-   use-case expands.
-4. **Prove EN rendering consistency on the raw stream.** The rotation-tax row's acceptance cited
+3. **Prove EN rendering consistency on the raw stream.** The rotation-tax row's acceptance cited
    `eval_en_pairing.py` "distinct spellings 1/1/1" and no such metric exists there. `SessionContext`
    keeps ONE rendering per term by construction, so every check reading `renderings` is tautological:
    mutating post-pairing EN (`Gon` → `Gawn`/`Ghone`) leaves both the learned map and the M12.5
@@ -32,7 +30,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    rendering across `turns[*].en`, reported per run and locked by a test proven red under that exact
    mutation; the committed trace then re-derives one spelling per paired term, or the divergence is
    recorded as the real number.
-5. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+4. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.
