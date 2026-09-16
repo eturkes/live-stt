@@ -81,7 +81,7 @@ async def _await_pending(t: live_stt.CodexTranslator, rid: int, spins: int = 100
 
 def test_consecutive_failures_disable_then_reset():
     # D-009 hard requirement: transient turn failures degrade per-block, but
-    # TRANSLATE_MAX_FAILURES in a row must flip the session to JA-only; a single
+    # TRANSLATE_MAX_FAILURES in a row must flip the session to source-only; a single
     # success must reset the streak. A regression that never disables hangs every
     # block; one that never resets disables a healthy leg after a transient blip.
     async def scenario():
@@ -207,7 +207,7 @@ def test_read_loop_dispatch_and_eof():
 def test_read_loop_input_boundary_degrades(trigger):
     # T6 hardening (the sole non-local input boundary): an oversized line
     # (ValueError from the 64 KiB readline limit) or a broken transport (OSError)
-    # must route into the SAME post-loop cleanup as EOF -> JA-only, not crash the
+    # must route into the SAME post-loop cleanup as EOF -> source-only, not crash the
     # reader task. Locks the `except (ValueError, OSError)` guard -- dropping
     # either type lets the exception escape and strands the degrade. EOF entry is
     # covered by test_read_loop_dispatch_and_eof.
@@ -229,7 +229,7 @@ def test_read_loop_input_boundary_degrades(trigger):
 
         await t._read_loop()  # returns (degrades), does not raise
 
-        assert t.enabled is False  # session degraded to JA-only
+        assert t.enabled is False  # session degraded to source-only
         assert orphan.done() and isinstance(orphan.exception(), RuntimeError)
         assert t._notes.get_nowait()["method"] == "error"  # T8.3 wake sentinel enqueued
 
@@ -271,7 +271,7 @@ def test_translate_degrades_to_ja_only_on_eof_under_timeout():
     # End-to-end of T8.3 (the wake test above stops at _turn raising). Drive the
     # public _translate: resolve turn/start through _read_loop the production
     # way, then kill the server mid-turn. _translate must catch, degrade the
-    # block to "" (JA-only), bump _failures, and flip the session off -- all well
+    # block to "" (source-only), bump _failures, and flip the session off -- all well
     # under TRANSLATE_TIMEOUT_S (15 s). A 2 s bound proves "prompt".
     async def scenario():
         reader = asyncio.StreamReader()
@@ -290,7 +290,7 @@ def test_translate_degrades_to_ja_only_on_eof_under_timeout():
         reader.feed_eof()  # codex dies mid-turn
 
         en = await asyncio.wait_for(translate_task, timeout=2.0)
-        assert en == ""  # JA-only block, not a hang
+        assert en == ""  # source-only block, not a hang
         assert t.enabled is False  # session degraded
         assert t._failures == 1
         await reader_task
@@ -337,7 +337,7 @@ def test_eof_logs_once_and_disables(caplog):
         assert t.enabled is False
         errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert len(errors) == 1
-        assert "JA-only" in errors[0].getMessage()
+        assert "source-only" in errors[0].getMessage()
 
     asyncio.run(scenario())
 
@@ -351,7 +351,7 @@ def _marker_lines(path: Path) -> list[str]:
 
 
 def test_the_three_strike_degrade_marks_the_transcript_once(tmp_path):
-    # Session 1 went JA-only at n=194 and ran 47 more turns with no EN line and no
+    # Session 1 went source-only at n=194 and ran 47 more turns with no TGT line and no
     # recorded cause; which of the two paths fired was recovered only by reading
     # the JA text. The marker must name the path, land once, and never repeat
     # afterwards — a marker per later caption would bury the transcript it saves.
@@ -375,7 +375,7 @@ def test_the_three_strike_degrade_marks_the_transcript_once(tmp_path):
     asyncio.run(scenario())
     markers = _marker_lines(tmp_path / "session.txt")
     assert len(markers) == 1
-    assert markers[0].startswith("[")  # same timestamped shape as a JA/EN line
+    assert markers[0].startswith("[")  # same timestamped shape as a SRC/TGT line
     assert "] -- translation disabled: " in markers[0]  # but outside their grammar
     assert f"{live_stt.TRANSLATE_MAX_FAILURES} consecutive failures" in markers[0]
     assert "TimeoutError" in markers[0]  # which path AND what failed
@@ -650,7 +650,7 @@ def test_a_degenerate_caption_never_reaches_a_turn():
 def test_a_runaway_streak_leaves_the_translation_leg_alive():
     # What killed session 1: n=195/196/197 were three consecutive runaways, so
     # three consecutive TimeoutErrors hit TRANSLATE_MAX_FAILURES and the last 47
-    # turns of a 41-minute session were JA-only. Declining ahead of the queue
+    # turns of a 41-minute session were source-only. Declining ahead of the queue
     # means a streak of any length costs no strike at all.
     t = live_stt.CodexTranslator()
     t.enabled = True
@@ -842,10 +842,10 @@ async def _kill(t: live_stt.CodexTranslator, proc: _FakeProc):
 
 def test_an_exited_app_server_is_respawned_and_the_leg_re_enables(tmp_path, monkeypatch):
     # M14.2(a)+(e). Session 6 lost translation at 14:38:49 on `codex app-server
-    # exited` and ran JA-only to the end; the process is gone, so a re-probe has
+    # exited` and ran source-only to the end; the process is gone, so a re-probe has
     # nothing to talk to and only a new subprocess recovers. The transcript must
     # record the recovery too -- one carrying the disable marker alone reads as
-    # JA-only from that point while EN lines resume below it.
+    # source-only from that point while TGT lines resume below it.
     async def scenario():
         codex = _Codex()
         monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
@@ -873,7 +873,7 @@ def test_an_exited_app_server_is_respawned_and_the_leg_re_enables(tmp_path, monk
     events = [ln.split("] ", 1)[1] for ln in body]
     assert events[0] == "-- translation disabled: codex app-server exited"
     assert events[1].startswith("-- translation restored: ")
-    assert events[2] == "EN 7: Hello."  # the caption that paid for the respawn
+    assert events[2] == "TGT 7: Hello."  # the caption that paid for the respawn
 
 
 def test_the_respawned_thread_carries_the_glossary_learned_before_the_death(monkeypatch):
@@ -1119,7 +1119,7 @@ def test_a_three_strike_disable_is_probed_on_the_surviving_server(tmp_path, monk
     # so what disabled the leg was transient and the app-server is still there.
     # Recovery must therefore re-qualify THAT server: respawning would spend
     # 4.8 s throwing away a healthy one. The transcript records the re-enable in
-    # order, or a saved session reads JA-only while EN lines resume below it.
+    # order, or a saved session reads source-only while TGT lines resume below it.
     async def scenario():
         codex = _Codex()
         monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
@@ -1147,7 +1147,7 @@ def test_a_three_strike_disable_is_probed_on_the_surviving_server(tmp_path, monk
     events = [ln.split("] ", 1)[1] for ln in body]
     assert events[0] == "-- translation disabled: 3 consecutive failures (RuntimeError: {})"
     assert events[1].startswith("-- translation restored: codex app-server probed")
-    assert events[2] == "EN 9: Hello."  # the caption that paid for the probe
+    assert events[2] == "TGT 9: Hello."  # the caption that paid for the probe
 
 
 def test_recovery_routes_on_the_surviving_process_not_on_the_trigger(monkeypatch):

@@ -304,7 +304,7 @@ paths:
 
 - **Closing the terminal is a shipped shutdown path and cost three separate fixes.** SIGHUP's default
   action is termination, so it must join `(SIGINT, SIGTERM)` or the drain never runs and exactly one
-  EN line dies, the last (JA flushes as it lands; EN needs the drain). The drain then executes against
+  TGT line dies, the last (SRC flushes as it lands; TGT needs the drain). The drain then executes against
   a pty whose master is gone, where a write raises `OSError` errno 5 ⇒ `emit_line` persists to the
   transcript BEFORE stdout, and `write_stdout` latches the stream off on `(OSError, ValueError)`.
   Third and least guessable: **CPython flushes `sys.stdout` during finalization and that flush fails
@@ -348,8 +348,8 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
 | commit lag | 2.535 | 4.600 | 8.157 | voice → committed character on the meter |
 | provisional lag | 1.187 | 1.615 | 2.385 | voice → the same character shown UNCONFIRMED |
 | redraw bound | 2.114 | 5.192 | 9.131 | upper bound: every redraw of a slot recharged as a fresh wait |
-| publication | 1.173 | 1.444 | 1.444 | speech end → `JA n:` = `VAD_MIN_SILENCE_S` + final decode |
-| translate turn | 2.170 | 4.310 | 6.340 | `JA n:` → `EN n:` (steady 2.140, rotating 4.695) |
+| publication | 1.173 | 1.444 | 1.444 | speech end → `SRC n:` = `VAD_MIN_SILENCE_S` + final decode |
+| translate turn | 2.170 | 4.310 | 6.340 | `SRC n:` → `TGT n:` (steady 2.140, rotating 4.695) |
 
 - **Decode cost is `0.417 s fixed + 7.15 ms/char`** (`stress_long`: 0.360 + 5.77). The fixed term is
   Whisper's encoder over a 30 s window, measured FLAT at 0.31 s for buffers of 1.0 s through 28.0 s
@@ -468,7 +468,7 @@ clips against a 1 s update cadence, with the trim rule capping the buffer at 11.
 
 - Models are a runtime prerequisite — `check_models()` preflights and points at `models/README.md`.
 - **The translator is NOT the quality bottleneck — the recogniser is.** Over 30 consecutive live
-  JA/EN pairs the English is fluent and faithful to whatever Japanese it is handed, and every defect
+  SRC/TGT pairs the English is fluent and faithful to whatever Japanese it is handed, and every defect
   is ASR (`パーツ`→`パンツ`, `左肩甲骨`→`左肩骨`, `コロナル`→`セコロナルタ`, a stray `おやすみなさい。`
   hallucination mid-meeting). Benign default-engine quirks: ジェミニ→ゼミニ, 文→分 homophone — the EN
   leg translates through them.

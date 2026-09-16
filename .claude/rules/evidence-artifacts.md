@@ -105,12 +105,12 @@ neither, because they replay committed traces — a fresh clone runs them in und
   files that session already wrote (`transcripts/*.txt` + redirected stderr). No hardware, no
   weights, no network, and it imports the shipped `repeat_span`/`caption_defect` rather than
   restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
-  names: captions with no EN and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
+  names: captions with no TGT and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
   degrade + restore markers with timestamps, `backlog peak:` high-water lines and **drop
   attribution** — one row per `backlog peak:` line whose `drop=` grew, carrying the captions that
   bracket it, the publication gap between them, the `skip=` step, and every `caption dropped (…)`
   line inside that gap with its defect, which is the only record a screened caption leaves — caption
-  length + repetition distributions, EN-behind-JA lag, and slow turns tagged with whether they sit on
+  length + repetition distributions, TGT-behind-SRC lag, and slow turns tagged with whether they sit on
   a `TRANSLATE_ROTATE_TURNS` boundary. `drop=` counts callback BLOCKS, so every drop figure here is
   blocks. Feeding it a drop timeline costs one redirect: the peak log gates on the stream PAIR, so
   `2> stt.log` keeps the status line too (L-006, `asr-pipeline.md`). **A transcript records captions, not the flags that produced
@@ -128,9 +128,9 @@ neither, because they replay committed traces — a fresh clone runs them in und
   it; and **once the leg is
   down, `disabled` outranks the text screen**, since a screen verdict behind a degrade is a
   counterfactual and rides `screened_now` instead of explaining the loss. Over the six saved
-  sessions: 1073 captions, 1001 translated, 72 without EN; unit-bound sweep 26 caught at 6-8, 27 at
+  sessions: 1073 captions, 1001 translated, 72 without TGT; unit-bound sweep 26 caught at 6-8, 27 at
   9-11 (the newly-caught one being the 9-character loop that escaped bound 8), 29 at 13-21, 30 at
-  22+; session 1 inferring a 3-strike degrade at last EN n=194, session 6 reading
+  22+; session 1 inferring a 3-strike degrade at last TGT n=194, session 6 reading
   `codex app-server exited` off the log at 14:38:49.
 - `test_gate.py` locks `gate.py`'s step inventory with one seeded defect per blocking step, in a
   throwaway tree, plus the secret scan's real-tree scope, which that throwaway tree cannot see

@@ -289,7 +289,7 @@ def _run_vac(script, window=1600, screen=None):
 
 def test_vac_emits_one_numbered_line_per_utterance():
     lines, state, _ = _run_vac([True] * 40 + [False])
-    assert [tag for tag, _, _ in lines] == ["JA"]
+    assert [tag for tag, _, _ in lines] == ["SRC"]
     assert lines[0][1] == 1
     assert lines[0][2]
     assert state.partial == ""  # cleared once the utterance is published

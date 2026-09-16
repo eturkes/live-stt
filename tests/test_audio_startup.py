@@ -234,9 +234,9 @@ def test_supervisor_forwards_terminal_signals_and_preserves_the_drain(tmp_path, 
         "    state.stop_event = asyncio.Event()\n"
         "    live_stt._install_signal_handlers(state)\n"
         f"    f = live_stt.TranscriptFile(Path({str(transcript)!r}))\n"
-        "    live_stt.emit_line('JA', 1, 'before stop', f)\n"
+        "    live_stt.emit_line('SRC', 1, 'before stop', f)\n"
         "    await state.stop_event.wait()\n"
-        "    live_stt.emit_line('EN', 1, 'after stop', f)\n"
+        "    live_stt.emit_line('TGT', 1, 'after stop', f)\n"
         "    f.close()\n"
         "live_stt.run_session = session\n"
     )
@@ -272,8 +272,8 @@ def test_supervisor_forwards_terminal_signals_and_preserves_the_drain(tmp_path, 
         assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
         lines = transcript.read_text().splitlines()
         assert len(lines) == 2
-        assert lines[0].endswith("JA 1: before stop")
-        assert lines[1].endswith("EN 1: after stop")
+        assert lines[0].endswith("SRC 1: before stop")
+        assert lines[1].endswith("TGT 1: after stop")
     finally:
         if master != -1:
             os.close(master)

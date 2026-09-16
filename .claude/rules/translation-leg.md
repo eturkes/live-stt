@@ -17,7 +17,7 @@ paths:
 Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio: `initialize` →
 `thread/start` (one thread per session, `ephemeral`, `sandbox:read-only`, `approvalPolicy:never`,
 `personality:none`) → `turn/start` per block → `agentMessage` deltas → `turn/completed`; quota via
-`account/rateLimits/read`. Sequential turns, so EN lines keep JA order.
+`account/rateLimits/read`. Sequential turns, so TGT lines keep SRC order.
 
 - **Model `gpt-5.6-luna` + `effort:low`** (runner-up `gpt-5.6-terra`+`medium`), picked by tournament
   and held by a clinical re-test: median 1.38 s general / 1.71 s clinical, quality 4.83/5, contract
@@ -54,7 +54,7 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   addressable: `turn/start` is keyed by `threadId`, and `thread/start` / `thread/resume` /
   `thread/list` all live in one initialized server, so the cost of the reverse direction is
   startup-only — one uncached ~2.7-3 s warm-up when two-way mode opens, with normal turns still
-  sequential and still in JA order. Each thread gets its own `developerInstructions`, and both get
+  sequential and still in source order. Each thread gets its own `developerInstructions`, and both get
   the SAME canonical glossary rendered in their own direction, because splitting threads also splits
   dialogue history. **Letting the translator infer direction from the text is REJECTED**: the source
   language is already settled by the audio LID upstream, and a wrong whisper token yields FLUENT
@@ -62,7 +62,7 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   evidence the recogniser has already erased. Degrade scope follows ownership — an app-server EOF
   disables both directions and a respawn recreates both threads, while a poisoned or stalled turn
   replaces only its own direction's thread; on any failure the transcript stays source-only, which
-  is today's JA-only contract unchanged. No `gpt-5.6-luna` one-thread-versus-two quality A/B exists
+  preserves today's contract. No `gpt-5.6-luna` one-thread-versus-two quality A/B exists
   anywhere, so this is a design ruling on measured protocol facts, not a measured quality win.
 
 ## Degradation contract (locked by `tests/test_translator.py`)
@@ -118,15 +118,15 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
     calls `_end_proc()`, never `close()`, or one failed attempt would latch the rest off.
   - **The app-server spawns `start_new_session=True`, OUT of the terminal's process group.** Ctrl+C
     signals the whole foreground group, so a same-group child dies before the drain reaches the last
-    caption and that caption's EN is lost — the shape in 4 of 7 saved sessions, the last logging
-    `codex app-server exited` 2 s after its final JA while `run()` was still mid-turn. Latching
+    caption and that caption's target is lost — the shape in 4 of 7 saved sessions, the last logging
+    `codex app-server exited` 2 s after its final source while `run()` was still mid-turn. Latching
     recovery off at shutdown is what makes the loss permanent, correctly: the leg is not coming back
     inside a session that is ending, so the child must not die in the first place. Measured: child
     returncode -2 in-group against alive detached, handshake and a real turn unaffected, and
     `_end_proc()` closes stdin so the child still exits 0 ⇒ detaching orphans nothing.
   - `_restore` mirrors `_disable` into both channels ⇒ `-- translation restored: codex app-server
     probed|respawned (attempt N)`, naming the arm. A transcript carrying only the disable marker
-    reads as JA-only from that point while EN lines resume below it. A recovered leg resets
+    reads as source-only from that point while TGT lines resume below it. A recovered leg resets
     `_failures` (else it is one strike from dying, and the probe arm arrives carrying a FULL count by
     construction) and `_turns` (else the fresh thread rotates early).
 - **A repeated short unit makes the translator generate without terminating.** Measured through the
@@ -141,13 +141,14 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 ## Live validation — 26 minutes on a real mic
 
 The leg's only mic-side evidence, and what it does and does not settle. 143 captions over 1563 s:
-**143 of 143 translated, 0 without EN, 0 failed turns, 0 degrade markers and 0 restore markers.**
+**143 of 143 translated, 0 without TGT, 0 failed turns, 0 degrade markers and 0 restore markers.**
 
-- **EN behind JA: p50 2 s, p90 4 s, max 11 s.** `spec.md`'s `Intent` asks for `EN n:` about a second
-  after its `JA n:`, so this is a recorded gap between the ask and the delivery. `Intent` is the
-  user's ⇒ record the gap, never re-label the ask and never edit that line.
+- **TGT behind SRC: p50 2 s, p90 4 s, max 11 s.** `spec.md`'s `Intent` asks for `EN n:` about a
+  second after its `JA n:` — quote it in that pre-role wording, which `Intent` alone owns — so this
+  is a recorded gap between the ask and the delivery. `Intent` is the user's ⇒ record the gap,
+  never re-label the ask and never edit that line.
   **Queueing is REFUTED for the MEDIAN, and only for the median** — 130 of the 143 captions were
-  emitted with no earlier caption's EN outstanding and carry that same p50 2 s. The tail is a
+  emitted with no earlier caption's target outstanding and carry that same p50 2 s. The tail is a
   different question and stays open: the max-lag caption did have one ahead of it, while the slowest
   turn with nothing ahead still took 7 s. Against a warm-thread bench median of 1.38 s general /
   1.71 s clinical, the median gap belongs to the turn rather than the backlog, and the tail is
@@ -160,7 +161,7 @@ The leg's only mic-side evidence, and what it does and does not settle. 143 capt
 - What it does NOT cover: recovery. Neither arm fired, so `_respawn` and `_probe` keep their L-004
   debt and their bench numbers (4.8 s / 5.5 s) stay the only evidence.
 
-## What the EN lag is made of — 300 real turns through the app-server
+## What the target lag is made of — 300 real turns through the app-server
 
 The agent-side half of that queue row, run under L-026: 12 committed captions from
 `tests/caption_trace.json` × 5 reps × 5 cumulative arms, arms sequential, reps interleaved, a fresh

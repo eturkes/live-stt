@@ -3,9 +3,9 @@
 Real-time Japanese speech-to-text + English translation. **No API keys.**
 
 - **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) large-v3-turbo (INT8) on the Intel NPU through OpenVINO. Japanese appears while you are still speaking, about 2.5 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
-- **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to JA-only.
+- **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to source-only.
 
-On the default engine, Japanese builds on the status line while you speak, about 1.2 s behind your voice. The numbered `JA n:` line lands when you stop, and its `EN n:` line follows about 1 s later. In a live session the median is nearer 2 s. The cause is not known: only 13 of 143 captions in the measured session were waiting behind an earlier translation. The sherpa engines show no partial text: they wait for the pause, then print `JA n:` about 0.6 s after you stop.
+On the default engine, Japanese builds on the status line while you speak, about 1.2 s behind your voice. The numbered `SRC n:` line lands when you stop, and its `TGT n:` line follows about 1 s later. In a live session the median is nearer 2 s. The cause is not known: only 13 of 143 captions in the measured session were waiting behind an earlier translation. The sherpa engines show no partial text: they wait for the pause, then print `SRC n:` about 0.6 s after you stop.
 
 ## Requirements
 
@@ -50,7 +50,7 @@ live-stt                          # transcribe + translate
 python live_stt.py                # equivalent
 ```
 
-Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (JA-only, see log)`, or `disabled (--no-translate)`.
+Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (source-only, see log)`, or `disabled (--no-translate)`.
 
 ### CLI
 
@@ -73,11 +73,11 @@ live-stt saves every session by default. It writes one file per run to `transcri
 ```
 Transcript: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.txt
 
-[2026-08-31T13:40:58+09:00] JA 1: 今日はいい天気ですね
-[2026-08-31T13:41:00+09:00] EN 1: The weather is nice today.
+[2026-08-31T13:40:58+09:00] SRC 1: 今日はいい天気ですね
+[2026-08-31T13:41:00+09:00] TGT 1: The weather is nice today.
 ```
 
-Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so JA and EN pairs stay matched. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
+Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so SRC and TGT pairs stay matched. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
 
 If the translation leg stops, live-stt writes one marker line and names the cause. If the app-server exits, live-stt starts a new one on the next caption and marks that too:
 
@@ -86,7 +86,7 @@ If the translation leg stops, live-stt writes one marker line and names the caus
 [2026-08-31T13:52:13+09:00] -- translation restored: codex app-server respawned (attempt 1)
 ```
 
-A marker holds `--` in place of the number. JA lines continue after it. The transcript is the record that outlives the terminal, so read the markers to see why the EN lines stopped and whether they came back.
+A marker holds `--` in place of the number. SRC lines continue after it. The transcript is the record that outlives the terminal, so read the markers to see why the TGT lines stopped and whether they came back.
 
 `transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
@@ -97,13 +97,13 @@ A marker holds `--` in place of the number. JA lines continue after it. The tran
 1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 2 seconds of PCM, independent of callback block size.
 2. **Endpoint.** Capture drains into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
 3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables. Both engine paths re-slice from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) to recover the lead-in. The sherpa path then copies each closed segment into an 8-segment queue; the whisper path has no such queue.
-4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. Showing it cut the wait to SEE a character from 2.535 s to 1.187 s (median) and from 8.157 s to 2.385 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 105 of 180 decodes rewrote part of it. The numbered `JA n:` line carries the committed text only, and follows at the end of the utterance. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 11.2 s on the measured clips. Decode RTF is 0.48-0.61 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
+4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. Showing it cut the wait to SEE a character from 2.535 s to 1.187 s (median) and from 8.157 s to 2.385 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 105 of 180 decodes rewrote part of it. The numbered `SRC n:` line carries the committed text only, and follows at the end of the utterance. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 11.2 s on the measured clips. Decode RTF is 0.48-0.61 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture buffers into the 2 s queue meanwhile. Measured on the NPU, the longest single wait was 1.006 s over 182 s of pause-free speech, and nothing was dropped. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 
    **Known defect: a live session can still discard audio, and the cause is not yet known.** One 26-minute session dropped 9033 blocks of captured audio in 12 bursts. Every burst fell inside a gap of 17 s or more between published lines, but 16 of the 20 longest gaps dropped nothing, so length alone does not explain it. Watch for `drop=` on the meter. To record the evidence, run every session as `live-stt 2> stt.log`. Keep the log. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing, so the redirect does not hide it. Then run `uv run python session_report.py --log stt.log`. It shows each drop with the captions around it, and any caption the screen refused in that gap.
 5. **Screen.** A caption the recognizer invented is dropped whole, before anything else sees it. See the next section.
-6. **Emit.** `JA n:` prints immediately; the text is queued for translation.
+6. **Emit.** `SRC n:` prints immediately; the text is queued for translation.
 
 ### Captions the recognizer invented
 
@@ -114,7 +114,7 @@ The first shape is a loop: one short unit, repeated until the model reaches its 
 Two defences apply, in order:
 
 - **Decode.** Every decode carries `ASR_REPETITION_PENALTY`. This is the only repetition control that the NPU honors. It accepts `no_repeat_ngram_size` and then ignores it silently. On an English clip the penalty cuts a 528-character loop to zero, and it costs 3 substitutions in 1166 characters of the retention corpus.
-- **Publication.** A caption that still shows a defect is dropped whole. The tool does not print it, save it, number it, or translate it. It keeps its line numbers dense, so `JA 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
+- **Publication.** A caption that still shows a defect is dropped whole. The tool does not print it, save it, number it, or translate it. It keeps its line numbers dense, so `SRC 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
 
 A caption is dropped when either rule matches:
 
@@ -127,7 +127,7 @@ Both bounds sit in an empty gap in 1073 live captions, which the rules drop 4.0 
 
 Silero's 20 s `max_speech_duration` is a soft endpointing hint, not a hard cut: pause-free speech can remain one VAD segment beyond it. Offline decoders drop content wholesale once a single segment passes roughly 15-20 s, so each engine path bounds what it hands the model.
 
-The sherpa engines bound it after the fact. Segments up to 10 s keep the ordinary one-pass decode path. Longer segments are split internally into balanced ~2 s views, with each cut moved to a nearby low-energy window and 0.18 s of overlap protecting cut phonemes. Exact text overlap is removed, then the merged result is emitted as one `JA n:` line, so internal chunking does not create extra user-visible utterances. Capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
+The sherpa engines bound it after the fact. Segments up to 10 s keep the ordinary one-pass decode path. Longer segments are split internally into balanced ~2 s views, with each cut moved to a nearby low-energy window and 0.18 s of overlap protecting cut phonemes. Exact text overlap is removed, then the merged result is emitted as one `SRC n:` line, so internal chunking does not create extra user-visible utterances. Capture and VAD feeding continue while those views decode sequentially. Up to 2 s of captured PCM can wait for VAD and up to 8 completed segments can wait for decode; sustained overload remains visible through `seg=`, `q=`, and `drop=`.
 
 The whisper path bounds it by construction and never uses that splitter: the streaming buffer is trimmed against fully-decoded spans as it goes, so the model always sees a bounded buffer rather than one long closed segment.
 
@@ -141,16 +141,16 @@ Deterministic coverage now reaches 182 s of pause-free audio on the shipped path
 
 ### JA → EN leg (Codex subscription)
 
-`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so EN lines keep JA order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed). Two of those instructions target defects measured on clinical Japanese: Japanese brand-name drugs come back as the international generic (プレドニン as prednisolone, not the different molecule "prednisone") with the dose and schedule untouched, and the English never invents a patient's sex the Japanese did not state.
+`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so TGT lines keep SRC order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed). Two of those instructions target defects measured on clinical Japanese: Japanese brand-name drugs come back as the international generic (プレドニン as prednisolone, not the different molecule "prednisone") with the dose and schedule untouched, and the English never invents a patient's sex the Japanese did not state.
 
 The translator declines a repeated caption independently, as a backstop to the publication screen above. Such a caption makes the model generate without ever stopping: a run of one character never finished a turn at 120 characters, while 480 characters of real speech took 7 s. The rule is repetition, not length, and it is the same rule and the same threshold. One warning names the reason, and the meter counts the caption as `tskip=`. On the shipped path the screen drops those captions first, so `tskip=` stays at 0 unless a caption reaches the queue by another route.
 
 Degradation, in order:
 
-- codex CLI missing / init fails → session runs JA-only from the start.
+- codex CLI missing / init fails → session runs source-only from the start.
 - A caption that repeats one short unit for 40 characters or more → not translated, and no failure is counted.
-- A turn exceeds 15 s → it's aborted and skipped; 3 consecutive failures → JA-only for the rest of the session.
-- The app-server exits → the next caption starts a new one, which costs that caption about 5 s. A failed attempt doubles the wait before the next one. After 5 attempts, or if `codex` cannot be started at all, the session stays JA-only.
+- A turn exceeds 15 s → it's aborted and skipped; 3 consecutive failures → source-only for the rest of the session.
+- The app-server exits → the next caption starts a new one, which costs that caption about 5 s. A failed attempt doubles the wait before the next one. After 5 attempts, or if `codex` cannot be started at all, the session stays source-only.
 - Backlog over 50 utterances → oldest dropped.
 - The thread is rotated every 100 turns to keep the cached prompt prefix small.
 
@@ -172,24 +172,24 @@ uv run python session_report.py --log stt.log    # defaults to transcripts/*.txt
 The report shows:
 
 - caption and translation totals, per session and overall
-- every caption that has no `EN` line, and the reason for it
+- every caption that has no `TGT` line, and the reason for it
 - the point where translation stopped or came back, with timestamps
 - the backlog high-water marks from the log
 - every increase in the dropped-audio counter, with the captions around it, the gap it fell in, and any caption the screen refused inside that gap
 - caption length and repetition distributions
-- how far behind its `JA` line each `EN` line arrived
+- how far behind its `SRC` line each `TGT` line arrived
 
 Add `--json` for machine-readable output. With no saved sessions the report prints `no transcripts found` and exits 0.
 
 ### Display
 
 ```
-JA 1: こんにちは、今日はいい天気ですね。
-EN 1: Hello, the weather is nice today.
+SRC 1: こんにちは、今日はいい天気ですね。
+TGT 1: Hello, the weather is nice today.
   q=0.02s   では次の議題に
 ```
 
-The last line is the status line. It rewrites itself in place and holds two things: the backlog counters, then the partial caption of the utterance you are still speaking. Only the default engine produces that caption. The caption has two parts. Normal-intensity text is committed: it never changes, and it becomes the next `JA n:` line. Dim text at the end is the rest of the latest decode, which the next decode can rewrite. A long caption is truncated from the left to fit the terminal, measured in columns, because one Japanese character occupies two of them. The whole status line is written only to a terminal, so a redirected stdout stays clean.
+The last line is the status line. It rewrites itself in place and holds two things: the backlog counters, then the partial caption of the utterance you are still speaking. Only the default engine produces that caption. The caption has two parts. Normal-intensity text is committed: it never changes, and it becomes the next `SRC n:` line. Dim text at the end is the rest of the latest decode, which the next decode can rewrite. A long caption is truncated from the left to fit the terminal, measured in columns, because one Japanese character occupies two of them. The whole status line is written only to a terminal, so a redirected stdout stays clean.
 
 - `q=Ns`: captured audio waiting for VAD, measured in seconds (appears when non-zero)
 - `seg=N`: completed utterances waiting for sequential decode (sherpa engines only; appears when non-zero)
@@ -198,7 +198,7 @@ The last line is the status line. It rewrites itself in place and holds two thin
 - `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
 - `tskip=N`: captions declined as repetition loops and not translated (appears once non-zero)
 
-Numbered lines tie JA/EN pairs together even when the next utterance's JA prints before the previous EN arrives.
+Numbered lines tie SRC/TGT pairs together even when the next source prints before the previous target arrives.
 
 ## Project structure
 
@@ -292,7 +292,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-terra` / `medium`) |
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
-| `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → JA-only |
+| `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → source-only |
 | `TRANSLATE_MAX_RESPAWNS` | 5 | Respawns of an exited app-server, per session |
 | `TRANSLATE_RESPAWN_WAIT_S` | 5 s | Wait after a failed respawn; doubles each time |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |

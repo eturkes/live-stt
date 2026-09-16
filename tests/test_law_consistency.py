@@ -13,6 +13,10 @@ drifts out of the block goes unchecked, an unquoted prose key cannot be rechecke
 reworded or deleted clause leaves a quoted key overriding nothing while still reading as live law.
 All three are silent in prose and decidable here.
 
+`.agent/spec.md`'s `Intent` is the user's alone, so law that quotes it cannot repair its own
+citation when a unit renames the thing quoted: the quote goes false while the sentence around it
+still reads as the ask. Both texts sit in the tree, so the comparison is literal here.
+
 Membership is LITERAL, so this decides that an anchor still occurs, never that it is still its own
 row's clause — a phrase surviving elsewhere in the template reads as live, and the length floor only
 keeps a key off a word that identifies nothing. The global half of the haystack needs
@@ -41,6 +45,12 @@ _RANK_REFERENCE = re.compile(r"\branks?\s+\d", re.IGNORECASE)
 _OVERRIDE_HEADER = "| template clause | repo ruling |"
 _OVERRIDE_SEPARATOR = "| --- | --- |"
 _ANCHOR = re.compile(r'"([^"]+)"')
+# How law cites the user-owned section: a backticked `Intent`. A bare one listing the five section
+# names attributes no wording and is not a citation. Everything backticked AFTER the citation in
+# that sentence is the quotation — what comes before it names the file the section lives in.
+_INTENT_CITATION = "`Intent`"
+_FRAGMENT = re.compile(r"`([^`]+)`")
+_SENTENCE = re.compile(r"(?<=[.;]) ")
 # Shortest live anchor is 17 chars. A floor keeps a key from resolving on a word like "rev", which
 # occurs all over both templates and identifies no clause.
 _ANCHOR_MIN = 12
@@ -54,6 +64,12 @@ def _squash(text: str) -> str:
 
 def _spine() -> str:
     return SPEC.read_text(encoding="utf-8").split("## Deferred", 1)[1].split("\n## ", 1)[0]
+
+
+def _intent() -> str:
+    # The heading rides the haystack, so a citation naming the section resolves on the section.
+    spec = SPEC.read_text(encoding="utf-8")
+    return "## Intent" + spec.split("## Intent", 1)[1].split("\n## ", 1)[0]
 
 
 def _scanned_files() -> list[Path]:
@@ -133,3 +149,26 @@ def test_no_rank_reference_outside_the_queue():
         for hit in _RANK_REFERENCE.findall(path.read_text(encoding="utf-8"))
     ]
     assert not offenders, f"name the row, not its moving rank: {offenders}"
+
+
+def test_every_intent_citation_quotes_live_intent_text():
+    """A citation of the user-owned `Intent` must quote wording that section actually carries.
+
+    A unit renames what law quotes and rewrites its own prose with it; `Intent` is the user's, so
+    the rename stops at its edge and the citation then attributes the new wording to a section that
+    never said it. The SRC/TGT rename did that to the lag bullet, inside the sentence forbidding a
+    relabel of the ask, and every gate step stayed green because the two texts were never compared.
+
+    The queue joins the scan here: its rows are acceptance contracts and the EN-lag row cites
+    `Intent` the same way, while the rank and title locks read it as their source of truth instead.
+    """
+    intent = _intent()
+    misquotes = [
+        f"{path.relative_to(ROOT)}: {fragment}"
+        for path in [*_scanned_files(), QUEUE]
+        for sentence in _SENTENCE.split(re.sub(r"\s+", " ", path.read_text(encoding="utf-8")))
+        if _INTENT_CITATION in sentence
+        for fragment in _FRAGMENT.findall(sentence.split(_INTENT_CITATION, 1)[1])
+        if fragment not in intent
+    ]
+    assert not misquotes, f"law quotes Intent wording that Intent does not carry: {misquotes}"

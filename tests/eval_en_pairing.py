@@ -37,7 +37,7 @@ Model output is sampled, so the trace is ONE session. The verdict it supports is
 structural -- an English common noun supplies no proper noun to pair -- never a
 rate. One deviation from production is recorded per run: a translator disabled by
 TRANSLATE_MAX_FAILURES is restarted against the same `SessionContext` rather than
-running JA-only for the rest of the replay, because this measures the learner and
+running source-only for the rest of the replay, because this measures the learner and
 not the degradation path (`tests/test_translator.py` owns that). A run reporting
 `restarts: 0` is production-identical.
 """
@@ -316,7 +316,7 @@ async def live_turns(captions: list[dict]) -> dict:
             flush=True,
         )
         if not translator.enabled:
-            # Production would run JA-only from here; this measures the learner,
+            # Production would run source-only from here; this measures the learner,
             # so the leg is rebuilt against the same context and the deviation
             # is reported rather than smoothed.
             print(f"  translator disabled after {caption['idx']}; restarting", flush=True)

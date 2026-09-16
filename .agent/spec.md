@@ -53,8 +53,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 
 Detail → `.claude/rules/`, which each `D-###` names.
 
-- **D-009** STT fully local, no API keys. Codex absent or failing ⇒ JA-only degrade, never a cloud
-  STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-5.6-luna`.
+- **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
+  cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-5.6-luna`.
 - **D-016** whisper large-v3-turbo int8 on OpenVINO **NPU** is the shipped recogniser; `hotwords`
   forfeited with that choice. Engine/model selection is closed, and so are its two constructor
   properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
@@ -102,7 +102,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
   (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
-  JA/EN drain remain in the session, validated by regression tests and the user-run live check.
+  SRC/TGT drain remain in the session, validated by regression tests and the user-run live check.
 - Source language is a flag, Japanese by default (`--source-lang ja|en`). `en` transcribes
   English directly and retires the text-side latin screen, which exists only because the
   recogniser is pinned to Japanese; the repetition screen still runs. `en` is transcribe-only:

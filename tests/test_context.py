@@ -338,7 +338,7 @@ def test_a_rendering_expires_with_the_term_that_carries_it():
 
 
 def test_untranslated_captions_teach_nothing():
-    """JA-only degradation (D-009) must not feed an empty rendering into the brief."""
+    """source-only degradation (D-009) must not feed an empty rendering into the brief."""
     ctx = SessionContext()
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
     _pair(ctx, CONTEXT_EN_SUPPORT * 2, "")

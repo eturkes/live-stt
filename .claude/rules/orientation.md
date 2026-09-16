@@ -9,9 +9,9 @@ LocalAgreement-2 buffer in `streaming.py`; every `VAC_CHUNK_S`=1 s re-decodes th
 commits what two decodes agree on; speech end flushes the tail) → **whisper large-v3-turbo int8 on
 OpenVINO NPU** (D-016) → `CodexTranslator` over a persistent `codex app-server` (D-011) → `emit_line`
 → stdout + `transcripts/<start-time>.txt`. Partial text renders on the meter status line; one
-utterance = one numbered `JA` line = one translation turn. `--engine k2v2|parakeet` selects the sherpa
+utterance = one numbered `SRC` line = one translation turn. `--engine k2v2|parakeet` selects the sherpa
 fallback path (VAD-segment decode, D-010); `--asr-device` picks the OpenVINO device. Absent or failing
-codex degrades to JA-only — a hard requirement, never a cloud fallback.
+codex degrades to source-only — a hard requirement, never a cloud fallback.
 
 ## Files — read one only when the task implicates it
 

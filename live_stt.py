@@ -2,11 +2,11 @@
 """Live Japanese speech-to-text with English translation. STT is fully local
 (silero VAD + OpenVINO Whisper on the NPU, or a sherpa-onnx engine; no API
 keys); translation rides the Codex subscription via a persistent
-`codex app-server` (D-011), degrading to JA-only when unavailable.
+`codex app-server` (D-011), degrading to source-only when unavailable.
 
 Japanese appears on the status line while the speaker is still talking, as the
 streaming policy settles each piece (~2.5 s behind the voice). The numbered
-`JA n:` line lands once at the end of the utterance and its `EN n:` line follows
+`SRC n:` line lands once at the end of the utterance and its `TGT n:` line follows
 when the translation turn completes (~1 s), so pairs stay unambiguous even when
 the next utterance lands first.
 """
@@ -155,7 +155,7 @@ TRANSLATE_EFFORT = "low"
 TRANSLATE_SERVICE_TIER = "priority"
 TRANSLATE_TIMEOUT_S = 15.0
 CODEX_CONTROL_TIMEOUT_S = 10  # initialize + thread/start; turns use TRANSLATE_TIMEOUT_S
-TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> JA-only for the session
+TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> source-only for the session
 TRANSLATE_MAX_RECOVERIES = 5  # bounded revivals of a disabled leg, per session
 TRANSLATE_RECOVERY_WAIT_S = 5.0  # cooldown after a failed recovery; doubles each time
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
@@ -718,8 +718,8 @@ def write_stdout(text):
     triggers outlives the pty: writing to a slave whose master is gone raises
     OSError errno 5, a closed stream raises ValueError. Both used to abort the
     caller, and in `emit_line` that was the whole defect -- stdout went first, so
-    the last EN line died on the display it no longer had, one statement before
-    the transcript write meant to preserve it. Latching off keeps the rest of the
+    the last target line died on the display it no longer had, one statement
+    before the transcript write meant to preserve it. Latching off keeps the rest of the
     session's writes cheap instead of one failed syscall per line.
     """
     global _stdout_live
@@ -739,11 +739,11 @@ def write_stdout(text):
 
 
 def emit_line(tag, seq, text, output_file):
-    """Persist + display one numbered event line (tag: "JA" or "EN").
+    """Persist + display one numbered event line (tag: "SRC" or "TGT").
 
-    JA and EN lines are emitted independently (translation lags ~1 s and may
-    interleave with the next block's JA); the shared seq number keeps pairs
-    unambiguous. File entries are one self-describing line per event.
+    Source and target lines are emitted independently (translation lags ~1 s and
+    may interleave with the next block's source); the shared seq number keeps
+    pairs unambiguous. File entries are one self-describing line per event.
 
     Persist BEFORE display: the transcript is the artifact that has to survive a
     terminal that is already gone, so it must not sit behind a write to one.
@@ -760,9 +760,9 @@ def emit_note(text, output_file):
     """Persist one unnumbered session event to the transcript, nothing else.
 
     A degrade reached stderr alone, so the durable artifact recorded the loss as
-    absence: one live session went JA-only at n=194 and its last 47 turns simply
-    had no EN line, the cause recoverable only from scrollback that was gone.
-    The `--` tag keeps the marker out of the `JA n:`/`EN n:` grammar every reader
+    absence: one live session went source-only at n=194 and its last 47 turns simply
+    had no target line, the cause recoverable only from scrollback that was gone.
+    The `--` tag keeps the marker out of the `SRC n:`/`TGT n:` grammar every reader
     of these files parses, and stdout is skipped because the logger already
     carries the same event there.
     """
@@ -1030,7 +1030,7 @@ class CodexTranslator:
 
     Newline-delimited JSON-RPC 2.0 on stdio; one thread per session, one
     sequential turn per block (ordering guarantee). Any failure degrades to
-    JA-only: per-block on transient errors, for the whole session after
+    source-only: per-block on transient errors, for the whole session after
     TRANSLATE_MAX_FAILURES consecutive ones or if startup fails.
     """
 
@@ -1038,7 +1038,7 @@ class CodexTranslator:
         self, context: "SessionContext | None" = None, output_file: TranscriptFile | None = None
     ):
         self.context = context
-        self.output_file = output_file  # EN lines + the one degrade marker
+        self.output_file = output_file  # TGT lines + the one degrade marker
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
         self._next_id = 0
@@ -1076,7 +1076,7 @@ class CodexTranslator:
                 start_new_session=True,
             )
         except (FileNotFoundError, OSError) as e:
-            logger.warning("codex CLI unavailable (%s); running JA-only", failure_cause(e))
+            logger.warning("codex CLI unavailable (%s); running source-only", failure_cause(e))
             return False
         self._reader_task = asyncio.create_task(self._read_loop())
         try:
@@ -1090,7 +1090,9 @@ class CodexTranslator:
             self._notify("initialized", {})
             await self._handshake()
         except Exception as e:
-            logger.warning("codex app-server init failed (%s); running JA-only", failure_cause(e))
+            logger.warning(
+                "codex app-server init failed (%s); running source-only", failure_cause(e)
+            )
             await self._end_proc()  # not close(): a respawn may still retry this
             return False
         # A warm-up turn can complete and the server then die before we enable:
@@ -1100,7 +1102,7 @@ class CodexTranslator:
         # later turn on a turn/start request no one resolves until
         # TRANSLATE_TIMEOUT_S. Refuse to enable a dead server (T8.6).
         if not self._alive():
-            logger.warning("codex app-server exited during warm-up; running JA-only")
+            logger.warning("codex app-server exited during warm-up; running source-only")
             await self._end_proc()
             return False
         self.enabled = True
@@ -1136,7 +1138,7 @@ class CodexTranslator:
         )
 
     def _disable(self, reason: str):
-        """End the EN leg for the rest of the session, once, in both channels.
+        """End the translation leg for the rest of the session, once, in both channels.
 
         Every permanent degrade lands here so the marker cannot double-write or
         go missing on a new path. Startup failure deliberately routes elsewhere:
@@ -1147,14 +1149,14 @@ class CodexTranslator:
         if not self.enabled:
             return
         self.enabled = False
-        logger.error("translation disabled: %s; JA-only for the rest of the session", reason)
+        logger.error("translation disabled: %s; source-only for the rest of the session", reason)
         emit_note(f"translation disabled: {reason}", self.output_file)
 
     def _restore(self, reason: str):
         """Mirror of _disable: a recovery has to reach both channels too.
 
-        A transcript carrying only the disable marker reads as JA-only from that
-        point on while EN lines resume below it, so afterwards the reader cannot
+        A transcript carrying only the disable marker reads as source-only from that
+        point on while TGT lines resume below it, so afterwards the reader cannot
         tell a recovered session from a corrupt one.
         """
         logger.warning("translation restored: %s", reason)
@@ -1294,7 +1296,7 @@ class CodexTranslator:
             try:
                 line = await self._proc.stdout.readline()
             except (ValueError, OSError):
-                break  # oversized line / broken transport -> EOF cleanup -> JA-only
+                break  # oversized line / broken transport -> EOF cleanup -> source-only
             if not line:
                 break
             try:
@@ -1314,7 +1316,7 @@ class CodexTranslator:
                 self._write({"jsonrpc": "2.0", "id": msg["id"], "result": {"decision": "denied"}})
             else:
                 self._notes.put_nowait(msg)
-        # EOF: app-server died -> JA-only. _disable records the enabled->disabled
+        # EOF: app-server died -> source-only. _disable records the enabled->disabled
         # transition once (startup/3-strike both record theirs; a death in an
         # idle gap was the one silent, permanent case) — T8.5.
         self._disable("codex app-server exited")
@@ -1357,8 +1359,8 @@ class CodexTranslator:
             # The model never terminates on this input, so translating it would
             # cost TRANSLATE_TIMEOUT_S and one of TRANSLATE_MAX_FAILURES strikes;
             # three such captions in a row took a whole session permanently
-            # JA-only. Declining ahead of the queue is what keeps _failures
-            # untouched by construction. The JA line still prints and is still
+            # source-only. Declining ahead of the queue is what keeps _failures
+            # untouched by construction. The source line still prints and is still
             # saved — the caption is evidence of what was heard.
             self.degenerate_captions += 1
             logger.warning(
@@ -1407,10 +1409,10 @@ class CodexTranslator:
             # attempt costs this one turn ~5 s and needs no task of its own, so
             # close() and the SIGHUP path keep the shutdown ordering they have.
             if not self.enabled and not await self._recover():
-                continue  # still down: JA-only for this caption
+                continue  # still down: source-only for this caption
             en = await self._translate(ja)
             if en:
-                emit_line("EN", seq, en, self.output_file)
+                emit_line("TGT", seq, en, self.output_file)
                 if self.context is not None:
                     self.context.observe_en(ja, en)
 
@@ -1437,7 +1439,9 @@ class CodexTranslator:
             if self._failures >= TRANSLATE_MAX_FAILURES:
                 self._disable(f"{self._failures} consecutive failures ({failure_cause(e)})")
             else:
-                logger.warning("translation failed (%s); JA-only for this block", failure_cause(e))
+                logger.warning(
+                    "translation failed (%s); source-only for this block", failure_cause(e)
+                )
             return ""
 
     async def _turn(self, ja: str) -> str:
@@ -1574,7 +1578,7 @@ async def _decode_segments(
             drop_caption(state, text, defect)
         elif text:
             seq += 1
-            emit_line("JA", seq, text, output_file)
+            emit_line("SRC", seq, text, output_file)
             if context is not None:
                 # sherpa decodes unconditioned, so every sighting is independent
                 # evidence. An engine that consumes asr_prompt() must hand the
@@ -1606,8 +1610,8 @@ async def _vac_segments(
     tail because at an utterance boundary nothing is left to confirm it against.
 
     Committed text lands on the status line as it settles, so the reader sees it at
-    the measured 2.5 s lag; the numbered `JA n:` line and the single translation turn
-    still fire once per utterance, which keeps transcripts and JA/EN pairing intact
+    the measured 2.5 s lag; the numbered `SRC n:` line and the single translation turn
+    still fire once per utterance, which keeps transcripts and SRC/TGT pairing intact
     and keeps one utterance to one billable turn.
     """
     loop = asyncio.get_running_loop()
@@ -1668,7 +1672,7 @@ async def _vac_segments(
             drop_caption(state, utterance, defect)
         elif utterance:
             seq += 1
-            emit_line("JA", seq, utterance, output_file)
+            emit_line("SRC", seq, utterance, output_file)
             if context is not None:
                 context.observe_ja(utterance, biased)
             if translator is not None:
@@ -2128,7 +2132,7 @@ async def run_session(args):
             translator = t
             print(f"Translation: {TRANSLATE_MODEL} via codex app-server")
         else:
-            print("Translation: unavailable (JA-only, see log)")
+            print("Translation: unavailable (source-only, see log)")
     else:
         print("Translation: disabled (--no-translate)")
 
@@ -2172,7 +2176,7 @@ async def run_session(args):
         # Order matters: stop the mic first so the queue stops growing, then
         # sentinel the worker and let it flush the VAD — a mid-utterance Ctrl+C
         # still decodes and persists what was already spoken (T1.4 behavior).
-        # The translator drains last so flushed tail blocks still get EN lines.
+        # The translator drains last so flushed tail blocks still get TGT lines.
         try:
             with _audio_operation("stopping the microphone"):
                 stream.stop()
@@ -2209,8 +2213,8 @@ def _install_signal_handlers(state):
     loop = asyncio.get_running_loop()
     # SIGHUP is the terminal-close path and its default action is termination, so
     # without it here closing the window killed the process outright: JA flushes
-    # as it lands but EN needs the drain, which is why two live sessions lost
-    # exactly one EN line, the last. Handling it runs the same drain Ctrl+C does,
+    # as it lands but TGT needs the drain, which is why two live sessions lost
+    # exactly one TGT line, the last. Handling it runs the same drain Ctrl+C does,
     # against a pty that no longer accepts writes -- see write_stdout.
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         try:

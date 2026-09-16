@@ -469,7 +469,7 @@ def test_one_utterance_publishes_exactly_once_through_every_consumer(
 
     assert len(openvino[0].calls) > 2, "the utterance must be re-decoded while it is open"
     (line,) = run.lines
-    assert line[0] == "JA"
+    assert line[0] == "SRC"
     assert line[1] == 1
     assert line[2]
     assert translator.submitted == [(1, line[2])]
@@ -800,7 +800,7 @@ def test_the_final_utterance_keeps_its_en_line_through_shutdown(monkeypatch, ope
     lines = (tmp_path / "session.txt").read_text(encoding="utf-8").splitlines()
     tags = [line.split("] ", 1)[1].split(": ", 1)[0] for line in lines]
     texts = [line.split(": ", 1)[1] for line in lines]
-    assert tags == ["JA 1", "JA 2", "EN 1", "EN 2"]  # nothing lost, nothing degraded
+    assert tags == ["SRC 1", "SRC 2", "TGT 1", "TGT 2"]  # nothing lost, nothing degraded
     assert all(text and TRANSCRIPT.startswith(text) for text in texts[:2])
     assert texts[2:] == [f"[en] {texts[0]}", f"[en] {texts[1]}"]  # each EN to its own JA
 
@@ -839,10 +839,10 @@ async def main():
     state = live_stt.State()
     live_stt._install_signal_handlers(state)
     f = live_stt.TranscriptFile(Path({path!r}))
-    live_stt.emit_line("JA", 1, "before hangup", f)
+    live_stt.emit_line("SRC", 1, "before hangup", f)
     while not state.stopping:
         await asyncio.sleep(0.01)
-    live_stt.emit_line("EN", 1, "after hangup", f)   # stdout is a dead pty here
+    live_stt.emit_line("TGT", 1, "after hangup", f)   # stdout is a dead pty here
     f.close()
 
 asyncio.run(main())
@@ -871,7 +871,7 @@ def test_the_terminal_close_drains_to_the_transcript_over_a_real_pty(tmp_path):
 
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:  # the child is up once its JA line lands
-        if transcript.exists() and "JA 1" in transcript.read_text(encoding="utf-8"):
+        if transcript.exists() and "SRC 1" in transcript.read_text(encoding="utf-8"):
             break
         time.sleep(0.01)
     os.close(master)  # <-- closing the terminal
@@ -889,7 +889,7 @@ def test_the_terminal_close_drains_to_the_transcript_over_a_real_pty(tmp_path):
 
     assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0  # not -SIGHUP
     lines = [ln.split("] ", 1)[-1] for ln in transcript.read_text(encoding="utf-8").splitlines()]
-    assert lines == ["JA 1: before hangup", "EN 1: after hangup"]
+    assert lines == ["SRC 1: before hangup", "TGT 1: after hangup"]
 
 
 class _Screen:
@@ -1281,7 +1281,7 @@ def test_the_context_seed_defaults_to_empty_and_is_passed_through(monkeypatch):
 
 
 def test_the_translation_leg_is_on_by_default_and_switchable_off(monkeypatch):
-    """Parse level only; the JA-only degrade itself needs a live session (L-004)."""
+    """Parse level only; the source-only degrade itself needs a live session (L-004)."""
     assert run_cli(monkeypatch)["args"].no_translate is False
     assert run_cli(monkeypatch, "--no-translate")["args"].no_translate is True
 

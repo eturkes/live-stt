@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Re-derive what a live session did, from the files that session already wrote.
 
-A live run leaves two artifacts: `transcripts/<start>.txt` (numbered JA/EN lines
+A live run leaves two artifacts: `transcripts/<start>.txt` (numbered source/target lines
 plus `--` markers) and whatever stderr was redirected to. Everything else --
 the meter, the scrollback, the counters -- dies with the terminal. So the
 questions a soak actually has to answer (`live-smoke.md`) were answerable only by
-hand-reading, which is how a 47-turn JA-only tail sat in one session for weeks
+hand-reading, which is how a 47-turn source-only tail sat in one session for weeks
 before anyone named its cause.
 
 This reads those files and answers them mechanically. It needs no hardware, no
@@ -32,17 +32,19 @@ from datetime import datetime
 
 import live_stt as app
 
-# `[2026-09-04T14:38:41+09:00] JA 263: text` and the unnumbered `-- note` form.
-_EVENT = re.compile(r"^\[([^\]]+)\] (JA|EN) (\d+): (.*)$")
+# Current `SRC`/`TGT` plus legacy `JA`/`EN`; `-- note` is unnumbered.
+_EVENT = re.compile(r"^\[([^\]]+)\] (SRC|TGT|JA|EN) (\d+): (.*)$")
 _NOTE = re.compile(r"^\[([^\]]+)\] -- (.*)$")
 # `[2026-09-04 14:38:49,538] ERROR message`; the comma is logging's msec sep.
 _LOG = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+\] (\w+) (.*)$")
 
 _DECLINED = re.compile(r"^caption (\d+) not translated: (.*)$")
-_BLOCK_FAIL = re.compile(r"^translation failed \((.*)\); JA-only for this block$")
+_BLOCK_FAIL = re.compile(r"^translation failed \((.*)\); (?:source|JA)-only for this block$")
 # The prefix is optional: sessions predating the `_disable` rewrite logged the
 # bare reason, so a corpus spans both spellings of the same event.
-_DISABLED = re.compile(r"^(?:translation disabled: )?(.*?); JA-only for the rest of the session$")
+_DISABLED = re.compile(
+    r"^(?:translation disabled: )?(.*?); (?:source|JA)-only for the rest of the session$"
+)
 _RESTORED = re.compile(r"^translation restored: (.*)$")
 _PEAK = re.compile(r"^backlog peak:(.*)$")
 # `session: <transcript path>`, the run's own start, or `not saved (--no-save)`.
@@ -52,11 +54,11 @@ _SESSION = re.compile(r"^session: (.*)$")
 # the whole separator, and only this anchor survives both.
 _DROPPED = re.compile(r"^caption dropped \((.*?)\): (.*)$")
 
-# Why a published caption never got an EN line. Ordered by how much the evidence
+# Why a published caption never got a target line. Ordered by how much the evidence
 # pins it down: a logged decline is certain, a trailing gap is an inference.
 DECLINED = "declined"  # the caption's own text; the screen refused it
 STRIKE = "strike"  # a failure inside the run that disabled the leg
-DISABLED = "disabled"  # after a permanent degrade, so JA-only by design
+DISABLED = "disabled"  # after a permanent degrade, so source-only by design
 SHUTDOWN = "shutdown"  # last caption of the session; the drain did not finish
 FAILED = "failed"  # isolated transient failure, leg survived
 
@@ -78,8 +80,8 @@ class LogEvent:
 @dataclass
 class Session:
     path: str
-    ja: dict[int, Caption] = field(default_factory=dict)
-    en: dict[int, Caption] = field(default_factory=dict)
+    src: dict[int, Caption] = field(default_factory=dict)
+    tgt: dict[int, Caption] = field(default_factory=dict)
     notes: list[tuple[datetime, str]] = field(default_factory=list)
     events: list[LogEvent] = field(default_factory=list)
     marker_start: datetime | None = None  # `session:` in the log, set by attach_logs
@@ -104,7 +106,7 @@ class Session:
         try:
             return datetime.strptime(self.name.removesuffix(".txt"), "%Y-%m-%dT%H-%M-%S")
         except ValueError:
-            times = [c.at for c in self.ja.values()] + [c.at for c in self.en.values()]
+            times = [c.at for c in self.src.values()] + [c.at for c in self.tgt.values()]
             return min(times) if times else None
 
 
@@ -116,7 +118,7 @@ def read_session(path: str) -> Session:
             if m := _EVENT.match(line):
                 at = datetime.fromisoformat(m.group(1)).replace(tzinfo=None)
                 cap = Caption(int(m.group(3)), at, m.group(4))
-                (s.ja if m.group(2) == "JA" else s.en)[cap.n] = cap
+                (s.src if m.group(2) in {"SRC", "JA"} else s.tgt)[cap.n] = cap
             elif m := _NOTE.match(line):
                 s.notes.append(
                     (datetime.fromisoformat(m.group(1)).replace(tzinfo=None), m.group(2))
@@ -194,11 +196,11 @@ def repeat_span_at(text: str, bound: int) -> int:
 
 
 def find_degrade(s: Session) -> dict | None:
-    """When the EN leg died for the rest of the session, and on which mechanism.
+    """When the translation leg died for the rest of the session, and on which mechanism.
 
     Three sources, strongest first. A `--` marker is the shipped record and names
     its own reason. A log line is nearly as good. Absent both -- every session
-    saved before the marker existed -- the transcript still shows it: EN stops
+    saved before the marker existed -- the transcript still shows it: the target stops
     and never resumes, with more captions behind it than the strike budget.
     """
 
@@ -218,13 +220,13 @@ def find_degrade(s: Session) -> dict | None:
     for e in s.events:
         if m := _DISABLED.match(e.body):
             return framed(e.at, m.group(1), "log")
-    if not s.en:
+    if not s.tgt:
         return None
-    last_en = max(s.en)
-    trailing = sorted(n for n in s.ja if n > last_en)
+    last_tgt = max(s.tgt)
+    trailing = sorted(n for n in s.src if n > last_tgt)
     if len(trailing) < app.TRANSLATE_MAX_FAILURES:
         return None  # too short to be the 3-strike path; read as shutdown loss
-    strike_at = s.ja[trailing[app.TRANSLATE_MAX_FAILURES - 1]].at
+    strike_at = s.src[trailing[app.TRANSLATE_MAX_FAILURES - 1]].at
     return framed(strike_at, f"{app.TRANSLATE_MAX_FAILURES} consecutive failures", "inferred")
 
 
@@ -289,7 +291,7 @@ def attribute_drops(s: Session) -> list[dict]:
         for e in s.events
         if (m := _DROPPED.match(e.body))
     ]
-    captions = sorted(s.ja.values(), key=lambda c: (c.at, c.n))
+    captions = sorted(s.src.values(), key=lambda c: (c.at, c.n))
     last_event = max((e.at for e in s.events), default=None)
 
     rows: list[dict] = []
@@ -328,57 +330,57 @@ def attribute_drops(s: Session) -> list[dict]:
 
 
 def explain_missing(s: Session) -> list[dict]:
-    """Why each published caption has no EN line."""
+    """Why each published caption has no target line."""
     logged = {int(m.group(1)): m.group(2) for e in s.events if (m := _DECLINED.match(e.body))}
     degrade = find_degrade(s)
-    last_en = max(s.en) if s.en else 0
-    last_ja = max(s.ja) if s.ja else 0
+    last_tgt = max(s.tgt) if s.tgt else 0
+    last_src = max(s.src) if s.src else 0
     strikes = set()
     if degrade and degrade["three_strike"]:
-        after = sorted(n for n in s.ja if n > last_en)
+        after = sorted(n for n in s.src if n > last_tgt)
         strikes = set(after[: app.TRANSLATE_MAX_FAILURES])
 
     # `translation failed (<type>)` names the exception a turn died on. Second
     # resolution, so it is matched to the caption it followed, not to an exact
-    # timestamp: the EN would have landed after its JA line, never before.
+    # timestamp: the target would have landed after its source line, never before.
     failures = [
         (e.at, m.group(1) or "TimeoutError") for e in s.events if (m := _BLOCK_FAIL.match(e.body))
     ]
 
     def failure_near(n: int) -> str | None:
-        after = s.ja[n].at
-        nxt = min((s.ja[k].at for k in s.ja if k > n), default=None)
+        after = s.src[n].at
+        nxt = min((s.src[k].at for k in s.src if k > n), default=None)
         for at, cause in failures:
             if at >= after and (nxt is None or at <= nxt):
                 return cause
         return None
 
     rows = []
-    for n in sorted(set(s.ja) - set(s.en)):
-        text = s.ja[n].text
+    for n in sorted(set(s.src) - set(s.tgt)):
+        text = s.src[n].text
         defect = app.caption_defect(text)
         cause = failure_near(n)
         # Precedence is causal, not textual. Once the leg is down every caption
-        # lacks an EN whatever its text, so a screen verdict there is a
+        # lacks a target whatever its text, so a screen verdict there is a
         # counterfactual and rides `screened_now` instead of explaining the loss.
         if n in logged:
             why, detail = DECLINED, logged[n]
         elif n in strikes:
             why, detail = STRIKE, f"failure that spent a strike ({cause or 'cause not logged'})"
-        elif degrade and n > last_en:
+        elif degrade and n > last_tgt:
             why, detail = DISABLED, str(degrade["reason"])
         elif defect:
             why, detail = DECLINED, defect
         elif cause:
             why, detail = FAILED, f"transient failure ({cause}), leg recovered"
-        elif n == last_ja:
-            why, detail = SHUTDOWN, "last caption; EN did not drain before exit"
+        elif n == last_src:
+            why, detail = SHUTDOWN, "last caption; TGT did not drain before exit"
         else:
             why, detail = FAILED, "transient failure, leg recovered"
         rows.append(
             {
                 "n": n,
-                "at": s.ja[n].at.isoformat(sep=" "),
+                "at": s.src[n].at.isoformat(sep=" "),
                 "why": why,
                 "detail": detail,
                 # A strike today's screen would refuse never reaches the
@@ -392,7 +394,7 @@ def explain_missing(s: Session) -> list[dict]:
 
 
 def lags(s: Session) -> list[tuple[int, float]]:
-    return [(n, (s.en[n].at - s.ja[n].at).total_seconds()) for n in sorted(s.en) if n in s.ja]
+    return [(n, (s.tgt[n].at - s.src[n].at).total_seconds()) for n in sorted(s.tgt) if n in s.src]
 
 
 def sweep(caps: list[tuple[str, int, str]], lo: int, hi: int) -> list[dict]:
@@ -425,7 +427,7 @@ def sweep(caps: list[tuple[str, int, str]], lo: int, hi: int) -> list[dict]:
 
 
 def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
-    caps = [(s.name, c.n, c.text) for s in sessions for c in s.ja.values()]
+    caps = [(s.name, c.n, c.text) for s in sessions for c in s.src.values()]
     texts = [t for _, _, t in caps]
     survivors = sorted(
         ((app.repeat_span(t), t) for t in texts if not app.caption_defect(t)), reverse=True
@@ -449,8 +451,8 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
         per_session.append(
             {
                 "session": s.name,
-                "captions": len(s.ja),
-                "translated": len(s.en),
+                "captions": len(s.src),
+                "translated": len(s.tgt),
                 "missing": missing,
                 "missing_by_reason": {
                     w: sum(1 for r in missing if r["why"] == w)
@@ -464,8 +466,8 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                         "at": degrade["at"].isoformat(sep=" "),
                         "reason": degrade["reason"],
                         "source": degrade["source"],
-                        "last_en": max(s.en) if s.en else None,
-                        "ja_only_after": sum(1 for n in s.ja if n > max(s.en, default=0)),
+                        "last_tgt": max(s.tgt) if s.tgt else None,
+                        "source_only_after": sum(1 for n in s.src if n > max(s.tgt, default=0)),
                     }
                 ),
                 "restores": [
@@ -508,7 +510,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
         "totals": {
             "sessions": len(sessions),
             "captions": len(texts),
-            "translated": sum(len(s.en) for s in sessions),
+            "translated": sum(len(s.tgt) for s in sessions),
             "missing": sum(len(p["missing"]) for p in per_session),
             "unclaimed_log_events": len(unclaimed),
         },
@@ -550,21 +552,21 @@ def render(rep: dict) -> str:
     t = rep["totals"]
     out = [
         f"{t['sessions']} sessions, {t['captions']} captions, "
-        f"{t['translated']} translated, {t['missing']} without EN",
+        f"{t['translated']} translated, {t['missing']} without TGT",
         "",
     ]
     for p in rep["sessions"]:
-        out.append(f"== {p['session']}  {p['captions']} captions, {p['translated']} EN")
+        out.append(f"== {p['session']}  {p['captions']} captions, {p['translated']} TGT")
         if p["lag_s"]:
             g = p["lag_s"]
             out.append(
-                f"   EN behind JA: p50 {g['p50']:.0f}s  p90 {g['p90']:.0f}s  max {g['max']:.0f}s"
+                f"   TGT behind SRC: p50 {g['p50']:.0f}s  p90 {g['p90']:.0f}s  max {g['max']:.0f}s"
             )
         if p["degrade"]:
             d = p["degrade"]
             out.append(
                 f"   DEGRADE [{d['source']}] {d['at']}  {d['reason']}"
-                f"  (last EN n={d['last_en']}, {d['ja_only_after']} JA-only after)"
+                f"  (last TGT n={d['last_tgt']}, {d['source_only_after']} source-only after)"
             )
         for r in p["restores"]:
             out.append(f"   RESTORE [{r['source']}] {r['at']}  {r['reason']}")
@@ -584,9 +586,9 @@ def render(rep: dict) -> str:
                 out.append(f"       screened {w['at'][11:]}  {w['defect']}  {w['text']}")
         if p["missing_by_reason"]:
             summary = ", ".join(f"{k}={v}" for k, v in p["missing_by_reason"].items())
-            out.append(f"   no EN: {summary}")
+            out.append(f"   no TGT: {summary}")
         # A degrade's tail is one event, not N. Listing every caption behind it
-        # buries the handful that each lost their EN for their own reason.
+        # buries the handful that each lost their target for their own reason.
         held = [r for r in p["missing"] if r["why"] == DISABLED]
         if held:
             screened = sum(1 for r in held if r["screened_now"])
@@ -634,7 +636,7 @@ def render(rep: dict) -> str:
     if rep["lag_s"]:
         g = rep["lag_s"]
         out.append(
-            f"EN behind JA overall: {g['pairs']} pairs, "
+            f"TGT behind SRC overall: {g['pairs']} pairs, "
             f"p50 {g['p50']:.0f}s p90 {g['p90']:.0f}s max {g['max']:.0f}s"
         )
     out.append(

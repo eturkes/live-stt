@@ -39,6 +39,22 @@ def log_event(ts: str, body: str, level: str = "INFO") -> str:
     return f"[2026-09-04 {ts},000] {level} {body}"
 
 
+def test_read_session_accepts_legacy_and_mixed_grammars(tmp_path):
+    path = write(
+        tmp_path,
+        "mixed",
+        [
+            event("10:00:01", "JA", 1, CLEAN),
+            event("10:00:03", "EN", 1, "One."),
+            event("10:00:10", "SRC", 2, CLEAN),
+            event("10:00:12", "TGT", 2, "Two."),
+        ],
+    )
+    session = sr.read_session(path)
+    assert sorted(session.src) == [1, 2]
+    assert sorted(session.tgt) == [1, 2]
+
+
 def read_log(tmp_path: Path, lines: list[str]) -> list[sr.LogEvent]:
     lp = tmp_path / "run.log"
     lp.write_text("".join(f"{ln}\n" for ln in lines), encoding="utf-8")
@@ -69,12 +85,12 @@ def test_declined_captions_name_their_own_defect(tmp_path):
         tmp_path,
         "2026-09-04T10-00-00",
         [
-            event("10:00:01", "JA", 1, CLEAN),
-            event("10:00:03", "EN", 1, "Hello."),
-            event("10:00:10", "JA", 2, LOOP),
-            event("10:00:20", "JA", 3, ENGLISH),
-            event("10:00:30", "JA", 4, CLEAN),
-            event("10:00:32", "EN", 4, "Hello again."),
+            event("10:00:01", "SRC", 1, CLEAN),
+            event("10:00:03", "TGT", 1, "Hello."),
+            event("10:00:10", "SRC", 2, LOOP),
+            event("10:00:20", "SRC", 3, ENGLISH),
+            event("10:00:30", "SRC", 4, CLEAN),
+            event("10:00:32", "TGT", 4, "Hello again."),
         ],
     )
     rep = report([path])
@@ -87,13 +103,13 @@ def test_declined_captions_name_their_own_defect(tmp_path):
 
 def test_three_strike_degrade_is_inferred_without_a_marker(tmp_path):
     """Every session saved before the marker existed still shows its own death."""
-    lines = [event("11:00:01", "JA", 1, CLEAN), event("11:00:03", "EN", 1, "One.")]
+    lines = [event("11:00:01", "SRC", 1, CLEAN), event("11:00:03", "TGT", 1, "One.")]
     for n in range(2, 8):
-        lines.append(event(f"11:0{n}:00", "JA", n, CLEAN))
+        lines.append(event(f"11:0{n}:00", "SRC", n, CLEAN))
     rep = report([write(tmp_path, "2026-09-04T11-00-00", lines)])
     s = rep["sessions"][0]
     assert s["degrade"]["source"] == "inferred"
-    assert s["degrade"]["last_en"] == 1
+    assert s["degrade"]["last_tgt"] == 1
     # The strike budget is spent on the first three, the rest ride the degrade.
     assert reasons(s) == {
         2: sr.STRIKE,
@@ -111,16 +127,16 @@ def test_eof_after_the_last_caption_is_still_attributed(tmp_path):
         tmp_path,
         "2026-09-04T12-00-00",
         [
-            event("12:00:01", "JA", 1, CLEAN),
-            event("12:00:03", "EN", 1, "One."),
-            event("12:00:10", "JA", 2, CLEAN),
+            event("12:00:01", "SRC", 1, CLEAN),
+            event("12:00:03", "TGT", 1, "One."),
+            event("12:00:10", "SRC", 2, CLEAN),
         ],
     )
     rep = report(
         [path],
         log=[
             "[2026-09-04 12:00:12,100] ERROR codex app-server exited;"
-            " JA-only for the rest of the session"
+            " source-only for the rest of the session"
         ],
         tmp_path=tmp_path,
     )
@@ -133,14 +149,14 @@ def test_eof_after_the_last_caption_is_still_attributed(tmp_path):
 
 
 def test_shutdown_loss_is_not_read_as_a_degrade(tmp_path):
-    """One trailing caption is the drain losing its last EN, not the leg dying."""
+    """One trailing caption is the drain losing its last TGT, not the leg dying."""
     path = write(
         tmp_path,
         "2026-09-04T13-00-00",
         [
-            event("13:00:01", "JA", 1, CLEAN),
-            event("13:00:03", "EN", 1, "One."),
-            event("13:00:10", "JA", 2, CLEAN),
+            event("13:00:01", "SRC", 1, CLEAN),
+            event("13:00:03", "TGT", 1, "One."),
+            event("13:00:10", "SRC", 2, CLEAN),
         ],
     )
     s = report([path])["sessions"][0]
@@ -153,14 +169,14 @@ def test_markers_outrank_inference(tmp_path):
         tmp_path,
         "2026-09-04T14-00-00",
         [
-            event("14:00:01", "JA", 1, CLEAN),
-            event("14:00:03", "EN", 1, "One."),
+            event("14:00:01", "SRC", 1, CLEAN),
+            event("14:00:03", "TGT", 1, "One."),
             "[2026-09-04T14:00:05+09:00] -- translation disabled: codex app-server exited",
-            event("14:00:10", "JA", 2, CLEAN),
+            event("14:00:10", "SRC", 2, CLEAN),
             "[2026-09-04T14:00:20+09:00] -- translation restored:"
             " codex app-server respawned (attempt 1)",
-            event("14:00:30", "JA", 3, CLEAN),
-            event("14:00:32", "EN", 3, "Three."),
+            event("14:00:30", "SRC", 3, CLEAN),
+            event("14:00:32", "TGT", 3, "Three."),
         ],
     )
     s = report([path])["sessions"][0]
@@ -175,7 +191,7 @@ def test_sweep_names_the_caption_a_wider_bound_catches(tmp_path):
     path = write(
         tmp_path,
         "2026-09-04T15-00-00",
-        [event("15:00:01", "JA", 1, unit * 8), event("15:00:03", "EN", 1, "One.")],
+        [event("15:00:01", "SRC", 1, unit * 8), event("15:00:03", "TGT", 1, "One.")],
     )
     rows = report([path])["screen"]["sweep"]
     by_bound = {b: r for r in rows for b in range(r["from"], r["to"] + 1)}
@@ -207,8 +223,8 @@ def test_the_rotation_boundary_tag_names_the_turn_that_pays_it(tmp_path):
     """
     lines = []
     for n, at in ((100, "10:00"), (101, "10:01")):
-        lines.append(event(f"{at}:00", "JA", n, CLEAN))
-        lines.append(event(f"{at}:07", "EN", n, "Hello"))
+        lines.append(event(f"{at}:00", "SRC", n, CLEAN))
+        lines.append(event(f"{at}:07", "TGT", n, "Hello"))
     session = report([write(tmp_path, "s", lines)])["sessions"][0]
     tagged = {t["n"]: t["at_rotation"] for t in session["slow_turns"]}
     assert tagged == {100: False, 101: True}
@@ -216,10 +232,10 @@ def test_the_rotation_boundary_tag_names_the_turn_that_pays_it(tmp_path):
 
 def _screen(tmp_path: Path, name: str) -> dict:
     lines = [
-        event("10:00:01", "JA", 1, CLEAN),
-        event("10:00:03", "EN", 1, "Hello."),
-        event("10:00:10", "JA", 2, LOOP),
-        event("10:00:20", "JA", 3, ENGLISH),
+        event("10:00:01", "SRC", 1, CLEAN),
+        event("10:00:03", "TGT", 1, "Hello."),
+        event("10:00:10", "SRC", 2, LOOP),
+        event("10:00:20", "SRC", 3, ENGLISH),
     ]
     return report([write(tmp_path, name, lines)])
 
@@ -240,14 +256,14 @@ def test_an_english_session_is_not_re_derived_under_a_screen_it_never_ran(tmp_pa
     en = _screen(tmp_path, "en")
     assert (en["screen"]["source_lang"], en["screen"]["latin_drops"]) == ("en", 0)
     assert en["screen"]["combined_drops"] == en["screen"]["repetition_drops"] == 1
-    # The English caption has an EN of its own missing, but not for that reason.
+    # The English caption has a TGT of its own missing, but not for that reason.
     assert "latin letters" not in str(reasons(en["sessions"][0]))
 
 
 def test_the_source_lang_flag_reaches_the_shipped_screen(tmp_path, monkeypatch, capsys):
     """The transcript records captions, not flags, so the language rides argv."""
     monkeypatch.setattr(sr.app, "ASR_LANGUAGE", "ja")
-    path = write(tmp_path, "s", [event("10:00:20", "JA", 1, ENGLISH)])
+    path = write(tmp_path, "s", [event("10:00:20", "SRC", 1, ENGLISH)])
     monkeypatch.setattr(sys, "argv", ["session_report.py", path, "--source-lang", "en", "--json"])
     assert sr.main() == 0
     assert json.loads(capsys.readouterr().out)["screen"]["latin_drops"] == 0
@@ -260,7 +276,7 @@ def test_a_drop_increase_names_the_captions_that_bracket_it(tmp_path):
     path = write(
         tmp_path,
         "2026-09-04T10-00-00",
-        [event("10:00:03", "JA", 41, prev_text), event("10:00:20", "JA", 42, next_text)],
+        [event("10:00:03", "SRC", 41, prev_text), event("10:00:20", "SRC", 42, next_text)],
     )
 
     session = report(
@@ -301,7 +317,7 @@ def test_a_drop_increase_names_the_captions_that_bracket_it(tmp_path):
 
 
 def test_a_peak_change_without_more_drops_creates_no_entry(tmp_path):
-    path = write(tmp_path, "2026-09-04T11-00-00", [event("11:00:10", "JA", 1, CLEAN)])
+    path = write(tmp_path, "2026-09-04T11-00-00", [event("11:00:10", "SRC", 1, CLEAN)])
 
     session = report(
         [path],
@@ -319,7 +335,7 @@ def test_the_translation_counters_are_never_read_as_audio_drops(tmp_path):
     """`tdrop=`/`tskip=` count TURNS, not captured audio, and share a suffix with the
     audio pair. Dropping `\\b` from `_counter` reads `tdrop=9` as nine dropped blocks
     and the rest of this file stays green, so the boundary needs its own input."""
-    path = write(tmp_path, "2026-09-04T11-30-00", [event("11:30:10", "JA", 1, CLEAN)])
+    path = write(tmp_path, "2026-09-04T11-30-00", [event("11:30:10", "SRC", 1, CLEAN)])
 
     session = report(
         [path],
@@ -338,7 +354,7 @@ def test_the_first_peak_compares_its_drop_count_with_zero(tmp_path):
     path = write(
         tmp_path,
         "2026-09-04T12-00-00",
-        [event("12:00:20", "JA", 1, next_text)],
+        [event("12:00:20", "SRC", 1, next_text)],
     )
 
     session = report(
@@ -367,7 +383,7 @@ def test_a_drop_after_the_last_caption_has_no_following_caption(tmp_path):
     path = write(
         tmp_path,
         "2026-09-04T13-00-00",
-        [event("13:00:01", "JA", 7, prev_text)],
+        [event("13:00:01", "SRC", 7, prev_text)],
     )
 
     session = report(
@@ -411,7 +427,7 @@ def test_a_screened_head_keeps_an_ellipsis_the_caption_itself_carried(tmp_path):
     path = write(
         tmp_path,
         "2026-09-04T13-30-00",
-        [event("13:30:01", "JA", 1, CLEAN)],
+        [event("13:30:01", "SRC", 1, CLEAN)],
     )
 
     session = report(
@@ -436,9 +452,9 @@ def test_render_names_drop_increases_in_blocks(tmp_path):
         tmp_path,
         "2026-09-04T14-00-00",
         [
-            event("14:00:01", "JA", 1, "一"),
-            event("14:00:20", "JA", 2, "二"),
-            event("14:00:40", "JA", 3, "三"),
+            event("14:00:01", "SRC", 1, "一"),
+            event("14:00:20", "SRC", 2, "二"),
+            event("14:00:40", "SRC", 3, "三"),
         ],
     )
     rep = report(
@@ -464,7 +480,7 @@ def test_render_names_drop_increases_in_blocks(tmp_path):
 
 def test_a_pre_caption_drop_increase_on_an_o_path_session_names_its_screened_caption(tmp_path):
     screened = "ねこ" * 12
-    path = write(tmp_path, "run", [event("10:00:20", "JA", 1, CLEAN)])
+    path = write(tmp_path, "run", [event("10:00:20", "SRC", 1, CLEAN)])
     session = sr.read_session(path)
     events = read_log(
         tmp_path,
@@ -500,8 +516,8 @@ def test_a_pre_caption_drop_increase_on_an_o_path_session_names_its_screened_cap
 
 
 def test_a_second_sessions_startup_events_do_not_land_on_the_first(tmp_path):
-    first_path = write(tmp_path, "2026-09-04T10-00-00", [event("10:00:10", "JA", 1, CLEAN)])
-    second_path = write(tmp_path, "run", [event("11:00:20", "JA", 1, CLEAN)])
+    first_path = write(tmp_path, "2026-09-04T10-00-00", [event("10:00:10", "SRC", 1, CLEAN)])
+    second_path = write(tmp_path, "run", [event("11:00:20", "SRC", 1, CLEAN)])
     first, second = sr.read_session(first_path), sr.read_session(second_path)
     first_marker, second_marker = f"session: {first_path}", f"session: {second_path}"
     first_eof = "codex app-server exited; JA-only for the rest of the session"
@@ -523,8 +539,8 @@ def test_a_second_sessions_startup_events_do_not_land_on_the_first(tmp_path):
 
 
 def test_an_unsaved_run_between_two_sessions_owns_its_own_events(tmp_path):
-    first_path = write(tmp_path, "2026-09-04T10-00-00", [event("10:00:10", "JA", 1, CLEAN)])
-    second_path = write(tmp_path, "2026-09-04T12-00-00", [event("12:00:10", "JA", 1, CLEAN)])
+    first_path = write(tmp_path, "2026-09-04T10-00-00", [event("10:00:10", "SRC", 1, CLEAN)])
+    second_path = write(tmp_path, "2026-09-04T12-00-00", [event("12:00:10", "SRC", 1, CLEAN)])
     first, second = sr.read_session(first_path), sr.read_session(second_path)
     first_marker, second_marker = f"session: {first_path}", f"session: {second_path}"
     unsaved_marker = "session: not saved (--no-save)"
@@ -547,8 +563,8 @@ def test_an_unsaved_run_between_two_sessions_owns_its_own_events(tmp_path):
 
 def test_a_log_without_markers_keeps_the_filename_rule(tmp_path):
     # Characterization: the fallback the marker path must leave alone.
-    default_path = write(tmp_path, "2026-09-04T09-00-00", [event("09:00:20", "JA", 1, CLEAN)])
-    custom_path = write(tmp_path, "run", [event("10:00:20", "JA", 1, CLEAN)])
+    default_path = write(tmp_path, "2026-09-04T09-00-00", [event("09:00:20", "SRC", 1, CLEAN)])
+    custom_path = write(tmp_path, "run", [event("10:00:20", "SRC", 1, CLEAN)])
     default, custom = sr.read_session(default_path), sr.read_session(custom_path)
 
     assert default.start == datetime(2026, 9, 4, 9, 0, 0)
@@ -587,9 +603,9 @@ def test_the_marker_event_is_inert_in_every_other_answer(tmp_path):
         tmp_path,
         "run",
         [
-            event("10:00:10", "JA", 1, CLEAN),
-            event("10:00:12", "EN", 1, "Hello."),
-            event("10:00:20", "JA", 2, CLEAN),
+            event("10:00:10", "SRC", 1, CLEAN),
+            event("10:00:12", "TGT", 1, "Hello."),
+            event("10:00:20", "SRC", 2, CLEAN),
         ],
     )
     session = sr.read_session(path)
@@ -630,7 +646,7 @@ def test_live_stt_logs_the_marker_only_when_a_stream_is_redirected(monkeypatch):
 
 
 def test_the_marker_outranks_the_filename_for_a_default_named_session(tmp_path):
-    path = write(tmp_path, "2026-09-04T10-00-00", [event("10:10:20", "JA", 1, CLEAN)])
+    path = write(tmp_path, "2026-09-04T10-00-00", [event("10:10:20", "SRC", 1, CLEAN)])
     session = sr.read_session(path)
     before_marker = "backlog peak: q=0.25s drop=1"
     marker = f"session: {path}"

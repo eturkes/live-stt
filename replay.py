@@ -163,7 +163,7 @@ def build_report(engine: str, wav: str, samples: np.ndarray, rows: list[dict]) -
 def replay_recognizer(path, rec, engine: str, on_update=None) -> dict:
     """Replay a WAV through the worker with an already-loaded recognizer.
 
-    The real worker() prints its live `JA n:` lines via emit_line; capture that
+    The real worker() prints its live `SRC n:` lines via emit_line; capture that
     stdout so replay's only output is its own report (keeps --json valid).
     """
     samples = load_wav_f32_16k(Path(path))

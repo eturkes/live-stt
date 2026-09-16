@@ -51,7 +51,7 @@ copies production's own `pyproject.toml` into the tree, so the carve-out under t
 one, with a `doc.md` twin as the positive control against an exclusion that swallowed every `.md`.
 **A `python`-tagged block in repo prose is now gate-governed** — write it formatted, or tag it `sh`.
 
-`tests/test_law_consistency.py` rides the pytest step and locks the four law invariants a tool can
+`tests/test_law_consistency.py` rides the pytest step and locks the five law invariants a tool can
 decide. Three are the deferral queue's: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row
 with its rank, title verbatim, and no scanned law file names a row by `rank N` at all. Pairing is
 checked ORDERED because independent rank/title membership passes a swap of two titles; that swap and
@@ -79,9 +79,22 @@ clause leaves its row overriding nothing while still reading as live law — bot
 phrase surviving elsewhere in the template reads as live. The 12-character floor is what keeps a key
 off a word like `rev`, which occurs everywhere and identifies nothing; the rest is a reader's call.
 
-None of the four locks needs a seeded fixture — the tree itself was the firing input, red on two
+The fifth locks what law quotes out of `.agent/spec.md`'s `Intent`: **a unit renames the thing
+quoted, rewrites its own prose with the new name, and stops at the section the user alone edits** —
+leaving a citation that attributes wording `Intent` never carried while still reading as the ask.
+Every backticked fragment after a backticked `Intent` in one whitespace-squashed sentence must occur
+in the `## Intent` section; text before the citation names the file rather than quoting it, a bare
+`Intent` listing the five section names cites nothing, and the heading rides the haystack so a
+citation may name the section. The queue is scanned here and nowhere else in this file, its rows
+being acceptance contracts that cite `Intent` the same way, while the rank and title locks read it as
+their source of truth.
+
+None of the five locks needs a seeded fixture — the tree itself was the firing input, red on two
 renamed spine titles, three rank references (one already retargeted onto the wrong unit), one
 prose-keyed row whose clause upstream had long dropped, and one pointer at a closed queue row.
+The fifth fires on the rename's own pre-fix citation, restored from a `cp` snapshot — the lag bullet
+of `translation-leg.md` as the grammar unit left it, carrying two role tags `Intent` does not; it
+reddens naming both. Prose must not restate that example either, this file being scanned too.
 Mutation-proven red for the fourth: a dead
 anchor, a generic short anchor, curly quotes, a changed header cell, a parse that yields no rows, and
 a row moved below the prose, into a pipe-less table or into a second table — each escape in both the

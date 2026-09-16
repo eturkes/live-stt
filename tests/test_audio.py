@@ -248,41 +248,41 @@ def test_merge_chunk_text_removes_only_plausible_exact_overlap():
 # --- emit_line ---
 
 
-def test_emit_line_ja(capsys):
+def test_emit_line_src(capsys):
     buf = io.StringIO()
-    emit_line("JA", 1, "こんにちは", buf)
+    emit_line("SRC", 1, "こんにちは", buf)
     captured = capsys.readouterr()
-    assert "JA 1: こんにちは" in captured.out
-    assert "JA 1: こんにちは" in buf.getvalue()
+    assert "SRC 1: こんにちは" in captured.out
+    assert "SRC 1: こんにちは" in buf.getvalue()
 
 
-def test_emit_line_en_shares_seq_tag(capsys):
-    # JA and EN are emitted independently; the seq number ties pairs together.
+def test_emit_line_tgt_shares_seq_tag(capsys):
+    # SRC and TGT are emitted independently; the seq number ties pairs together.
     buf = io.StringIO()
-    emit_line("JA", 2, "こんにちは", buf)
-    emit_line("JA", 3, "次の文", buf)
-    emit_line("EN", 2, "Hello", buf)
+    emit_line("SRC", 2, "こんにちは", buf)
+    emit_line("SRC", 3, "次の文", buf)
+    emit_line("TGT", 2, "Hello", buf)
     content = buf.getvalue()
-    assert "JA 2: こんにちは" in content
-    assert "JA 3: 次の文" in content
-    assert "EN 2: Hello" in content
+    assert "SRC 2: こんにちは" in content
+    assert "SRC 3: 次の文" in content
+    assert "TGT 2: Hello" in content
     # Interleaved arrival keeps one self-describing event per line.
-    assert content.index("JA 3") < content.index("EN 2")
+    assert content.index("SRC 3") < content.index("TGT 2")
 
 
 def test_emit_line_writes_iso8601_timestamp_prefix():
     buf = io.StringIO()
-    emit_line("JA", 1, "テスト", buf)
+    emit_line("SRC", 1, "テスト", buf)
     first_line = buf.getvalue().split("\n", 1)[0]
     assert first_line.startswith("[")
-    assert "] JA 1: テスト" in first_line
+    assert "] SRC 1: テスト" in first_line
     assert "T" in first_line.split("]", 1)[0]
 
 
 def test_emit_line_no_file_no_crash(capsys):
-    emit_line("JA", 1, "テスト", None)
+    emit_line("SRC", 1, "テスト", None)
     captured = capsys.readouterr()
-    assert "JA 1: テスト" in captured.out
+    assert "SRC 1: テスト" in captured.out
 
 
 class _DeadTerminal:
@@ -298,14 +298,14 @@ class _DeadTerminal:
 def test_emit_line_persists_when_the_terminal_is_already_gone(monkeypatch):
     # Closing the terminal runs the shutdown drain against a dead pty. stdout used
     # to go first, so the line raised on the display instead of reaching the file
-    # it was being drained into -- one lost EN line per session, always the last.
+    # it was being drained into -- one lost target line per session, always the last.
     monkeypatch.setattr(live_stt, "_stdout_live", True)
     monkeypatch.setattr(sys, "stdout", _DeadTerminal())
     buf = io.StringIO()
-    emit_line("JA", 1, "こんにちは", buf)
-    emit_line("EN", 1, "Hello", buf)
-    assert "JA 1: こんにちは" in buf.getvalue()
-    assert "EN 1: Hello" in buf.getvalue()
+    emit_line("SRC", 1, "こんにちは", buf)
+    emit_line("TGT", 1, "Hello", buf)
+    assert "SRC 1: こんにちは" in buf.getvalue()
+    assert "TGT 1: Hello" in buf.getvalue()
 
 
 def test_write_stdout_latches_off_after_the_first_refusal(monkeypatch):
@@ -330,10 +330,10 @@ def test_emit_line_line_clear_gated_on_stdout_tty(monkeypatch, capsys):
     # The \r\x1b[2K status-line clear must reach stdout only on a TTY, so a
     # redirected stdout stays ANSI-clean (symmetric with _StderrFormatter).
     monkeypatch.setattr("live_stt._STDOUT_TTY", False)
-    emit_line("JA", 1, "x", None)
+    emit_line("SRC", 1, "x", None)
     assert "\x1b[2K" not in capsys.readouterr().out
     monkeypatch.setattr("live_stt._STDOUT_TTY", True)
-    emit_line("JA", 2, "y", None)
+    emit_line("SRC", 2, "y", None)
     assert "\x1b[2K" in capsys.readouterr().out
 
 
@@ -375,13 +375,13 @@ def test_transcript_file_defers_creation_to_first_line(tmp_path):
 
 def test_transcript_file_appends_and_flushes_each_event(tmp_path):
     path = tmp_path / "session.txt"
-    path.write_text("[t] JA 1: 既存\n", encoding="utf-8")
+    path.write_text("[t] SRC 1: 既存\n", encoding="utf-8")
     f = TranscriptFile(path)
-    emit_line("JA", 2, "テスト", f)
+    emit_line("SRC", 2, "テスト", f)
     # emit_line flushes per event, so a killed session keeps every landed line.
     content = path.read_text(encoding="utf-8")
-    assert content.startswith("[t] JA 1: 既存\n")
-    assert "JA 2: テスト" in content
+    assert content.startswith("[t] SRC 1: 既存\n")
+    assert "SRC 2: テスト" in content
     f.close()
 
 

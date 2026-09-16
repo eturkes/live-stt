@@ -9,7 +9,7 @@ weight of the headline number.
 
     voice ──1──> a decode covers it ──2──> committed, on the status line
                                             │
-              speech ends ──3──> `JA n:` ──4──> `EN n:`
+              speech ends ──3──> `SRC n:` ──4──> `TGT n:`
 
     1+2  commit lag   `vac_decode_trace.json`   what the reader waits for mid-speech
     3    publication  `vac_decode_trace.json`   VAD_MIN_SILENCE_S + the final decode
@@ -49,7 +49,7 @@ their difference is exactly the display policy and nothing else:
 - `committed` -- what the status line shows today: the LocalAgreement-2 commit.
 - `provisional` -- the whole latest hypothesis, its unconfirmed tail included.
   The tail is rewritten by the next decode, so this is a status-line-only policy;
-  the published `JA n:` line and the transcript are the committed text either way.
+  the published `SRC n:` line and the transcript are the committed text either way.
 
 Both arms measure FIRST APPEARANCE: when a character reaches the screen. Neither
 measures when it stops moving, and the two are not the same character-for-character
@@ -232,7 +232,7 @@ def report(trace: dict[str, Any], pairing: dict[str, Any] | None) -> dict[str, A
             "commit_lag_s": _quantiles(committed),
             "provisional_lag_s": _quantiles(provisional),
             "redraw_bound_s": _quantiles(redraw_bound_lags(clip)),
-            # Speech end -> `JA n:`. silero needs VAD_MIN_SILENCE_S of silence to
+            # Speech end -> `SRC n:`. silero needs VAD_MIN_SILENCE_S of silence to
             # close the utterance, then one full decode publishes it. Its own
             # detection granularity (one 32 ms window) is not in the trace.
             "publication_s": _quantiles([VAD_MIN_SILENCE_S + cost for cost in finals]),
