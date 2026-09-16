@@ -427,7 +427,14 @@ class WhisperEngine:
     def set_hotwords(self, terms: str) -> None:
         self.hotwords = terms if self.supports_hotwords else ""
 
-    def generate(self, samples: np.ndarray, *, timestamps: bool = False):
+    def generate(
+        self,
+        samples: np.ndarray,
+        *,
+        timestamps: bool = False,
+        language: str | None = None,
+    ):
+        language = ASR_LANGUAGE if language is None else language
         keywords: dict[str, object] = {"repetition_penalty": ASR_REPETITION_PENALTY}
         if self.hotwords:
             keywords["hotwords"] = self.hotwords
@@ -436,7 +443,7 @@ class WhisperEngine:
             # declares the narrower Sequence[SupportsFloat]. Converting for real
             # would copy every sample of every decode into a Python list.
             cast("Sequence[SupportsFloat]", samples),
-            language=f"<|{ASR_LANGUAGE}|>",
+            language=f"<|{language}|>",
             task="transcribe",
             return_timestamps=timestamps,
             **keywords,
@@ -445,9 +452,11 @@ class WhisperEngine:
     def decode(self, samples: np.ndarray) -> str:
         return "".join(self.generate(samples).texts).strip()
 
-    def decode_segments(self, samples: np.ndarray) -> tuple[str, list[Segment]]:
+    def decode_segments(
+        self, samples: np.ndarray, *, language: str | None = None
+    ) -> tuple[str, list[Segment]]:
         """Text plus its segment spans, which the streaming policy trims against."""
-        result = self.generate(samples, timestamps=True)
+        result = self.generate(samples, timestamps=True, language=language)
         text = "".join(result.texts).strip()
         segments = [
             Segment(float(chunk.start_ts), float(chunk.end_ts), chunk.text)
@@ -1721,11 +1730,22 @@ async def _vac_segments(
     utterance_decode_s = 0.0
     biased: frozenset[str] = frozenset()  # terms the model was actually given
     # The corpus has no bilingual ordering to validate abstention fallback, so a
-    # run starts on Japanese and holds its last accepted label (asr-pipeline.md).
-    held = "ja"
+    # run starts on the source language and holds its last accepted label
+    # (asr-pipeline.md).
+    held = ASR_LANGUAGE
     label: str | None = None
     token = held
     marked = False
+
+    # GenAI latches an omitted language. Snapshot the token when each processor
+    # opens so even a discarded processor's callable cannot switch languages.
+    def bind_decode_token():
+        language = token
+
+        def decode(samples: np.ndarray) -> tuple[str, list[Segment]]:
+            return rec.decode_segments(samples, language=language)
+
+        return decode
 
     async def update(final: bool) -> None:
         nonlocal processor, utterance, utterance_decode_s, held, label, token, marked
@@ -1742,15 +1762,15 @@ async def _vac_segments(
                 if accepted != token:
                     # The existing agreement was produced under the wrong token;
                     # retaining it would publish a fluent transcript in that script.
+                    token = accepted
                     processor = StreamingProcessor(
-                        decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S
+                        decode=bind_decode_token(), buffer_trim_s=VAC_TRIM_S
                     )
                     processor.offset_s = utterance_start / SAMPLE_RATE
                     processor.insert_audio(prefix)
                     utterance = ""
                     state.partial = ""
                     state.provisional = ""
-                    token = accepted
         marked = detector is not None and label is None
         # Read before the call: process() trims, and the cost of a decode is set
         # by the buffer that decode actually saw.
@@ -1845,15 +1865,15 @@ async def _vac_segments(
                     rec.set_hotwords(terms)
                     biased = offered if rec.hotwords else frozenset()
                 utterance_start = max(0, consumed - len(block) - pad)
-                processor = StreamingProcessor(decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S)
+                label = None
+                token = held
+                marked = False
+                processor = StreamingProcessor(decode=bind_decode_token(), buffer_trim_s=VAC_TRIM_S)
                 processor.offset_s = utterance_start / SAMPLE_RATE
                 processor.insert_audio(ring.slice(utterance_start, consumed))
                 pending = consumed - utterance_start
                 utterance = ""
                 utterance_decode_s = 0.0
-                label = None
-                token = held
-                marked = False
             elif processor is not None:
                 processor.insert_audio(block)
                 pending += len(block)

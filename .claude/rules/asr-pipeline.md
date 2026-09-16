@@ -102,6 +102,29 @@ paths:
   from 1 s of real audio, and silence and −30 dB noise both detect as `en`. **Measured and ruled out
   by the user — do not re-propose it, and do not read that ruling as covering a standalone detector
   that hands whisper an explicit token.**
+- **Every decode on the VAC path names its language, so the latch is unreachable by construction.**
+  `WhisperEngine.generate(language=…)` takes the token for THAT decode and falls back to
+  `ASR_LANGUAGE` when the caller names none; `decode_segments()` forwards it, being the callable
+  `StreamingProcessor` holds. Three things this got wrong once each, all now load-bearing:
+  - **The session fallback is `ASR_LANGUAGE`, never the literal `ja`.** One-way `--source-lang en`
+    constructs no detector, so the held token is what every buffer of the whole run decodes under;
+    a literal would have decoded English under `"<|ja|>"` and broken transcribe-only mode silently.
+  - **The processor's decode callable SNAPSHOTS the token at construction**, one closure per
+    processor, so a discarded processor cannot switch language. A single closure reading the mutable
+    token at call time is correct only while nothing ever decodes through a replaced processor —
+    a guarantee that holds by accident rather than by construction.
+  - **`token` is assigned BEFORE each `StreamingProcessor` build, at both sites.** The snapshot makes
+    binding order load-bearing: building the replacement first freezes it on the token the rebuild
+    exists to abandon, which reverts the whole switch to `ja, ja, ja, ja` with no error anywhere.
+  **Every in-repo stand-in for `decode_segments` accepts that keyword, and a wrapper over the real
+  method forwards it.** Two of them are invisible to the gate and fail only when someone reaches for
+  them — `tests/eval_backpressure.py`'s trace recognizer, whose VAC arm is corpus-gated, and
+  `tests/build_vac_trace.py`'s recording wrapper, which regenerates `vac_decode_trace.json` on the
+  NPU. Widen those with the rest.
+  Retention CER re-derived on the NPU across the change: **0.060891938250428816 before and after**,
+  N=1166, S=36, D=35, I=0 over 8 segments, and the hypothesis text compares byte-identical ⇒ routing
+  the token per decode moves the shipped one-way decode by nothing at all. Decode COST is not pinned
+  and moved within the known machine-state band (109.42 → 95.26 s total, RTF 0.600 → 0.522).
 - **A wrong language token is CATASTROPHIC in both directions and graceful in neither.** 150 FLEURS
   clips per language on the shipped NPU whisper, both tokens on the same audio, scored with `cer.py`
   (`.scratch/en_quality_probe.py`, result `.scratch/en-quality.json`):

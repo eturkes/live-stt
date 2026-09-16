@@ -74,7 +74,12 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    2.0 s gate leaves both clips on their published numbers because LocalAgreement-2 already commits
    almost nothing on update 1 (table + the upper-bound arms in `asr-pipeline.md`).
    **(3) the token.** The frozen label selects `"<|ja|>"`/`"<|en|>"` on every `generate()`. Retention
-   CER ≤ 0.0609 re-derived, this being the unit that touches decode. **SUPERSEDED by user ruling:**
+   CER ≤ 0.0609 re-derived, this being the unit that touches decode — **re-derived and UNMOVED at
+   0.060891938250428816, the hypothesis text byte-identical to the pre-unit run**, so the per-decode
+   token costs the shipped one-way decode nothing. The row's "frozen label" wording undersold one
+   case the unit had to get right: the session fallback is `ASR_LANGUAGE`, not a literal `ja`,
+   because one-way `--source-lang en` constructs no detector and therefore decodes its whole run
+   under the held token (`asr-pipeline.md`). **SUPERSEDED by user ruling:**
    `--source-lang` is no longer this row's manual override — `--two-way` with `--source-lang` is a
    parse error, as is `--two-way` with a sherpa `--engine`, and `--source-lang` alone keeps today's
    one-way meaning (`spec.md`).

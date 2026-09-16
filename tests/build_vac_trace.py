@@ -72,8 +72,8 @@ def trace_clip(path: Path, rec: object) -> dict[str, Any]:
     hypotheses: list[tuple[str, list[live_stt.Segment]]] = []
     decode_segments = rec.decode_segments  # type: ignore[attr-defined]
 
-    def recording_decode(samples):
-        result = decode_segments(samples)
+    def recording_decode(samples, language=None):
+        result = decode_segments(samples, language=language)
         hypotheses.append(result)
         return result
 

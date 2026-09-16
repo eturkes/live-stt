@@ -114,7 +114,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   token per utterance by a standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), the settled
   label also selecting one of two immutable direction-specific threads (`translation-leg.md`). Under
   the flag a turn renders wholly DIM and commits nothing until its label is accepted, and **no caption
-  is ever withheld** — an utterance that never accepts publishes under the held label.
+  is ever withheld** — an utterance that never accepts publishes under the held label. Every decode
+  names its language explicitly and each `StreamingProcessor` decodes under the token it was built
+  with; the session fallback is `ASR_LANGUAGE` in every mode, so one-way `--source-lang en` decodes
+  under `"<|en|>"` rather than a literal Japanese token.
 - Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·

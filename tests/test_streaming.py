@@ -250,7 +250,7 @@ class _StubRec:
     def set_hotwords(self, terms):
         self.hotwords = terms
 
-    def decode_segments(self, samples):
+    def decode_segments(self, samples, language=None):
         seconds = max(1, int(round(len(samples) / SAMPLE_RATE)))
         text = TRANSCRIPT[:seconds]
         self.seen.append(text)

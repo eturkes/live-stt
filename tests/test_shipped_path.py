@@ -714,9 +714,9 @@ def test_the_settling_caption_only_ever_grows_while_an_utterance_is_open(
     seen: list[str] = []
     original = live_stt.WhisperEngine.decode_segments
 
-    def watching(self, samples):
+    def watching(self, samples, language=None):
         seen.append(state_ref[0].partial)
-        return original(self, samples)
+        return original(self, samples, language=language)
 
     monkeypatch.setattr(live_stt.WhisperEngine, "decode_segments", watching)
 

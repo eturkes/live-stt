@@ -299,7 +299,9 @@ class _TraceRecognizer:
         self.series = series
         self.calls = 0
 
-    def decode_segments(self, _samples: np.ndarray) -> tuple[str, list[Segment]]:
+    def decode_segments(
+        self, _samples: np.ndarray, language: str | None = None
+    ) -> tuple[str, list[Segment]]:
         row = self.series[self.calls] if self.calls < len(self.series) else None
         self.calls += 1
         if row is None:

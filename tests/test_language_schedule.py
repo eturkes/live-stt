@@ -80,7 +80,9 @@ class _ScriptedRecognizer:
         self.hypotheses = tuple(hypotheses)
         self.buffers: list[np.ndarray] = []
 
-    def decode_segments(self, samples: np.ndarray) -> tuple[str, list[Segment]]:
+    def decode_segments(
+        self, samples: np.ndarray, language: str | None = None
+    ) -> tuple[str, list[Segment]]:
         index = min(len(self.buffers), len(self.hypotheses) - 1)
         text = self.hypotheses[index]
         self.buffers.append(samples.copy())
@@ -358,7 +360,9 @@ def test_the_detector_is_never_handed_the_trimmed_processor_buffer(
         def __init__(self) -> None:
             self.buffers: list[np.ndarray] = []
 
-        def decode_segments(self, samples: np.ndarray) -> tuple[str, list[Segment]]:
+        def decode_segments(
+            self, samples: np.ndarray, language: str | None = None
+        ) -> tuple[str, list[Segment]]:
             texts = ("ABold", "ABnew", "newer", "newer")
             index = min(len(self.buffers), len(texts) - 1)
             text = texts[index]
