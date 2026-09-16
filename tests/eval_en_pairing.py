@@ -293,11 +293,11 @@ async def live_turns(captions: list[dict]) -> dict:
             declined += 1  # M13.1's screen, which lives in submit ahead of the queue
             turns.append({"idx": caption["idx"], "ja": ja, "en": "", "s": 0.0, "declined": True})
             continue
-        brief = translator._brief
+        brief = translator._legs["ja"].brief
         at = time.perf_counter()
         en = await translator._translate(ja)
         seconds = time.perf_counter() - at
-        rotated = translator._brief != brief
+        rotated = translator._legs["ja"].brief != brief
         rotations += rotated
         if en:
             context.observe_en(ja, en)

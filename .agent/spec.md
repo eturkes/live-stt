@@ -108,11 +108,15 @@ Detail → `.claude/rules/`, which each `D-###` names.
   recogniser is pinned to Japanese; the repetition screen still runs. `en` is transcribe-only:
   `TRANSLATOR_INSTRUCTIONS` pins the leg Japanese→English and declares every turn "one block
   of transcribed Japanese speech", so English input has no defined behaviour there.
-  **Two-way translation is queued, its research CLOSED, and live-stt must stay usable throughout it**
-  (user ruling): every step lands behind `--two-way`, default OFF, JA→EN green at every commit. The
+  **Two-way translation SHIPS behind `--two-way`, default OFF**: with the flag absent the process
+  constructs today's JA pipeline, builds ONE translation leg and decodes under `ASR_LANGUAGE`. The
   architecture the research picked is law — ONE resident whisper pipeline handed an EXPLICIT language
   token per utterance by a standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), the settled
-  label also selecting one of two immutable direction-specific threads (`translation-leg.md`). Under
+  label also selecting one of two immutable direction-specific threads (`translation-leg.md`), the
+  reverse one opening LAZILY on its own first turn. The flag decides HOW MANY legs exist and nothing
+  else, so no `--two-way` conditional sits inside `CodexTranslator`. One app-server is behind both
+  directions ⇒ its EOF disables both, while a poisoned turn replaces only its own direction's
+  thread, and `TRANSLATOR_INSTRUCTIONS_EN` is UNMEASURED (`translation-leg.md`). Under
   the flag a turn renders wholly DIM and commits nothing until its label is accepted, and **no caption
   is ever withheld** — an utterance that never accepts publishes under the held label. Every decode
   names its language explicitly and each `StreamingProcessor` decodes under the token it was built
@@ -131,9 +135,9 @@ Queue → `.agent/deferred.md`, rank = funding order, acceptance written at defe
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** Two-way translation (JA↔EN), implementation · **4** Price the EN lag behind every JA line ·
-**5** M10 candidate-screen remainder · **6** Re-derive the LID census from the committed corpora.
-Row 5 sits there because its acceptance is a re-open condition, not work.
+**3** Price the EN lag behind every JA line · **4** M10 candidate-screen remainder ·
+**5** Re-derive the LID census from the committed corpora. The M10 candidate-screen remainder sits
+there because its acceptance is a re-open condition, not work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays

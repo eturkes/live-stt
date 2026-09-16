@@ -52,18 +52,25 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 - **Two-way (JA↔EN) rides TWO immutable direction-specific threads in the ONE app-server, never a
   bidirectional instruction and never a second process.** The protocol makes threads independently
   addressable: `turn/start` is keyed by `threadId`, and `thread/start` / `thread/resume` /
-  `thread/list` all live in one initialized server, so the cost of the reverse direction is
-  startup-only — one uncached ~2.7-3 s warm-up when two-way mode opens, with normal turns still
-  sequential and still in source order. Each thread gets its own `developerInstructions`, and both get
+  `thread/list` all live in one initialized server, so the cost of the reverse direction is one
+  uncached ~2.7-3 s warm-up, paid LAZILY on the first utterance in that direction — a session that
+  never hears the other language pays nothing, and normal turns stay sequential and in source order. Each thread gets its own `developerInstructions`, and both get
   the SAME canonical glossary rendered in their own direction, because splitting threads also splits
   dialogue history. **Letting the translator infer direction from the text is REJECTED**: the source
   language is already settled by the audio LID upstream, and a wrong whisper token yields FLUENT
   text in the conditioned script (`asr-pipeline.md`), so a text-side re-decision is asked to recover
   evidence the recogniser has already erased. Degrade scope follows ownership — an app-server EOF
-  disables both directions and a respawn recreates both threads, while a poisoned or stalled turn
-  replaces only its own direction's thread; on any failure the transcript stays source-only, which
-  preserves today's contract. No `gpt-5.6-luna` one-thread-versus-two quality A/B exists
-  anywhere, so this is a design ruling on measured protocol facts, not a measured quality win.
+  disables both directions and a respawn clears BOTH legs' thread ids, each direction re-opening
+  LAZILY on its own next turn, while a poisoned or stalled turn replaces only its own direction's
+  thread; on any failure the transcript stays source-only, which preserves today's contract.
+  **Re-opening eagerly at respawn is REJECTED**: it is behaviourally identical and it doubles the
+  recovery latency the arriving caption pays, for a thread the rest of the session may never use.
+  Recovery routes on the leg that was poisoned, not on the caption that arrives — `_failures` is
+  session-scoped while the poisoned THREAD belongs to one direction, so `_probe` replaces the leg
+  whose turn hit the strike limit and `run()` then restores the arriving caption's direction.
+  **`TRANSLATOR_INSTRUCTIONS_EN` is UNMEASURED**: the two clinical lines above were measured JA→EN
+  only, and no `gpt-5.6-luna` one-thread-versus-two quality A/B exists anywhere, so this whole
+  shape is a design ruling on measured protocol facts, not a measured quality win.
 
 ## Degradation contract (locked by `tests/test_translator.py`)
 
@@ -233,7 +240,12 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
 - Two consumers. `asr_hotwords()` returns the term list **and** the terms it carries, which the caller
   must hand back to `observe_ja` or the guard is defeated (unreachable on the NPU default —
   `asr-pipeline.md`). `translator_brief()` rides the thread's `developerInstructions`, never turn text,
-  because turn text is declared translatable input; a changed glossary rotates the thread.
+  because turn text is declared translatable input; a changed glossary rotates the thread. Under
+  two-way, `translator_brief(source)` renders the SAME canonical glossary in the direction asked for
+  — `term = rendering` toward English, `rendering = term` toward Japanese — and the reverse brief
+  carries PAIRED terms ONLY, the raw `--context` topic line included in that exclusion, an unpaired
+  term having no English key to name it by. Each leg snapshots the brief it started with, so a
+  glossary change rotates the leg whose brief moved and leaves the other leg's thread alone.
 - **`observe_en` pairs each trusted term with its English spelling, and the pairing is what makes the
   glossary help.** An unpaired list names a term without saying how to write it, and every glossary
   change rotates the codex thread whose own history was holding the spelling ⇒ the unpaired list made

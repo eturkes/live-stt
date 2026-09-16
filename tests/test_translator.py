@@ -245,7 +245,7 @@ def test_turn_wakes_on_eof_under_timeout():
         reader = asyncio.StreamReader()
         t = live_stt.CodexTranslator()
         t._proc = _FakeProc(reader)  # type: ignore[assignment]
-        t._thread_id = "thread-1"
+        t._legs["ja"].thread_id = "thread-1"
         t.enabled = True
 
         reader_task = asyncio.create_task(t._read_loop())
@@ -278,7 +278,7 @@ def test_translate_degrades_to_ja_only_on_eof_under_timeout():
         proc = _FakeProc(reader)
         t = live_stt.CodexTranslator()
         t._proc = proc  # type: ignore[assignment]
-        t._thread_id = "thread-1"
+        t._legs["ja"].thread_id = "thread-1"
         t.enabled = True
 
         reader_task = asyncio.create_task(t._read_loop())
@@ -547,13 +547,13 @@ def test_glossary_rides_developer_instructions_not_the_turn_text():
     instructions = t._instructions()
     assert instructions.startswith(live_stt.TRANSLATOR_INSTRUCTIONS)
     assert "プレドニン" in instructions and "神経内科" in instructions
-    assert t._brief == ctx.translator_brief()
+    assert t._legs["ja"].brief == ctx.translator_brief()
 
 
 def test_instructions_are_unchanged_without_context():
     t = live_stt.CodexTranslator()
     assert t._instructions() == live_stt.TRANSLATOR_INSTRUCTIONS
-    assert t._brief == ""
+    assert t._legs["ja"].brief == ""
 
 
 def test_new_terms_rotate_the_thread_so_the_glossary_reaches_the_model():
@@ -562,7 +562,7 @@ def test_new_terms_rotate_the_thread_so_the_glossary_reaches_the_model():
         ctx = live_stt.SessionContext()
         t = live_stt.CodexTranslator(ctx)
         t.enabled = True
-        t._thread_id = "th-1"
+        t._legs["ja"].thread_id = "th-1"
         rotations = []
 
         async def fake_new_thread():
@@ -620,7 +620,7 @@ def test_a_degenerate_caption_never_reaches_a_turn():
         ctx = live_stt.SessionContext()
         t = live_stt.CodexTranslator(ctx)
         t.enabled = True
-        t._thread_id = "th-1"
+        t._legs["ja"].thread_id = "th-1"
         turns, paired = [], []
 
         async def fake_turn(ja):
@@ -907,7 +907,7 @@ def test_the_respawned_thread_carries_the_glossary_learned_before_the_death(monk
 
         assert len(opened(second)) == 1
         assert "標柱" in opened(second)[0]["params"]["developerInstructions"]
-        assert t._brief == ctx.translator_brief()  # and the rotation check agrees
+        assert t._legs["ja"].brief == ctx.translator_brief()  # and the rotation check agrees
 
     asyncio.run(scenario())
 
@@ -1062,13 +1062,13 @@ def test_the_respawned_leg_starts_with_a_clean_strike_count(monkeypatch):
         t = live_stt.CodexTranslator()
         await _kill(t, await _live_leg(t, codex))
         t._failures = live_stt.TRANSLATE_MAX_FAILURES - 1
-        t._turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
+        t._legs["ja"].turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
 
         respawn = asyncio.create_task(t._recover())
         await _serve_start(t, await _await_spawn(codex, 2))
         assert await asyncio.wait_for(respawn, timeout=3.0) is True
         assert t._failures == 0
-        assert t._turns == 0
+        assert t._legs["ja"].turns == 0
 
     asyncio.run(scenario())
 
@@ -1197,7 +1197,7 @@ def test_the_probe_opens_a_fresh_thread_carrying_the_current_glossary(monkeypatc
         ctx = live_stt.SessionContext()
         t = live_stt.CodexTranslator(ctx)
         proc = await _live_leg(t, codex)
-        wedged = t._thread_id
+        wedged = t._legs["ja"].thread_id
         await _strike_out(t, proc)
         for _ in range(live_stt.CONTEXT_TERM_SUPPORT):  # captions keep learning
             ctx.observe_ja("標柱が見えました")
@@ -1207,10 +1207,10 @@ def test_the_probe_opens_a_fresh_thread_carrying_the_current_glossary(monkeypatc
         assert await asyncio.wait_for(probe, timeout=3.0) is True
 
         opened = _sent(proc, "thread/start")
-        assert len(opened) == 2 and t._thread_id != wedged
+        assert len(opened) == 2 and t._legs["ja"].thread_id != wedged
         assert "標柱" in opened[1]["params"]["developerInstructions"]
-        assert t._brief == ctx.translator_brief()  # and the rotation check agrees
-        assert _sent(proc, "turn/start")[-1]["params"]["threadId"] == t._thread_id
+        assert t._legs["ja"].brief == ctx.translator_brief()  # and the rotation check agrees
+        assert _sent(proc, "turn/start")[-1]["params"]["threadId"] == t._legs["ja"].thread_id
 
     asyncio.run(scenario())
 
@@ -1290,7 +1290,7 @@ def test_the_probed_leg_starts_with_a_clean_strike_count(monkeypatch):
         monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
         t = live_stt.CodexTranslator()
         proc = await _live_leg(t, codex)
-        t._turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
+        t._legs["ja"].turns = live_stt.TRANSLATE_ROTATE_TURNS - 3
         await _strike_out(t, proc)
         assert t._failures == live_stt.TRANSLATE_MAX_FAILURES
 
@@ -1298,7 +1298,7 @@ def test_the_probed_leg_starts_with_a_clean_strike_count(monkeypatch):
         await _serve_probe(t, proc)
         assert await asyncio.wait_for(probe, timeout=3.0) is True
         assert t._failures == 0
-        assert t._turns == 0
+        assert t._legs["ja"].turns == 0
 
     asyncio.run(scenario())
 

@@ -93,7 +93,9 @@ class Probe:
         assert t is not None
         while not t._notes.empty():  # nothing from a previous turn may bleed in
             t._notes.get_nowait()
-        t._thread_id = await asyncio.wait_for(t._new_thread(), live_stt.CODEX_CONTROL_TIMEOUT_S * 2)
+        t._legs["ja"].thread_id = await asyncio.wait_for(
+            t._new_thread(), live_stt.CODEX_CONTROL_TIMEOUT_S * 2
+        )
         started = time.perf_counter()
         try:
             en = await asyncio.wait_for(t._turn(ja), BOUND_S)

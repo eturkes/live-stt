@@ -149,11 +149,11 @@ def test_the_turn_cadence_rotation_is_untouched():
         context = live_stt.SessionContext()
         translator = live_stt.CodexTranslator(context)
         translator.enabled = True
-        translator._thread_id = "th-1"
+        translator._legs["ja"].thread_id = "th-1"
         rotations = []
 
         async def fake_new_thread():
-            rotations.append(translator._turns)
+            rotations.append(translator._legs["ja"].turns)
             return "th-2"
 
         async def fake_turn(ja):
@@ -165,12 +165,12 @@ def test_the_turn_cadence_rotation_is_untouched():
         assert await translator._translate("こんにちは") == "ok"
         assert rotations == []  # the first turn never rotates on the cadence
 
-        translator._turns = live_stt.TRANSLATE_ROTATE_TURNS - 1
+        translator._legs["ja"].turns = live_stt.TRANSLATE_ROTATE_TURNS - 1
         assert await translator._translate("あ") == "ok"
         assert rotations == []  # the 100th turn still rides the thread it has
         assert await translator._translate("い") == "ok"
 
         assert rotations == [live_stt.TRANSLATE_ROTATE_TURNS]  # the 101st pays it
-        assert translator._turns == live_stt.TRANSLATE_ROTATE_TURNS + 1
+        assert translator._legs["ja"].turns == live_stt.TRANSLATE_ROTATE_TURNS + 1
 
     asyncio.run(scenario())

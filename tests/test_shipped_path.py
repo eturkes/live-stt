@@ -416,7 +416,7 @@ class _RecordingTranslator:
     def __init__(self):
         self.submitted: list[tuple[int, str]] = []
 
-    def submit(self, seq, text):
+    def submit(self, seq, text, source=None):
         self.submitted.append((seq, text))
 
 

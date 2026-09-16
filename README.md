@@ -59,6 +59,7 @@ Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-
 | `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.claude/rules/asr-pipeline.md` D-016 (default), D-010 (sherpa pair) |
 | `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. `GPU` or `CPU` also enable session term biasing, which the NPU rejects. |
 | `--context TEXT` | empty | Japanese topic line for this session. Name anything that must be spelled correctly. The tool trusts these terms at once and keeps them for the whole run. It also learns recurring terms from its own captions, and gives both to the recognizer and to the translator. Everything is forgotten when the session ends. |
+| `--two-way` | off | Translate in both directions, Japanese to English and English to Japanese. live-stt detects the language of each utterance. Do not use `--source-lang` or a sherpa engine with this option. See [Two-way translation](#two-way-translation-ja-and-en). |
 | `--source-lang {ja,en}` | `ja` | Spoken language. `en` transcribes English directly and retires the Japanese-only caption screen. `en` is transcribe-only, because the translation leg goes from Japanese to English. |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
@@ -77,7 +78,7 @@ Transcript: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.txt
 [2026-08-31T13:41:00+09:00] TGT 1: The weather is nice today.
 ```
 
-Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so SRC and TGT pairs stay matched. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
+Each line holds an ISO-8601 timestamp and the same `n` as the terminal line, so SRC and TGT pairs stay matched. Under `--two-way`, a source line can also carry the held-label marker `<!>`. One file per run keeps that numbering unambiguous. Every line is flushed as it lands, so a killed session keeps what it already transcribed. The file is created with the first transcribed line, so a session that decodes nothing leaves no file behind.
 
 If the translation leg stops, live-stt writes one marker line and names the cause. If the app-server exits, live-stt starts a new one on the next caption and marks that too:
 
@@ -153,6 +154,30 @@ Degradation, in order:
 - The app-server exits → the next caption starts a new one, which costs that caption about 5 s. A failed attempt doubles the wait before the next one. After 5 attempts, or if `codex` cannot be started at all, the session stays source-only.
 - Backlog over 50 utterances → oldest dropped.
 - The thread is rotated every 100 turns to keep the cached prompt prefix small.
+
+### Two-way translation (JA and EN)
+
+`--two-way` translates in both directions. The flag is off by default. The one-way Japanese-to-English path does not change.
+
+A standalone ECAPA language detector scores each utterance while you speak it. It runs on the CPU through ONNX Runtime, beside whisper on the NPU. The detector gives the settled label to whisper as an explicit language token, and the same label picks the translation direction. live-stt never reads the direction off the text. Whisper decodes fluent text in the language you give it, so a wrong token erases the evidence.
+
+Under the flag, a caption stays wholly dim until the detector accepts a label. The tool commits nothing before that point. No caption is ever withheld. An utterance that never accepts publishes under the label the run holds, and its source line carries a marker:
+
+```
+[2026-09-16T10:12:04+09:00] SRC 13 <!>: はい
+[2026-09-16T10:12:05+09:00] TGT 13: Yes.
+```
+
+`<!>` means the label was held, not detected. The `TGT` line stays unmarked. A run starts on the source language and holds its last accepted label.
+
+The app-server keeps one thread per direction. Each thread holds its own instructions, its own dialogue history and its own glossary snapshot, because one thread would mix the two directions. The reverse thread opens on the first utterance in that direction, so a session in one language pays nothing for the other. The same glossary rides both threads, rendered in the direction of each one. The reverse brief lists only the terms that already have an English rendering, because an unpaired term has no English key. The reverse instructions mirror the two clinical rules above. Those two rules are measured for Japanese to English only.
+
+Failure scope follows ownership. One app-server is behind both directions, so its exit disables both. A poisoned or stalled turn replaces only the thread of its own direction.
+
+live-stt rejects two invocations at parse time:
+
+- `--two-way` with `--source-lang` — `--source-lang` pins every utterance, and `--two-way` decides per utterance.
+- `--two-way` with `--engine k2v2` or `--engine parakeet` — both sherpa models are Japanese-only.
 
 ### Diagnostics
 
@@ -285,6 +310,8 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAD_PRE_PAD_S` | 0.4 s | Lead-in re-sliced from the ring (silero onset clipping fix) |
 | `ASR_DEVICE` | `NPU` | OpenVINO device for the default engine (`--asr-device` overrides) |
 | `ASR_REPETITION_PENALTY` | 1.2 | Decode-side loop brake; the only repetition knob the NPU honors |
+| `LID_MIN_SECONDS` | 2 s | Voiced audio the language detector needs before it decides (`--two-way`) |
+| `LID_MIN_SCORE` / `_MIN_MARGIN` | 0.35 / 0.35 | Accept a label at this score, and this far above the other language |
 | `VAC_CHUNK_S` | 1 s | New audio between streaming re-decodes (default engine) |
 | `VAC_TRIM_S` | 8 s | Past this, the streaming buffer commits finished spans and trims them away |
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits (sherpa engines) |
