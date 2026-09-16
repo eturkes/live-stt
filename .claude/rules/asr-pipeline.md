@@ -183,7 +183,7 @@ paths:
   two-second views**, 1,338 correct, 178 abstentions (11.74 %); held out on the hash-parity split
   the thresholds never saw, 690/776 correct, 0 false, 86 abstain. **1 s is refused and no threshold
   rescues it** — one EN buffer routes to `ja` carrying score 0.9822 and margin 0.9822, and 1 s
-  accepts only 948 of 1,925 at all. Retry each later prefix that exists, stop at the first
+  accepts only 933 of 1,925 at all. Retry each later prefix that exists, stop at the first
   acceptance: first-correct lands at 2 s for 1,338 utterances, 3 s for 120, 5 s for 20, 8 s for 2,
   VAD-final for 37, and **409 of 1,926 never accept**. Label flips between accepted prefixes of one
   utterance are **0** once 1 s is suppressed (0/4,528 adjacent pairs, 0/4,535 across a held
@@ -197,6 +197,15 @@ paths:
   those 178 costs 7 false routes.
   **Cost 27.415 ms p50 at 1 s, 137.559 ms p50 at VAD-final** (p90 29.257 / 239.959) on 4 intra-op /
   1 inter-op threads, 184 MB RSS at 1 s and 434 MB on the longest 22.384 s buffer.
+  **At the shipped 2.0 s gate: 35.6 ms**, the minimum over 6 runs × 60 reps under onnxruntime 1.30.0
+  `CPUExecutionProvider` on a seeded buffer, 245 MB RSS. Read the minimum as the cost and the spread
+  as contention: this box always carries other work (the session's own proxy holds ~1 core, loadavg
+  5.05-8.29 of 8 across those runs), which put p50 at 35.6-57.3 ms and stretched p90 to 132 ms. The
+  same harness reproduces the recorded 1 s p50 inside 21.6-29.6 ms, which is what credits the
+  comparison. The shipped `LanguageDetector.score()` re-measures **33.6 ms min / 34.8 ms p50** over
+  40 reps on a real VAD-final 2 s prefix once the box is quiet ⇒ read the gate's cost as ~34-36 ms
+  and the rest of any spread as load. Co-residency with NPU whisper is a different question and
+  stays unmeasured, below.
   **The runtime is ONNX Runtime `CPUExecutionProvider`, not OpenVINO**, against this repo's usual
   preference: the same graph under OpenVINO CPU retains shape-specialized state to a 2,418 MB peak,
   and exact `GPU.0` is 7.5 ms at a fixed 1 s but recompiles variable VAD-final shapes into a 1.68 s
@@ -206,10 +215,25 @@ paths:
   false routes only by abstaining on 1,047 of 1,516.
   **Not measured — the implementation must assume none of it:** no live-mic or known-user speech, no
   accents, room noise or overlap, no code-switching inside one utterance, no real third-language
-  speech, no cost of running this CPU detector concurrently with NPU whisper, and no timing at 2 s
-  itself, since only 1 s and VAD-final were timed. The held-out zero is one sample result, never a
-  zero-error guarantee. Ledger `.scratch/spike-1-lid.md`, operating points
-  `.scratch/spike-3-operating-points.json`.
+  speech, and no cost of running this CPU detector concurrently with NPU whisper. The held-out zero
+  is one sample result, never a zero-error guarantee. Ledger `.scratch/spike-1-lid.md`, operating
+  points `.scratch/spike-3-operating-points.json`; the recorded scores survive those gitignored
+  files as `tests/lid_census.json` (`evidence-artifacts.md`).
+  **Shipped surface, behind `--two-way` and default OFF.** `lid_accept(argmax, score, ja, en)` is the
+  three-part rule alone, pure and duration-free — the schedule owns "not before 2.0 s", which is why
+  the rule accepts that 1 s English view as `ja` when handed it. `LanguageDetector(model_dir)` holds
+  one `CPUExecutionProvider` session at `LID_INTRA_OP_THREADS`=4 / `LID_INTER_OP_THREADS`=1 and
+  `ORT_SEQUENTIAL`, reading the label order from `lang_map.json` rather than a table; `.score(pcm)`
+  feeds raw float32 `[1, samples]` to input `audio`, takes output `logits`, and returns the global
+  argmax with its score plus the raw `ja` and `en` probabilities from a max-shifted float64 softmax
+  cast to float32; `.decide(pcm)` is `score()` through `lid_accept()`. PCM is 16 kHz mono float32 in
+  [-1, 1] and is never normalized — FBANK and CMVN are folded into the graph. The flag rejects its
+  contradictions at parse time and `check_models` preflights the two runtime-consumed LID files under
+  it, so absent weights fail at startup rather than at the first 2 s buffer. Flag off constructs no
+  detector and opens no ONNX session; flag on constructs exactly one, for the process.
+  **The graph's names are law the gate can only assert, never exercise**: `models/` is gitignored, so
+  `tests/test_language_detector.py` stubs the runtime and pins `audio` / `logits` there, and a real
+  rename surfaces on a weights-bearing box alone.
 - **Repetition-loop cause + free repro.** The recogniser is pinned to Japanese, so audio it cannot
   account for is emitted as Japanese tokens until `max_length`=448 — the 444-char live captions. The
   trigger is neither laughter nor room tone: synthetic non-speech (digital silence, −60 dB noise,

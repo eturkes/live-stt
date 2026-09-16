@@ -30,6 +30,26 @@ neither, because they replay committed traces — a fresh clone runs them in und
   second copy — and `test_japanese_corpus_identity_is_unchanged` pins `EXPECTED_INDEX_SHA256`
   (`98e0d8a4…`) plus both JA manifests, so an English-side edit that moved the Japanese corpus turns
   red instead of re-qualifying it silently.
+- `lid_census.json` + `.scratch/build_lid_census.py` — the LID spike's recorded scores, reduced to
+  what the three-part decision rule reads and nothing else: `view_fields` `[spoken, utterance,
+  bucket, argmax, argmax_score, ja, en]` over 8,628 `views` (buckets `1s` 1925, `2s` 1516, `3s` 1453,
+  `5s` 1188, `8s` 620, `VADfin` 1926) for 1,926 utterances cut by the production VAD from the two
+  committed FLEURS corpora, plus 25 `synthetic` probes under `synthetic_fields`. Probabilities are
+  the RAW 107-way softmax and are never renormalized over `{ja, en}` — renormalizing is the thing the
+  rule rejects, so a renormalized census could not fire it. It exists because the spike's own outputs
+  are gitignored and will be lost (`models/lid/results/*.json.gz`, `models/lid/analysis.json`), and
+  it is what lets the decision table run weights-free in a fresh clone. Credited against that
+  analysis: 12 of 12 bucket×language cells match `.d2.threshold_counts`, 0 mismatches, and rounding
+  to 6 dp moves no decision. Credited a second way, against the audio rather than the analysis: 6 of
+  6 sampled `2s` rows re-derive EXACTLY through clip → `make_vad()` buffers → 2 s prefix → the
+  shipped `LanguageDetector.score()`. Its consumer is `tests/test_language_detector.py`, which
+  replays the whole table through `lid_accept` and reproduces 1,338 correct / 178 abstain / 0 false
+  at 2 s — compare that Counter to a Counter, since one that never incremented `false` compares
+  unequal to a dict carrying an explicit zero for it. **Regeneration is scratch-local** —
+  `.scratch/build_lid_census.py` reads
+  those gitignored files and reruns byte-identically — so re-deriving it from the corpora through the
+  shipped detector is queued: `.agent/deferred.md` → *Re-derive the LID census from the committed
+  corpora*.
 - `stressor_clips.json` + `build_stressor.py` — the 44.7 s genuinely-continuous stressor: silero-trimmed
   speech extents joined by ~10 ms equal-power crossfades (gap-concat leaves clip-edge quiet the VAD
   rightly splits on). Prove continuity honestly — every crossfade-join offset sits inside a cap-OFF VAD

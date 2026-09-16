@@ -40,6 +40,10 @@ dependencies = [
     # Windows amd64, so those are the platforms this tool installs on at all.
     "openvino>=2026.3",
     "openvino-genai>=2026.3",
+    # The `--two-way` LID runs on ONNX Runtime CPU (asr-pipeline.md). Hard, not an
+    # extra: module-level imports make a default-OFF flag fail at import rather than
+    # at use, and sherpa-onnx-core ships the native lib alone, with no Python API.
+    "onnxruntime>=1.30",
 ]
 
 [project.scripts]

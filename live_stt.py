@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import SupportsFloat, cast
 
 import numpy as np
+import onnxruntime as ort
 import sherpa_onnx
 
 from streaming import Segment, StreamingProcessor
@@ -88,6 +89,22 @@ ASR_REPETITION_PENALTY = 1.2
 # Annotated `str`, not inferred: --source-lang rebinds it, and a bare literal
 # narrows to Literal["ja"], which makes pyright drop every non-ja branch unread.
 ASR_LANGUAGE: str = "ja"
+
+# Two-way LID (`--two-way`, default OFF): a standalone ECAPA VoxLingua107 graph on
+# ONNX Runtime CPU hands the ONE resident whisper pipeline an explicit language
+# token per utterance, rather than a second recogniser (asr-pipeline.md). The
+# thresholds are the spike's operating point over 1,926 utterances: at 2 s of
+# voiced buffer they accept 1,338 correct / 178 abstain / 0 false of 1,516. Margin
+# is |ja - en| over the RAW 107-way softmax and is never renormalized over the
+# pair, which is what rejects third-language and non-speech audio outright.
+LID_MODEL_DIR = MODELS_DIR / "lid/d2-ecapa"
+LID_MIN_SECONDS = 2.0
+LID_MIN_SCORE = 0.35
+LID_MIN_MARGIN = 0.35
+# Sequential, 4 intra-op / 1 inter-op: ~36 ms per 2 s buffer least-contended on
+# this box, tail to ~130 ms while other work runs.
+LID_INTRA_OP_THREADS = 4
+LID_INTER_OP_THREADS = 1
 # VAC (silero as a controller around the streaming policy). Waiting for a VAD
 # segment to close bounds first-caption latency by the utterance length, which on
 # pause-free speech measured 15.5 s median / 36.6 s max; re-decoding the utterance
@@ -544,7 +561,73 @@ def _merge_chunk_text(parts: list[str]) -> str:
     return out
 
 
-def check_models(engine: str) -> str | None:
+def lid_accept(argmax: str, score: float, ja: float, en: float) -> str | None:
+    """The three-part gate over one 107-way LID softmax. Three parts and no fourth.
+
+    `argmax` is the GLOBAL argmax across all 107 languages, never the better of the
+    pair: a third language or non-speech wins there and is rejected for it, while
+    renormalizing over {ja, en} would turn that reject into a coin flip -- 25 of 25
+    synthetic probes die on this part alone. `score` is that winner's probability,
+    `ja` and `en` the pair's own probabilities out of the same softmax.
+
+    Returns the accepted label, or None to abstain. It applies NO duration gate: the
+    schedule owns that, and the 1 s English view this function correctly accepts as
+    `ja` at 0.9822 is exactly why the schedule must never call it there.
+    """
+    if argmax not in {"ja", "en"}:
+        return None
+    if score < LID_MIN_SCORE or abs(ja - en) < LID_MIN_MARGIN:
+        return None
+    return argmax
+
+
+class LanguageDetector:
+    """ECAPA VoxLingua107 on ONNX Runtime CPU, one resident session per run.
+
+    PCM in is 16 kHz mono float32 in [-1, 1] and is NOT normalized here: the exported
+    graph folds FBANK + CMVN in, so anything this side would apply them twice.
+    """
+
+    def __init__(self, model_dir: Path = LID_MODEL_DIR) -> None:
+        """Opens the session and reads the label order out of lang_map.json."""
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = LID_INTRA_OP_THREADS
+        options.inter_op_num_threads = LID_INTER_OP_THREADS
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        self._session = ort.InferenceSession(
+            str(model_dir / "voxlingua107.onnx"),
+            sess_options=options,
+            providers=["CPUExecutionProvider"],
+        )
+        label_map = json.loads((model_dir / "lang_map.json").read_text(encoding="utf-8"))
+        self._labels = tuple(label_map[str(i)]["iso"] for i in range(len(label_map)))
+        self._ja_index = self._labels.index("ja")
+        self._en_index = self._labels.index("en")
+
+    def score(self, pcm: np.ndarray) -> tuple[str, float, float, float]:
+        """Returns (argmax label, that label's score, ja probability, en probability)."""
+        logits = cast(
+            np.ndarray,
+            self._session.run(
+                ["logits"], {"audio": np.asarray(pcm, dtype=np.float32).reshape(1, -1)}
+            )[0],
+        )[0].astype(np.float64)
+        probabilities = np.exp(logits - np.max(logits))
+        probabilities = (probabilities / np.sum(probabilities)).astype(np.float32)
+        winner = int(np.argmax(probabilities))
+        return (
+            self._labels[winner],
+            float(probabilities[winner]),
+            float(probabilities[self._ja_index]),
+            float(probabilities[self._en_index]),
+        )
+
+    def decide(self, pcm: np.ndarray) -> str | None:
+        """score() through lid_accept(): the accepted label, or None to abstain."""
+        return lid_accept(*self.score(pcm))
+
+
+def check_models(engine: str, two_way: bool = False) -> str | None:
     """Returns an error message if model files are missing, else None."""
     missing = []
     if not VAD_MODEL.exists():
@@ -553,6 +636,10 @@ def check_models(engine: str) -> str | None:
     marker = "openvino_encoder_model.xml" if engine in WHISPER_ENGINES else "tokens.txt"
     if not (d / marker).exists():
         missing.append(d.name + "/")
+    if two_way:
+        for name in ("voxlingua107.onnx", "lang_map.json"):
+            if not (LID_MODEL_DIR / name).exists():
+                missing.append(f"lid/d2-ecapa/{name}")
     if not missing:
         return None
     return (
@@ -2092,6 +2179,9 @@ async def run_session(args):
     print(f"Loading {args.engine} model...")
     rec = load_recognizer(args.engine, getattr(args, "asr_device", ASR_DEVICE))
     vad, window = make_vad()
+    language_detector = LanguageDetector() if getattr(args, "two_way", False) else None
+    if language_detector is not None:
+        print("Language detector: ECAPA VoxLingua107 (local ONNX Runtime CPU)")
 
     with _audio_operation("selecting the microphone"):
         dev_info = sd.query_devices(args.device, kind="input")
@@ -2246,9 +2336,18 @@ def main():
         help="Transcribe only (skip the Codex translation leg).",
     )
     parser.add_argument(
+        "--two-way",
+        action="store_true",
+        help=(
+            "Translate in both directions, Japanese to English and English to "
+            "Japanese. The tool detects the language of each utterance. Do not "
+            "use --source-lang or a sherpa engine with this option."
+        ),
+    )
+    parser.add_argument(
         "--source-lang",
         choices=("ja", "en"),
-        default=ASR_LANGUAGE,
+        default=None,
         help=(
             "Spoken language (default: ja). en transcribes English directly, "
             "retires the Japanese-only caption screen, and is transcribe-only: "
@@ -2295,6 +2394,10 @@ def main():
         help="List audio devices and exit.",
     )
     args = parser.parse_args()
+    if args.two_way and args.source_lang is not None:
+        parser.error("--two-way cannot be used with --source-lang")
+    if args.two_way and args.engine not in WHISPER_ENGINES:
+        parser.error("--two-way requires --engine whisper; sherpa engines are Japanese-only")
 
     if sys.platform == "linux":
         code = _supervise_session(args)
@@ -2307,7 +2410,7 @@ def main():
 def _run_cli(args):
     global ASR_LANGUAGE
 
-    ASR_LANGUAGE = args.source_lang
+    ASR_LANGUAGE = args.source_lang or "ja"
     _configure_logging()
 
     if args.list_devices:
@@ -2319,7 +2422,9 @@ def _run_cli(args):
             print(sd.query_devices())
         return
 
-    err = check_models(args.engine) or check_device(args.engine, args.asr_device)
+    # One-way keeps the one-argument call: nine locks stub check_models with a 1-arg lambda.
+    model_error = check_models(args.engine, True) if args.two_way else check_models(args.engine)
+    err = model_error or check_device(args.engine, args.asr_device)
     if err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
