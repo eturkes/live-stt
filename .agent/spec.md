@@ -37,11 +37,11 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
   [--source-lang L]`.
-- `tests/` — fast locks (`uv run pytest -q`) + eight on-demand evaluators, inventory and per-file
+- `tests/` — fast locks (`uv run pytest -q`) + nine on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
-  `eval_latency.py`, `eval_term_census.py` and `eval_en_pairing.py` replay committed traces and run
-  in under a second in a fresh clone.
+  `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py` and `eval_en_pairing.py` replay
+  committed traces and run in under a second in a fresh clone.
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
@@ -112,7 +112,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   (user ruling): every step lands behind `--two-way`, default OFF, JA→EN green at every commit. The
   architecture the research picked is law — ONE resident whisper pipeline handed an EXPLICIT language
   token per utterance by a standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), the settled
-  label also selecting one of two immutable direction-specific threads (`translation-leg.md`).
+  label also selecting one of two immutable direction-specific threads (`translation-leg.md`). Under
+  the flag a turn renders wholly DIM and commits nothing until its label is accepted, and **no caption
+  is ever withheld** — an utterance that never accepts publishes under the held label.
 - Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·

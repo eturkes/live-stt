@@ -32,8 +32,9 @@ from datetime import datetime
 
 import live_stt as app
 
-# Current `SRC`/`TGT` plus legacy `JA`/`EN`; `-- note` is unnumbered.
-_EVENT = re.compile(r"^\[([^\]]+)\] (SRC|TGT|JA|EN) (\d+): (.*)$")
+# Current `SRC`/`TGT` plus legacy `JA`/`EN`; `-- note` is unnumbered. The held
+# marker is non-capturing so the four established consumer groups stay fixed.
+_EVENT = re.compile(r"^\[([^\]]+)\] (SRC|TGT|JA|EN) (\d+)(?: <!>)?: (.*)$")
 _NOTE = re.compile(r"^\[([^\]]+)\] -- (.*)$")
 # `[2026-09-04 14:38:49,538] ERROR message`; the comma is logging's msec sep.
 _LOG = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+\] (\w+) (.*)$")
@@ -68,6 +69,7 @@ class Caption:
     n: int
     at: datetime
     text: str
+    held: bool = False
 
 
 @dataclass
@@ -117,7 +119,8 @@ def read_session(path: str) -> Session:
             line = line.rstrip("\n")
             if m := _EVENT.match(line):
                 at = datetime.fromisoformat(m.group(1)).replace(tzinfo=None)
-                cap = Caption(int(m.group(3)), at, m.group(4))
+                held = line[m.end(3) : m.start(4)] == " <!>: "
+                cap = Caption(int(m.group(3)), at, m.group(4), held)
                 (s.src if m.group(2) in {"SRC", "JA"} else s.tgt)[cap.n] = cap
             elif m := _NOTE.match(line):
                 s.notes.append(
@@ -453,6 +456,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                 "session": s.name,
                 "captions": len(s.src),
                 "translated": len(s.tgt),
+                "held": sum(c.held for c in s.src.values()),
                 "missing": missing,
                 "missing_by_reason": {
                     w: sum(1 for r in missing if r["why"] == w)
@@ -511,6 +515,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
             "sessions": len(sessions),
             "captions": len(texts),
             "translated": sum(len(s.tgt) for s in sessions),
+            "held": sum(c.held for s in sessions for c in s.src.values()),
             "missing": sum(len(p["missing"]) for p in per_session),
             "unclaimed_log_events": len(unclaimed),
         },
@@ -552,11 +557,13 @@ def render(rep: dict) -> str:
     t = rep["totals"]
     out = [
         f"{t['sessions']} sessions, {t['captions']} captions, "
-        f"{t['translated']} translated, {t['missing']} without TGT",
+        f"{t['translated']} translated, {t['held']} held, {t['missing']} without TGT",
         "",
     ]
     for p in rep["sessions"]:
-        out.append(f"== {p['session']}  {p['captions']} captions, {p['translated']} TGT")
+        out.append(
+            f"== {p['session']}  {p['captions']} captions, {p['translated']} TGT, {p['held']} held"
+        )
         if p["lag_s"]:
             g = p["lag_s"]
             out.append(

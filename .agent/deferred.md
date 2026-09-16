@@ -69,8 +69,10 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    caption is ever withheld, because withholding a fifth of utterances breaks the standing usability
    ruling. The row records that this hold is UNPROVEN on the corpus, which carries no bilingual
    sequence: it beats forcing the pairwise winner only while the switch rate among abstentions stays
-   under 3.93 %. Withholding the first commit until update 2 shifts time-to-SETTLED ⇒ re-derive it
-   offline by replaying `vac_decode_trace.json` under the new commit rule, which needs no hardware.
+   under 3.93 %. Withholding every commit until acceptance was assumed to shift time-to-SETTLED and
+   does NOT: re-derived offline over `vac_decode_trace.json` by `tests/eval_two_way_settled.py`, the
+   2.0 s gate leaves both clips on their published numbers because LocalAgreement-2 already commits
+   almost nothing on update 1 (table + the upper-bound arms in `asr-pipeline.md`).
    **(3) the token.** The frozen label selects `"<|ja|>"`/`"<|en|>"` on every `generate()`. Retention
    CER ≤ 0.0609 re-derived, this being the unit that touches decode. **SUPERSEDED by user ruling:**
    `--source-lang` is no longer this row's manual override — `--two-way` with `--source-lang` is a

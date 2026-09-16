@@ -78,6 +78,13 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    `Transcript: not saved (--no-save)` and writes no file; start-then-immediate-Ctrl+C with no speech
    leaves no file (lazy creation).
 
+**Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
+can appear without the flag. Under it, an utterance whose language was HELD rather than detected
+publishes `SRC n <!>: text` — space, `<!>`, colon, source line only, screen and transcript alike; its
+`TGT n:` stays unmarked and no caption is ever withheld. Read that mark as the held-label signal it is,
+never as a defect: `session_report.py` counts those utterances as `held`, and the short utterances that
+carry it are the ones the detector had under 2 s of audio to judge.
+
 ## Soak (1-3 h) — watch at start and end
 
 - **Backlog / drops** — `q=` / `seg=` / `drop=` / `tdrop=` stay absent (`q=` / `seg=` may blip and

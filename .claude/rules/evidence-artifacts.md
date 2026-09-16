@@ -6,10 +6,11 @@ paths:
 
 # Evidence artifacts — corpora, traces, evaluators
 
-Fast locks run in the gate. **The eight `eval_*.py` scripts are ON-DEMAND and never gate steps**: four
+Fast locks run in the gate. **The nine `eval_*.py` scripts are ON-DEMAND and never gate steps**: four
 need gitignored weights and minutes of compute, so run one when a decode change raises an accuracy
-question. `eval_latency.py`, `eval_term_census.py` and `eval_en_pairing.py` (default mode) need
-neither, because they replay committed traces — a fresh clone runs them in under a second each.
+question. `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py` and `eval_en_pairing.py`
+(default mode) need neither, because they replay committed traces — a fresh clone runs them in under a
+second each.
 
 ## Committed artifacts and what each certifies
 
@@ -72,6 +73,13 @@ neither, because they replay committed traces — a fresh clone runs them in und
   them reproduces the measured commit/trim trajectory with no model, and `divergences == 0` certifies
   each cost was charged to the buffer it was measured on. 122 KB ⇒ read the per-clip summary keys, not
   `series`. Rebuild needs the NPU + the whisper prelude.
+- `eval_two_way_settled.py` — the same trace under two-way's commit rule, which withholds every commit
+  until the LID accepts a label. Four arms over both clips; the table and its refutation live in
+  `asr-pipeline.md`. **Its own positive control is the no-withholding arm**, which must reproduce
+  `eval_latency.py`'s `commit_lag_s` exactly (2.357 / 4.112 / 8.098 over n=277, 2.535 / 4.600 / 8.157
+  over n=1135) — same clock, same per-character placement, same `_quantiles`, so a drift there means
+  the replay diverged rather than the rule. The `never accepted` arm forces a path abstention does not
+  take and is an upper bound only.
 - `caption_trace.json` + `build_caption_trace.py` — the shipped path's caption stream over the whole
   pinned narration, every section hash-checked before any of it is decoded: 215 captions / 848.350 s on
   NPU in one ~8 min pass, numbered continuously, `sections[k].offset_s` placing section-local times on
@@ -267,6 +275,7 @@ neither, because they replay committed traces — a fresh clone runs them in und
 ```sh
 uv run python session_report.py [--log F] [--json] [--source-lang L]   # re-derive a live session
 uv run python tests/eval_latency.py                     # per-stage latency budget, traces only, <1 s
+uv run python tests/eval_two_way_settled.py [--json]    # two-way's commit rule vs time-to-SETTLED
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware
 uv run python tests/eval_en_pairing.py [--live]         # what a real translator pairs; default <1 s
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)

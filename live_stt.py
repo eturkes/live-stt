@@ -825,7 +825,7 @@ def write_stdout(text):
         sys.stdout = open(os.devnull, "w")
 
 
-def emit_line(tag, seq, text, output_file):
+def emit_line(tag, seq, text, output_file, *, held=False):
     """Persist + display one numbered event line (tag: "SRC" or "TGT").
 
     Source and target lines are emitted independently (translation lags ~1 s and
@@ -835,7 +835,8 @@ def emit_line(tag, seq, text, output_file):
     Persist BEFORE display: the transcript is the artifact that has to survive a
     terminal that is already gone, so it must not sit behind a write to one.
     """
-    line = f"{tag} {seq}: {text}"
+    marker = " <!>" if held and tag == "SRC" else ""
+    line = f"{tag} {seq}{marker}: {text}"
     if output_file:
         ts = datetime.now().astimezone().isoformat(timespec="seconds")
         output_file.write(f"[{ts}] {line}\n")
@@ -1689,6 +1690,7 @@ async def _vac_segments(
     on_segment=None,
     context=None,
     on_update=None,
+    detector=None,
 ):
     """Silero-controlled streaming: partial captions during speech, one line at its end.
 
@@ -1706,6 +1708,7 @@ async def _vac_segments(
     ring = RingBuffer(RING_SECONDS * SAMPLE_RATE)
     pad = int(VAD_PRE_PAD_S * SAMPLE_RATE)
     chunk_samples = int(VAC_CHUNK_S * SAMPLE_RATE)
+    lid_min_samples = int(LID_MIN_SECONDS * SAMPLE_RATE)
     # An open utterance IS its processor: `processor is not None` is the whole
     # speaking state, so no separate flag can drift out of sync with it (and the
     # buffer's non-None-ness stays provable at every use site).
@@ -1717,10 +1720,38 @@ async def _vac_segments(
     utterance_start = 0
     utterance_decode_s = 0.0
     biased: frozenset[str] = frozenset()  # terms the model was actually given
+    # The corpus has no bilingual ordering to validate abstention fallback, so a
+    # run starts on Japanese and holds its last accepted label (asr-pipeline.md).
+    held = "ja"
+    label: str | None = None
+    token = held
+    marked = False
 
     async def update(final: bool) -> None:
-        nonlocal utterance, utterance_decode_s
+        nonlocal processor, utterance, utterance_decode_s, held, label, token, marked
         assert processor is not None
+        # The rejected 1 s arm false-routed English as Japanese at 0.9822. Score
+        # each later untrimmed ring prefix once; processor.audio stops being one
+        # after VAC trimming, and the census never measured that shape.
+        if detector is not None and label is None and consumed - utterance_start >= lid_min_samples:
+            prefix = ring.slice(utterance_start, consumed)
+            accepted = await loop.run_in_executor(None, detector.decide, prefix)
+            if accepted is not None:
+                label = accepted
+                held = accepted
+                if accepted != token:
+                    # The existing agreement was produced under the wrong token;
+                    # retaining it would publish a fluent transcript in that script.
+                    processor = StreamingProcessor(
+                        decode=rec.decode_segments, buffer_trim_s=VAC_TRIM_S
+                    )
+                    processor.offset_s = utterance_start / SAMPLE_RATE
+                    processor.insert_audio(prefix)
+                    utterance = ""
+                    state.partial = ""
+                    state.provisional = ""
+                    token = accepted
+        marked = detector is not None and label is None
         # Read before the call: process() trims, and the cost of a decode is set
         # by the buffer that decode actually saw.
         buffer_s = len(processor.audio) / SAMPLE_RATE
@@ -1733,22 +1764,26 @@ async def _vac_segments(
         utterance_decode_s += decode_s
         if commit:
             utterance += commit
-            state.partial = utterance
         # This decode already produced the text LocalAgreement-2 is still
         # withholding, so showing it costs no compute and no accuracy: measured
         # over both pinned clips it takes the reader's wait from 2.535 s to
         # 1.187 s p50 and 8.157 s to 2.385 s max (tests/eval_latency.py). It is
         # METER-ONLY -- the next decode may rewrite it, while `utterance`, which
         # is what the numbered line and the transcript carry, stays append-only.
-        # finish() sets emitted = previous, so a final update empties this.
-        state.provisional = processor.previous[len(processor.emitted) :]
+        # Before LID acceptance even the agreed run may have the wrong script, so
+        # all text stays provisional; finish() makes the tail empty at VAD close.
+        tail = processor.previous[len(processor.emitted) :]
+        state.partial = "" if marked else utterance
+        state.provisional = utterance + tail if marked else tail
         if on_update is not None:
             on_update(buffer_s, buffer_end_s, commit_audio_s, commit, final, decode_s)
 
     async def finalize() -> None:
         """Close the open utterance: flush its tail, then publish it once."""
-        nonlocal processor, pending, seq
+        nonlocal processor, pending, seq, label, token, marked
         await update(final=True)
+        # 409 of 1,926 census utterances never accept. Withholding them would lose
+        # one caption in five, so they publish under the held label and say so.
         defect = caption_defect(utterance) if utterance else None
         if defect:
             # Dropped before anything downstream sees it, so the reader's terminal,
@@ -1759,7 +1794,12 @@ async def _vac_segments(
             drop_caption(state, utterance, defect)
         elif utterance:
             seq += 1
-            emit_line("SRC", seq, utterance, output_file)
+            # Eight locks stub emit_line with a four-positional lambda, so the
+            # unmarked call keeps its exact shape instead of passing held=marked.
+            if marked:
+                emit_line("SRC", seq, utterance, output_file, held=True)
+            else:
+                emit_line("SRC", seq, utterance, output_file)
             if context is not None:
                 context.observe_ja(utterance, biased)
             if translator is not None:
@@ -1768,8 +1808,12 @@ async def _vac_segments(
             n = consumed - utterance_start
             on_segment(utterance_start, n, n, utterance_decode_s, utterance)
         state.partial = ""
+        state.provisional = ""
         processor = None
         pending = 0
+        label = None
+        token = held
+        marked = False
 
     while True:
         chunk = await audio_q.get()
@@ -1807,6 +1851,9 @@ async def _vac_segments(
                 pending = consumed - utterance_start
                 utterance = ""
                 utterance_decode_s = 0.0
+                label = None
+                token = held
+                marked = False
             elif processor is not None:
                 processor.insert_audio(block)
                 pending += len(block)
@@ -1834,6 +1881,7 @@ async def worker(
     on_segment=None,
     context=None,
     on_update=None,
+    detector=None,
 ):
     """Feed VAD and decode concurrently; a None audio sentinel drains both stages.
 
@@ -1866,6 +1914,7 @@ async def worker(
                 on_segment,
                 context,
                 on_update,
+                detector,
             )
             return
         async with asyncio.TaskGroup() as tasks:
@@ -2254,7 +2303,17 @@ async def run_session(args):
 
     meter_task = asyncio.create_task(meter(state, audio_q, translator))
     worker_task = asyncio.create_task(
-        worker(rec, vad, window, audio_q, state, output_file, translator, context=context)
+        worker(
+            rec,
+            vad,
+            window,
+            audio_q,
+            state,
+            output_file,
+            translator,
+            context=context,
+            detector=language_detector,
+        )
     )
     translator_task = asyncio.create_task(translator.run()) if translator else None
 

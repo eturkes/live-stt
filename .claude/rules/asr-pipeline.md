@@ -394,6 +394,7 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   construction. `redraw_bound_s` is that cost charged as a fresh wait per redraw — a loose UPPER
   bound, double-counting by construction — and reads p50 2.114 / p90 5.192 / max 9.131. Quote 1.187 s
   for time-to-first-glimpse and 2.535 s for time-to-settled; neither alone describes the screen.
+  Two-way's withheld first commit moves NEITHER number (subsection below).
 - **`VAC_CHUNK_S` is floored by decode cost, not by taste.** Work rate = `decode_s / VAC_CHUNK_S`:
   0.645 today, 0.86 at 0.75 s, **1.29 at 0.5 s** — past real time, so the audio queue never drains.
   Every candidate below 0.75 s needs the fixed 0.35 s term cut first.
@@ -440,6 +441,32 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
   appears rather than the same turns moving, and replayed over ONE fixed trace the semantic changes
   fall on the **same 13 turns** under both orderings. So no batching effect exists to explain the
   per-rotation rise; it is run-to-run variation in a sampled model.
+
+### Two-way withholding — `tests/eval_two_way_settled.py`
+
+Two-way commits nothing until the LID accepts a label, which cannot happen before `LID_MIN_SECONDS`
+of voiced buffer exists. **The queue row's premise is REFUTED for the shipped case: that hold moves
+time-to-SETTLED by nothing.** LocalAgreement-2 already commits almost nothing on update 1, so at the
+2.0 s gate both clips read their published numbers unchanged and 13 characters in total are re-dated.
+Time-to-FIRST-GLIMPSE is untouched in every arm — the dim tail renders upstream of the commit rule.
+The evaluator replays `vac_decode_trace.json` on the same virtual clock, the same per-character
+placement and the same `_quantiles` as the commit-lag row above, so its no-withholding arm reproduces
+`commit_lag_s` exactly and the difference between arms is the commit rule alone.
+
+| arm | `stress_long` p50/p90/max | `retention_probe` p50/p90/max | re-dated |
+| --- | --- | --- | --- |
+| one-way, no withholding | 2.357 / 4.112 / 8.098 | 2.535 / 4.600 / 8.157 | 0 / 0 |
+| accepted at the 2.0 s gate | 2.357 / 4.112 / 8.098 | 2.535 / 4.600 / 8.157 | 2 / 11 |
+| abstained once, accepted at 3.0 s | 2.364 / 4.112 / 8.098 | 2.594 / 4.600 / 8.157 | 17 / 147 |
+| never accepted (held label) | 10.881 / 20.401 / 24.706 | 13.077 / 24.457 / 33.198 | 251 / 1043 |
+
+`re-dated` counts characters committed before acceptance and is an UPPER bound on how many moved: one
+whose own clock already runs past the accepting update keeps it. **The last row is an upper bound
+too, never a forecast** — it forces both long-form clips into the held path, which is not what
+abstention does. Abstention concentrates in utterances shorter than 2 s (93.17 % of the 410 finals
+under 2 s never accept), where the final update arrives carrying the whole caption at once and no
+earlier commit is left to withhold. Read that row as the cost of a detector that never accepts on
+long speech, and never as the cost of the 409 held utterances.
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 
