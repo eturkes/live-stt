@@ -72,6 +72,19 @@ Detail → `.claude/rules/`, which each `D-###` names.
   (`upstream-sync.md`). Scan scoping + its coverage limit → `toolchain.md`.
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
+- **The published line grammar is `SRC n:` / `TGT n:`, in every mode** (user ruling) — `SRC` names
+  the line that was spoken, `TGT` the line that was translated, screen and transcript alike. It
+  supersedes the `JA n:` / `EN n:` wording still in `Intent`, which is the user's to edit. Two-way
+  makes language tags unstable — an English utterance would publish `EN` first — so the tags name
+  roles instead. `session_report.py` keeps reading legacy `JA`/`EN` transcripts, mapping `JA` to
+  source and `EN` to translation: the first live session's saved transcript is in that grammar and a
+  queued unit closes by comparing against it. An utterance whose language was HELD rather than
+  detected marks its source line `SRC n <!>: text`; the `TGT` line stays unmarked.
+- Two-way rejects a contradictory invocation at parse time rather than silently winning (user
+  ruling): `--two-way` with `--source-lang` errors, because one asks for a per-utterance decision and
+  the other pins every utterance, and `--two-way` with `--engine k2v2|parakeet` errors, both sherpa
+  models being Japanese-only. This SUPERSEDES the queue row's "`--source-lang` stays the manual
+  override and pins the label outright when given". `--source-lang` without `--two-way` is unchanged.
 - The status line shows the whole latest decode: committed text normal, the tail LocalAgreement-2
   still withholds **dimmed**. Time-to-FIRST-GLIMPSE 2.535 → 1.187 s p50, 8.157 → 2.385 s max, at zero
   compute and zero CER cost (retention CER 0.0609, unmoved). Time-to-SETTLED is unchanged at 2.535 s

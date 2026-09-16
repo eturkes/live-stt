@@ -48,7 +48,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    (`translation-leg.md`). **Live-stt stays usable throughout** (user ruling) ⇒ every unit lands
    behind `--two-way`, default OFF: with the flag absent the process constructs today's JA pipeline,
    opens ONE thread and keeps passing `"<|ja|>"`, and JA→EN is green at every commit.
-   **Accept, four units, one commit each:**
+   **Accept, five units, one commit each.**
+   **(0) the grammar** (user ruling, added to this row): the published line becomes `SRC n:` /
+   `TGT n:` in EVERY mode, one-way included, because two-way makes a language tag name a different
+   role each utterance; `session_report.py` keeps parsing legacy `JA`/`EN` transcripts so the first
+   live session stays comparable. Held-label marking is `SRC n <!>: text`, landed by unit (2).
    **(1) the detector.** `models/lid/d2-ecapa/` acquired by the pinned command in `asr-pipeline.md`
    with its SHA-256 verified, wrapped as a raw-PCM scorer returning label + score + margin, and the
    three-part gate at its named thresholds — global 107-way argmax ∈ {`ja`, `en`}, score ≥0.35,
@@ -67,9 +71,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    sequence: it beats forcing the pairwise winner only while the switch rate among abstentions stays
    under 3.93 %. Withholding the first commit until update 2 shifts time-to-SETTLED ⇒ re-derive it
    offline by replaying `vac_decode_trace.json` under the new commit rule, which needs no hardware.
-   **(3) the token.** The frozen label selects `"<|ja|>"`/`"<|en|>"` on every `generate()`;
-   `--source-lang` stays the manual override and pins the label outright when given. Retention
-   CER ≤ 0.0609 re-derived, this being the unit that touches decode.
+   **(3) the token.** The frozen label selects `"<|ja|>"`/`"<|en|>"` on every `generate()`. Retention
+   CER ≤ 0.0609 re-derived, this being the unit that touches decode. **SUPERSEDED by user ruling:**
+   `--source-lang` is no longer this row's manual override — `--two-way` with `--source-lang` is a
+   parse error, as is `--two-way` with a sherpa `--engine`, and `--source-lang` alone keeps today's
+   one-way meaning (`spec.md`).
    **(4) the reverse leg.** A second immutable thread with its own EN→JA `developerInstructions` and
    the same glossary rendered in its direction, the settled label routing each turn; app-server EOF
    disables BOTH directions, a poisoned turn replaces only its own thread, and the transcript stays
