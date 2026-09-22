@@ -6,11 +6,11 @@ paths:
 
 # Evidence artifacts — corpora, traces, evaluators
 
-Fast locks run in the gate. **The nine `eval_*.py` scripts are ON-DEMAND and never gate steps**: four
-need gitignored weights and minutes of compute, so run one when a decode change raises an accuracy
-question. `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py` and `eval_en_pairing.py`
-(default mode) need neither, because they replay committed traces — a fresh clone runs them in under a
-second each.
+Fast locks run in the gate. **The ten `eval_*.py` scripts are ON-DEMAND and never gate steps**: five
+need gitignored weights, a corpus or the real translator plus minutes of compute, so run one when a
+decode change raises an accuracy question. `eval_latency.py`, `eval_two_way_settled.py`,
+`eval_term_census.py`, `eval_en_pairing.py` (default mode) and `eval_lag.py` need none of that,
+because they replay committed traces — a fresh clone runs them in under a second each.
 
 ## Committed artifacts and what each certifies
 
@@ -45,7 +45,13 @@ second each.
   **It regenerates from committed state, and a green run IS the credit**:
   `uv run python tests/build_lid_census.py` re-cuts every buffer with the shipped `make_vad()`,
   re-scores every view through the shipped `LanguageDetector`, and compares bytes; `--clips N` is the
-  bounded form the resource-gated lock rides, `--write` the deliberate rewrite. The spike's own
+  bounded form the resource-gated lock rides, `--write` the deliberate rewrite. **A bounded run slices
+  its oracle by UTTERANCE count, never by `len(actual)`** — the second spelling compares a truncated
+  rebuild against its own prefix, so it passes on the regression it exists to catch — and the guard
+  behind it is `corpus_clips` refusing a corpus shorter than the requested clip count. Full mode is
+  weights-gated, so `test_lid_census.py` reaches it through an INJECTED two-clip corpus and a fake
+  detector: without that lock every other lock in the file stays green with `census` replaced by a
+  raise. The spike's own
   outputs (`models/lid/results/*.json.gz`, `models/lid/analysis.json`) are gitignored and no longer
   load-bearing. What they alone recorded was the ORDER, and the corpora define it: languages `ja`
   then `en`, clips `sorted()` by filename, buffers in cut order, buckets prefix-closed then `VADfin`,

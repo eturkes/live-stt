@@ -93,6 +93,10 @@ def corpus_clips(language: str, limit: int | None = None) -> list[Path]:
     expected = corpus.EXPECTED_INDEX_SHA256 if language == "ja" else corpus.EN_EXPECTED_INDEX_SHA256
     entries = corpus.validate_cached_index(directory, expected)
     clips = sorted(directory / entry["wav"] for entry in entries if entry["source"] == "fleurs")
+    # A short corpus must fail loudly: a bounded check compares only the rows it built, so
+    # silently returning fewer clips than asked would let the whole check pass on a prefix.
+    if limit is not None and len(clips) < limit:
+        raise ValueError(f"{language}: asked for {limit} clips, corpus holds {len(clips)}")
     return clips[:limit]
 
 
@@ -245,6 +249,26 @@ def committed_views(language: str) -> list[list]:
     return [[row[0], row[1] - first, *row[2:]] for row in rows]
 
 
+def bounded_check(
+    detector: live_stt.LanguageDetector, language: str, clips: int
+) -> tuple[int, int]:
+    """`(utterances, views)` once the first `clips` clips reproduce the fixture exactly.
+
+    Raises `ValueError` on any disagreement. The oracle is sliced by UTTERANCE count, never
+    by `len(actual)`: taking the oracle's length from the rebuild is what makes a rebuild
+    that dropped its trailing buffers compare equal to its own prefix, so that spelling
+    passes on exactly the regression the check exists to catch.
+    """
+    actual = language_views(detector, language, clips)
+    if not actual:
+        raise ValueError(f"{language}: the first {clips} clips produced no views")
+    utterances = actual[-1][1] + 1
+    expected = [row for row in committed_views(language) if row[1] < utterances]
+    if actual != expected:
+        raise ValueError(f"{language}: rows from the first {clips} clips differ from the fixture")
+    return utterances, len(actual)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
@@ -270,16 +294,13 @@ def main(argv: list[str] | None = None) -> int:
         views = 0
         utterances = 0
         for language in LANGUAGES:
-            actual = language_views(detector, language, args.clips)
-            expected = committed_views(language)[: len(actual)]
-            if actual != expected:
-                print(
-                    f"error: {language} rows from the first {args.clips} clips differ",
-                    file=sys.stderr,
-                )
+            try:
+                language_utterances, language_rows = bounded_check(detector, language, args.clips)
+            except ValueError as error:
+                print(f"error: {error}", file=sys.stderr)
                 return 1
-            views += len(actual)
-            utterances += 0 if not actual else actual[-1][1] + 1
+            views += language_rows
+            utterances += language_utterances
 
         actual_synthetic = synthetic_views(detector)
         expected_synthetic = json.loads(OUT.read_text(encoding="utf-8"))["synthetic"]
