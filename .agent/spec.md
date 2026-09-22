@@ -146,7 +146,7 @@ Queue → `.agent/deferred.md`, rank = funding order, acceptance written at defe
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** M10 candidate-screen remainder · **4** Re-derive the LID census from the committed corpora.
+**3** M10 candidate-screen remainder.
 The M10 candidate-screen remainder sits there because its acceptance is a re-open condition, not
 work.
 

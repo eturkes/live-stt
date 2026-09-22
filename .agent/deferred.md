@@ -40,16 +40,3 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.
-4. **Re-derive the LID census from the committed corpora.** `tests/lid_census.json` is a reduction of
-   spike outputs that are gitignored and will be lost (`models/lid/results/*.json.gz`,
-   `models/lid/analysis.json`), so its generator sits in `.scratch/` and cannot rerun from committed
-   state — while the decision table it feeds is the gate's only evidence that the three-part rule
-   holds over 1,926 utterances. The reduction path itself is PROVEN, so the port is the whole cost:
-   clip → `make_vad()` buffers → 2 s prefix → shipped `LanguageDetector.score()` re-derived 6 of 6
-   sampled `2s` rows exactly at the fixture's 6-decimal rounding. What has no committed source is the
-   ORDERING — `utterance` is an integer index whose id map lives only in the gitignored spike output
-   ⇒ the regenerator must define the order from the corpora themselves and the fixture must then be
-   compared as a set of rows, not by index. **Accept:** `tests/build_lid_census.py` regenerates the
-   file byte-identically from the two committed FLEURS corpora through the shipped
-   `LanguageDetector`, weight-gated with an `absent:` reason, and the `.scratch/` generator dies in
-   the same commit.
