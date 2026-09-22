@@ -164,6 +164,27 @@ second each.
   throwaway tree, plus the secret scan's real-tree scope, which that throwaway tree cannot see
   shrink (`toolchain.md`).
 
+- `lag_sessions.json` + `build_lag_trace.py` + `eval_lag.py` + `test_lag_trace.py` — how far behind
+  its source line a translation actually lands, on a real mic. `transcripts/` is gitignored ⇒ the two
+  live sessions the claim rests on cannot be re-read once the recordings are gone, and this is the
+  reduction that outlives them: per caption, integer seconds from session start for the source and
+  target lines, the source and target character counts, and the session's `--` notes. **It is
+  text-free by contract and `test_lag_trace.py` enforces that with an ASCII-only assertion over the
+  whole file plus a closed key set per pair** — the user's own speech must not enter git, and a
+  future edit adding a `text` field has to redden rather than leak.
+  `build_lag_trace.py` imports `session_report.py`'s parser instead of restating the line grammar,
+  and `--check` re-derives the committed bytes; both it and the agreement lock are transcript-gated
+  with an `absent: ` reason, so a fresh clone runs the other four locks on committed bytes alone.
+  Percentiles use `session_report.py`'s own convention (`statistics.median` for p50,
+  `sorted(x)[int(len(x) * 0.9)]` for p90) so the numbers compose with the shipped report's.
+  **Whole-second timestamps ⇒ every lag is quantised to whole seconds**; read a p50 of 2 s as a
+  bucket, never as 2.0.
+  Two limits the file states rather than hides. A caption with no target is EXCLUDED from the
+  outstanding-work existential — it was abandoned, not left pending — because counting it marks every
+  later caption backlogged for the rest of the session (session 2 reads 430 backlogged that way
+  against 94 honestly). And the transcript cannot see that the leg was still retrying those captions,
+  so caption 297 reads standalone while the leg was in fact wedged.
+
 ## Rules that keep the evidence honest
 
 - **A resource gate declares itself: `absent: <what>`.** Every skip in this suite gates on absent
@@ -278,6 +299,8 @@ uv run python tests/eval_latency.py                     # per-stage latency budg
 uv run python tests/eval_two_way_settled.py [--json]    # two-way's commit rule vs time-to-SETTLED
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware
 uv run python tests/eval_en_pairing.py [--live]         # what a real translator pairs; default <1 s
+uv run python tests/eval_lag.py [--json]                # live TGT-behind-SRC lag, trace only, <1 s
+uv run python tests/build_lag_trace.py [--check]        # rebuild that trace from the transcripts
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)
 uv run python tests/eval_cer.py                         # 2-engine CER + RTF baseline (models + corpus)
 uv run python tests/eval_retention.py [--device D]      # retention CER on the shipped NPU/VAC path
