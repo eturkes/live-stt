@@ -130,7 +130,7 @@ def test_submit_evicts_oldest_and_counts():
 
         seqs = []
         while not t.queue.empty():
-            seq, _ = t.queue.get_nowait()
+            seq, _, _, _ = t.queue.get_nowait()
             seqs.append(seq)
         assert 0 not in seqs  # oldest evicted
         assert cap in seqs  # newest survived

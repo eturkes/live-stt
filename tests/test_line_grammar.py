@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -42,7 +43,7 @@ def test_translator_line_uses_the_tgt_tag(monkeypatch: pytest.MonkeyPatch) -> No
         "emit_line",
         lambda tag, seq, text, _output: emitted.append((tag, seq, text)),
     )
-    translator.queue.put_nowait((7, "こんにちは。"))
+    translator.queue.put_nowait((7, "こんにちは。", None, time.monotonic()))
     translator.queue.put_nowait(None)
 
     asyncio.run(translator.run())

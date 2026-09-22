@@ -39,6 +39,9 @@ _NOTE = re.compile(r"^\[([^\]]+)\] -- (.*)$")
 # `[2026-09-04 14:38:49,538] ERROR message`; the comma is logging's msec sep.
 _LOG = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+\] (\w+) (.*)$")
 
+_STALE = re.compile(
+    r"^caption (\d+) not translated: (queued \d+ s, over TRANSLATE_MAX_STALENESS_S)$"
+)
 _DECLINED = re.compile(r"^caption (\d+) not translated: (.*)$")
 _BLOCK_FAIL = re.compile(r"^translation failed \((.*)\); (?:source|JA)-only for this block$")
 # The prefix is optional: sessions predating the `_disable` rewrite logged the
@@ -57,6 +60,7 @@ _DROPPED = re.compile(r"^caption dropped \((.*?)\): (.*)$")
 
 # Why a published caption never got a target line. Ordered by how much the evidence
 # pins it down: a logged decline is certain, a trailing gap is an inference.
+STALE = "stale"  # queue delay made a target misleading beside newer captions
 DECLINED = "declined"  # the caption's own text; the screen refused it
 STRIKE = "strike"  # a failure inside the run that disabled the leg
 DISABLED = "disabled"  # after a permanent degrade, so source-only by design
@@ -334,6 +338,7 @@ def attribute_drops(s: Session) -> list[dict]:
 
 def explain_missing(s: Session) -> list[dict]:
     """Why each published caption has no target line."""
+    stale = {int(m.group(1)): m.group(2) for e in s.events if (m := _STALE.match(e.body))}
     logged = {int(m.group(1)): m.group(2) for e in s.events if (m := _DECLINED.match(e.body))}
     degrade = find_degrade(s)
     last_tgt = max(s.tgt) if s.tgt else 0
@@ -366,7 +371,9 @@ def explain_missing(s: Session) -> list[dict]:
         # Precedence is causal, not textual. Once the leg is down every caption
         # lacks a target whatever its text, so a screen verdict there is a
         # counterfactual and rides `screened_now` instead of explaining the loss.
-        if n in logged:
+        if n in stale:
+            why, detail = STALE, stale[n]
+        elif n in logged:
             why, detail = DECLINED, logged[n]
         elif n in strikes:
             why, detail = STRIKE, f"failure that spent a strike ({cause or 'cause not logged'})"
@@ -460,7 +467,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                 "missing": missing,
                 "missing_by_reason": {
                     w: sum(1 for r in missing if r["why"] == w)
-                    for w in (DECLINED, STRIKE, DISABLED, SHUTDOWN, FAILED)
+                    for w in (STALE, DECLINED, STRIKE, DISABLED, SHUTDOWN, FAILED)
                     if any(r["why"] == w for r in missing)
                 },
                 "degrade": (

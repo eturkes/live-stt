@@ -16,6 +16,16 @@ NOTE_WINDOW_S = 60
 BACKLOG_LIMIT = (
     "A null target is abandoned; the transcript cannot show when its translation attempt stopped."
 )
+STALENESS_BOUNDS_S = (5, 10, 15, 20, 30)
+STALENESS_APPROXIMATION = (
+    "Whole-second timestamps; queue wait is reconstructed from publication times plus notes, "
+    "not measured in the process."
+)
+STALENESS_FEEDBACK_LIMIT = (
+    "No feedback is modeled: a skip changes every later turn start. In session 2, caption 296 "
+    "likely reached 23 s before spending the third strike, so the shipped bound could prevent "
+    "the disable and cascade that this replay preserves."
+)
 
 
 def _percentile(ordered: list[int], fraction: float) -> int | None:
@@ -70,6 +80,54 @@ def _backlog_values(session: dict[str, Any]) -> dict[str, list[int]]:
 
 def _backlog_report(values: dict[str, list[int]]) -> dict[str, dict[str, int | float | None]]:
     return {name: _lag_summary(lags) for name, lags in values.items()}
+
+
+def _staleness_report(session: dict[str, Any]) -> list[dict[str, Any]]:
+    note_times = sorted(note["at_s"] for note in session["notes"])
+    rows = []
+    previous_target = None
+    for pair in sorted(session["pairs"], key=lambda row: row["n"]):
+        target = pair["tgt_s"]
+        if target is None:
+            continue
+        arithmetic_start = pair["src_s"]
+        if previous_target is not None:
+            arithmetic_start = max(arithmetic_start, previous_target)
+        # Failed turns have no target timestamp. A note inside this caption's
+        # source-to-target interval proves that its turn could not predate it.
+        note_start = max(
+            (at for at in note_times if pair["src_s"] <= at <= target),
+            default=arithmetic_start,
+        )
+        turn_start = max(arithmetic_start, note_start)
+        rows.append(
+            {
+                "n": pair["n"],
+                "arithmetic_wait_s": arithmetic_start - pair["src_s"],
+                "wait_s": turn_start - pair["src_s"],
+                "lag_s": target - pair["src_s"],
+            }
+        )
+        previous_target = target
+    reports = []
+    for bound in STALENESS_BOUNDS_S:
+        arithmetic_dropped = [row for row in rows if row["arithmetic_wait_s"] > bound]
+        dropped = [row for row in rows if row["wait_s"] > bound]
+        arithmetic_captions = [row["n"] for row in arithmetic_dropped]
+        captions = [row["n"] for row in dropped]
+        reports.append(
+            {
+                "bound_s": bound,
+                "translated": len(rows),
+                "arithmetic_dropped": len(arithmetic_dropped),
+                "arithmetic_captions": arithmetic_captions,
+                "dropped": len(dropped),
+                "captions": captions,
+                "note_added": [n for n in captions if n not in arithmetic_captions],
+                "survivors": distribution([row["lag_s"] for row in rows if row["wait_s"] <= bound]),
+            }
+        )
+    return reports
 
 
 def _degrade_adjacency(session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -182,6 +240,7 @@ def report(trace: dict[str, Any]) -> dict[str, Any]:
                 "id": session["id"],
                 "distribution": distribution(lags),
                 "backlog": _backlog_report(backlog),
+                "staleness": _staleness_report(session),
                 "degrade_adjacency": adjacency,
                 "length": _length_report(lengths),
             }
@@ -193,6 +252,8 @@ def report(trace: dict[str, Any]) -> dict[str, Any]:
         pooled_notes.extend({"session": session["id"], **note} for note in adjacency)
     return {
         "backlog_limit": BACKLOG_LIMIT,
+        "staleness_approximation": STALENESS_APPROXIMATION,
+        "staleness_feedback_limit": STALENESS_FEEDBACK_LIMIT,
         "sessions": sessions,
         "pooled": {
             "distribution": distribution(pooled_lags),
@@ -220,6 +281,21 @@ def _render_backlog(values: dict[str, dict[str, int | float | None]]) -> str:
             f"{name} count={row['count']} p50={row['p50']}s p90={row['p90']}s max={row['max']}s"
         )
     return "; ".join(halves)
+
+
+def _render_staleness(rows: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for row in rows:
+        arithmetic = ",".join(str(n) for n in row["arithmetic_captions"]) or "none"
+        captions = ",".join(str(n) for n in row["captions"]) or "none"
+        added = ",".join(str(n) for n in row["note_added"]) or "none"
+        lines.append(
+            f"staleness bound={row['bound_s']}s: arithmetic={row['arithmetic_dropped']}/"
+            f"{row['translated']} captions={arithmetic}; notes={row['dropped']}/"
+            f"{row['translated']} captions={captions} added={added}; survivors "
+            f"{_render_distribution(row['survivors'])}"
+        )
+    return lines
 
 
 def _render_adjacency(notes: list[dict[str, Any]]) -> list[str]:
@@ -258,12 +334,17 @@ def _render_length(values: dict[str, Any]) -> list[str]:
 
 
 def render(result: dict[str, Any]) -> str:
-    lines = [f"backlog limit: {result['backlog_limit']}"]
+    lines = [
+        f"backlog limit: {result['backlog_limit']}",
+        f"staleness approximation: {result['staleness_approximation']}",
+        f"staleness feedback limit: {result['staleness_feedback_limit']}",
+    ]
     for session in result["sessions"]:
         lines += [
             f"== {session['id']}",
             f"distribution: {_render_distribution(session['distribution'])}",
             f"backlog: {_render_backlog(session['backlog'])}",
+            *_render_staleness(session["staleness"]),
             *_render_adjacency(session["degrade_adjacency"]),
             *_render_length(session["length"]),
         ]

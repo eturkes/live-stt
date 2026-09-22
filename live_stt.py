@@ -178,6 +178,9 @@ TRANSLATE_MAX_RECOVERIES = 5  # bounded revivals of a disabled leg, per session
 TRANSLATE_RECOVERY_WAIT_S = 5.0  # cooldown after a failed recovery; doubles each time
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
 TRANSLATE_QUEUE_MAX = 50  # backlog cap; overflow drops the oldest (stalest) block
+# A 15 s bound drops 8/696 in the second live session, all inside captions
+# 297-308; every non-cascade translation landed within 15 s.
+TRANSLATE_MAX_STALENESS_S = 15.0
 
 # A degenerate decode repeats one short unit without end. Two independent costs,
 # so the caption is dropped outright and the translator keeps its own screen.
@@ -1199,6 +1202,7 @@ class CodexTranslator:
         self._failures = 0
         self._poisoned_source: str | None = None
         self.dropped_translations = 0  # captions evicted under backlog (T8.5 tdrop=)
+        self.stale_translations = 0
         self.degenerate_captions = 0  # captions declined as repetition (M13.1 tskip=)
         self.enabled = False
         self._recoveries = 0  # spent recovery budget, never refunded (M14.2)
@@ -1527,7 +1531,7 @@ class CodexTranslator:
         """Queue one caption with the audio label that already settled its direction."""
         if source is not None:
             self._legs[source]  # reject an impossible label before it reaches run()
-        item = (seq, text) if source is None else (seq, text, source)
+        item = (seq, text, source, time.monotonic())
         # While the leg is down but still recoverable the caption is what drives
         # recovery: run() is parked on this queue, so nothing else wakes it. One
         # arriving inside the backoff is discarded there rather than here, which
@@ -1584,11 +1588,7 @@ class CodexTranslator:
             item = await self.queue.get()
             if item is None:
                 return
-            if len(item) == 2:
-                seq, text = item
-                source = None
-            else:
-                seq, text, source = item
+            seq, text, source, queued_at = item
             self._select_leg(source)
             # A dead leg is repaired inline, on the caption that finds it: the
             # attempt costs this one turn ~5 s and needs no task of its own, so
@@ -1598,6 +1598,18 @@ class CodexTranslator:
                 if not recovered:
                     continue  # still down: source-only for this caption
                 self._select_leg(source)  # recovery may have repaired the other direction
+            # run() alone drives recovery, so stale captions must reach the block above;
+            # checking sooner can leave a down leg stranded behind a stale queue.
+            queued_s = time.monotonic() - queued_at
+            if queued_s > TRANSLATE_MAX_STALENESS_S:
+                self.stale_translations += 1
+                logger.warning(
+                    "caption %d not translated: queued %.0f s, over TRANSLATE_MAX_STALENESS_S",
+                    seq,
+                    queued_s,
+                )
+                emit_note(f"translation skipped (stale): {seq}", self.output_file)
+                continue
             translated = await self._translate(text)
             if translated:
                 emit_line("TGT", seq, translated, self.output_file)
