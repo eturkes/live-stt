@@ -58,6 +58,11 @@ paths:
 
 ## Whisper on the NPU (D-016)
 
+- **The M10 candidate screen is CLOSED and stays closed.** Old multilingual streaming zipformer +
+  SenseVoice lack current JA evidence, Moonshine-JA's license is unclear, and ReazonSpeech-k2-v2 adds
+  PyTorch/Transformers + remote custom model code. Re-open only if the shipped path FAILS and the
+  added runtime surface buys a materially different hypothesis — a re-open condition, never queued
+  work. Tournament record → `.agent/archive/m10-asr-tournament.md`.
 - **Policy.** Waiting for silero to close a segment bounds the first character's latency by the last:
   pause-free audio yields 8 segments of 20-33 s, lag median 15.5 s / max 36.6 s. VAC measured 2.5 s /
   8.1 s on the same audio and won CER on both corpora and both devices. Pure streaming without the

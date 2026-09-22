@@ -36,7 +36,3 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **(c)** then either the mechanism is named and reproduced as a `tests/eval_backpressure.py` arm
    proven RED against today's code and fixed green with retention CER ≤ 0.0609 re-derived, or the row
    records a refusal naming the measured headroom shortfall and what the user loses.
-3. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
-   Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
-   model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
-   a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.

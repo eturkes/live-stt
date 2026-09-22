@@ -145,15 +145,16 @@ Detail → `.claude/rules/`, which each `D-###` names.
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
-The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** M10 candidate-screen remainder.
-The M10 candidate-screen remainder sits there because its acceptance is a re-open condition, not
-work.
+The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops.
+Both are user-only (L-004), so the queue now holds nothing an agent can fund.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and M14's `_respawn` arm have never met a mic, so every agent-side claim about the live path stays
 provisional until the user runs `live-smoke.md`. M14's `_probe` arm is now the one exception: it
 fired on a real mic on 2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
+**Explain the live audio drops** is blocked on the same law at its part (b): its attribution half
+LANDED, and what remains needs one live session run as `live-stt 2> stt.log` that reproduces a
+nonzero `drop=` with the log kept. No agent-side work creates that evidence, and part (c) reads it.
 
 ## Phase
 
