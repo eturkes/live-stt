@@ -102,6 +102,14 @@ Detail → `.claude/rules/`, which each `D-###` names.
   (`latin > 4 × japanese`); a whisper LID gate is measured, feasible and REFUSED.
 - EN-leg recovery = **respawn (app-server EOF) + cooldown re-probe (3-strike disable)**, one
   mechanism, arm picked by `_alive()`, 5-attempt budget, doubling cooldown, marked in the transcript.
+- A queued caption whose translation would land long after it was spoken is **published
+  source-only**: `TRANSLATE_MAX_STALENESS_S`=15.0, read at DEQUEUE and only AFTER the recovery block,
+  since `run()` alone drives `_recover()` and an earlier check would strand a down leg behind a stale
+  queue. One `logger.warning` plus one `-- translation skipped (stale): n` transcript note per
+  caption, counted in `stale_translations` and shown as the meter's own `tstale=` — a third
+  category, never folded into `tdrop=` (backlog eviction) or `tskip=` (content). Over the two
+  committed live sessions the bound drops 8 of 696 and 0 of 143, every drop inside one
+  wedge-and-recover cascade (`translation-leg.md`).
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
   (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
@@ -138,13 +146,14 @@ Queue → `.agent/deferred.md`, rank = funding order, acceptance written at defe
 row = that unit's whole contract; the `/goal` body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** Price the EN lag behind every JA line · **4** M10 candidate-screen remainder ·
-**5** Re-derive the LID census from the committed corpora. The M10 candidate-screen remainder sits
-there because its acceptance is a re-open condition, not work.
+**3** M10 candidate-screen remainder · **4** Re-derive the LID census from the committed corpora.
+The M10 candidate-screen remainder sits there because its acceptance is a re-open condition, not
+work.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
-and both M14 recovery arms have never met a mic, so every agent-side claim about the live path stays
-provisional until the user runs `live-smoke.md`.
+and M14's `_respawn` arm have never met a mic, so every agent-side claim about the live path stays
+provisional until the user runs `live-smoke.md`. M14's `_probe` arm is now the one exception: it
+fired on a real mic on 2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
 
 ## Phase
 

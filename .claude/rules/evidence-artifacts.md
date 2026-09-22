@@ -184,6 +184,18 @@ second each.
   later caption backlogged for the rest of the session (session 2 reads 430 backlogged that way
   against 94 honestly). And the transcript cannot see that the leg was still retrying those captions,
   so caption 297 reads standalone while the leg was in fact wedged.
+  `eval_lag.py` also carries the **staleness counterfactual that sized `TRANSLATE_MAX_STALENESS_S`**
+  (`translation-leg.md`). Turns are sequential and FIFO, so queue wait replays from the trace:
+  `turn_start(n)` is the later of caption `n`'s own source time and the target time of its
+  predecessor-with-a-target, raised again by any note inside `n`'s own source-to-target interval.
+  Two columns, never one — `arithmetic` uses queue arithmetic alone, `notes` admits the degrade
+  markers as evidence that a turn could not predate them, and the gap between them at the shipped
+  bound is exactly caption 297 (7 against 8 of 696). It prints THREE limits with the numbers, and a
+  reader who drops any of them is over-claiming: whole-second timestamps; a wait reconstructed from
+  publication times rather than measured in-process; and **no feedback modelled** — a skip moves
+  every later turn start, and caption 296 likely reached a 23 s wait before spending the third
+  strike, so the shipped bound may prevent the very cascade it is sized on. Sizing evidence, not a
+  prediction.
 
 ## Rules that keep the evidence honest
 

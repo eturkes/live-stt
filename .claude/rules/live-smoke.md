@@ -87,8 +87,8 @@ carry it are the ones the detector had under 2 s of audio to judge.
 
 ## Soak (1-3 h) — watch at start and end
 
-- **Backlog / drops** — `q=` / `seg=` / `drop=` / `tdrop=` stay absent (`q=` / `seg=` may blip and
-  clear). A standing `q=Ns` means PCM awaits VAD within `AUDIO_HEADROOM_S`=2 s; `seg=N` means completed
+- **Backlog / drops** — `q=` / `seg=` / `drop=` / `tdrop=` / `tstale=` stay absent (`q=` / `seg=`
+  may blip and clear). A standing `q=Ns` means PCM awaits VAD within `AUDIO_HEADROOM_S`=2 s; `seg=N` means completed
   utterances await decode within `SEGMENT_QUEUE_MAX`=8; any `drop=N` means ingestion fell behind, and
   its cause is currently UNKNOWN — a 26-minute session reached
   `backlog peak: q=2.00s drop=9033 skip=20` with every burst inside a ≥17 s publication gap, yet 16 of
@@ -99,6 +99,15 @@ carry it are the ones the detector had under 2 s of audio to judge.
   logs nothing), which is what makes `2> stt.log` a usable soak record while the status line keeps
   drawing. A peak never clears ⇒ read the LAST such line as the session's worst backlog and its
   timestamp as when that worst arrived.
+- **Stale skips (never met a mic, L-004)** — after any degrade, read the transcript for
+  `-- translation skipped (stale): <n>` lines and `stt.log` for their
+  `caption <n> not translated: queued <N> s, over TRANSLATE_MAX_STALENESS_S` twins. They are the
+  bound working, not a fault: the leg came back, and captions that waited over
+  `TRANSLATE_MAX_STALENESS_S`=15 s went source-only rather than publishing a translation beside
+  captions it has nothing to do with. The meter counts them as `tstale=N`, its own field and never
+  `tdrop=`/`tskip=` (`translation-leg.md`). Expected shape, from the one live cascade on record: a
+  short run of consecutive numbers right after a restore marker, then normal pairs. A stale skip
+  OUTSIDE a degrade window is the defect — it would mean ordinary turns are exceeding the bound.
 - **Thread rotation** — about every 100 translation turns one `TGT` lands a few seconds slower, then cadence
   resumes with no error. TGT must keep flowing across the bump.
 - **Quota** — out of band via `account/rateLimits/read`; expect ≈0 % primary-window movement.
@@ -114,4 +123,7 @@ live run has measured (item 2).
 TGT stopping while SRC continues is the sanctioned source-only degrade (D-009); the transcript marker names
 which trigger fired, and a `-- translation restored: codex app-server probed|respawned` marker below
 it means the leg came back and names the arm (`translation-leg.md`). One caption's TGT arriving ~5-6 s
-late right after a disable marker is that recovery working, not a stall.
+late right after a disable marker is that recovery working, not a stall. **The probe arm is now
+live-validated** — it fired on 2026-09-18 and restored the leg on attempt 1, 6 s from disable to
+restore — so the shape to expect below a restore marker is a few `-- translation skipped (stale): <n>`
+lines for the captions that waited out the outage, then paired SRC/TGT again.

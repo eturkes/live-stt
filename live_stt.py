@@ -878,7 +878,14 @@ def emit_line(tag, seq, text, output_file, *, held=False):
     terminal that is already gone, so it must not sit behind a write to one.
     """
     marker = " <!>" if held and tag == "SRC" else ""
-    line = f"{tag} {seq}{marker}: {text}"
+    # One event is one line, or the grammar every reader parses silently loses
+    # text: 4 multi-paragraph translations in one 2 h session put 1808 characters
+    # onto untimestamped continuation lines that session_report.py drops whole.
+    # splitlines(), never str.split(), which folds the full-width U+3000 space real
+    # Japanese captions carry; single-line text passes through untouched.
+    parts = text.splitlines()
+    body = text if len(parts) <= 1 else " ".join(p for p in (s.strip() for s in parts) if p)
+    line = f"{tag} {seq}{marker}: {body}"
     if output_file:
         ts = datetime.now().astimezone().isoformat(timespec="seconds")
         output_file.write(f"[{ts}] {line}\n")
@@ -1202,7 +1209,7 @@ class CodexTranslator:
         self._failures = 0
         self._poisoned_source: str | None = None
         self.dropped_translations = 0  # captions evicted under backlog (T8.5 tdrop=)
-        self.stale_translations = 0
+        self.stale_translations = 0  # captions past TRANSLATE_MAX_STALENESS_S (meter tstale=)
         self.degenerate_captions = 0  # captions declined as repetition (M13.1 tskip=)
         self.enabled = False
         self._recoveries = 0  # spent recovery budget, never refunded (M14.2)
@@ -2087,7 +2094,16 @@ def _backlog(queued_samples, segments, state, translator=None) -> str:
         if translator and translator.degenerate_captions
         else ""
     )
-    return f"{audio_pending}{segment_pending}{dropped}{tdrop}{skip}{tskip}"
+    # tstale= is the third category and shares a field with neither: the caption
+    # reached the queue, unlike tskip=, and was not evicted by overflow, unlike
+    # tdrop= -- it waited out TRANSLATE_MAX_STALENESS_S. Appended last so the
+    # existing left-to-right vocabulary a soak reader parses stays put.
+    tstale = (
+        f" tstale={translator.stale_translations}"
+        if translator and translator.stale_translations
+        else ""
+    )
+    return f"{audio_pending}{segment_pending}{dropped}{tdrop}{skip}{tskip}{tstale}"
 
 
 def caption_body(settled: str, provisional: str, room: int) -> str:

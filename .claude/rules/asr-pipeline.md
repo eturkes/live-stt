@@ -288,7 +288,8 @@ paths:
 - The screen runs at PUBLICATION, upstream of every consumer, so `observe_ja`, the translator queue,
   `_turn` and `_failures` cannot see a defective caption by construction and a runaway streak of any
   length costs no strike. `CodexTranslator.submit`'s identical screen is the BACKSTOP ⇒ on the
-  shipped path `tskip=` stays 0. **`tskip=N` is a CONTENT decision, never backpressure.**
+  shipped path `tskip=` stays 0. **`tskip=N` is a CONTENT decision, never backpressure** — and
+  `tstale=N` is a third thing again, a TIMELINESS one (`translation-leg.md`); the three never merge.
 - Thresholds, corpus-picked against 1073 live JA captions over 6 sessions (`transcripts/*.txt` is
   gitignored, so these numbers are the durable record; `session_report.py` re-derives every one):
   `CAPTION_REPEAT_UNIT_CHARS`=13 · `CAPTION_REPEAT_MAX_CHARS`=40 · `CAPTION_LATIN_RATIO`=4. Combined
@@ -357,6 +358,14 @@ paths:
   Third and least guessable: **CPython flushes `sys.stdout` during finalization and that flush fails
   the same way, exiting 120** on an otherwise clean shutdown ⇒ the latch also swaps in `os.devnull`.
   stderr is not implicated: its handler flushes per record, so finalization finds nothing buffered.
+- **One event is ONE line, and `emit_line` is where that is enforced.** The grammar every reader
+  parses is `[<time>] <TAG> <n>: <text>`, so text carrying its own line breaks writes untimestamped
+  continuation lines that `session_report.py` and `build_lag_trace.py` drop whole — measured at 4
+  multi-paragraph translations and 1808 lost characters in one 2 h live session. `emit_line`
+  collapses breaks with `splitlines()`, never `str.split()`, which folds the full-width U+3000 space
+  real Japanese captions carry; a break-free caption passes through byte-identical, which is the
+  positive control the lock pairs with. The screen shares the collapsed string, so the transcript
+  and the terminal cannot diverge.
 - **L-006 — TTY-gate the cursor-clear (`\r\x1b[2K`) protocol per stream, evaluated once.** Both halves
   are module-level constants: `_STDOUT_TTY` gates the meter status line and `emit_line`, so redirected
   stdout stays ANSI-clean and the meter DRAWS nothing off-TTY, and `_STDERR_TTY` gates the

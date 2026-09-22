@@ -345,7 +345,11 @@ def explain_missing(s: Session) -> list[dict]:
     last_src = max(s.src) if s.src else 0
     strikes = set()
     if degrade and degrade["three_strike"]:
-        after = sorted(n for n in s.src if n > last_tgt)
+        # Only a caption that reached `_translate` can spend a strike. A stale skip
+        # `continue`s before it and a screen decline never enters the queue, so
+        # counting either here pushes the real third failure out of the run and
+        # mislabels it DISABLED.
+        after = sorted(n for n in s.src if n > last_tgt and n not in stale and n not in logged)
         strikes = set(after[: app.TRANSLATE_MAX_FAILURES])
 
     # `translation failed (<type>)` names the exception a turn died on. Second

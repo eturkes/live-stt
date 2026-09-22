@@ -230,3 +230,111 @@ def test_session_report_separates_stale_skips_from_screen_declines(tmp_path):
 
     assert reasons == {1: "stale", 2: session_report.DECLINED}
     assert getattr(session_report, "STALE", None) == "stale"
+
+
+def test_a_caption_queued_exactly_the_bound_is_still_translated(tmp_path, monkeypatch):
+    # The deadline is exclusive: `queued > bound`. An inclusive comparison reads
+    # green against every other case here, so the boundary is the only input that
+    # separates the two and it must stay a live case.
+    async def scenario():
+        clock = _Clock(500.0)
+        monkeypatch.setattr(live_stt, "time", clock)
+        transcript = live_stt.TranscriptFile(tmp_path / "boundary.txt")
+        translator = live_stt.CodexTranslator(output_file=transcript)
+        translator.enabled = True
+        translated: list[str] = []
+
+        async def fake_translate(text: str, source: str | None = None) -> str:
+            translated.append(text)
+            return "Exactly on time."
+
+        translator._translate = fake_translate  # type: ignore[assignment]
+        translator.submit(21, "境界の字幕")
+        clock.now += live_stt.TRANSLATE_MAX_STALENESS_S
+        translator.submit_sentinel()
+        await translator.run()
+        transcript.close()
+        return translator, translated
+
+    translator, translated = asyncio.run(scenario())
+    body = (tmp_path / "boundary.txt").read_text(encoding="utf-8")
+
+    assert translated == ["境界の字幕"]
+    assert "TGT 21: Exactly on time." in body
+    assert translator.stale_translations == 0
+
+
+def test_the_stale_pattern_must_match_a_whole_reason_not_a_prefix(tmp_path):
+    # `_DECLINED` is a catch-all and `_STALE` outranks it, so every character the
+    # stale pattern stops requiring reclassifies some decline. Only a full match
+    # keeps that precedence honest.
+    transcript = tmp_path / "2026-09-05T10-00-00.txt"
+    transcript.write_text(
+        "[2026-09-05T10:00:01+09:00] SRC 1: こんにちは\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "session.log"
+    log.write_text(
+        "[2026-09-05 10:00:02,000] WARNING caption 1 not translated:"
+        " queued 9 s, over TRANSLATE_MAX_STALENESS_S was not why, the screen refused it\n",
+        encoding="utf-8",
+    )
+
+    session = session_report.read_session(str(transcript))
+    session.events = session_report.read_log(str(log))
+    (row,) = session_report.explain_missing(session)
+
+    assert row["why"] == session_report.DECLINED
+
+
+def test_a_stale_skip_between_failures_does_not_displace_the_third_strike(tmp_path):
+    # Strikes are reconstructed as the captions after the last target, but only a
+    # caption that reached `_translate` can spend one, and a stale skip leaves
+    # `_failures` untouched. Counting it pushes the real third failure past the
+    # budget and reports it DISABLED, hiding which caption actually killed the leg.
+    # The skip sits BETWEEN the failures, which is where a live cascade puts it.
+    transcript = tmp_path / "2026-09-06T10-00-00.txt"
+    transcript.write_text(
+        "\n".join(
+            [
+                "[2026-09-06T10:00:01+09:00] SRC 1: ひとつめ",
+                "[2026-09-06T10:00:02+09:00] TGT 1: The first.",
+                "[2026-09-06T10:00:03+09:00] SRC 2: ふたつめ",
+                "[2026-09-06T10:00:04+09:00] SRC 3: みっつめ",
+                "[2026-09-06T10:00:20+09:00] SRC 4: よっつめ",
+                "[2026-09-06T10:00:21+09:00] SRC 5: いつつめ",
+                "[2026-09-06T10:00:22+09:00] -- translation disabled:"
+                " 3 consecutive failures (TimeoutError)",
+                "[2026-09-06T10:00:23+09:00] SRC 6: むっつめ",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "session.log"
+    log.write_text(
+        "\n".join(
+            [
+                "[2026-09-06 10:00:05,000] WARNING translation failed (TimeoutError);"
+                " source-only for this block",
+                "[2026-09-06 10:00:06,000] WARNING translation failed (TimeoutError);"
+                " source-only for this block",
+                "[2026-09-06 10:00:20,000] WARNING caption 4 not translated:"
+                " queued 17 s, over TRANSLATE_MAX_STALENESS_S",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    session = session_report.read_session(str(transcript))
+    session.events = session_report.read_log(str(log))
+    reasons = {row["n"]: row["why"] for row in session_report.explain_missing(session)}
+
+    assert reasons == {
+        2: session_report.STRIKE,
+        3: session_report.STRIKE,
+        4: session_report.STALE,
+        5: session_report.STRIKE,
+        6: session_report.DISABLED,
+    }

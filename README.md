@@ -89,6 +89,14 @@ If the translation leg stops, live-stt writes one marker line and names the caus
 
 A marker holds `--` in place of the number. SRC lines continue after it. The transcript is the record that outlives the terminal, so read the markers to see why the TGT lines stopped and whether they came back.
 
+live-stt also skips a translation that waited too long. A caption that sits in the queue for more than 15 seconds gets no `TGT` line. The transcript holds this marker instead:
+
+```
+[2026-08-31T13:52:15+09:00] -- translation skipped (stale): 42
+```
+
+The number is the caption number. A late translation is worse than none, because it prints beside newer captions and reads as a translation of them. This marker appears most often just after the leg comes back, for the captions you spoke while it was down.
+
 `transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
 ## How it works
@@ -222,6 +230,7 @@ The last line is the status line. It rewrites itself in place and holds two thin
 - `drop=N`: blocks dropped on queue saturation (appears once non-zero)
 - `tdrop=N`: translations dropped on backlog saturation (appears once non-zero)
 - `tskip=N`: captions declined as repetition loops and not translated (appears once non-zero)
+- `tstale=N`: captions that waited too long in the queue and were not translated (appears once non-zero)
 
 Numbered lines tie SRC/TGT pairs together even when the next source prints before the previous target arrives.
 

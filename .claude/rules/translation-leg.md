@@ -136,6 +136,26 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
     reads as source-only from that point while TGT lines resume below it. A recovered leg resets
     `_failures` (else it is one strike from dying, and the probe arm arrives carrying a FULL count by
     construction) and `_turns` (else the fresh thread rotates early).
+- **A caption too stale to be worth translating is published source-only** —
+  `TRANSLATE_MAX_STALENESS_S`=15.0, stamped at `submit` and read at DEQUEUE in `run()`, **only after
+  the recovery block**. Placement is the whole rule: `run()` is the only thing that drives
+  `_recover()`, so a stale caption must still reach it, and checking sooner lets a queue of stale
+  captions strand a down leg forever. A skip emits both channels like every other degrade here — one
+  `logger.warning` and one `-- translation skipped (stale): <n>` transcript note — counts into
+  `stale_translations`, and `session_report.py` attributes it to its own `STALE` reason, ordered
+  ahead of `DECLINED` so a timeliness skip is never read as a screen refusing text it never saw.
+  **Its own meter field `tstale=`, appended last and never folded into either neighbour**: `tdrop=`
+  means the backlog evicted a caption and `tskip=` means the screen refused one, while this caption
+  reached the queue and was not evicted — merging any two of the three corrupts every soak reading.
+  The deadline is EXCLUSIVE (`queued > bound`), which no other case here distinguishes, so the
+  boundary is its own lock. Sizing, off the two committed live sessions: the bound drops 8 of 696
+  in session 2
+  and 0 of 143 in session 1, every drop inside captions 297-308, because session 2's whole
+  non-cascade maximum lag is 15 s. `tests/eval_lag.py` sweeps 5/10/15/20/30 s and names the captions
+  each bound takes — a 5 s bound would also take four ordinary ones (47, 65, 127, 444). **Read that
+  sweep as sizing, never as a prediction:** it models no feedback, and caption 296 likely reached a
+  23 s wait before spending the third strike, so the shipped bound may prevent the very cascade it
+  is sized on.
 - **A repeated short unit makes the translator generate without terminating.** Measured through the
   real app-server with a fresh thread per turn, a 30 s bound and a real-speech canary after every
   degenerate turn: `"あ"+"は"*n` runs 2.9 s at 20 characters and 3.4 s at 60, then **stalls at
@@ -145,32 +165,50 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   identical screen is the backstop, and it declines before the queue ⇒ `_turn`, `_failures` and
   `observe_en` are untouched by construction.
 
-## Live validation — 26 minutes on a real mic
+## Live validation — two sessions on a real mic, 26 min and 2 h 14 min
 
-The leg's only mic-side evidence, and what it does and does not settle. 143 captions over 1563 s:
-**143 of 143 translated, 0 without TGT, 0 failed turns, 0 degrade markers and 0 restore markers.**
+The leg's only mic-side evidence, and what it does and does not settle. Both sessions are committed
+text-free as `tests/lag_sessions.json` (`evidence-artifacts.md`), so every number below re-derives
+from the repo alone: `uv run python tests/eval_lag.py`.
 
-- **TGT behind SRC: p50 2 s, p90 4 s, max 11 s.** `spec.md`'s `Intent` asks for `EN n:` about a
+| session | span | captions | translated | degrade | restore | p50 | p90 | max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `2026-09-15T16-48-03` | 1569 s | 143 | 143 | 0 | 0 | 2 s | 4 s | 11 s |
+| `2026-09-18T12-00-26` | 8018 s | 699 | 696 | 1 | 1 | 2 s | 5 s | 42 s |
+
+- **TGT behind SRC replicates at p50 2 s.** `spec.md`'s `Intent` asks for `EN n:` about a
   second after its `JA n:` — quote it in that pre-role wording, which `Intent` alone owns — so this
   is a recorded gap between the ask and the delivery. `Intent` is the user's ⇒ record the gap,
-  never re-label the ask and never edit that line.
-  **Queueing is REFUTED for the MEDIAN, and only for the median** — 130 of the 143 captions were
-  emitted with no earlier caption's target outstanding and carry that same p50 2 s. The tail is a
-  different question and stays open: the max-lag caption did have one ahead of it, while the slowest
-  turn with nothing ahead still took 7 s. Against a warm-thread bench median of 1.38 s general /
-  1.71 s clinical, the median gap belongs to the turn rather than the backlog, and the tail is
-  unexplained. The agent-side arm is now priced — next section — while the tail arm still needs a
-  second live session (L-004): `.agent/deferred.md` → *Price the EN lag behind every JA line*.
-- **The rotation tax did not surface.** 4 turns ran ≥6 s and **none sat on a 100-turn boundary**, the
-  session crossing exactly one (turn 101). `session_report.py` tags the boundary rather than
-  asserting it, since a transcript cannot separate rotation from an ordinary slow turn — so this is
-  the absence of a visible bump at n=101, not proof the rotation was free.
-- What it does NOT cover: recovery. Neither arm fired, so `_respawn` and `_probe` keep their L-004
-  debt and their bench numbers (4.8 s / 5.5 s) stay the only evidence.
+  never re-label the ask and never edit that line. A 4.9× larger sample did not move that median,
+  which is what one sample could not establish: against a warm-thread bench median of 1.38 s general
+  / 1.71 s clinical, the ~0.6 s excess is a property of the TURN, not of one session.
+  **Queueing is REFUTED for the MEDIAN in both samples** — 130 of 143 and 602 of 696 captions were
+  emitted with no earlier caption's target outstanding and carry that same p50 2 s.
+- **The tail is NOT turn latency. It is one wedge-and-recover cascade, and it is now bounded.**
+  Outside captions 297-308, session 2 reads max **15 s** with nothing ≥20 s; those 12 captions hold
+  ALL 8 pairs ≥20 s and ALL 5 ≥30 s in the session (42/39/34/34/34/22/26/24/16/12/11/9 s). Three
+  turns wedged at `TRANSLATE_TIMEOUT_S`=15 s each (n=294-296, sourced, never translated) spent the
+  three strikes; `_disable` fired at 3595 s and `_probe` restored the leg at 3601 s; the captions
+  queued across those ~50 s drained afterwards, each landing tens of seconds after the words were
+  spoken. A successful turn cannot exceed `TRANSLATE_TIMEOUT_S` ⇒ **every lag above 15 s is queue
+  wait by construction**, which is what `TRANSLATE_MAX_STALENESS_S` now cuts. Session 1's own tail is
+  the same shape one order smaller and needs no cascade: its max-lag caption had one ahead of it,
+  while its slowest standalone turn took 7 s.
+- **The rotation tax did not surface in either session.** Session 1: 4 turns ≥6 s, **none on a
+  100-turn boundary**, one boundary crossed (turn 101, 4 s). Session 2: 52 turns ≥6 s and **exactly
+  one on a boundary** (caption 101 at 6 s), across 5 crossings whose lags were 6/3/1/1/3 s. Read
+  both as the absence of a visible bump, never as proof the rotation is free — `session_report.py`
+  tags a boundary rather than asserting it, a transcript cannot separate rotation from an ordinary
+  slow turn, and session 2's counter position is itself reconstructed, since `_restore` resets
+  `_turns` and the failed turns' effect on the counter is unrecorded.
+- **`_probe` IS live-validated; `_respawn` is not.** The 3-strike arm fired on a real mic and
+  restored the leg on attempt 1, 6 s from disable to restore against its 5.5 s bench number, with
+  TGT lines resuming below the marker pair. `_respawn` has still never fired outside the bench and
+  keeps its L-004 debt and its 4.8 s number.
 
 ## What the target lag is made of — 300 real turns through the app-server
 
-The agent-side half of that queue row, run under L-026: 12 committed captions from
+The bench half of the lag question, run under L-026: 12 committed captions from
 `tests/caption_trace.json` × 5 reps × 5 cumulative arms, arms sequential, reps interleaved, a fresh
 thread per measured turn for A0-A3, a real-input canary after every measured turn, paired bootstrap
 95 % CIs. 300 valid turns + 300 canaries, 0 auth or quota gates, 1 invalid pair — an A2 measured turn
@@ -206,14 +244,16 @@ interpolated.
   reconstructing fresh A3, 5.419 s reconstructing aged A4, the 6 ms difference being median
   non-additivity rather than a fifth term. No sub-factor inside it was isolated and nothing here says
   which server-side operation owns it.
-- **What this explains about the live session, and what it does not.** A4 + emit = 1.549 s = **77 %
-  of the live p50 (2 s)**, leaving 0.451 s; **55 % of the p90 (4 s)**, leaving 1.782 s; **27 % of the
-  max (11 s)**, leaving 8.009 s. A4 is the honest comparator because the live session crossed exactly
-  one rotation over 143 captions, so at most 2 of its turns were fresh — but A4 is equally a
-  counterfactual past the shipped 100-turn rotation, which is why both rows are published. **The
-  live TAIL stays unexplained**: even crediting fresh A3's own 9.122 s max leaves 1.878 s. One bench
-  on one machine against one live session cannot separate a turn-latency level from that session, so
-  the second live distribution is still owed (L-004).
+- **What this explains about the live sessions, and what it does not.** A4 + emit = 1.549 s = **77 %
+  of the p50 (2 s) BOTH sessions report**, leaving 0.451 s; **55 % of session 1's p90 (4 s)**,
+  leaving 1.782 s, and **31 % of session 2's (5 s)**, leaving 3.451 s. A4 is the honest comparator
+  because session 1 crossed exactly one rotation over 143 captions, so at most 2 of its turns were
+  fresh — but A4 is equally a counterfactual past the shipped 100-turn rotation, which is why both
+  rows are published. **The MAXIMUM is no longer a bench question.** Session 2's 42 s is the
+  wedge-and-recover cascade above — queue wait by construction, which a bench of warm sequential
+  turns cannot reach — and the bound now cuts it. What stays unexplained is the **p90 shoulder**,
+  1.8-3.5 s of it, which fresh A3's own 9.122 s max shows the model can produce on demand with no
+  sub-factor isolated.
 
 ## Session context learner (D-015)
 

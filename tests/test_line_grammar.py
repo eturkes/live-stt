@@ -121,6 +121,41 @@ def test_transcript_file_carries_the_same_grammar_as_the_screen(
     assert [line.partition(": ")[0] for line in saved] == ["SRC 1", "TGT 1"]
 
 
+def test_one_event_stays_one_line_when_the_text_carries_paragraph_breaks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A multi-paragraph translation wrote untimestamped continuation lines that
+    every reader of these files drops silently: 4 captions of one 2 h session put
+    1808 characters outside the grammar. The break collapses at the emit point."""
+    path = tmp_path / "session.txt"
+    monkeypatch.setattr(app, "_STDOUT_TTY", False)
+    transcript = app.TranscriptFile(path)
+    app.emit_line("TGT", 9, "First half.\n\n  Second half.\n", transcript)
+    transcript.close()
+
+    saved = path.read_text(encoding="utf-8").splitlines()
+    screen = [line.removeprefix("  ") for line in capsys.readouterr().out.splitlines()]
+    assert saved == [saved[0]]
+    assert saved[0].split("] ", 1)[1] == "TGT 9: First half. Second half."
+    assert screen == ["TGT 9: First half. Second half."]
+
+
+def test_an_ordinary_caption_reaches_the_transcript_byte_for_byte(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The collapse must touch the break-free case not at all. `str.split()` would:
+    it folds the full-width U+3000 space that real Japanese captions carry."""
+    path = tmp_path / "session.txt"
+    monkeypatch.setattr(app, "_STDOUT_TTY", False)
+    spoken = "こんにちは　世界  です"
+    transcript = app.TranscriptFile(path)
+    app.emit_line("SRC", 4, spoken, transcript)
+    transcript.close()
+
+    body = path.read_text(encoding="utf-8").splitlines()[0].split("] ", 1)[1]
+    assert body == f"SRC 4: {spoken}"
+
+
 def test_one_number_is_shared_by_a_src_line_and_its_tgt_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -36,35 +36,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **(c)** then either the mechanism is named and reproduced as a `tests/eval_backpressure.py` arm
    proven RED against today's code and fixed green with retention CER ≤ 0.0609 re-derived, or the row
    records a refusal naming the measured headroom shortfall and what the user loses.
-3. **Price the EN lag behind every JA line.** The one live session (26 min, 143 captions, 143 of 143
-   translated) delivered `EN n:` at **p50 2 s, p90 4 s, max 11 s** behind its `JA n:`, against an
-   `Intent` line that asks for about a second. `Intent` is the user's ⇒ record the gap, never
-   re-label the ask. **Queueing is REFUTED for the MEDIAN and only for it**: 130 of the 143 captions
-   were emitted with no earlier EN outstanding and carry that same p50 2 s, while the warm-thread
-   bench median is 1.38 s general / 1.71 s clinical (`translation-leg.md`) ⇒ the ~0.6 s median gap
-   belongs to the TURN, not the backlog. The tail is unexplained: the max-lag caption did have one
-   ahead of it, and the slowest turn with nothing ahead still took 7 s.
-   **Agent-side half LANDED** — 300 real turns through the app-server under L-026 (12 committed
-   captions × 5 reps × 5 cumulative arms, arms
-   sequential, reps interleaved, a fresh thread per measured turn for A0-A3, a real-input canary
-   behind every one, paired bootstrap CIs), full table in `translation-leg.md`. All four candidates
-   resolved and every one came back NEGATIVE: the `developerInstructions` + `translator_brief`
-   payload **−1.169 s**, the `serviceTier` request **−1.246 s** — and its echo DOES land, `default`
-   on A0-A2 and `priority` on A3-A4, which retires this row's "echo that did not land" suspicion —
-   thread age across the rotation boundary **−1.455 s** ⇒ a fresh boundary turn costs **+1.455 s**,
-   and the emit path REFUTED at a 5.609 µs p50, six orders below the lag. The shipped configuration
-   is FASTER than a bare thread; what remains is **~5.42 s of bare model + transport**, attributed
-   to no sub-factor. A4 + emit accounts for 77 % of the live p50, 55 % of the p90, 27 % of the max.
-   **Still owed, user-only (L-004):** a second live session's lag distribution. One sample cannot
-   separate a turn-latency level from that session, and the live TAIL is precisely what the bench
-   fails to explain — 1.782 s unexplained at p90, 8.009 s at max. Run `live-smoke.md` keeping
-   `2> stt.log`, then `session_report.py --log stt.log`, and compare its EN-lag p50/p90/max against
-   the first session's. The row closes on that distribution; no agent-side work is left in it.
-4. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
+3. **M10 candidate-screen remainder** — zipformer + SenseVoice lack current JA evidence,
    Moonshine-JA's license is unclear, ReazonSpeech-k2-v2 adds PyTorch/Transformers + remote custom
    model code. **Accept:** re-open only if the shipped path fails AND the added runtime surface buys
    a materially different hypothesis. Tournament record → `.agent/archive/m10-asr-tournament.md`.
-5. **Re-derive the LID census from the committed corpora.** `tests/lid_census.json` is a reduction of
+4. **Re-derive the LID census from the committed corpora.** `tests/lid_census.json` is a reduction of
    spike outputs that are gitignored and will be lost (`models/lid/results/*.json.gz`,
    `models/lid/analysis.json`), so its generator sits in `.scratch/` and cannot rerun from committed
    state — while the decision table it feeds is the gate's only evidence that the three-part rule
