@@ -143,7 +143,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
 ## Deferred
 
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
-row = that unit's whole contract; the `/goal` body names the row it funds.
+row = that unit's whole contract; the session body names the row it funds.
 
 The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops.
 Both are user-only (L-004), so the queue now holds nothing an agent can fund.
@@ -162,7 +162,7 @@ nonzero `drop=` with the log kept. No agent-side work creates that evidence, and
 latency budget is committed and re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`),
 and IMPLEMENT closed with the spine above carrying what it did not fund.
 
-One `/goal` per request, the body naming the `.agent/deferred.md` row it funds or the maintenance
+One session per request, the body naming the `.agent/deferred.md` row it funds or the maintenance
 task it wants, each closing gate-green under `uv run --no-sync python gate.py` with this file current
 — plus, where the request touches decode quality, a CER number the commit body records. The standing
 MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018

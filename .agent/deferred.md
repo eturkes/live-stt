@@ -3,7 +3,7 @@
 The funding menu, read on demand. Unattached ⇒ `.agent/spec.md` stays the sole attached state, and
 `Deferred` there = the pointer + one title per row below, and that list is the spine. Rank = funding
 order. Acceptance is written at deferral time while the evidence is fresh, and the funded row is that
-unit's whole contract (`assurance-posture.md`). The `/goal` body the user pastes names the row it
+unit's whole contract (`assurance-posture.md`). The session body the user pastes names the row it
 funds; closing a row deletes its title from this file and from `.agent/spec.md`'s spine in one
 commit. `tests/test_law_consistency.py` locks that pairing and rejects naming a row by `rank N`
 anywhere else, since a rank retargets onto a different unit the moment an earlier row dies.
