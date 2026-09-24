@@ -5,6 +5,7 @@ paths:
   - "tests/eval_*.py"
   - "tests/build_*.py"
   - "tests/gen_replay_goldens.py"
+  - "tests/test_replay.py"
   - "models/README.md"
 ---
 
@@ -44,7 +45,8 @@ unset PYTHONPATH                                          # or: env -u PYTHONPAT
 - **The deployment path is the PyPI wheels.** `openvino` / `openvino-genai` publish cp314
   manylinux_2_28 wheels, so the project's own py3.14 `.venv` enumerates `['CPU','GPU','NPU']` and
   compiles + infers on each. Only `LD_LIBRARY_PATH` / `OCL_ICD_VENDORS` / `ZE_ENABLE_ALT_DRIVERS`
-  matter, and all three are container-only shims: the host carries `libze_loader.so.1`,
+  matter, and all three are container shims (host exception: `OCL_ICD_VENDORS`, `## Host OpenCL
+  loader` below): the host carries `libze_loader.so.1`,
   `libze_intel_npu.so.1`, `libze_intel_gpu.so.1` and `libOpenCL.so.1` system-wide with glibc 2.43, so
   **on the host OpenVINO is an ordinary `pyproject.toml` dependency installed by plain `uv sync`** —
   no farm, no `env.sh`, no second environment.
@@ -73,3 +75,16 @@ unset PYTHONPATH                                          # or: env -u PYTHONPAT
 every compile, so deleting it whole is safe. **Measured cold-compile cost of an empty cache = 105.7 s**
 for a whisper NPU replay against 12.2 s warm ⇒ clear it only when reclaiming the disk is worth ~93 s on
 the next run.
+
+## Host OpenCL loader
+
+- **Exit 139 usually means SIGSEGV (128 + 11), a native crash: Python prints no traceback, and
+  buffered output can die with it.** Confirm the signal and read the stack in the host coredump from
+  the container: `journalctl -D /run/host/var/log/journal -o cat --since …` (`ptrace_scope`=1 rules
+  out py-spy on host processes).
+- The host ocl-icd loader crashes in `clGetPlatformIDs` (`readdir64`) on this host's layout — an ICD
+  under `/usr/share/OpenCL/vendors`, no `/etc/OpenCL/vendors` — and `Core().available_devices` starts
+  the GPU plugin, so the NPU default dies too. `OCL_ICD_VENDORS=/usr/share/OpenCL/vendors` avoids it
+  on the host, proven over one full live session. An empty `/etc/OpenCL/vendors` avoids it in a
+  container repro with a fake ICD; its effect on the host GPU platform is untested. Repo-side fix =
+  `.agent/deferred.md` → *Probe only the requested OpenVINO device*.

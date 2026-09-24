@@ -145,16 +145,16 @@ Detail → `.claude/rules/`, which each `D-###` names.
 Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the row it funds.
 
-The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops.
-Both are user-only (L-004), so the queue now holds nothing an agent can fund.
+The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
+**3** Probe only the requested OpenVINO device. 1 is user-only (L-004); 2 and 3 are agent-fundable.
 
 Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
 and M14's `_respawn` arm have never met a mic, so every agent-side claim about the live path stays
 provisional until the user runs `live-smoke.md`. M14's `_probe` arm is now the one exception: it
 fired on a real mic on 2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-**Explain the live audio drops** is blocked on the same law at its part (b): its attribution half
-LANDED, and what remains needs one live session run as `live-stt 2> stt.log` that reproduces a
-nonzero `drop=` with the log kept. No agent-side work creates that evidence, and part (c) reads it.
+**Explain the live audio drops** is no longer blocked: its (b) capture LANDED — a host session
+logged `drop=1949` with the log kept, files named in its row, not yet analyzed — so (c) is agent-side
+work that reads it. A capture that cannot decide (c) sends the row back to the mic.
 
 ## Phase
 

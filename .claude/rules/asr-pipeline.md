@@ -548,9 +548,8 @@ clips against a 1 s update cadence, with the trim rule capping the buffer at 11.
   `2> stt.log` record that timeline without spending the status line. That same gate carries the
   run's own `session: <path>` marker, which is what places an increase that precedes the first
   caption: a log without it starts an `-o PATH` session at its first caption and drops the whole
-  startup window. What is still missing is a live
-  session reproducing a nonzero `drop=` with the log kept: `.agent/deferred.md` → *Explain the live
-  audio drops*.
+  startup window. A live session reproducing a nonzero `drop=` with the log kept now exists, not
+  yet analyzed: `.agent/deferred.md` → *Explain the live audio drops* (b).
 
 ## Known caveats
 
