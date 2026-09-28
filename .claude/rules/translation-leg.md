@@ -20,18 +20,20 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 `account/rateLimits/read`. Sequential turns, so TGT lines keep SRC order.
 
 - **Model `gpt-6-luna` + `effort:low`** — user ruling on release, swapped in for `gpt-5.6-luna`,
-  which won the tournament and a clinical re-test: median 1.38 s general / 1.71 s clinical, quality 4.83/5, contract 2.00/2, 0 format violations, 0 failed turns.
-  **Effort is near-inert** — ≤+0.06/5 across low→max for +0.6-1.1 s, and higher effort threw 22.59 s
-  and 15.67 s turns past `TRANSLATE_TIMEOUT_S`=15 ⇒ it buys abort risk, not accuracy; measured on
-  5.6-luna, `low` carried over unmeasured. **The swap A/B**: one warm thread per model, 60
-  consecutive `caption_trace.json` captions, order alternated per caption — median 1.698 vs 1.696 s,
-  paired −0.060 s `[-0.216, +0.118]`, p90 **1.978 vs 2.908 s**, max 3.409 vs 3.823 s, 0 failed turns,
-  0 multi-line replies either side; `serviceTier` echoed `priority`. Quality is a one-reader,
-  non-blind read, never a tournament: 6-luna keeps a misrecognised name literal (標柱 → "the marker
-  post") where 5.6-luna repaired it from thread history ("Hyoju"), and applies the sex line to
-  narrative too (a fox becomes "they"), while on the clinical probes it alone held that line
-  (5.6-luna wrote "Mr. Tanaka"). Every other number in this file was measured on 5.6-luna. The superseded Spark default ranked last (paired quality −0.486,
-  11 format violations, a permanent mid-run thread stall in 2 of 4 attempts).
+  which won the tournament and a clinical re-test: median 1.38 s general / 1.71 s clinical, quality
+  4.83/5, contract 2.00/2, 0 format violations, 0 failed turns. **Effort is near-inert** — ≤+0.06/5
+  across low→max for +0.6-1.1 s, and higher effort threw 22.59 s and 15.67 s turns past
+  `TRANSLATE_TIMEOUT_S`=15 ⇒ it buys abort risk, not accuracy; measured on 5.6-luna, `low` carried
+  over unmeasured. **The swap A/B**: one warm thread per model, 60 consecutive `caption_trace.json`
+  captions, order alternated per caption — median 1.698 vs 1.696 s, paired −0.060 s `[-0.216,
+  +0.118]`, p90 **1.978 vs 2.908 s**, max 3.409 vs 3.823 s, 0 failed turns, 0 multi-line replies
+  either side; `serviceTier` echoed `priority`. Quality is a one-reader, non-blind read, never a
+  tournament: 6-luna keeps a misrecognised name literal (標柱 → "the marker post") where 5.6-luna
+  repaired it from thread history ("Hyoju"), and applies the sex line to narrative too (a fox
+  becomes "they"), while on the clinical probes it alone held that line (5.6-luna wrote "Mr.
+  Tanaka"). Every other number in this file was measured on 5.6-luna. The superseded Spark default
+  ranked last (paired quality −0.486, 11 format violations, a permanent mid-run thread stall in 2 of
+  4 attempts).
 - **Tool-feature disables in `_CODEX_CONFIG` are THE latency lever.** Re-enabling
   web_search/image/browser/computer/apps re-injects ~15 K tokens/turn: p50 3.15 s → **0.99 s**. Keep
   them off.
