@@ -52,11 +52,15 @@ one, with a `doc.md` twin as the positive control against an exclusion that swal
 **A `python`-tagged block in repo prose is now gate-governed** — write it formatted, or tag it `sh`.
 
 `tests/test_law_consistency.py` rides the pytest step and locks the five law invariants a tool can
-decide. Three are the deferral queue's: `.agent/spec.md`'s spine pairs every `.agent/deferred.md` row
-with its rank, title verbatim, and no scanned law file names a row by `rank N` at all. Pairing is
+decide. Three are the deferral queue's: `.agent/spec.md`'s `Tasks` pairs every `.agent/deferred.md`
+row with one open `- [ ] **N** Title` row, rank and title verbatim, any other checklist item being a
+rankless `- [x] <sha> Title`; and no scanned law file names a row by `rank N` at all. Pairing is
 checked ORDERED because independent rank/title membership passes a swap of two titles; that swap and
 the `at rank N` evasion form are both proven red by mutation, restoring from a `cp` snapshot rather
-than `git checkout` (L-022).
+than `git checkout` (L-022). The `Tasks` port is proven red the same way on a swap, a dropped row, a
+renamed or run-on title, a stray rank mark, a ranked or sha-less ticked row, an unranked, indented
+or two-space/tab-separated open row and a missing header, with a legal `- [x] <sha>` row as the
+positive control.
 
 The third is the same hole in the other direction: **law may name a queue row, and a row dies at its
 close while the pointer at it does not.** Every reference in the scanned files that names
@@ -77,7 +81,7 @@ reopening the hole. An unquoted prose key cannot be rechecked at all, and a rewo
 clause leaves its row overriding nothing while still reading as live law — both silent in prose.
 **It does not decide that an anchor is still its own row's clause**: membership is literal, so a
 phrase surviving elsewhere in the template reads as live. The 12-character floor is what keeps a key
-off a word like `rev`, which occurs everywhere and identifies nothing; the rest is a reader's call.
+off a word like `review`, which occurs everywhere and identifies nothing; the rest is a reader's call.
 
 The fifth locks what law quotes out of `.agent/spec.md`'s `Intent`: **a unit renames the thing
 quoted, rewrites its own prose with the new name, and stops at the section the user alone edits** —

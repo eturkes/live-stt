@@ -1,10 +1,10 @@
 # live-stt — deferral queue
 
 The funding menu, read on demand. Unattached ⇒ `.agent/spec.md` stays the sole attached state, and
-`Deferred` there = the pointer + one title per row below, and that list is the spine. Rank = funding
-order. Acceptance is written at deferral time while the evidence is fresh, and the funded row is that
-unit's whole contract (`assurance-posture.md`). The session body the user pastes names the row it
-funds; closing a row deletes its title from this file and from `.agent/spec.md`'s spine in one
+its `Tasks` = one open `- [ ]` row per row below, same rank and title, then the pointer here. Rank =
+funding order. Acceptance is written at deferral time while the evidence is fresh, and the funded row
+is that unit's whole contract (`assurance-posture.md`). The session body the user pastes names the
+row it funds; closing a row deletes it from this file and from `.agent/spec.md`'s `Tasks` in one
 commit. `tests/test_law_consistency.py` locks that pairing and rejects naming a row by `rank N`
 anywhere else, since a rank retargets onto a different unit the moment an earlier row dies.
 
@@ -70,3 +70,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    paired delta recorded — readiness to decode, not live-mic readiness (L-004); (e) with both prelude
    halves `tests/test_replay.py` RUNS the whisper golden (no `absent:` skip under `-rs`) and passes;
    gate green (7 pass + the declared NPU skip).
+4. **Re-derive the L-031 sizing analogs under MAIN at 1M.** `assurance-posture.md`'s gauge paragraph
+   sizes units against three `main=` actuals (181K / 196K / 205K) and a ≈75K fresh-session baseline,
+   all measured while MAIN compacted near 273K; MAIN now runs at a raw 1M, collapse-managed, and the
+   same paragraph still puts `.agent/spec.md` at ~6 KB while it weighs ~15 KB.
+   **Accept:** the funding session records its fresh-session baseline with `context-gauge` at
+   orientation, re-measures the attached state with `wc -c`, and rewrites the paragraph from those
+   numbers — or cuts it to the absolute-K rule alone where a collapse-managed 1M MAIN leaves no
+   window to size against; gate green.

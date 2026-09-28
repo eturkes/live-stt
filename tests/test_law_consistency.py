@@ -1,6 +1,6 @@
 """Locks the law-consistency invariants a tool can decide.
 
-`.agent/spec.md`'s `Deferred` spine and `.agent/deferred.md`'s rows are one list written twice, so
+`.agent/spec.md`'s open `Tasks` rows and `.agent/deferred.md`'s rows are one list written twice, so
 they drift apart silently; and a rank number moves whenever an earlier row dies, which retargets
 every `rank N` reference onto a different unit without touching the referring line. Name the row.
 
@@ -40,7 +40,13 @@ _QUEUE_ROW = re.compile(r"^(\d+)\. \*\*(.+?)\*\*", re.MULTILINE)
 # How law names a queue row: ``.agent/deferred.md` → *Title*`, which prose wrapping can split across
 # a line, so match against whitespace-squashed text rather than the raw file.
 _QUEUE_LINK = re.compile(r"`\.agent/deferred\.md` → \*([^*]+)\*")
-_SPINE_RANK = re.compile(r"\*\*(\d+)\*\*")
+_RANK_MARK = re.compile(r"\*\*(\d+)\*\*")
+# Every checklist item, at any indent, marker or separator. An open row is `- [ ] **N** Title` alone
+# on its line; a ticked one is `- [x] <sha> Title` and carries no rank, the queue having renumbered
+# once its row died.
+_CHECKLIST_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[.\].*$", re.MULTILINE)
+_OPEN_ROW = re.compile(r"- \[ \] \*\*(\d+)\*\* (.+)")
+_TICKED_ROW = re.compile(r"- \[x\] [0-9a-f]{7,40} \S.*")
 _RANK_REFERENCE = re.compile(r"\branks?\s+\d", re.IGNORECASE)
 _OVERRIDE_HEADER = "| template clause | repo ruling |"
 _OVERRIDE_SEPARATOR = "| --- | --- |"
@@ -51,19 +57,17 @@ _ANCHOR = re.compile(r'"([^"]+)"')
 _INTENT_CITATION = "`Intent`"
 _FRAGMENT = re.compile(r"`([^`]+)`")
 _SENTENCE = re.compile(r"(?<=[.;]) ")
-# Shortest live anchor is 17 chars. A floor keeps a key from resolving on a word like "rev", which
-# occurs all over both templates and identifies no clause.
+# Shortest live anchor is 17 chars. A floor keeps a key from resolving on a word like "review",
+# which occurs all over both templates and identifies no clause.
 _ANCHOR_MIN = 12
-# A title runs to the next spine entry or to the sentence that closes the list.
-_TITLE_END = {"", "·", "."}
 
 
 def _squash(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().casefold()
 
 
-def _spine() -> str:
-    return SPEC.read_text(encoding="utf-8").split("## Deferred", 1)[1].split("\n## ", 1)[0]
+def _tasks() -> str:
+    return SPEC.read_text(encoding="utf-8").split("\n## Tasks\n", 1)[1].split("\n## ", 1)[0]
 
 
 def _intent() -> str:
@@ -76,23 +80,25 @@ def _scanned_files() -> list[Path]:
     return [*sorted((ROOT / ".claude" / "rules").glob("*.md")), SPEC, ROOT / "README.md"]
 
 
-def test_spine_pairs_every_queue_row_with_its_rank():
+def test_open_tasks_pair_every_queue_row_with_its_rank():
     queue = _QUEUE_ROW.findall(QUEUE.read_text(encoding="utf-8"))
     assert queue, "no numbered rows parsed out of the queue"
     assert [rank for rank, _ in queue] == [str(n) for n in range(1, len(queue) + 1)]
 
-    spine = _spine()
-    marks = list(_SPINE_RANK.finditer(spine))
-    assert [m.group(1) for m in marks] == [rank for rank, _ in queue]
+    tasks = _tasks()
+    items = _CHECKLIST_ITEM.findall(tasks)
+    stray = [i for i in items if not (_OPEN_ROW.fullmatch(i) or _TICKED_ROW.fullmatch(i))]
+    assert not stray, f"a Tasks row is `- [ ] **N** Title` or `- [x] <sha> Title`: {stray}"
+    rows = [m for i in items if (m := _OPEN_ROW.fullmatch(i))]
+    # Every rank mark in the section must head an open row: one on a ticked row, a sub-bullet or
+    # the pointer paragraph would otherwise pair by position with a unit it does not name.
+    assert _RANK_MARK.findall(tasks) == [m.group(1) for m in rows]
+    assert [m.group(1) for m in rows] == [rank for rank, _ in queue]
 
-    for i, (rank, title) in enumerate(queue):
-        stop = marks[i + 1].start() if i + 1 < len(marks) else len(spine)
-        named = _squash(spine[marks[i].end() : stop])
-        wanted = _squash(title).rstrip(".")
-        assert named.startswith(wanted), (
-            f"spine rank {rank} does not name {title!r}: {named[:60]!r}"
+    for row, (rank, title) in zip(rows, queue, strict=True):
+        assert _squash(row.group(2)).rstrip(".") == _squash(title).rstrip("."), (
+            f"Tasks rank {rank} does not name {title!r}: {row.group(2)!r}"
         )
-        assert named[len(wanted) :].lstrip()[:1] in _TITLE_END, f"spine rank {rank} runs on"
 
 
 def test_every_override_row_keys_on_a_live_template_anchor():

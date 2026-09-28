@@ -63,10 +63,10 @@ Retired — never reintroduce:
 
 - `.agent/contracts/` ⇒ a unit writes no contract file: **the acceptance contract IS its row in
   `.agent/deferred.md`**, its outcome the commit body. Close appends no verdict table and tags no
-  `archive/…` ref; a `test`/`orc`/`diff` brief cites the queue row as its contract.
-- A separate review pass, `.agent/review*.md`, and the `rev2`/`audit` roles (D-012). **`rev` itself
-  is live INSIDE the unit that implements the diff** — what L-032 cut was apparatus, not a second
-  reader. Every other teammate role the template names stays live.
+  `archive/…` ref; a `tester` or `reviewer` brief cites the queue row as its contract.
+- A separate review pass and `.agent/review*.md` (D-012). **`reviewer` itself is live INSIDE the
+  unit that implements the diff** — what L-032 cut was apparatus, not a second reader. Every other
+  teammate role global `Subagents` names stays live.
 - Contract fingerprints · claim registries · mutation matrices.
 - A separate project-memory file under `.agent/` ⇒ its law lives in these rules files, which reach
   MAIN and every teammate on their own. The attached set is **`.agent/spec.md` alone**: a MAIN-owned
@@ -76,12 +76,12 @@ Retired — never reintroduce:
   Neither is project memory: the queue is a monotonic funding list, so attaching it would make it a
   permanent growth term on every context.
 
-Global `Subagents` b1 owns dispatch; the bindings this repo adds are these. A `rev` runs inside the
-unit that authored the diff, docs and law units included — D-012 retired the separate pass and the
-ledger, never the second reader. Phase close adds no review of its own; it is the last unit's. A diff
-whose vocabulary is security-flavoured (the `secrets` step, credential handling) stays MAIN-side
-under the security-vocabulary licence, because the provider classifier kills a sol teammate on that
-material and every successor that reads it.
+Global `Subagents` owns the triggers and the roles; the bindings this repo adds are these. A
+`reviewer` runs inside the unit that authored the diff, docs and law units included — D-012 retired
+the separate pass and the ledger, never the second reader. Phase close adds no review of its own; it
+is the last unit's. A diff whose vocabulary is security-flavoured (the `secrets` step, credential
+handling) stays MAIN-side (global `Subagents`), because astra's request classifier ends any context
+holding that material, every successor that reads it included.
 
 Its report (`CLAUDE.md` review-termination rule, evidence bar → global `Subagents`) fixes the check
 set before reading the diff, then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its
@@ -90,12 +90,13 @@ a review row. The cap bounds presentation, never coverage — a check set that w
 unit is oversized (L-031) ⇒ report that and let MAIN split it. The report is the whole record; no
 ledger carries rows between sessions.
 
-`<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): **273K**
-now, `/240K` in every gauge M11-M13 recorded. Compare units by absolute K; the percentage is
-denominator-relative. **The last three closed units measured `main=` 181K / 196K / 205K** against
-bottom-up estimates of 92K / 100K / 40K, work ratios 1.15 / 1.21 / 3.25 once a **fresh-session
-baseline of ≈75K** is backed out — and the 3.25 outlier is the milestone's SMALLEST unit by
-estimate, where a small denominator makes the ratio noise and the absolute 130K is the signal. Those
-actuals stay the sizing analogs ⇒ size a new unit bottom-up against them plus the global reserve,
-never against a literal written here. **Re-measure the baseline on the first unit of this phase**:
-that ≈75K carried 182 KB of attached state, which `.agent/spec.md` replaces at ~6 KB.
+`<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): the raw
+**1M** for MAIN, **272K** for a teammate; `/240K` in every gauge M11-M13 recorded, `/273K` in the
+later ones. Compare units by absolute K; the percentage is denominator-relative. **The last three
+closed units measured `main=` 181K / 196K / 205K** against bottom-up estimates of 92K / 100K / 40K,
+work ratios 1.15 / 1.21 / 3.25 once a **fresh-session baseline of ≈75K** is backed out — and the
+3.25 outlier is the milestone's SMALLEST unit by estimate, where a small denominator makes the ratio
+noise and the absolute 130K is the signal. Those actuals stay the sizing analogs ⇒ size a new unit
+bottom-up against them, never against a literal written here. **Re-measure the baseline on the
+first unit of this phase**: that ≈75K carried 182 KB of attached state, which `.agent/spec.md`
+replaces at ~6 KB.

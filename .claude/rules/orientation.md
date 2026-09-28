@@ -23,7 +23,7 @@ codex degrades to source-only — a hard requirement, never a cloud fallback.
 - `models/` — gitignored weights; `models/README.md` carries the download commands.
 - `transcripts/` — gitignored saved sessions, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, together with the CLI strings in `live_stt.py`.
-- `.agent/spec.md` = Intent · Artifacts · Decisions · Deferred · Phase; the sole attached state,
+- `.agent/spec.md` = Intent · Artifacts · Decisions · Tasks · Phase; the sole attached state,
   imported by `CLAUDE.md` ⇒ it rides every session whole. Every line binds current or future work, so
   each unit prunes what its own close made dead; size is emergent. `.agent/deferred.md` = the
   deferral queue and `.agent/archive/<record>.md` = closed-milestone detail — both committed, outside

@@ -135,32 +135,52 @@ Detail → `.claude/rules/`, which each `D-###` names.
   under `"<|en|>"` rather than a literal Japanese token.
 - Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
+- MAINTAIN has no phase close ⇒ each request session is its own (user ruling): its closing commit
+  deletes the funded row from `.agent/deferred.md` and from `Tasks` together, and a `- [x] <sha>` row
+  lives only between the commits of one session. Every open `Tasks` row is one queue row, rank and
+  title verbatim, in queue order — a find on the unit's path lands as a queue row with its acceptance
+  check plus a `Tasks` row, in one commit. `tests/test_law_consistency.py` locks the pairing.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
   speaker diarization · web UI · auth / multi-user · metrics beyond the backlog/drop counters ·
   package split beyond `streaming.py` · CI mirroring the local hook · NPU for the sherpa fallbacks ·
   perf/W (RAPL unreadable in-container).
 
-## Deferred
+## Tasks
 
-Queue → `.agent/deferred.md`, rank = funding order, acceptance written at deferral time, the funded
+- [ ] **1** Live-mic validation pass
+  - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
+    `live-smoke.md` and reports, each item landing verified or defective.
+  - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
+    every agent-side claim about the live path stays provisional until the user runs
+    `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
+    2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
+- [ ] **2** Explain the live audio drops
+  - Agent-fundable; accept → `.agent/deferred.md` → *Explain the live audio drops*: (c) names the
+    mechanism, reproduced as a `tests/eval_backpressure.py` arm red on today's code and fixed green
+    with retention CER ≤ 0.0609 re-derived, or records a refusal naming the measured headroom
+    shortfall and what the user loses.
+  - No longer blocked: its (b) capture LANDED — a host session logged `drop=1949` with the log kept,
+    files named in its row, not yet analyzed — so (c) is agent-side work that reads it. A capture
+    that cannot decide (c) sends the row back to the mic.
+- [ ] **3** Probe only the requested OpenVINO device
+  - Agent-fundable; accept → `.agent/deferred.md` → *Probe only the requested OpenVINO device*: (a)
+    on success `check_device` queries the requested device alone, never `available_devices`, its
+    lock red on today's code (L-022); (b) an absent device still fails at startup naming it; (c) the
+    fake-ICD OpenCL layout crashes the whisper golden today and runs it after; (d) no speed claim
+    without ≥5 interleaved sample pairs per arm; (e) the whisper golden RUNS + passes, gate green.
+- [ ] **4** Re-derive the L-031 sizing analogs under MAIN at 1M
+  - Agent-fundable; accept → `.agent/deferred.md` → *Re-derive the L-031 sizing analogs under MAIN at
+    1M*: a fresh-session baseline from `context-gauge` and a `wc -c` of the attached state rewrite
+    `assurance-posture.md`'s gauge paragraph, or cut it to the absolute-K rule alone.
+
+Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the row it funds.
-
-The spine, in funding order: **1** Live-mic validation pass · **2** Explain the live audio drops ·
-**3** Probe only the requested OpenVINO device. 1 is user-only (L-004); 2 and 3 are agent-fundable.
-
-Blocking the spine: **Live-mic validation pass** is user-only (L-004) — M13.2, the four polish fixes
-and M14's `_respawn` arm have never met a mic, so every agent-side claim about the live path stays
-provisional until the user runs `live-smoke.md`. M14's `_probe` arm is now the one exception: it
-fired on a real mic on 2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-**Explain the live audio drops** is no longer blocked: its (b) capture LANDED — a host session
-logged `drop=1949` with the log kept, files named in its row, not yet analyzed — so (c) is agent-side
-work that reads it. A capture that cannot decide (c) sends the row back to the mic.
 
 ## Phase
 
 **MAINTAIN.** M1-M14 shipped and closed (`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs, the
 latency budget is committed and re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`),
-and IMPLEMENT closed with the spine above carrying what it did not fund.
+and IMPLEMENT closed with `Tasks` above carrying what it did not fund.
 
 One session per request, the body naming the `.agent/deferred.md` row it funds or the maintenance
 task it wants, each closing gate-green under `uv run --no-sync python gate.py` with this file current
