@@ -68,8 +68,9 @@ source .envrc                                             # from the repo root: 
 
 - `openvino_genai.WhisperPipeline` wraps its compiled model without exposing it, so there is no
   `EXECUTION_DEVICES` to query: placement is an **exact-target inference** — `requested_device="NPU"`
-  plus a successful decode — and `check_device` admits exact names alone, since an `AUTO:` spelling
-  would relocate silently. `ASR_DEVICE` is therefore a bare name.
+  plus a successful decode — and `check_device` admits exact names alone, since a virtual spelling
+  would relocate silently. That refusal is explicit: `get_property("AUTO", "FULL_DEVICE_NAME")`
+  answers `'AUTO'`, so a probe alone would certify it. `ASR_DEVICE` is therefore a bare name.
 - **Never infer acceleration from a requested provider.** sherpa-onnx 1.13.2 and 1.13.4 do not expose
   Intel/OpenVINO at all, and `provider="openvino"` logs unsupported then silently falls back to CPU.
   Record the ACTUAL execution device in every accelerator benchmark.
@@ -92,8 +93,17 @@ the next run.
   the container: `journalctl -D /run/host/var/log/journal -o cat --since …` (`ptrace_scope`=1 rules
   out py-spy on host processes).
 - The host ocl-icd loader crashes in `clGetPlatformIDs` (`readdir64`) on this host's layout — an ICD
-  under `/usr/share/OpenCL/vendors`, no `/etc/OpenCL/vendors` — and `Core().available_devices` starts
-  the GPU plugin, so the NPU default dies too. `OCL_ICD_VENDORS=/usr/share/OpenCL/vendors` avoids it
-  on the host, proven over one full live session. An empty `/etc/OpenCL/vendors` avoids it in a
-  container repro with a fake ICD; its effect on the host GPU platform is untested. Repo-side fix =
-  `.agent/deferred.md` → *Probe only the requested OpenVINO device*.
+  under `/usr/share/OpenCL/vendors`, no `/etc/OpenCL/vendors` — whenever a process starts the GPU
+  plugin, and `Core().available_devices` starts every plugin. **`check_device` therefore asks the
+  requested device alone** (`get_property(device, "FULL_DEVICE_NAME")`) and never enumerates, the
+  failure path included, so the NPU default's preflight never starts the GPU plugin. Proof,
+  container, the host loader preloaded under that layout with `OCL_ICD_VENDORS` unset: a bare
+  `clGetPlatformIDs` exits 139 (positive control), and the whisper golden dumps core on the
+  enumerating code and runs + passes on the probing one — under that layout `WhisperPipeline` on
+  `NPU` does not re-enter the crashing OpenCL path, nothing broader. Startup
+  cost is unmoved: 6 interleaved pairs, `check_device` paired median −14 ms, process start →
+  `load_recognizer` returned −7 ms (3 of 6 faster).
+- `--asr-device GPU` still starts that loader on the host by design ⇒ it needs
+  `OCL_ICD_VENDORS=/usr/share/OpenCL/vendors`, proven over one full live session, or the host-side
+  fix of the loader or its vendor layout, which is the user's. An empty `/etc/OpenCL/vendors` avoids
+  the crash in the container repro; its effect on the host GPU platform is untested.

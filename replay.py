@@ -225,7 +225,7 @@ def main():
     # on a box with no accel farm reaches openvino_genai and fails with a
     # ten-line native traceback about a missing NPU compiler loader. The
     # argument check runs first: it costs nothing, while check_device imports
-    # OpenVINO and enumerates devices.
+    # OpenVINO and probes the requested device.
     err = check_models(args.engine) or check_device(args.engine)
     if err:
         print(f"Error: {err}", file=sys.stderr)

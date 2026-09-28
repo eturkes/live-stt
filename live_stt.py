@@ -699,19 +699,28 @@ def check_device(engine: str, device: str = ASR_DEVICE) -> str | None:
     Sibling of check_models: that one preflights weights, this one preflights the
     device. Without it an absent accelerator surfaces as an abort deep inside
     OpenVINO on a missing NPU compiler loader, instead of a readable message.
-    Exact-name membership only -- an enumerated or AUTO spelling would certify a
-    different execution target than the caller asked for.
+    Exact names only -- a virtual spelling would certify a different execution
+    target than the caller asked for, and "AUTO" answers the query for itself.
+
+    Asks the requested device's own plugin and never enumerates: `available_devices`
+    starts every plugin, and on the host the GPU plugin's OpenCL loader SIGSEGVed in
+    clGetPlatformIDs, killing an NPU session before its first line. Nor does the
+    failure path enumerate, since that read would crash the same way.
     """
     if engine not in WHISPER_ENGINES:
         return None
+    if device.split(":")[0].split(".")[0] in ("AUTO", "HETERO", "MULTI", "BATCH"):
+        return f"OpenVINO device {device!r} is virtual. Give an exact device name, such as NPU."
     try:
         import openvino  # noqa: PLC0415  -- only the OpenVINO engines pay this import
     except ImportError as exc:  # pragma: no cover - the wheel is a hard dependency
         return f"OpenVINO is not importable: {exc}"
-    have = openvino.Core().available_devices
-    if device not in have:
+    try:
+        openvino.Core().get_property(device, "FULL_DEVICE_NAME")
+    except RuntimeError as exc:
+        reason = (str(exc).strip().splitlines() or [type(exc).__name__])[-1]
         return (
-            f"OpenVINO device {device!r} is unavailable (found {have}). "
+            f"OpenVINO device {device!r} is unavailable (OpenVINO: {reason}). "
             "Check that the accelerator drivers are installed, and that PYTHONPATH "
             "does not shadow the installed OpenVINO wheel."
         )

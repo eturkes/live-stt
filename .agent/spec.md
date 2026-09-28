@@ -162,13 +162,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - No longer blocked: its (b) capture LANDED — a host session logged `drop=1949` with the log kept,
     files named in its row, not yet analyzed — so (c) is agent-side work that reads it. A capture
     that cannot decide (c) sends the row back to the mic.
-- [ ] **3** Probe only the requested OpenVINO device
-  - Agent-fundable; accept → `.agent/deferred.md` → *Probe only the requested OpenVINO device*: (a)
-    on success `check_device` queries the requested device alone, never `available_devices`, its
-    lock red on today's code (L-022); (b) an absent device still fails at startup naming it; (c) the
-    fake-ICD OpenCL layout crashes the whisper golden today and runs it after; (d) no speed claim
-    without ≥5 interleaved sample pairs per arm; (e) the whisper golden RUNS + passes, gate green.
-- [ ] **4** Re-derive the L-031 sizing analogs under MAIN at 1M
+- [ ] **3** Re-derive the L-031 sizing analogs under MAIN at 1M
   - Agent-fundable; accept → `.agent/deferred.md` → *Re-derive the L-031 sizing analogs under MAIN at
     1M*: a fresh-session baseline from `context-gauge` and a `wc -c` of the attached state rewrite
     `assurance-posture.md`'s gauge paragraph, or cut it to the absolute-K rule alone.

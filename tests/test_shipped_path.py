@@ -154,6 +154,74 @@ def test_sherpa_engines_route_to_their_own_model_directory(monkeypatch):
     assert live_stt.load_recognizer("k2v2", "NPU") == "k2v2-recognizer"
 
 
+# --- device preflight --------------------------------------------------------
+
+
+def probe_core(
+    present,
+    *,
+    enumerable=False,
+    reason="Exception from src/inference/src/cpp/core.cpp:117:\n"
+    "Unsupported configuration key: FULL_DEVICE_NAME\n",
+):
+    """A fake `openvino.Core` answering the way 2026.4 measured on this machine.
+
+    `AUTO` answers its own FULL_DEVICE_NAME and a colon spelling raises, so the
+    virtual-device refusal cannot pass here by accident. `enumerable=False` makes
+    any `available_devices` read fail: on the host that read starts the GPU
+    plugin, whose OpenCL loader crashed an NPU session before it printed a line.
+    """
+
+    class Core:
+        @property
+        def available_devices(self):
+            assert enumerable, "check_device enumerated every plugin on the success path"
+            return list(present)
+
+        def get_property(self, device, name):
+            assert name == "FULL_DEVICE_NAME"
+            if device == "AUTO" or device in present:
+                return f"fake {device}"
+            raise RuntimeError(reason)
+
+    return types.SimpleNamespace(Core=Core)
+
+
+def test_the_device_preflight_queries_the_requested_device_alone(monkeypatch):
+    monkeypatch.setitem(sys.modules, "openvino", probe_core(("CPU", "NPU")))
+
+    assert live_stt.check_device("whisper", "NPU") is None
+
+
+def test_an_absent_device_still_fails_the_preflight_naming_it(monkeypatch):
+    monkeypatch.setitem(sys.modules, "openvino", probe_core(("CPU",), enumerable=True))
+
+    err = live_stt.check_device("whisper", "NPU")
+
+    assert err is not None
+    assert "'NPU' is unavailable" in err
+
+
+def test_an_absent_device_with_an_empty_reason_still_fails_naming_it(monkeypatch):
+    monkeypatch.setitem(sys.modules, "openvino", probe_core(("CPU",), reason=" \n "))
+
+    err = live_stt.check_device("whisper", "NPU")
+
+    assert err is not None
+    assert "'NPU' is unavailable" in err
+
+
+@pytest.mark.parametrize("device", ["AUTO", "AUTO:NPU", "HETERO:NPU,CPU", "MULTI:NPU", "BATCH:NPU"])
+def test_a_virtual_device_fails_the_preflight(monkeypatch, device):
+    """Exact names only: a virtual plugin would certify a target it then relocates."""
+    monkeypatch.setitem(sys.modules, "openvino", probe_core(("CPU", "NPU"), enumerable=True))
+
+    err = live_stt.check_device("whisper", device)
+
+    assert err is not None
+    assert repr(device) in err
+
+
 # --- WhisperEngine (P2) -------------------------------------------------------
 
 
