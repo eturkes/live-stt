@@ -19,9 +19,8 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 `personality:none`) → `turn/start` per block → `agentMessage` deltas → `turn/completed`; quota via
 `account/rateLimits/read`. Sequential turns, so TGT lines keep SRC order.
 
-- **Model `gpt-6-luna` + `effort:low`** (runner-up `gpt-5.6-luna`+`low`) — user ruling on release,
-  swapped in for `gpt-5.6-luna`, which won the tournament and a clinical re-test: median 1.38 s
-  general / 1.71 s clinical, quality 4.83/5, contract 2.00/2, 0 format violations, 0 failed turns.
+- **Model `gpt-6-luna` + `effort:low`** — user ruling on release, swapped in for `gpt-5.6-luna`,
+  which won the tournament and a clinical re-test: median 1.38 s general / 1.71 s clinical, quality 4.83/5, contract 2.00/2, 0 format violations, 0 failed turns.
   **Effort is near-inert** — ≤+0.06/5 across low→max for +0.6-1.1 s, and higher effort threw 22.59 s
   and 15.67 s turns past `TRANSLATE_TIMEOUT_S`=15 ⇒ it buys abort risk, not accuracy; measured on
   5.6-luna, `low` carried over unmeasured. **The swap A/B**: one warm thread per model, 60

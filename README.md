@@ -328,7 +328,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAC_TRIM_S` | 8 s | Past this, the streaming buffer commits finished spans and trims them away |
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits (sherpa engines) |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
-| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-luna` / `low`) |
+| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-6-luna` / `low` | Codex model+effort |
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → source-only |

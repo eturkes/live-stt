@@ -163,7 +163,6 @@ CONTEXT_EN_SUPPORT = 2  # agreeing turns before a learned English rendering is b
 # task is too easy to spend a reasoning budget on, so raising effort only costs
 # time. gpt-6-luna replaced gpt-5.6-luna at equal warm-turn median (paired
 # -0.06 s, CI spans 0) with a tighter tail (p90 1.98 vs 2.91 s, n=60).
-# Runner-up if its entitlement lapses: "gpt-5.6-luna" + "low".
 TRANSLATE_MODEL = "gpt-6-luna"
 TRANSLATE_EFFORT = "low"
 # Codex's "Fast" tier (1.5x speed, increased usage) — set per thread so live-stt
