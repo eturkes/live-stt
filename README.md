@@ -187,8 +187,8 @@ Failure scope follows ownership. One app-server is behind both directions, so it
 
 live-stt rejects two invocations at parse time:
 
-- `--two-way` with `--source-lang` — `--source-lang` pins every utterance, and `--two-way` decides per utterance.
-- `--two-way` with `--engine k2v2` or `--engine parakeet` — both sherpa models are Japanese-only.
+- `--two-way` with `--source-lang`: `--source-lang` pins every utterance, and `--two-way` decides per utterance.
+- `--two-way` with `--engine k2v2` or `--engine parakeet`: both sherpa models are Japanese-only.
 
 ### Diagnostics
 
