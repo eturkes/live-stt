@@ -145,8 +145,9 @@ LSP and a `--project . tests/` run flag them); the house idiom for a fake→type
 
 **Whisper, NPU or GPU work needs BOTH prelude halves, every time, in order:**
 `source /var/home/eturkes/.local/app/intel-accel/env.sh` **then** `source .envrc` from the repo root
-(unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`). Failure modes + the accelerator's
-shape: `openvino-accel.md`.
+(unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`). `uv run live-stt` alone cleans
+its own session child (`_session_env`), so there only `env.sh` matters, container-side. Failure
+modes + the accelerator's shape: `openvino-accel.md`.
 
 **Never run two whisper processes against one cache while either is compiling.** Two processes
 cold-compiling the SAME `OPENVINO_CACHE_DIR` key concurrently write a blob that SIGSEGVs on every

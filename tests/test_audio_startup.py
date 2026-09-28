@@ -28,11 +28,12 @@ live_stt.main()
 """
 
 
-def launch(tmp_path, backend, *, runner=RUNNER, uv=False, files=False):
+def launch(tmp_path, backend, *, runner=RUNNER, uv=False, files=False, env_extra=None):
     (tmp_path / "sounddevice.py").write_text(backend)
     env = dict(os.environ, PYTHONPATH=f"{tmp_path}{os.pathsep}{ROOT}")
     env["XDG_RUNTIME_DIR"] = str(tmp_path / "runtime")
     env["UV_PROJECT_ENVIRONMENT"] = sys.prefix
+    env.update(env_extra or {})
     argv = [sys.executable, "-u", "-c", runner]
     if uv:
         argv = [shutil.which("uv") or str(Path.home() / ".local/bin/uv"), "run", "--no-sync", *argv]
@@ -93,6 +94,69 @@ def test_device_listing_still_prints_the_backend_result(tmp_path):
     out, err = finish(proc, tmp_path)
     assert proc.returncode == 0, err
     assert "test microphone" in out
+
+
+def test_the_session_env_drops_only_search_path_entries_that_ship_openvino(tmp_path):
+    py_tree, core, tbb, farm, other = (tmp_path / n for n in ("py", "core", "tbb", "farm", "other"))
+    (py_tree / "openvino").mkdir(parents=True)
+    for d in (core, tbb, farm, other):
+        d.mkdir()
+    (core / "libopenvino.so.2640").touch()
+    (tbb / "libtbb.so.12").touch()
+    # The container NPU farm ships the compiler loader, which the core pattern must not match.
+    (farm / "libopenvino_intel_npu_compiler_loader.so").touch()
+    missing = tmp_path / "missing"
+    sep = os.pathsep
+
+    env = live_stt._session_env(
+        {
+            "HOME": "/home/u",
+            "PYTHONPATH": f"{py_tree}{sep}{sep}{other}",
+            "LD_LIBRARY_PATH": f"{core}{sep}{farm}{sep}{sep}{tbb}{sep}{missing}",
+        }
+    )
+
+    assert env == {
+        "HOME": "/home/u",
+        "PYTHONPATH": str(other),
+        "LD_LIBRARY_PATH": f"{farm}{sep}{missing}",
+    }
+
+
+def test_a_search_path_left_empty_is_unset(tmp_path):
+    (tmp_path / "openvino").mkdir()
+
+    assert live_stt._session_env({"PYTHONPATH": str(tmp_path), "LD_LIBRARY_PATH": ""}) == {}
+
+
+def test_the_session_child_resolves_openvino_from_the_venv_alone(tmp_path):
+    """The host profile and env.sh put tarball OpenVINO on both search paths, and
+    neither shell hooks direnv, so the supervisor clears them for the child itself."""
+    tarball_py, tarball_lib, farm = (tmp_path / n for n in ("tarball-py", "tarball-lib", "farm"))
+    (tarball_py / "openvino").mkdir(parents=True)
+    tarball_lib.mkdir()
+    farm.mkdir()
+    (tarball_lib / "libopenvino.so.2640").touch()
+    seen = tmp_path / "child-env.json"
+    backend = (
+        "import json, os\n"
+        f"with open({str(seen)!r}, 'w') as f:\n"
+        "    json.dump([os.environ.get(k) for k in ('PYTHONPATH', 'LD_LIBRARY_PATH')], f)\n"
+        "def query_devices(): return 'test microphone'\n"
+    )
+    proc = launch(
+        tmp_path,
+        backend,
+        env_extra={
+            "PYTHONPATH": os.pathsep.join([str(tarball_py), str(tmp_path), str(ROOT)]),
+            "LD_LIBRARY_PATH": os.pathsep.join([str(tarball_lib), str(farm)]),
+        },
+    )
+    out, err = finish(proc, tmp_path)
+
+    assert proc.returncode == 0, err
+    assert "test microphone" in out
+    assert json.loads(seen.read_text()) == [os.pathsep.join([str(tmp_path), str(ROOT)]), str(farm)]
 
 
 def test_device_listing_teardown_is_bounded_too(tmp_path):

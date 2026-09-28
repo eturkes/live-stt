@@ -16,13 +16,13 @@ On the default engine, Japanese builds on the status line while you speak, about
   OpenVINO as a hard dependency. The default device is the Intel NPU; pass
   `--asr-device GPU` or `--asr-device CPU` to use another one. OpenVINO ships
   wheels only for CPython 3.11 to 3.14 on macOS arm64, Linux x86_64 and
-  aarch64, and Windows amd64. If your shell sets `PYTHONPATH` to a different
-  OpenVINO build, clear it first. That entry hides the installed package. The
-  OpenVINO import then fails with a message that does not name `PYTHONPATH`.
-  If `LD_LIBRARY_PATH` holds an OpenVINO build at the installed version, that
-  build's GenAI library loads in place of the installed one.
-  When direnv is active, the committed `.envrc` clears `PYTHONPATH` and removes
-  such `LD_LIBRARY_PATH` entries.
+  aarch64, and Windows amd64. If `PYTHONPATH` names a different OpenVINO
+  build, that entry hides the installed package. The OpenVINO import then fails
+  with a message that does not name `PYTHONPATH`. If `LD_LIBRARY_PATH` holds an
+  OpenVINO build at the installed version, that build's GenAI library loads in
+  place of the installed one. On Linux, `live-stt` removes both kinds of entry
+  from its own session. Other commands, such as `replay.py`, need those entries
+  removed first. The committed `.envrc` does this when direnv is active.
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
@@ -42,7 +42,7 @@ codex login              # optional: enable the EN leg
 
 ### One tree, two environments
 
-The working tree is shared between the host OS, where live-mic sessions run (the mic and the lowest latency live there), and a dev container, where development and testing happen. Python venvs hard-code absolute paths and each side sees the tree at a different one, so each side keeps its own venv: `.venv` in the container (uv's default), `.venv-host` on the host. The committed `.envrc` exports `UV_PROJECT_ENVIRONMENT` to match. Run `direnv allow` on each machine, and again after the file changes. In shells without direnv, export the variable yourself before you run `uv`, and clear `PYTHONPATH` as above.
+The working tree is shared between the host OS, where live-mic sessions run (the mic and the lowest latency live there), and a dev container, where development and testing happen. Python venvs hard-code absolute paths and each side sees the tree at a different one, so each side keeps its own venv: `.venv` in the container (uv's default), `.venv-host` on the host. The committed `.envrc` exports `UV_PROJECT_ENVIRONMENT` to match. Run `direnv allow` on each machine, and again after the file changes. In shells without direnv, export the variable yourself before you run `uv`. For commands other than `live-stt`, also remove the OpenVINO search-path entries described above.
 
 The EN leg is environment-local too: live-stt resolves `codex` from its own process `PATH`. For a host live-mic session, install the CLI and run `codex login` from the host; a container-only install or login does not enable translation on the host.
 

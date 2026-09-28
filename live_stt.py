@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -2255,6 +2255,27 @@ def _stop_session(proc: subprocess.Popen) -> list[int]:
     return [pid for pid in identities if alive(pid)]
 
 
+def _session_env(environ: Mapping[str, str]) -> dict[str, str]:
+    """The session child's environment, with OpenVINO resolved from the venv alone.
+
+    The host profile sources the GenAI tarball's setupvars.sh and env.sh prepends the
+    container tarball; neither shell hooks direnv, so .envrc never clears them. Their
+    PYTHONPATH hides the wheel's openvino_genai (the tarballs ship no cp314 binding),
+    and their LD_LIBRARY_PATH outranks py_openvino_genai's RUNPATH, swapping in the
+    tarball's own genai build once its soname matches the wheel's. Only entries that
+    ship OpenVINO go: the container NPU farm and any other entry stay.
+    """
+    env = dict(environ)
+    for var, ships_openvino in (
+        ("PYTHONPATH", lambda d: (d / "openvino").is_dir()),
+        ("LD_LIBRARY_PATH", lambda d: any(d.glob("libopenvino.so*")) or any(d.glob("libtbb.so*"))),
+    ):
+        kept = [e for e in env.pop(var, "").split(os.pathsep) if e and not ships_openvino(Path(e))]
+        if kept:
+            env[var] = os.pathsep.join(kept)
+    return env
+
+
 def _supervise_session(args) -> int:
     import fcntl  # Linux CLI only; offline imports and other platforms stay independent.
 
@@ -2305,6 +2326,7 @@ def _supervise_session(args) -> int:
             ],
             pass_fds=(fd,),
             start_new_session=True,
+            env=_session_env(os.environ),
         )
         status = {"phase": "starting session", "since": time.monotonic()}
         stop_deadline = None

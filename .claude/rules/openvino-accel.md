@@ -40,9 +40,17 @@ source .envrc                                             # from the repo root: 
   `libtbb.so*` and keeps the farm. Proof = `/proc/self/maps`: every `libopenvino.so*`,
   `libopenvino_genai.so*` + `libtbb*` path sits under the venv — an NPU compile then maps the farm's
   `libopenvino_intel_npu_compiler*`, correctly outside it.
-- direnv applies `.envrc` in hooked interactive shells ALONE — agent Bash, scripts and git hooks
-  `source .envrc` after `env.sh`, from the repo root, whose `$PWD` case also picks the venv.
-  `gate.py` clears `PYTHONPATH` itself and runs no whisper step, so the gate needs no farm.
+- direnv applies `.envrc` in hooked interactive shells ALONE, and the user's shells hook none on
+  either layer ⇒ **the live CLI cleans its own session**: `_session_env` hands the supervised child
+  the environment minus every `PYTHONPATH` entry holding an `openvino/` package and every
+  `LD_LIBRARY_PATH` entry holding `libopenvino.so*`/`libtbb.so*` — the `.envrc` rule, with the
+  farm kept. A container `source env.sh` + `uv run live-stt` therefore reaches the NPU on the
+  wheel's genai, and a host `uv run live-stt` needs nothing. It strips entries rather than the
+  whole `PYTHONPATH`, because `tests/test_audio_startup.py` reaches the child through that seam.
+  Everything outside the supervisor — `replay.py`, evaluators, pytest, agent Bash — still takes
+  both prelude halves: `source .envrc` after `env.sh`, from the repo root, whose `$PWD` case also
+  picks the venv. `gate.py` clears `PYTHONPATH` itself and runs no whisper step, so the gate needs
+  no farm.
 
 ## Trees, layers, hardware
 
