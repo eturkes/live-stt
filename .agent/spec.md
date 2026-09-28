@@ -57,7 +57,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 Detail → `.claude/rules/`, which each `D-###` names.
 
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
-  cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-5.6-luna`.
+  cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
 - **D-016** whisper large-v3-turbo int8 on OpenVINO **NPU** is the shipped recogniser; `hotwords`
   forfeited with that choice. Engine/model selection is closed, and so are its two constructor
   properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and

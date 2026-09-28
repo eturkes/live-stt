@@ -19,7 +19,10 @@ On the default engine, Japanese builds on the status line while you speak, about
   aarch64, and Windows amd64. If your shell sets `PYTHONPATH` to a different
   OpenVINO build, clear it first. That entry hides the installed package. The
   OpenVINO import then fails with a message that does not name `PYTHONPATH`.
-  The committed `.envrc` clears `PYTHONPATH` when direnv is active.
+  If `LD_LIBRARY_PATH` holds an OpenVINO build at the installed version, that
+  build's GenAI library loads in place of the installed one.
+  When direnv is active, the committed `.envrc` clears `PYTHONPATH` and removes
+  such `LD_LIBRARY_PATH` entries.
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`
@@ -27,7 +30,7 @@ On the default engine, Japanese builds on the status line while you speak, about
 - ~790 MB of model weights in `models/` for the default engine (one-time
   download, see below). Each sherpa fallback engine adds its own weights, and
   needs `sherpa-onnx` + `sherpa-onnx-core` ≥ 1.13.4.
-- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.137 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-5.6-luna` (`codex login` / `codex login --device-auth`)
+- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.157 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-6-luna` (`codex login` / `codex login --device-auth`)
 
 ## Setup
 
@@ -50,7 +53,7 @@ live-stt                          # transcribe + translate
 python live_stt.py                # equivalent
 ```
 
-Startup prints the translation status: `Translation: gpt-5.6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (source-only, see log)`, or `disabled (--no-translate)`.
+Startup prints the translation status: `Translation: gpt-6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (source-only, see log)`, or `disabled (--no-translate)`.
 
 ### CLI
 
@@ -325,7 +328,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAC_TRIM_S` | 8 s | Past this, the streaming buffer commits finished spans and trims them away |
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits (sherpa engines) |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
-| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-5.6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-terra` / `medium`) |
+| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-6-luna` / `low` | Codex model+effort (runner-up: `gpt-5.6-luna` / `low`) |
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → source-only |

@@ -9,7 +9,7 @@ On-demand, never a gate step: it needs the gitignored weights, the gitignored
 probe WAV, and minutes of accelerator time. Run it when a decode or streaming
 change puts the retention number in question.
 
-    source ~/.local/app/intel-accel/env.sh && env -u PYTHONPATH \
+    source /var/home/eturkes/.local/app/intel-accel/env.sh && source .envrc && \
         uv run python tests/eval_retention.py [--device NPU] [--json]
 
 The WAV is content-checked against `retention_probe.json` before decoding, so a

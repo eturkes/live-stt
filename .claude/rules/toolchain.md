@@ -143,9 +143,10 @@ GitHub credential trips. **Coverage limit: a bare hex credential is invisible, a
 LSP and a `--project . tests/` run flag them); the house idiom for a fake→typed-attr assignment is
 `# type: ignore[assignment]`, and unused-param hints (`time_info`, `_ja`) are tolerated.
 
-**Whisper, NPU or GPU work needs BOTH prelude halves, every time:**
-`source /var/home/eturkes/.local/app/intel-accel/env.sh` **and** `unset PYTHONPATH` (or
-`env -u PYTHONPATH …`). Failure modes + the accelerator's shape: `openvino-accel.md`.
+**Whisper, NPU or GPU work needs BOTH prelude halves, every time, in order:**
+`source /var/home/eturkes/.local/app/intel-accel/env.sh` **then** `source .envrc` from the repo root
+(unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`). Failure modes + the accelerator's
+shape: `openvino-accel.md`.
 
 **Never run two whisper processes against one cache while either is compiling.** Two processes
 cold-compiling the SAME `OPENVINO_CACHE_DIR` key concurrently write a blob that SIGSEGVs on every
@@ -155,7 +156,11 @@ segfaulting. The cache is fully regenerable ⇒ repair is `rm -rf models/openvin
 run recompiles (~95-126 s). This matters here because **an agent Bash call can invoke one command
 TWICE CONCURRENTLY**: shell `flock -n` does not catch it and in-process `fcntl.flock` does, so a
 harness that must hold the NPU takes its lock inside the worker process and re-checks for completed
-work after acquiring it.
+work after acquiring it. One measured source of that second run: Python 3.14's `forkserver` default
+re-imports an unguarded script as `__mp_main__` in every `multiprocessing` child, and
+`openvino-telemetry` spawned one per compile, so a probe with no `__main__` guard ran top to bottom
+under two PIDs. Telemetry is opted out on both homes (`CLAUDE.local.md`); guard every script that
+compiles regardless.
 
 `sounddevice` dlopens system PortAudio on the live and device entry paths; without it they fail
 `OSError: PortAudio library not found` → `sudo apt-get install libportaudio2` (Debian). Offline

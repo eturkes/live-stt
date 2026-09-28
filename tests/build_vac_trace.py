@@ -19,8 +19,8 @@ per-update series.
 
 Needs the gitignored whisper weights and the accelerator env:
 
-    source ~/.local/app/intel-accel/env.sh
-    env -u PYTHONPATH uv run python tests/build_vac_trace.py
+    source /var/home/eturkes/.local/app/intel-accel/env.sh && source .envrc
+    uv run python tests/build_vac_trace.py
 """
 
 from __future__ import annotations
