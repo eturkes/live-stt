@@ -11,12 +11,9 @@ overrides, adapts, retires or marks inapplicable that structure, and names its r
 user's waiver; every phase body follows it, and a retired structure stays retired. Where the
 template and a rules file disagree, the rules file wins. A clause with no row below binds as written.
 
-`last-sync = agents@db19af0`. A refresh = one migration-only session on
-`~/.local/app/agents/claude/prompts/refresh.md`: `cp` the template, re-derive last-sync as the
-upstream commit whose template `cmp`-equals `git show HEAD:CLAUDE.md` (the recorded value may be
-stale), read `git -C ~/.local/app/agents diff <last-sync> HEAD -- claude/CLAUDE.project.md` plus that
-range's commit bodies, then re-read this table and `assurance-posture.md` before acting on the
-template's words.
+`last-sync = agents@c235f45`. A refresh = one migration-only session on
+`~/.local/app/agents/claude/prompts/refresh.md`, which derives the upstream delta from that value;
+re-read this table and `assurance-posture.md` before acting on the template's words.
 
 The table = the index of every ruling, keyed on quoted template text (project or global
 `CLAUDE.md`); `tests/test_law_consistency.py` holds each key to a live anchor.
@@ -30,7 +27,7 @@ The table = the index of every ruling, keyed on quoted template text (project or
 | global "Multi-step run → its checklist on disk" | **ADAPTED**: `Tasks` carries queue rows alone (row above) ⇒ a session's step checklist lives in `.scratch/tasks.md`, gitignored; durable progress = commits + the paired `Tasks`/queue rows. |
 | "security scanning + update automation in gate + CI" | **ADAPTED — split by hermeticity** (user ruling). IN the gate, both offline: ruff's `S` (flake8-bandit) inside the `ruff-check` step + a `secrets` step = `detect-secrets` over the walked tree. OUT: `pip-audit` needs an advisory feed ⇒ the L-018 recipe (`packaging-deps.md`), which every MAINTAIN security pass runs; a network step would break `gate.py`'s hermeticity. Scan scoping + coverage limit → `toolchain.md`. |
 | "contracts + tiers" | **ADAPTED**: the acceptance contract IS the unit's `.agent/deferred.md` row, its outcome the commit body. RETIRED (L-032): `.agent/contracts/`, contract fingerprints, claim registries, mutation matrices. Owner: `assurance-posture.md`. |
-| "it lives where `Artifacts` records it" + "a disposable prototype retires at close" + "a prototype runs under PROTOTYPE law" | **INAPPLICABLE**: no prototype exists — the CLI itself has been the inspectable artifact since its first commit ⇒ `Artifacts` records no prototype path or proof, nothing retires, and verification integrity's carve-out licenses nothing: every check here binds. A scope opened later at PROTOTYPE takes the template default. |
+| "it lives where `Artifacts` records it" + "a disposable prototype retires at close" + "a prototype runs under PROTOTYPE law" | **INAPPLICABLE**: no prototype exists — the CLI itself has been the inspectable artifact since its first commit ⇒ `Artifacts` records no prototype entry, nothing retires, and verification integrity's carve-out licenses nothing: every check here binds. A scope opened later at PROTOTYPE takes the template default. |
 | "A skipped, xfailed, deleted or tier-demoted case" | **ADAPTED — narrowed to demotions, made executable.** A skip gated on an absent RESOURCE (weights, corpus, accelerator) keeps its case live and earns no row; the `pytest` step decides which is which — a skip reason must open `absent: `, an xfail fails outright, limits → `toolchain.md`. Deleting a case and demoting a tier leave no such trace ⇒ both stay under the approval law alone. A real demotion of any kind still earns the row and the approval first. |
 | "A test counts once seen red on the unfixed revision" | **ADAPTED**: the unfixed revision = the working tree with the fix neutralized, restored from a `cp` snapshot, never `git checkout` (L-022); the commit body records the mutation + the command that reddened. Owner: `assurance-posture.md`. |
 | "a threshold, case or gate changes only in a unit I approve" | **ADAPTED**: the funded `.agent/deferred.md` row = the approval ⇒ a grader moves only where that row's acceptance names the move; a mid-unit wish to move one = a question for the user. The graders held → `assurance-posture.md`. |
