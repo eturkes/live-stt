@@ -155,13 +155,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
 - [ ] **2** Explain the live audio drops
-  - Agent-fundable; accept → `.agent/deferred.md` → *Explain the live audio drops*: (c) names the
-    mechanism, reproduced as a `tests/eval_backpressure.py` arm red on today's code and fixed green
-    with retention CER ≤ 0.0609 re-derived, or records a refusal naming the measured headroom
-    shortfall and what the user loses.
-  - No longer blocked: its (b) capture LANDED — a host session logged `drop=1949` with the log kept,
-    files named in its row, not yet analyzed — so (c) is agent-side work that reads it. A capture
-    that cannot decide (c) sends the row back to the mic.
+  - Agent-fundable; accept → `.agent/deferred.md` → *Explain the live audio drops*: its (c) block
+    is the contract — mechanism named from the (b) capture, the catch-up rule plus
+    `AUDIO_HEADROOM_S` 2 → 8 s plus the `SCALE_LADDER` extension (user ruling), and a `live`
+    backpressure arm red before the fix and drop-free after, retention CER ≤ 0.0609 re-derived.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the row it funds.

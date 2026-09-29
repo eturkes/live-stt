@@ -37,7 +37,25 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `screen-0924.timing.log`, transcript `transcripts/2026-09-24T14-18-40.txt`, and an out-of-process
    sampler trace (NPU busy, per-thread schedstat, PSI, power profile) with its analysis plan in
    `.scratch/live-monitor/NOTES.md`.
-   **Still owed, agent-side: (c)** either the mechanism is named and reproduced as a
-   `tests/eval_backpressure.py` arm proven RED against today's code and fixed green with retention
-   CER ≤ 0.0609 re-derived, or the row records a refusal naming the measured headroom shortfall and
-   what the user loses. A capture that cannot decide (c) sends the row back to the mic (L-004).
+   **(c) mechanism NAMED — the contract this row closes on.** `_vac_segments` awaits every decode,
+   update and final alike, inside the coroutine draining `audio_q`, so capture stacks at 1 s/s for the
+   whole call. The 09-24 capture ran on battery under `low-power` (NPU at 950 MHz in 366 of 617 active
+   samples); its 10 Hz `q=` meter reads 863 blocking spans, p50 0.60 / p90 0.92 / max 3.53 s, and
+   those spans hold 1759 of the 1949 dropped blocks (188.9 blocks/s saturated ⇒ ~5.3 ms each, ~10 s
+   of speech lost). Three shapes: **S** sustained 1.0-1.4 s updates against the 1 s cadence — each
+   update consumes exactly `VAC_CHUNK_S`, so the backlog grows by `decode_s − 1` per update; **C** an
+   update decode followed by the final decode with no drain between, 2.4-2.8 s; **R** a runaway
+   444-character update decode, 3.53 s.
+   **Fix — user ruling, which is also this row's approval of both grader moves.** A non-final update
+   that falls due while `audio_q` holds more than `VAC_BACKLOG_S`=0.5 s of capture waits for the drain
+   and fires on the first block that leaves the backlog ≤ 0.5 s, covering all pending audio, so the
+   cadence stretches to the decode time instead of stacking; a queue without `queued_samples`
+   (replay's) never waits, and the final decode never waits. `AUDIO_HEADROOM_S` 2 → **8** s, covering
+   C, R and two back-to-back 448-token decodes at the measured low-power cost. `SCALE_LADDER` gains
+   ×6 / ×8 / ×12, because the fix absorbs every rung up to ×4 and the non-vacuity locks must keep a
+   dropping rung.
+   **Accept:** a `tests/eval_backpressure.py` `live` arm — each traced clip at ×1.75 (the first rung
+   at or above the live/trace ratios 1.42 and 1.64) with its middle update charged the measured
+   3.53 s — drops on the unfixed code (stress_long 97, retention_probe 1323 blocks) and none after;
+   the measured-cost arms keep `divergences == 0`; retention CER ≤ 0.0609 re-derived on the NPU; gate
+   green; the closing commit names the live paths left unverified (L-004).
