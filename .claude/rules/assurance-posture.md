@@ -9,8 +9,8 @@ around a 2,108-line tool and was cut with zero production change (`becc22b`, L-0
 `tests/eval_cer.py` on demand. A unit closes when its acceptance holds under the gate and, where the
 unit touches decode quality, a CER number the commit body records.
 
-**Verification integrity binds every check here**; the template's `prototype/` carve-out is inert,
-this repo having none. Three things it fixes locally:
+**Verification integrity binds every check here**; its "a prototype runs under PROTOTYPE law"
+carve-out is inert, this repo having no prototype. Three things it fixes locally:
 
 - **A test counts once seen RED, and L-022 neutralization is the witness.** The fix is still
   uncommitted when the lock is written, so "the unfixed revision" is the working tree with the fix
@@ -99,9 +99,9 @@ attached state while the work does not. The analogs = the last three closed M-se
 attached) against bottom-up estimates of 92K / 100K / 40K ⇒ ratios 1.15 / 1.21 / 3.25, the outlier
 being the SMALLEST unit by estimate, where the small denominator makes the ratio noise and the
 absolute 130K is the signal. Size a new unit bottom-up against those work figures, never against a
-literal written here. **A fresh MAIN session now opens at 45K** over 88 KB attached — global
-`CLAUDE.md` 26.3 KB, `CLAUDE.md` 13.5 KB, `CLAUDE.local.md` 5.1 KB, `.agent/spec.md` 14.8 KB, the
-three bare rules files 28.2 KB. MAIN at 1M is collapse-managed and has no compaction window a unit
+literal written here. **A fresh MAIN session now opens at 47K** over 89 KB attached — global
+`CLAUDE.md` 27.0 KB, `CLAUDE.md` 14.4 KB, `CLAUDE.local.md` 5.1 KB, `.agent/spec.md` 14.2 KB, the
+three bare rules files 28.7 KB. MAIN at 1M is collapse-managed and has no compaction window a unit
 must fit, so the budget that binds is a teammate's: `context-alert` hands it off at 205K, so a
 brief's bottom-up work plus that teammate's own opening baseline (unmeasured here) must land under
 205K.

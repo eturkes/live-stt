@@ -41,10 +41,13 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
   `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py`, `eval_en_pairing.py` and
-  `eval_lag.py` replay committed traces and run in under a second in a fresh clone.
+  `eval_lag.py` replay committed traces and run in under a second in a fresh clone. Each runs as
+  `uv run python tests/<name>.py`, `eval_long_form.py` adding `--with soundfile`; flags per script in
+  `evidence-artifacts.md`.
 - `tests/lag_sessions.json` + `tests/build_lag_trace.py` — the text-free reduction of the two live
   sessions the translation-lag claim rests on, and its regenerator. `transcripts/` is gitignored, so
   this is what keeps those numbers re-derivable once the recordings are gone.
+  `uv run python tests/build_lag_trace.py [--check]`.
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
@@ -139,8 +142,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   under `"<|en|>"` rather than a literal Japanese token.
 - Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
   `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
-- MAINTAIN has no phase close ⇒ each request session is its own (user ruling): its closing commit
-  deletes the funded row from `.agent/deferred.md` and from `Tasks` together, and a `- [x] <sha>` row
+- MAINTAIN has no phase close ⇒ each request session is its own (user ruling): the commit closing a
+  funded row deletes it from `.agent/deferred.md` and from `Tasks` together, and a `- [x] <sha>` row
   lives only between the commits of one session. Every open `Tasks` row is one queue row, rank and
   title verbatim, in queue order — a find on the unit's path lands as a queue row with its acceptance
   check plus a `Tasks` row, in one commit. `tests/test_law_consistency.py` locks the pairing.
@@ -158,18 +161,25 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
+- [ ] **2** Reconcile the human-facing doc set
+  - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
+    `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
-row = that unit's whole contract; the session body names the row it funds.
+row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
+Queue body naming none funds every row.
 
 ## Phase
 
-**MAINTAIN.** M1-M14 shipped and closed (`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs, the
-latency budget is committed and re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`),
-and IMPLEMENT closed with `Tasks` above carrying what it did not fund.
+**MAINTAIN — scope: the whole product** (user ruling), the one-way JA→EN captioner plus two-way
+behind its default-off `--two-way` flag. M1-M14 shipped and closed
+(`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs, the latency budget is committed and
+re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`), and IMPLEMENT closed with `Tasks`
+above carrying what it did not fund.
 
-One session per request, the body naming the `.agent/deferred.md` row it funds or the maintenance
-task it wants, each closing gate-green under `uv run --no-sync python gate.py` with this file current
+One session per `maintain.md` body — Request, Queue, Security review, Dependency upgrade — the body
+naming the `.agent/deferred.md` rows it funds or the maintenance task it wants, each closing
+gate-green under `uv run --no-sync python gate.py` with this file current
 — plus, where the request touches decode quality, a CER number the commit body records. The standing
 MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018
 (`packaging-deps.md`); Dependabot files the advisories between requests.
