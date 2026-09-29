@@ -588,7 +588,8 @@ def render(rep: dict) -> str:
             )
         for r in p["restores"]:
             out.append(f"   RESTORE [{r['source']}] {r['at']}  {r['reason']}")
-        out.append(f"   backlog peak: {p['backlog_peak'] or 'none logged'}")
+        # The stored body is the whole log line, label included.
+        out.append(f"   {p['backlog_peak'] or 'backlog peak: none logged'}")
         if p["drops"]:
             out.append(f"   drops: {len(p['drops'])} increases, {p['drops'][-1]['drop']} blocks")
         for d in p["drops"]:

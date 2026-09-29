@@ -100,7 +100,7 @@ async def _run_recognizer(samples: np.ndarray, rec, on_update=None) -> list[dict
     """
     vad, window = make_vad()
     audio_q: asyncio.Queue = asyncio.Queue()
-    # Keep replay blocks within live AudioQueue's 2 s headroom. VAD framing is
+    # Keep replay blocks well inside live AudioQueue's headroom. VAD framing is
     # unchanged, while bounded blocks let the feeder copy completed segments
     # from its 60 s ring before later long-form audio can evict them.
     for start in range(0, len(samples), SAMPLE_RATE):

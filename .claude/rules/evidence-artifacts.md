@@ -133,9 +133,15 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `codex app-server`; probe inputs are literals, so reruns need no artifact.
 - `eval_backpressure.py` + `test_backpressure.py` — the production two-stage worker paced on a virtual
   sample clock with real silero and seconds-bounded queues, only decode cost replaced. Arms: the sherpa
-  two-stage path, the VAC arm on recorded real NPU costs (`max_segment_depth == 0`), the `SCALE_LADDER`
-  margin, and the carry arm over `caption_trace.json` — which needs no corpus and no skip, so the
-  shipped path's real-time reserve stays checkable in a fresh clone.
+  two-stage path at defect B's own 2 s (`DEFECT_B_HEADROOM_S`, never the shipped 8 s, which a
+  sequential-decode regression need not overflow), the VAC arm on recorded real NPU costs
+  (`max_segment_depth == 0`), the `SCALE_LADDER` margin, the `live` arm (the live machine state:
+  `LIVE_COST_SCALE` plus one `LIVE_STALL_S` span, `asr-pipeline.md`), and the carry arm over
+  `caption_trace.json` — which needs no corpus and no skip, so the shipped path's real-time reserve
+  stays checkable in a fresh clone. Off the recorded trajectory the trace recogniser replays
+  hypotheses by call order against buffers they were not decoded from, so a `forced_trims` count there
+  measures the harness, never `_trim`: the `live` arm's one forced trim on `retention_probe` vanishes
+  with the real NPU recogniser in the same virtual-clock run.
 - `session_report.py` + `test_session_report.py` — what a LIVE session did, re-derived from the two
   files that session already wrote (`transcripts/*.txt` + redirected stderr). No hardware, no
   weights, no network, and it imports the shipped `repeat_span`/`caption_defect` rather than
@@ -222,7 +228,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
 - **D-014 — deterministic WAV replay is the regression harness.** `replay.py` drives the real
   `live_stt.worker` through an optional observation-only `on_segment` hook, chosen over
   freeze-and-reimplement precisely because a reimplemented loop is what drifted before. It feeds 1 s
-  views, within the live `AudioQueue`'s 2 s headroom: a whole-file block larger than the 60 s ring
+  views, well inside the live `AudioQueue`'s headroom: a whole-file block larger than the 60 s ring
   delays VAD popping until early samples are evicted — an evaluator-only artifact. Live `worker` turns
   a stage failure into `state.request_stop()`; replay RE-RAISES that signal, so a partial or empty
   transcript cannot become a golden. `replay.py` defaults to `k2v2` because the goldens do, not because

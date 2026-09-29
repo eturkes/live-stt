@@ -43,9 +43,14 @@ METER_INTERVAL = 0.1
 # the worst case line rate of a redirected soak.
 METER_LOG_INTERVAL = 1.0
 # PortAudio chooses callback block sizes, so a chunk-count cap has no stable
-# duration. Bound captured PCM directly: the VAD feeder normally drains this
-# immediately; 2 s absorbs event-loop stalls without hiding sustained overload.
-AUDIO_HEADROOM_S = 2.0
+# duration. Bound captured PCM directly. The VAC path drains nothing while it
+# decodes, so this must outlast the longest blocking span, not an event-loop
+# stall: a battery/low-power live session blocked 2.4-2.8 s on an update decode
+# chained into the final one and 3.53 s on a runaway, dropping ~10 s of speech
+# at the old 2 s. 8 s holds two back-to-back 3.53 s runaways on top of the
+# VAC_BACKLOG_S allowance (7.56 s); that allowance keeps sustained overload from
+# stacking into it.
+AUDIO_HEADROOM_S = 8.0
 # Completed VAD segments own copied PCM while the recognizer decodes them in
 # order. This cap bounds that second stage; a sustained slowdown eventually
 # pushes back into the measured audio headroom and surfaces as ``drop=``.
@@ -113,6 +118,14 @@ LID_INTER_OP_THREADS = 1
 # for the same audio. VAC_TRIM_S=8 was the best of {5, 8, 12} on CER.
 VAC_CHUNK_S = 1.0
 VAC_TRIM_S = 8.0
+# Each update consumes exactly VAC_CHUNK_S of capture, so decodes slower than that
+# stacked (decode_s - 1) s of backlog per update: live 1.0-1.4 s updates filled the
+# queue within one long utterance. An update due while more than this is queued
+# waits for the drain, stretching the cadence to the decode instead. At recorded
+# NPU cost a due update sees at most 0.28 s queued (a final decode's carry into the
+# next utterance), so 0.5 s leaves that trajectory untouched; replay's plain queue
+# has no queued_samples and never waits.
+VAC_BACKLOG_S = 0.5
 # Sessions are saved by default so nothing is lost to a closed terminal: one
 # file per run, named by start time, in this gitignored directory. Per-session
 # files keep each file's `n` numbering self-consistent, which one shared append
@@ -1842,6 +1855,7 @@ async def _vac_segments(
     ring = RingBuffer(RING_SECONDS * SAMPLE_RATE)
     pad = int(VAD_PRE_PAD_S * SAMPLE_RATE)
     chunk_samples = int(VAC_CHUNK_S * SAMPLE_RATE)
+    backlog_samples = int(VAC_BACKLOG_S * SAMPLE_RATE)
     lid_min_samples = int(LID_MIN_SECONDS * SAMPLE_RATE)
     # An open utterance IS its processor: `processor is not None` is the whole
     # speaking state, so no separate flag can drift out of sync with it (and the
@@ -2006,7 +2020,11 @@ async def _vac_segments(
                 pending += len(block)
             if processor is not None and not detected:
                 await finalize()
-            elif processor is not None and pending >= chunk_samples:
+            elif (
+                processor is not None
+                and pending >= chunk_samples
+                and getattr(audio_q, "queued_samples", 0) <= backlog_samples
+            ):
                 await update(final=False)
                 pending = 0
         if flush:

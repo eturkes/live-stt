@@ -24,6 +24,8 @@ from live_stt import (
 )
 from tests.eval_backpressure import (
     CACHE,
+    LIVE_COST_SCALE,
+    LIVE_STALL_S,
     SCALE_LADDER,
     SHORT_CLIPS,
     STRESSOR,
@@ -267,6 +269,25 @@ def test_vac_paced_replay_drops_when_decode_is_scaled_past_the_headroom():
     assert _vac_run(STRESSOR) == _vac_run(STRESSOR)  # virtual clock, so bit-identical
 
 
+@pytest.mark.skipif(
+    not _resources_ready(VAC_PATHS), reason="absent: silero model or VAC trace corpus"
+)
+@pytest.mark.parametrize("clip", VAC_TRACE_CLIPS)
+def test_vac_paced_replay_is_drop_free_at_the_live_machine_state(clip):
+    """The two shapes a battery/low-power session dropped ~10 s of speech on.
+
+    Every update slowed to LIVE_COST_SCALE stacked backlog until the old 2 s queue
+    overflowed, and one LIVE_STALL_S decode overflowed it alone. The catch-up rule
+    owns the first, the 8 s headroom the second: 8 s without catch-up still drops
+    947 blocks on retention_probe, and catch-up at 2 s drops on the stall.
+    """
+    series = load_vac_trace()["clips"][clip]["series"]
+    report = _vac_run(clip, cost_scale=LIVE_COST_SCALE, stall=(len(series) // 2, LIVE_STALL_S))
+    assert report["drops"] == 0
+    assert report["max_audio_s"] <= AUDIO_HEADROOM_S
+    assert report["accepted"] == report["arrivals"]
+
+
 # --- Long-form decode duty (P-014) --------------------------------------------
 # The VAC arm above needs the gitignored WAV corpus; this one needs nothing but a
 # committed trace, so the shipped path's real-time margin stays checkable in a
@@ -301,13 +322,14 @@ def _carry_at(captions, scale: float) -> float:
 def test_long_form_decode_duty_holds_real_time_with_a_scale_ladder_reserve():
     """Margin, not a point reading -- decode cost varies ~20 % run to run (D-016).
 
-    Measured carry is 0.017 s of the 2 s headroom over 215 captions, one of them
-    over duty by that 0.017 s, so the queue empties inside every utterance and its
-    peak is a single update decode -- which this trace does not record and M11.4's
-    per-update trace measures at 0.764/1.006 s. The load-bearing number is the
-    knee: carry reaches AUDIO_HEADROOM_S at x1.541 decode cost, so 848 s of
-    narration independently reproduces M11.4's x1.5 SCALE_LADDER reserve on 4.4x
-    the audio and against a corpus its two pause-free clips never covered.
+    Measured carry is 0.017 s over 215 captions, one of them over duty by that
+    0.017 s, so the queue empties inside every utterance and its peak is a single
+    update decode -- which this trace does not record and M11.4's per-update trace
+    measures at 0.764/1.006 s. The load-bearing number is the knee: carry reached
+    the old 2 s headroom at x1.541 decode cost and reaches the shipped 8 s at
+    x1.762, so 848 s of narration independently reproduces M11.4's x1.5
+    SCALE_LADDER reserve on 4.4x the audio and against a corpus its two pause-free
+    clips never covered.
     """
     captions = json.loads(CAPTION_TRACE.read_text(encoding="utf-8"))["captions"]
     for scale in (rung for rung in SCALE_LADDER if rung <= 1.25):

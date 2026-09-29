@@ -13,7 +13,7 @@ without a model -- which is what lets `tests/eval_backpressure.py` pace the VAC
 branch deterministically against measured costs instead of a flat RTF.
 
 Aggregate RTF only shows mean compute below real time. VAC awaits each decode
-inside the coroutine draining `audio_q`, so what the 2 s capture headroom is
+inside the coroutine draining `audio_q`, so what the capture headroom is
 actually spent against is the MAXIMUM contiguous decode, and that needs the
 per-update series.
 

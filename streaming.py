@@ -40,7 +40,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 SAMPLE_RATE = 16000
-HARD_TRIM_S = 28.0  # Whisper's window is 30 s; never let the buffer reach it
+# Whisper's window is 30 s. Enforced AFTER a decode, so a catch-up fold can hand it more
+# once trims have already failed (asr-pipeline.md).
+HARD_TRIM_S = 28.0
 
 
 def common_prefix(a: str, b: str) -> int:

@@ -110,6 +110,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   category, never folded into `tdrop=` (backlog eviction) or `tskip=` (content). Over the two
   committed live sessions the bound drops 8 of 696 and 0 of 143, every drop inside one
   wedge-and-recover cascade (`translation-leg.md`).
+- Capture holds `AUDIO_HEADROOM_S`=**8 s** and a slow decoder CATCHES UP rather than stacking (user
+  ruling): an update due while more than `VAC_BACKLOG_S`=0.5 s of capture is queued waits for the
+  drain, so the cadence stretches to the decode. That pair is the mechanism + fix measured on the
+  09-24 capture's drops; shapes, numbers and the `live` backpressure arm → `asr-pipeline.md`.
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
   (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
@@ -154,11 +158,6 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Explain the live audio drops
-  - Agent-fundable; accept → `.agent/deferred.md` → *Explain the live audio drops*: its (c) block
-    is the contract — mechanism named from the (b) capture, the catch-up rule plus
-    `AUDIO_HEADROOM_S` 2 → 8 s plus the `SCALE_LADDER` extension (user ruling), and a `live`
-    backpressure arm red before the fix and drop-free after, retention CER ≤ 0.0609 re-derived.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the row it funds.

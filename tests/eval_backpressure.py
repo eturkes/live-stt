@@ -10,9 +10,10 @@ executor and ``live_stt._decode`` are patched so each decode view costs
 participates, so queue depths and drops are deterministic.
 
 The default case retains defect B's PipeWire-like 20 ms callback, slow-host RTF
-0.20, 2 s audio headroom, and 44.7 s stressor. Before M9.5, sequential decode
-stalled feeding and dropped 139 blocks. The two-stage worker must now drain VAD
-concurrently, finish drop-free, and keep both queues bounded.
+0.20, 2 s audio headroom (``DEFECT_B_HEADROOM_S``), and 44.7 s stressor. Before
+M9.5, sequential decode stalled feeding and dropped 139 blocks. The two-stage
+worker must now drain VAD concurrently, finish drop-free, and keep both queues
+bounded.
 
 The VAC arm (M11.4) covers the SHIPPED branch, which the sherpa arms cannot: it
 has no segment queue and awaits each decode inside the coroutine draining
@@ -71,13 +72,26 @@ VAC_TRACE = ROOT / "tests" / "vac_decode_trace.json"
 
 DEFAULT_CHUNK_MS = 20.0
 DEFAULT_DECODE_RTF = 0.20
+# The sherpa arms keep defect B's own 2 s rather than the shipped AUDIO_HEADROOM_S:
+# at 8 s a regression back to sequential decode need not drop on the 44.7 s
+# stressor, so the shipped value would quietly weaken what these arms prove.
+DEFECT_B_HEADROOM_S = 2.0
 # Decode-cost multipliers each traced clip is paced at. The first rung must be
 # 1.0 (the measured costs) and the last must overload: a drop-free result proves
 # nothing until the same scenario is shown to drop, and the rung where dropping
 # starts is the margin -- how much slower every decode could get before the
 # capture headroom stops absorbing it. That margin is the honest answer to a
-# recorded maximum being one sample of a run-to-run variable quantity.
-SCALE_LADDER = (1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0)
+# recorded maximum being one sample of a run-to-run variable quantity. The rungs past
+# x4 exist because the 8 s headroom plus the catch-up rule absorbs every rung up to x4
+# on both clips, which would leave the drop-free result vacuous.
+SCALE_LADDER = (1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0, 12.0)
+# The live machine state that dropped audio, read off a battery + low-power session's
+# 10 Hz q= meter (asr-pipeline.md): updates of >= 1 s ran p50 1.113 s, x1.42 / x1.64
+# the two clips' trimmed-buffer p50, so LIVE_COST_SCALE is the first rung at or above
+# both; and one runaway update blocked the drain for LIVE_STALL_S. Each alone
+# overflowed the old 2 s headroom.
+LIVE_COST_SCALE = 1.75
+LIVE_STALL_S = 3.53
 # A divergence shifts the buffer by at least one VAD window (32 ms), so this
 # absorbs the trace's 1e-6 rounding and nothing else.
 BUFFER_MATCH_TOL_S = 1e-3
@@ -236,7 +250,7 @@ def paced_replay(
     *,
     chunk_ms: float = DEFAULT_CHUNK_MS,
     decode_rtf: float = DEFAULT_DECODE_RTF,
-    headroom_s: float = AUDIO_HEADROOM_S,
+    headroom_s: float = DEFECT_B_HEADROOM_S,
 ) -> dict:
     """Replay float32 16 kHz audio and return deterministic queue telemetry."""
     if not 10.0 <= chunk_ms <= 100.0:
@@ -255,7 +269,7 @@ def paced_wav(
     *,
     chunk_ms: float = DEFAULT_CHUNK_MS,
     decode_rtf: float = DEFAULT_DECODE_RTF,
-    headroom_s: float = AUDIO_HEADROOM_S,
+    headroom_s: float = DEFECT_B_HEADROOM_S,
 ) -> dict:
     return paced_replay(
         replay.load_wav_f32_16k(path),
@@ -269,7 +283,7 @@ class _WatchedAudioQueue(AudioQueue):
     """AudioQueue that reports every successful drain.
 
     VAC awaits each decode inside the coroutine draining this queue, so what the
-    2 s capture headroom is spent against is the span between two drains, not one
+    capture headroom is spent against is the span between two drains, not one
     decode. ``asyncio.Queue.get`` routes every successful get through
     ``get_nowait``, which ``AudioQueue`` already relies on for its own accounting.
     """
@@ -317,6 +331,7 @@ async def _run_vac_paced(
     chunk_samples: int,
     headroom_s: float,
     cost_scale: float,
+    stall: tuple[int, float] | None = None,
 ) -> dict:
     clock = _VirtualClock()
     state = State()
@@ -352,6 +367,8 @@ async def _run_vac_paced(
             else float(np.interp(buffer_s, buffers[order], costs[order]))
         )
         cost = max(1, round(decode_s * cost_scale * SAMPLE_RATE))
+        if stall is not None and ordinal == stall[0]:
+            cost = round(stall[1] * SAMPLE_RATE)  # a measured wall span, never rescaled
         contiguous["run"] += cost
         contiguous["max"] = max(contiguous["max"], contiguous["run"])
         decodes.append(
@@ -425,8 +442,12 @@ def vac_paced_replay(
     chunk_ms: float = DEFAULT_CHUNK_MS,
     headroom_s: float = AUDIO_HEADROOM_S,
     cost_scale: float = 1.0,
+    stall: tuple[int, float] | None = None,
 ) -> dict:
-    """Pace the VAC branch on one clip's recorded per-update decode costs."""
+    """Pace the VAC branch on one clip's recorded per-update decode costs.
+
+    ``stall`` = (update ordinal, seconds) charges that one decode a fixed wall cost.
+    """
     if not 10.0 <= chunk_ms <= 100.0:
         raise ValueError("chunk_ms must be between 10 and 100")
     if headroom_s <= 0:
@@ -435,7 +456,7 @@ def vac_paced_replay(
         raise ValueError("cost_scale must be positive")
     chunk_samples = round(chunk_ms * SAMPLE_RATE / 1000)
     pcm = np.ascontiguousarray(samples, dtype=np.float32)
-    return asyncio.run(_run_vac_paced(pcm, series, chunk_samples, headroom_s, cost_scale))
+    return asyncio.run(_run_vac_paced(pcm, series, chunk_samples, headroom_s, cost_scale, stall))
 
 
 def vac_paced_wav(path: Path, series: list[dict], **kwargs) -> dict:
@@ -511,7 +532,36 @@ def validate_vac(report: dict) -> list[str]:
     return failures
 
 
-def evaluate(chunk_ms: float, decode_rtf: float, headroom_s: float) -> dict:
+def evaluate_live(trace: dict, chunk_ms: float, headroom_s: float) -> dict:
+    """Each traced clip at the live machine state: LIVE_COST_SCALE plus one LIVE_STALL_S.
+
+    The stall lands on the middle update, where the buffer is trim-capped and the
+    catch-up rule has a backlog to fold in. Both halves are measured live; the audio
+    and hypotheses are the trace's, which is all the queue arithmetic reads.
+    """
+    return {
+        clip: vac_paced_replay(
+            replay.load_wav_f32_16k(CACHE / f"{clip}.wav"),
+            row["series"],
+            chunk_ms=chunk_ms,
+            headroom_s=headroom_s,
+            cost_scale=LIVE_COST_SCALE,
+            stall=(len(row["series"]) // 2, LIVE_STALL_S),
+        )
+        for clip, row in trace["clips"].items()
+    }
+
+
+def validate_live(report: dict) -> list[str]:
+    return [
+        f"live/{clip}: dropped {run['drops']} blocks at the live machine state"
+        for clip, run in report.items()
+        if run["drops"]
+    ]
+
+
+def evaluate(chunk_ms: float, decode_rtf: float, headroom_s: float | None = None) -> dict:
+    """``headroom_s`` overrides every arm; None = defect B's 2 s for sherpa, shipped for VAC."""
     trace = load_vac_trace()
     paths = [
         CACHE / f"{STRESSOR}.wav",
@@ -524,16 +574,20 @@ def evaluate(chunk_ms: float, decode_rtf: float, headroom_s: float) -> dict:
     if missing:
         raise FileNotFoundError("missing paced-replay inputs: " + ", ".join(missing))
 
-    kwargs = {"chunk_ms": chunk_ms, "decode_rtf": decode_rtf, "headroom_s": headroom_s}
+    sherpa_headroom_s = DEFECT_B_HEADROOM_S if headroom_s is None else headroom_s
+    vac_headroom_s = AUDIO_HEADROOM_S if headroom_s is None else headroom_s
+    kwargs = {"chunk_ms": chunk_ms, "decode_rtf": decode_rtf, "headroom_s": sherpa_headroom_s}
     return {
         "scenario": {
             "chunk_ms": chunk_ms,
             "decode_rtf": decode_rtf,
-            "headroom_s": headroom_s,
+            "headroom_s": sherpa_headroom_s,
+            "vac_headroom_s": vac_headroom_s,
         },
         "long": paced_wav(CACHE / f"{STRESSOR}.wav", **kwargs),
         "short": {cid: paced_wav(CACHE / f"{cid}.wav", **kwargs) for cid in SHORT_CLIPS},
-        "vac": evaluate_vac(trace, chunk_ms, headroom_s),
+        "vac": evaluate_vac(trace, chunk_ms, vac_headroom_s),
+        "live": evaluate_live(trace, chunk_ms, vac_headroom_s),
     }
 
 
@@ -552,14 +606,14 @@ def validate(report: dict) -> list[str]:
     dirty_short = {cid: row["drops"] for cid, row in report["short"].items() if row["drops"]}
     if dirty_short:
         failures.append(f"short corpus dropped blocks: {dirty_short}")
-    return failures + validate_vac(report["vac"])
+    return failures + validate_vac(report["vac"]) + validate_live(report["live"])
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--chunk-ms", type=float, default=DEFAULT_CHUNK_MS)
     parser.add_argument("--decode-rtf", type=float, default=DEFAULT_DECODE_RTF)
-    parser.add_argument("--headroom-s", type=float, default=AUDIO_HEADROOM_S)
+    parser.add_argument("--headroom-s", type=float, default=None)
     parser.add_argument("--json", action="store_true", help="Include the full queue timeline.")
     args = parser.parse_args()
 
@@ -601,6 +655,13 @@ def main() -> None:
                 f"trims={measured['trims']} forced_trims={measured['forced_trims']} "
                 f"drops={measured['drops']} "
                 f"| drops first at x{drop_scale}"
+            )
+        for clip, run in report["live"].items():
+            print(
+                f"live/{clip}: x{run['cost_scale']} + {LIVE_STALL_S:.2f}s stall "
+                f"updates={run['updates']} "
+                f"audio_q={run['max_audio_s']:.3f}/{run['headroom_s']:.3f}s "
+                f"forced_trims={run['forced_trims']} drops={run['drops']}"
             )
         forced = {
             clip: row["measured"]["forced_trims"]

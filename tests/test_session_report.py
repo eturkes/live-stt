@@ -476,6 +476,9 @@ def test_render_names_drop_increases_in_blocks(tmp_path):
     assert "     14:00:10  +2 blocks (drop=2)  gap 19.0s  n=1 -> n=2  skip +1" in rendered
     assert f"       screened 14:00:11  repetition  {screened_text}" in rendered
     assert "     14:00:30  +3 blocks (drop=5)  gap 20.0s  n=2 -> n=3" in rendered
+    # The log body already carries its label; the renderer must not add a second.
+    assert "   backlog peak: q=0.50s drop=5 skip=1\n" in rendered
+    assert "backlog peak: backlog peak:" not in rendered
 
 
 def test_a_pre_caption_drop_increase_on_an_o_path_session_names_its_screened_caption(tmp_path):

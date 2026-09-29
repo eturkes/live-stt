@@ -507,49 +507,83 @@ long speech, and never as the cost of the 409 held utterances.
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 
-VAC awaits each decode inside the coroutine draining `audio_q`, so unlike the sherpa two-stage worker
-it does NOT feed VAD during decode — capture buffers into `AUDIO_HEADROOM_S`=2 s instead. Survivable,
-not free: per-update NPU decode measured p50 0.552/0.645 s and max 0.764/1.006 s on the two pause-free
-clips against a 1 s update cadence, with the trim rule capping the buffer at 11.248 s.
+VAC awaits each decode — update and final alike — inside the coroutine draining `audio_q`, so unlike
+the sherpa two-stage worker it does NOT feed VAD during decode: capture stacks at 1 s/s into
+`AUDIO_HEADROOM_S`=8 s for the whole blocking span. Per-update NPU decode measured p50 0.552/0.645 s
+and max 0.764/1.006 s on the two pause-free clips against a 1 s update cadence, the trim rule capping
+the buffer at 11.248 s. **Two rules hold the line, each owning one live failure shape:**
 
+- **The catch-up rule owns sustained overload.** Each update consumes exactly `VAC_CHUNK_S`, so
+  decodes slower than that stack `decode_s − 1` of backlog per update. An update due while more than
+  `VAC_BACKLOG_S`=0.5 s is queued waits for the drain and fires on the first block leaving ≤ 0.5 s,
+  folding all pending audio into one decode ⇒ cadence = max(`VAC_CHUNK_S`, `decode_s`) and the queue
+  peak ≤ 0.5 s + one blocking span. At recorded cost a due update sees at most 0.28 s queued (a final
+  decode's carry into the next utterance), so the traced trajectory and replay's output stay
+  byte-identical; a queue without `queued_samples` (replay's) never waits, and neither does the final
+  decode.
+- **The 8 s headroom owns single blocking spans.** No drain runs inside one, so the queue must
+  outlast the longest: an update decode chained straight into the final one (the VAD closes on the
+  block after the update fires) and a runaway decode up to the 448-token cap. 8 s holds two
+  back-to-back measured runaways (3.53 s each) on top of the 0.5 s catch-up allowance, 7.56 s; a
+  span past what the queue has left drops like any other.
+- **Measured live on the 09-24 capture.** A 29-minute session on battery under
+  `low-power` (NPU at 950 MHz in 366 of 617 active samples) logged `drop=1949` at 2 s headroom. Its
+  10 Hz `q=` meter reads 863 blocking spans, p50 0.60 / p90 0.92 / max 3.53 s, holding 1759 of the
+  1949 dropped blocks (188.9 blocks/s saturated ⇒ ~5.3 ms each, ~10 s of speech). Three shapes:
+  **S** sustained 1.0-1.4 s updates stacking inside long utterances; **C** update + final chains of
+  2.4-2.8 s; **R** a 444-character runaway update at 3.53 s. That is why drops sat in long
+  publication gaps without duration alone causing them: only a long utterance on a slow machine
+  state stacks S, and C and R need a chain or a runaway. The older 26-minute `drop=9033` session
+  kept only a peak digest: its bursts in ≥17 s gaps, the 4 largest near screened captions, FIT S and R
+  — an inference that digest cannot decide.
+- **Limit: `HARD_TRIM_S` is enforced AFTER a decode**, so once trims have already failed (the
+  forced-trim regime, 28 s with no segment cut) a catch-up fold can hand whisper up to 28 s + the
+  backlog, of which it reads 30 s. Outside everything measured — the real paced max buffer is
+  11.12 s — and inside a regime that already discards un-emitted text.
+- **The `live` arm of `tests/eval_backpressure.py` is the lock**: both traced clips at ×1.75 (the
+  first rung at or above the live/trace ratios 1.42 and 1.64 of ≥ 1 s updates) with the middle update
+  charged the measured 3.53 s. The old code drops 97 / 1323 blocks there; the fix drops none, queue
+  peak 3.52 / 3.66 s. Neither rule alone passes: 8 s without catch-up still drops 947 blocks on
+  `retention_probe`, and catch-up at 2 s drops on the stall. The recorded-cost ladder now first drops
+  at ×6 on both clips (×2.0 / ×1.5 before). **Its `forced_trims=1` on `retention_probe` is a harness
+  artifact** — off the recorded trajectory the replayed hypotheses no longer match their buffers, so
+  `_trim` finds no cut; the same arm on the REAL NPU recogniser trims normally (max buffer 11.12 s,
+  0 forced trims, 0 drops).
+- **What catch-up costs in accuracy — real NPU recogniser, `retention_probe` at ×1.75 on the virtual
+  clock**, trace-interpolated costs with real text and segments:
+  `tests/eval_retention.py --pace 1.75 [--stall] [--no-catchup]`.
+
+  | arm | CER | S / D / I | queue peak |
+  | --- | --- | --- | --- |
+  | catch-up | **0.0600** | 35 / 34 / 1 | 3.12 s |
+  | no catch-up, unbounded queue | 0.0609 | 36 / 35 / 0 | 24.26 s |
+  | catch-up + 3.53 s stall | **0.0720** | 28 / 52 / 4 | 4.00 s |
+  | no catch-up, unbounded + stall | 0.0609 | 36 / 35 / 0 | 26.42 s |
+
+  Sustained overload costs nothing: the stretched cadence reads 0.0600 against 0.0609. Folding a
+  runaway-length stall into ONE decode costs **+0.011 on this one sample**; the lossless alternative
+  lags the caption by 24-26 s, and the shipped 8 s without catch-up drops 947 blocks. Accepted trade:
+  3 of 863 live spans exceeded 2 s, one of them runaway-length. At ×1.0 the real-recogniser run
+  reads 0.060891938250428816, the shipped figure to the digit.
 - **Aggregate RTF is the wrong instrument** — it shows mean compute below real time and says nothing
   about maximum blockage, which is what the headroom is spent against.
-- **Carry is the right one:** a caption costing more wall time than its own audio hands the difference
-  to its successor, and only that accumulation can outgrow a bounded queue (silence between captions
-  drains further, so ignoring gaps is conservative). Over 215 captions of narration the worst carry is
-  **0.017 s of the 2.000 s headroom** ⇒ the queue empties inside every utterance and its peak is one
-  update decode. Knee: carry reaches the headroom at **×1.541** decode cost, reproducing the ×1.5
-  ladder reserve on 4.4× the audio.
+- **Carry is the cross-utterance instrument:** a caption costing more wall time than its own audio
+  hands the difference to its successor (silence between captions drains further, so ignoring gaps
+  is conservative, and catch-up only lowers a caption's decode sum). Over 215 captions of narration
+  the worst carry is **0.017 s**; carry reaches 2 s at ×1.541 and the 8 s headroom at **×1.762**.
 - **A caption's `decode_s` is a SUM of that utterance's update decodes, never one blocking call** —
   reading its 7.420 s max against `AUDIO_HEADROOM_S` reports a stall that did not happen. Never
   re-derive real-time risk from per-caption sums.
 - Rerun cost varies ~20 % run to run, and the burst is machine state rather than a path property: the
   same clip/section/device at RTF 1.098 (`git show f25cfb5:tests/caption_trace.json`) carries
   **77.231 s** where the current trace carries 0.000 s.
-- **The 0.017 s reserve is a CLOSED-utterance figure, and live sessions drop audio for a cause the
-  surviving evidence cannot name.** Carry drains at every VAD close and the 215 narration captions it
-  was measured over all closed. A 26-minute live session (143 captions, 1563 s) ended at
-  `backlog peak: q=2.00s drop=9033 skip=20`. Supported: all 12 drop-counter increases sit inside a
-  publication gap of ≥17 s, and each of the 4 largest has a `skip=` increase within 11 s (separations
-  0, 1, 1 and 11 s — quote the separations, since any ratio here is an artifact of the window chosen).
-  **REFUTED, do not re-derive it — duration alone is NOT the cause:** 16 of the 20 gaps >20 s dropped
-  nothing, the longest among them (81 s), and the paced VAC arm runs 182 s of pause-free speech
-  drop-free at an audio-queue peak of 1.060 s of the 2.000 s headroom. The surviving correlate is a
-  SCREENED caption, which is as far as the evidence goes: `caption_defect` has two arms, and only one
-  of them — a repetition runaway — costs more than real time (RTF 1.106), while plain English caught
-  by the latin rule costs nothing extra. Separating them needs the `caption dropped (…)` lines, and
-  that session kept no stderr log, only a sampled digest of its `backlog peak:` lines ⇒ no mechanism
-  is established. `drop=` counts backend-sized callback BLOCKS of captured audio, never samples and
-  never speech, so it converts to seconds only with a block size the digest does not record — quote
-  blocks. **The reader now exists and the capture now costs one redirect:**
-  `session_report.py`'s `attribute_drops` places every `backlog peak:` drop increase against the
-  captions bracketing it, the publication gap between them, and each `caption dropped (…)` line
-  inside that gap with the defect it named, and the peak log's pair gate (L-006 above) lets
-  `2> stt.log` record that timeline without spending the status line. That same gate carries the
-  run's own `session: <path>` marker, which is what places an increase that precedes the first
-  caption: a log without it starts an `-o PATH` session at its first caption and drops the whole
-  startup window. A live session reproducing a nonzero `drop=` with the log kept now exists, not
-  yet analyzed: `.agent/deferred.md` → *Explain the live audio drops* (b).
+- `drop=` counts backend-sized callback BLOCKS, never samples or speech ⇒ quote blocks, converting
+  only with a measured block size. `session_report.py`'s `attribute_drops` places every `backlog
+  peak:` drop increase against its bracketing captions, publication gap and screened captions, and
+  the peak log's pair gate (L-006 above) lets `2> stt.log` record that timeline with the status line
+  kept; the run's own `session: <path>` marker places an increase that precedes the first caption.
+  The blocking spans themselves are read off the status line's `q=` sawtooth in a `script -T`
+  typescript: `q` rising at 1 s/s is the drain stalled on a decode.
 
 ## Known caveats
 

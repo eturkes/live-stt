@@ -13,10 +13,11 @@ This is the fixed procedure a "**Did not verify (L-004)**" disclaimer points at.
 stability, continuous >10 s decode behaviour and the full-file narration path. Paced production replay
 owns the 44.722 s / 20 ms-callback / decode-RTF 0.20 backpressure case and all 7 short clips, and it
 extends to the shipped VAC branch on real NPU per-update cost for both pause-free clips: `drop=0`,
-`forced_trims=0`, segment queue 0 (VAC owns none), audio queue peak 0.760 s / 1.060 s of the 2.000 s
+`forced_trims=0`, segment queue 0 (VAC owns none), audio queue peak 0.760 s / 1.060 s of the 8.000 s
 headroom, longest contiguous decode 0.764 s / 1.006 s — and contiguous == max single decode, so one
-update fires per drain and updates never bunch. The long-form carry arm confirms the reserve with no
-corpus at all. `eval_retention.py` is the shipped path's accuracy gate. Pure tests own drain-on-shutdown,
+update fires per drain and updates never bunch. The `live` arm replays the machine state that dropped
+audio live (×1.75 decode cost plus one 3.53 s blocking span) drop-free under the catch-up rule, and
+the long-form carry arm confirms the reserve with no corpus at all. `eval_retention.py` is the shipped path's accuracy gate. Pure tests own drain-on-shutdown,
 sentinel landing, stage-failure cancellation and translator degradation. **Terminal close is
 agent-covered**: `test_shipped_path.py` forks a real pty, closes the master, and asserts the child exits
 0 with both lines in its transcript.
@@ -33,10 +34,11 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 1. **Devices** — `uv run live-stt --list-devices` prints the `sd.query_devices()` table and exits. Pass:
    your mic shows with input channels.
 2. **Capture + backlog** — `uv run live-stt 2> stt.log`, speak, and KEEP the log. Pass: `SRC n:` lines
-   print; `q=` / `seg=` are absent or brief and clear after each utterance; any `drop=N` fails. A live
-   session HAS produced `drop=` with no established cause (`.agent/deferred.md` → *Explain the live
-   audio drops*), and the surviving high-water digest of that session cannot attribute a drop to a
-   caption, which is why the row is still open. **One redirect now captures the whole timeline
+   print; `q=` / `seg=` are absent or brief and clear after each utterance; any `drop=N` fails. The
+   drops the 09-24 session logged have a measured mechanism and a fix (catch-up rule + 8 s headroom,
+   `asr-pipeline.md` `## Real-time cost`) that has NOT met a mic: on a slow machine state (battery,
+   `low-power`) `q=` may now climb past 2 s during a long utterance or a runaway caption and must
+   clear once it ends, partial captions updating less often meanwhile. **One redirect captures the whole timeline
    without hiding the status line** — the peak log gates on the stream PAIR (L-006,
    `asr-pipeline.md`), so the status line stays on screen while `backlog peak:` and
    `caption dropped (…)` lines land in the file. What it is NOT is free: the peak re-logs whenever
@@ -88,11 +90,12 @@ carry it are the ones the detector had under 2 s of audio to judge.
 ## Soak (1-3 h) — watch at start and end
 
 - **Backlog / drops** — `q=` / `seg=` / `drop=` / `tdrop=` / `tstale=` stay absent (`q=` / `seg=`
-  may blip and clear). A standing `q=Ns` means PCM awaits VAD within `AUDIO_HEADROOM_S`=2 s; `seg=N` means completed
-  utterances await decode within `SEGMENT_QUEUE_MAX`=8; any `drop=N` means ingestion fell behind, and
-  its cause is currently UNKNOWN — a 26-minute session reached
-  `backlog peak: q=2.00s drop=9033 skip=20` with every burst inside a ≥17 s publication gap, yet 16 of
-  the 20 such gaps dropped nothing, so keep `stt.log` rather than diagnosing from the meter;
+  may blip and clear). A standing `q=Ns` means PCM awaits VAD within `AUDIO_HEADROOM_S`=8 s; `seg=N` means completed
+  utterances await decode within `SEGMENT_QUEUE_MAX`=8; any `drop=N` means ingestion fell behind — on the
+  default engine one blocking span exhausted what the queue had left (≤ `VAC_BACKLOG_S` of backlog
+  plus the span reaching 8 s) or the catch-up rule stopped holding updates back
+  (`asr-pipeline.md` `## Real-time cost`), on sherpa the decode stage backing up past `seg=` — so keep
+  `stt.log` and the `script -T` typescript whose `q=` sawtooth times each span;
   `tdrop=N` means translation fell behind. **`tskip=N` is a CONTENT decision, never backpressure** —
   reading it as backlog corrupts the soak result. Wherever the status line is not the reader's, the same
   counters ride stderr as `backlog peak:` HIGH-WATER marks, logged only when a peak moves (a clean run
