@@ -41,11 +41,3 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `tests/eval_backpressure.py` arm proven RED against today's code and fixed green with retention
    CER ≤ 0.0609 re-derived, or the row records a refusal naming the measured headroom shortfall and
    what the user loses. A capture that cannot decide (c) sends the row back to the mic (L-004).
-3. **Re-derive the L-031 sizing analogs under MAIN at 1M.** `assurance-posture.md`'s gauge paragraph
-   sizes units against three `main=` actuals (181K / 196K / 205K) and a ≈75K fresh-session baseline,
-   all measured while MAIN compacted near 273K; MAIN now runs at a raw 1M, collapse-managed, and the
-   same paragraph still puts `.agent/spec.md` at ~6 KB while it weighs ~15 KB.
-   **Accept:** the funding session records its fresh-session baseline with `context-gauge` at
-   orientation, re-measures the attached state with `wc -c`, and rewrites the paragraph from those
-   numbers — or cuts it to the absolute-K rule alone where a collapse-managed 1M MAIN leaves no
-   window to size against; gate green.

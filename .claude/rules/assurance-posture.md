@@ -92,11 +92,16 @@ ledger carries rows between sessions.
 
 `<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): the raw
 **1M** for MAIN, **272K** for a teammate; `/240K` in every gauge M11-M13 recorded, `/273K` in the
-later ones. Compare units by absolute K; the percentage is denominator-relative. **The last three
-closed units measured `main=` 181K / 196K / 205K** against bottom-up estimates of 92K / 100K / 40K,
-work ratios 1.15 / 1.21 / 3.25 once a **fresh-session baseline of ≈75K** is backed out — and the
-3.25 outlier is the milestone's SMALLEST unit by estimate, where a small denominator makes the ratio
-noise and the absolute 130K is the signal. Those actuals stay the sizing analogs ⇒ size a new unit
-bottom-up against them, never against a literal written here. **Re-measure the baseline on the
-first unit of this phase**: that ≈75K carried 182 KB of attached state, which `.agent/spec.md`
-replaces at ~6 KB.
+later ones. Compare units by absolute K; the percentage is denominator-relative. **Size by WORK
+above the fresh-session baseline, never by a `main=` total**, because the baseline moves with the
+attached state while the work does not. The analogs = the last three closed M-series units:
+**106K / 121K / 130K** of work (`main=` 181K / 196K / 205K less a ≈75K baseline that carried 182 KB
+attached) against bottom-up estimates of 92K / 100K / 40K ⇒ ratios 1.15 / 1.21 / 3.25, the outlier
+being the SMALLEST unit by estimate, where the small denominator makes the ratio noise and the
+absolute 130K is the signal. Size a new unit bottom-up against those work figures, never against a
+literal written here. **A fresh MAIN session now opens at 45K** over 88 KB attached — global
+`CLAUDE.md` 26.3 KB, `CLAUDE.md` 13.5 KB, `CLAUDE.local.md` 5.1 KB, `.agent/spec.md` 14.8 KB, the
+three bare rules files 28.2 KB. MAIN at 1M is collapse-managed and has no compaction window a unit
+must fit, so the budget that binds is a teammate's: `context-alert` hands it off at 205K, so a
+brief's bottom-up work plus that teammate's own opening baseline (unmeasured here) must land under
+205K.
