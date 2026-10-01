@@ -69,6 +69,12 @@ Detail → `.claude/rules/`, which each `D-###` names.
   `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
   re-derive (`asr-pipeline.md`). **D-010** sherpa k2v2/parakeet stay as the `--engine` CPU fallback
   (VAD-segment decode, no partials).
+- **JA-tuned checkpoint** (user rulings, queue *JA-tuned Whisper checkpoint*): decided AFTER the
+  boundary-artifact fix, re-measured under the fixed policy; adopt `whisper-ja-760M` only if it wins
+  every JA leg. If adopted, it decodes Japanese and turbo stays resident for English (`--two-way`,
+  `--source-lang en`); its undeclared licence is acceptable for this personal, local-only tool.
+  Measured so far (NPU, one harness): FLEURS-ja 0.0499 → 0.0469, long-form 0.2546 → 0.2213,
+  retention 0.0609 → 0.0626 (10 boundary doublings), FLEURS-en 0.0255 → 0.0482; 1.5B + kotoba out.
 - **D-002** one file: `live_stt.py` + `streaming.py`. A further split needs a cohesive one-way
   subsystem boundary named out loud. **D-006** never re-densify `live_stt.py` for "LLM readability".
 - **D-014** deterministic WAV replay is the regression harness. **D-015** `observe_en` learns an
@@ -109,7 +115,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   0.0583 → 0.0609. `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
   adjudicated over 1409 live captions and REFUSED, the tripling invariant flooring it at 40 and
   excluding the whole 31..36 admissible band. Language gate is **text-side only**
-  (`latin > 4 × japanese`); a whisper LID gate is measured, feasible and REFUSED.
+  (`latin > 4 × japanese`, on text DECODED under `ja` — a two-way piece decoded under `en` skips it);
+  a whisper LID gate is measured, feasible and REFUSED.
 - EN-leg recovery = **respawn (app-server EOF) + cooldown re-probe (3-strike disable)**, one
   mechanism, arm picked by `_alive()`, 5-attempt budget, doubling cooldown, marked in the transcript.
 - A queued caption whose translation would land long after it was spoken is **published
@@ -176,14 +183,14 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **3** Two-way English captions pass the screen
-  - Kernel tier; accept → `.agent/deferred.md` → *Two-way English captions pass the screen*.
-- [ ] **4** JA-tuned Whisper checkpoint
+- [ ] **3** JA-tuned Whisper checkpoint
   - Kernel tier; accept → `.agent/deferred.md` → *JA-tuned Whisper checkpoint*.
-- [ ] **5** Streaming boundary artifacts
+- [ ] **4** Streaming boundary artifacts
   - Kernel tier; accept → `.agent/deferred.md` → *Streaming boundary artifacts*.
-- [ ] **6** Screen each segment inside a released piece
+- [ ] **5** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
+- [ ] **6** Session report reads two-way transcripts
+  - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`

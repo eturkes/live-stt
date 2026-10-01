@@ -585,3 +585,36 @@ def test_whitespace_matched_engine_spans_do_not_publish_before_a_trim(
         "SRC published without a normal or forced trim",
         [(line.window, line.text) for line in run.lines],
     )
+
+
+def test_two_way_publishes_english_decoded_under_en(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The latin screen guards the JA pin; text decoded under <|en|> is supposed to be latin.
+
+    Keyed on ASR_LANGUAGE, which --two-way leaves at ja, it dropped every English caption.
+    """
+    english = ("Hello ", "there. ", "We ", "moved ", "the ", "meeting ", "to ", "Friday.")
+    run = _drive(monkeypatch, CLEAN, outcomes=[None, "en"], reverse=english)
+
+    assert live_stt.ASR_LANGUAGE == "ja"
+    assert run.state.dropped_captions == 0
+    assert "".join(_texts(run)) == "".join(english[: len(CLEAN)]).strip()
+    assert {source for _, _, source in run.submitted} == {"en"}
+
+
+def test_a_latin_dominant_piece_decoded_under_ja_is_still_screened() -> None:
+    assert live_stt.caption_defect(BAD, "ja")
+    assert live_stt.caption_defect(BAD, "en") is None
+    assert live_stt.caption_defect("繰り返し" * 12, "en")  # the loop rule spans languages
+
+
+def test_two_way_still_screens_a_latin_piece_decoded_under_ja(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The decode token, never the mode, picks the rule (reviewer-5/6's witness, ported)."""
+    labels = (BAD, "", "", "", GOOD, "次の話です。")
+    run = _drive(monkeypatch, labels, trim_s=0.5, outcomes=["ja"])
+
+    assert set(run.rec.languages) == {"ja"}
+    assert run.state.dropped_captions == 1
+    assert BAD not in "".join(_texts(run))
+    assert "".join(_texts(run)) == "".join(labels[4:])

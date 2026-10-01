@@ -171,7 +171,8 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   120/240/480**; `中央の`/`クラブの`/`アーメンの` survive 240 (4.6-10.8 s) and **all stall at 480**;
   real speech scales flat to **7.0 s at 480**. So it is repetition, not length, and not only single
   characters. The publication screen in `asr-pipeline.md` is what keeps such a caption out; `submit`'s
-  identical screen is the backstop, and it declines before the queue ⇒ `_turn`, `_failures` and
+  repetition screen (the loop rule alone) is the backstop, and it declines before the queue ⇒
+  `_turn`, `_failures` and
   `observe_en` are untouched by construction.
 
 ## Live validation — two sessions on a real mic, 26 min and 2 h 14 min

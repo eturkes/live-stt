@@ -151,8 +151,8 @@ Two defences apply, in order:
 
 A caption is dropped when either rule matches:
 
-- 40 or more of its characters are one unit of at most 8 characters, repeated back to back.
-- Its Latin letters outnumber its Japanese characters by more than `CAPTION_LATIN_RATIO` to 1.
+- 40 or more of its characters are one unit of at most 13 characters, repeated back to back.
+- It was recognized as Japanese, and its Latin letters outnumber its Japanese characters by more than `CAPTION_LATIN_RATIO` to 1. Under `--two-way`, a caption recognized as English skips this rule.
 
 Both bounds sit in an empty gap in 1073 live captions, which the rules drop 4.0 % of. The smallest looped caption carries 252 repeated characters and the longest survivor carries 32. A Latin letter is one phoneme where a Japanese character is a whole syllable, so one loanword outnumbers the kana around it: at 1 to 1 the second rule reads `Discordで送ります。` as English. The 18 spoken-English captions stay below 0.15 Japanese characters per character, and the 6 Japanese captions that carry loanwords stay above 0.27.
 

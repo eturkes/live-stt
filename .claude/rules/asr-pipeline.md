@@ -331,7 +331,8 @@ paths:
 
 - The screen runs at PUBLICATION, upstream of every consumer, so `observe_ja`, the translator queue,
   `_turn` and `_failures` cannot see a defective caption by construction and a runaway streak of any
-  length costs no strike. `CodexTranslator.submit`'s identical screen is the BACKSTOP ⇒ on the
+  length costs no strike. `CodexTranslator.submit`'s repetition screen (the loop rule alone) is
+  the BACKSTOP ⇒ on the
   shipped path `tskip=` stays 0. **`tskip=N` is a CONTENT decision, never backpressure** — and
   `tstale=N` is a third thing again, a TIMELINESS one (`translation-leg.md`); the three never merge.
 - Thresholds, corpus-picked against 1073 live JA captions over 6 sessions (`transcripts/*.txt` is
@@ -363,6 +364,10 @@ paths:
   31..36 ∩ [40,∞) = ∅ ⇒ no bound satisfies both. Forgone by refusing: exactly ONE caption, n=213.
   Re-open only by redesigning the screen to count REPEATS per unit size rather than characters, which
   is a different screen, not a threshold move.
+- **The latin rule keys on the DECODE language** (`caption_defect(text, token)`; `ASR_LANGUAGE`
+  when unnamed): it guards the JA pin, so a two-way piece decoded under `<|en|>` skips it — keyed
+  on `ASR_LANGUAGE`, which `--two-way` leaves at `ja`, it dropped every English caption
+  (`test_two_way_publishes_english_decoded_under_en`). The loop rule spans every language.
 - Latin ratio: the 23 latin-dominant live captions split cleanly — 17 true English at ≤0.15
   Japanese-per-character, 6 Japanese-carrying-loanwords at ≥0.27, nothing between. A 1:1 rule
   (`latin > japanese`) drops **6 genuine Japanese captions**, because a Latin letter is one phoneme

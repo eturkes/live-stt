@@ -21,16 +21,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** `rg -n --hidden 'human-facing' .agent/spec.md .claude/rules/` → every hit names the
    same surface set as `human-docs.md` or points at it; the gate stays green.
 
-3. **Two-way English captions pass the screen** — under `--two-way` `ASR_LANGUAGE` stays `ja`, so
-   `caption_defect`'s latin rule (a JA-pin artifact screen) drops every utterance decoded under
-   `<|en|>`: the reverse direction publishes nothing English (found by tester-1, reproduced
-   through the real worker by reviewer-2; no lock fed English text through publication). Kernel.
-   **Accept:** the screen takes the piece's decode language — the latin rule applies only to text
-   decoded under `ja`, the repetition rule to every language; a two-way lock publishes an English
-   piece decoded under `en` and still drops a latin-dominant piece decoded under `ja`, red on the
-   unfixed worker; one-way JA and `--source-lang en` behaviour unchanged; the gate stays green.
-
-4. **JA-tuned Whisper checkpoint** — most live errors are misrecognitions, not streaming artifacts
+3. **JA-tuned Whisper checkpoint** — most live errors are misrecognitions, not streaming artifacts
    (≤218 of 27,184 characters of the 10-01 run are adjacent repeats). User ruling: REOPEN D-016's
    checkpoint selection inside the same OpenVINO NPU pipeline. Candidates fixed before measuring
    (researcher-1): `efwkjn/whisper-ja-760M@00daeaf`, `kotoba-tech/kotoba-whisper-v2.0@7eb5752`,
@@ -46,7 +37,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    them; no win ⇒ the table lands in `asr-pipeline.md` as the D-016 re-open record; the gate stays
    green.
 
-5. **Streaming boundary artifacts** — live captions carry duplicated fragments
+4. **Streaming boundary artifacts** — live captions carry duplicated fragments
    (`大学院生が大学院生が`) and lost heads (`ュアル` for ビジュアル); user ruling: REOPEN the duplication
    closed after two attempts. Offline the committed traces show I=0 (no reproducer); one mechanism
    is witnessed — spans whose join outruns the stripped text let `process()` commit past `emitted`
@@ -60,10 +51,18 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    separating a real re-spelling from span jitter; or (c) the failed attempt recorded with what it
    taught; the gate stays green.
 
-6. **Screen each segment inside a released piece** — one trim can release several whisper segments
+5. **Screen each segment inside a released piece** — one trim can release several whisper segments
    as one piece, and the screen drops that piece whole, so a loop segment takes its clean
    neighbours with it (tester-1 trace: `繰り返し`×12 + one clean sentence, both dropped). Kernel.
    **Accept:** a piece is screened per released segment (segment counts from the trimming decode,
    never hypothesis text), the surviving segments publish as one line, a lock shows a loop segment
    dropped alone with its clean neighbour published, red on the unfixed worker; the gate stays
    green.
+
+6. **Session report reads two-way transcripts** — a transcript records no per-line decode language,
+   so `session_report.py` re-screens every source line under one `--source-lang`: an English line a
+   two-way session published reads as a latin `declined` caption (reviewer-6, authored mixed
+   transcript: `latin_drops=1`). Data tier.
+   **Accept:** a two-way session's English source lines are never reported as screen declines — the
+   transcript carries what the report needs, or the report takes a flag that skips the latin rule
+   for two-way sessions; a lock over an authored mixed transcript, red before; the gate stays green.

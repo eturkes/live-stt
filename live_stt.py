@@ -1262,15 +1262,18 @@ def repeat_span(text: str) -> int:
     return best
 
 
-def caption_defect(text: str) -> str | None:
+def caption_defect(text: str, language: str | None = None) -> str | None:
     """Why this caption must not be published, or None to publish it.
 
     Both defects are the same failure wearing two faces: the recognizer is pinned
     to Japanese, so audio it cannot account for still comes back as Japanese
     tokens. Sometimes that is a loop, sometimes it is the English that was
     actually spoken, and neither belongs in a Japanese transcript. The latin rule
-    is that pin, so --source-lang en retires it while the loop rule stays.
+    is that pin, so it keys on the language the text was DECODED under
+    (`ASR_LANGUAGE` when unnamed): --source-lang en retires it, and so does a
+    two-way piece decoded under <|en|>, while the loop rule stays for every language.
     """
+    language = ASR_LANGUAGE if language is None else language
     span = repeat_span(text)
     if span >= CAPTION_REPEAT_MAX_CHARS:
         return f"{span} of {len(text)} characters are one repeated unit"
@@ -1279,7 +1282,7 @@ def caption_defect(text: str) -> str | None:
     # caption (320) counts on neither side and stays.
     latin = len(_LATIN_RUN.findall(text))
     japanese = len(_JAPANESE_RUN.findall(text))
-    if ASR_LANGUAGE == "ja" and latin > CAPTION_LATIN_RATIO * japanese:
+    if language == "ja" and latin > CAPTION_LATIN_RATIO * japanese:
         return f"{latin} latin letters against {japanese} japanese characters"
     return None
 
@@ -1997,7 +2000,7 @@ async def _vac_segments(
     def publish(text: str) -> None:
         """One piece: the screen, one number, one transcript line, one turn."""
         nonlocal seq
-        defect = caption_defect(text)
+        defect = caption_defect(text, token)
         if defect:
             # Dropped before anything downstream sees it, so the reader's terminal,
             # the transcript, the numbering, the term learner and the translator
