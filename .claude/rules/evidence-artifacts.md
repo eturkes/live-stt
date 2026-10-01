@@ -80,7 +80,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
   them reproduces the measured TRIM trajectory with no model, and `divergences == 0` certifies each
   cost and hypothesis was charged to the buffer it was measured on — a trim-schedule check, never a
   commit match: commits follow the CURRENT processor (`commit_changes` counts where they differ
-  from the recorded run; the boundary anchor changes 1 + 3 there while keeping every trim). 122 KB ⇒
+  from the recorded run; on turbo's pre-swap trace the boundary anchor changed 1 + 3 there while keeping every trim; the current 760M trace was recorded with it: 0 + 0). 122 KB ⇒
   read the per-clip summary keys, not `series`. Rebuild needs the NPU + the whisper prelude.
 - `eval_two_way_settled.py` — the same trace under two-way's commit rule, which withholds every commit
   until the LID accepts a label. Four arms over both clips; the table and its refutation live in

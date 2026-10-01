@@ -90,7 +90,7 @@ paths:
   confirming continuation after a LATER repeat and taking it swallowed new speech. Below half
   agreement the count stands; a decode stopping short of the published end commits nothing.
   Trims fire on a commit, where count slicing WOULD have committed (so the committed trace keeps its
-  whole trim schedule: 0 offset divergences, 1 + 3 commits changed), or past `buffer_trim_s` +
+  whole trim schedule: 0 offset divergences, 1 + 3 commits changed on turbo's pre-swap trace), or past `buffer_trim_s` +
   `ANCHOR_STALL_S`=4 (12 s; traced buffers never pass 11.25 s) — without the last two an aligned
   empty commit starved `_trim` into a forced trim at 29 s, the old `startswith` guard's failure.
   Span whitespace is normalized in `process()` (`' ABC'` counted 4: a cut there retained D yet
@@ -649,7 +649,7 @@ trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248
   runaway-length stall into ONE decode costs **+0.011 on this one sample**; the lossless alternative
   lags the caption by 24-26 s, and the shipped 8 s without catch-up drops 947 blocks. Accepted trade:
   3 of 863 live spans exceeded 2 s, one of them runaway-length. At ×1.0 the real-recogniser run
-  reads 0.060891938250428816, the shipped figure to the digit.
+  reads 0.060891938250428816, turbo's shipped figure of the time to the digit.
 - **Aggregate RTF is the wrong instrument** — it shows mean compute below real time and says nothing
   about maximum blockage, which is what the headroom is spent against.
 - **Carry is the cross-utterance instrument:** a caption costing more wall time than its own audio
@@ -667,7 +667,7 @@ trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248
   re-derive real-time risk from per-caption sums.
 - Rerun cost varies ~20 % run to run, and the burst is machine state rather than a path property: the
   same clip/section/device at RTF 1.098 (`git show f25cfb5:tests/caption_trace.json`) carries
-  **77.231 s** where the current trace carries 0.000 s.
+  **77.231 s** where turbo's later trace carried 0.000 s (the whisper-ja-760M trace: 0.137 s).
 - `drop=` counts backend-sized callback BLOCKS, never samples or speech ⇒ quote blocks, converting
   only with a measured block size. `session_report.py`'s `attribute_drops` places every `backlog
   peak:` drop increase against its bracketing captions, publication gap and screened captions, and

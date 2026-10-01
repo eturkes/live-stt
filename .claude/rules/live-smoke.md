@@ -59,7 +59,7 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    its own `TGT`; a brief mid-sentence pause does not split it; committed characters are never
    rewritten or duplicated once shown, across piece lines included. On
    `--engine k2v2|parakeet` the old rule still applies: no partials, `SRC n:` ~0.6 s after you stop.
-5. **Translation cadence** — Codex up. Pass: each `TGT n:` trails its `SRC n:` by ~1 s, shared `n` keeps
+5. **Translation cadence** — Codex up. Pass: each `TGT n:` trails its `SRC n:` by ~2-3 s, shared `n` keeps
    pairs matched; `--no-translate` suppresses every TGT line.
 6. **Ctrl+C mid-utterance** — start speaking, Ctrl+C while still talking. Pass: the in-progress `SRC n:`
    still prints (the worker flushes the VAD in `finally`), its `TGT n:` still lands if Codex is up (the

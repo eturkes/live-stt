@@ -77,7 +77,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   fixed processor, turbo → 760M: FLEURS-ja 0.0499 → 0.0469, retention 0.0592 → 0.0532, long-form
   §01+§03 0.2486 → 0.2153, FLEURS-en 0.0255 → 0.0482, quiet per-update p90 0.761 s. kotoba-v2.0 eliminated
   on every arm (EN 0.9945, retention 0.2238); 1.5B by the first WIN leg (FLEURS-ja 0.0560 > 0.0499),
-  its VAC/long-form/jfk arms deliberately not run (~9x slower decode = real-time leg hopeless).
+  its VAC/long-form/jfk arms deliberately not run (whole-clip decode p50 1.751 s vs turbo 0.776 s).
 - **D-002** one file: `live_stt.py` + `streaming.py`. A further split needs a cohesive one-way
   subsystem boundary named out loud. **D-006** never re-densify `live_stt.py` for "LLM readability".
 - **D-014** deterministic WAV replay is the regression harness. **D-015** `observe_en` learns an
@@ -108,7 +108,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   Time-to-SETTLED is unchanged at 2.353 s and the dim tail is rewritten on 90 of 180 updates
   (`redraws`, `eval_latency.py`) — quote the two numbers separately. The published line and the transcript stay committed-only + append-only.
 - **The published boundary is aligned, never counted** (user ruling reopened the closed
-  duplication): a decode that re-spells published text no longer re-commits or skips a character.
+  duplication): a decode that re-spells published text no longer re-commits or skips a character, ambiguous
+  end-of-prefix rewrites excepted.
   NPU retention CER turbo 0.0609 → 0.0592, whisper-ja-760M 0.0626 → 0.0532; the `whisper/long`
   golden lost its duplication; mechanism, trim rules + ambiguous cases → `asr-pipeline.md`.
 - **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
@@ -157,7 +158,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   constructs today's JA pipeline, builds ONE translation leg and decodes under `ASR_LANGUAGE`. The
   architecture the research picked is law — an EXPLICIT language token per utterance, settled by a
   standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), routes each decode to whisper-ja-760M
-  (`ja`) or a resident large-v3-turbo (`en`, loaded under `--two-way` alone; user ruling), the settled
+  (`ja`) or a resident large-v3-turbo (`en`, loaded only for `--two-way` or `--source-lang en`; user ruling), the settled
   label also selecting one of two immutable direction-specific threads (`translation-leg.md`), the
   reverse one opening LAZILY on its own first turn. The flag decides HOW MANY legs exist and nothing
   else, so no `--two-way` conditional sits inside `CodexTranslator`. One app-server is behind both

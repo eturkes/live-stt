@@ -1977,8 +1977,8 @@ async def _vac_segments(
     A numbered `SRC n:` line + one translation turn fires each time a trim moves
     committed text out of the buffer, and once more for the remainder at speech end:
     63.85 % of a live session's characters sat in captions of 100+ characters, whose
-    translation otherwise waited for the whole utterance (voice -> SRC p50 13.08 ->
-    5.55 s, max 33.20 -> 11.98 s on retention_probe, tests/eval_latency.py).
+    translation otherwise waited for the whole utterance (voice -> SRC p50 13.15 ->
+    5.67 s, max 33.46 -> 10.29 s on retention_probe, tests/eval_latency.py).
     """
     loop = asyncio.get_running_loop()
     buf = np.empty(0, dtype=np.float32)
@@ -2096,8 +2096,8 @@ async def _vac_segments(
                 published = boundary
         # This decode already produced the text LocalAgreement-2 is still
         # withholding, so showing it costs no compute and no accuracy: measured
-        # over both pinned clips it takes the reader's wait from 2.535 s to
-        # 1.187 s p50 and 8.157 s to 2.385 s max (tests/eval_latency.py). It is
+        # over both pinned clips it takes the reader's wait from 2.353 s to
+        # 1.237 s p50 and 6.402 s to 2.476 s max (tests/eval_latency.py). It is
         # METER-ONLY -- the next decode may rewrite it, while `utterance`, which
         # is what the numbered line and the transcript carry, stays append-only.
         # Before LID acceptance even the agreed run may have the wrong script, so
