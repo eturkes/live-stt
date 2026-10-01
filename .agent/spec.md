@@ -166,6 +166,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
+- [ ] **3** Publish long utterances at settled segments
+  - Kernel tier; accept → `.agent/deferred.md` → *Publish long utterances at settled segments*.
+- [ ] **4** Band-limited streaming resampler
+  - Kernel tier; accept → `.agent/deferred.md` → *Band-limited streaming resampler*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
