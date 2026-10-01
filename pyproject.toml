@@ -44,6 +44,9 @@ dependencies = [
     # extra: module-level imports make a default-OFF flag fail at import rather than
     # at use, and sherpa-onnx-core ships the native lib alone, with no Python API.
     "onnxruntime>=1.30",
+    # Live capture's band-limited 44.1 kHz -> 16 kHz stream (`Resampler`); 6.6 us per
+    # 256-frame block.
+    "soxr>=1.1",
 ]
 
 [project.scripts]

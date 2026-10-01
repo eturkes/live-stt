@@ -117,7 +117,7 @@ carry it are the ones the detector had under 2 s of audio to judge.
   resumes with no error. TGT must keep flowing across the bump.
 - **Quota** — out of band via `account/rateLimits/read`; expect ≈0 % primary-window movement.
 - **Memory** (external `ps`/`top`): RSS flat — ring, audio headroom and segment queue are bounded,
-  `_RESAMPLE_CACHE` ≤8, codex `_notes`/`_pending` drain per turn. Steady growth signals a leak.
+  one soxr stream per session, codex `_notes`/`_pending` drain per turn. Steady growth signals a leak.
 
 **Run `uv run python session_report.py --log stt.log` after any soak** — it answers every question in
 this section mechanically off the saved transcript and the redirected stderr, so a session stays

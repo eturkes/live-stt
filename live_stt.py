@@ -34,6 +34,7 @@ from typing import SupportsFloat, cast
 import numpy as np
 import onnxruntime as ort
 import sherpa_onnx
+import soxr
 
 from streaming import Segment, StreamingProcessor
 
@@ -346,16 +347,54 @@ def log_session_marker(output_path):
         logger.info("session: %s", output_path or "not saved (--no-save)")
 
 
-# key -> (idx_floor, idx_ceil, frac, y0, y1). y0 doubles as the output buffer.
-# Returned buffer is reused across calls — callers must consume (or copy) before
-# the next call. audio_callback copies when enqueueing.
+class Resampler:
+    """Stateful band-limited rate conversion for one capture stream (soxr HQ).
+
+    The mic delivers ~5 ms blocks at its native rate (44.1 kHz live). Converting each
+    block on its own, as linear_resample does, had no anti-alias filter -- a 12 kHz
+    tone came through 2.1 dB down, folded to 4 kHz -- and dropped every block's
+    fractional remainder (256 frames -> 92 of 92.88 samples: -0.95 % duration and a
+    phase jump per block). One stream carries filter state and phase across blocks.
+    """
+
+    def __init__(self, orig_rate: int, target_rate: int = SAMPLE_RATE):
+        self._stream = (
+            None
+            if orig_rate == target_rate
+            else soxr.ResampleStream(orig_rate, target_rate, 1, dtype="float32", quality="HQ")
+        )
+
+    def __call__(self, block: np.ndarray) -> np.ndarray:
+        if self._stream is None:
+            return block
+        return self._stream.resample_chunk(np.ascontiguousarray(block, dtype=np.float32))
+
+    def flush(self) -> np.ndarray:
+        """The filter's buffered tail (6-40 ms at 44.1 kHz HQ), for a stream that has ended."""
+        if self._stream is None:
+            return np.zeros(0, dtype=np.float32)
+        return self._stream.resample_chunk(np.zeros(0, dtype=np.float32), last=True)
+
+
+def resample(audio, orig_rate, target_rate):
+    """One-shot form of Resampler, for whole files (replay.py)."""
+    resampler = Resampler(orig_rate, target_rate)
+    head = resampler(audio)
+    tail = resampler.flush()
+    return np.concatenate([head, tail]) if len(tail) else head
+
+
+# The recipe the pinned corpora were cut with (fetch_real_clips.py, eval_long_form.py):
+# their SHA-256s were recorded through it, so it stays for them alone -- live capture
+# runs Resampler. key -> (idx_floor, idx_ceil, frac, y0, y1); y0 doubles as the output
+# buffer, reused across calls, so callers copy before the next call.
 _RESAMPLE_CACHE: dict[
     tuple[int, int, int],
     tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ] = {}
 
 
-def resample(audio, orig_rate, target_rate):
+def linear_resample(audio, orig_rate, target_rate):
     if orig_rate == target_rate:
         return audio
     if orig_rate > target_rate:
@@ -2577,14 +2616,16 @@ async def run_session(args):
     else:
         print("Translation: disabled (--no-translate)")
 
+    resampler = Resampler(native_rate)
+
     def audio_callback(indata, frames, time_info, status):
         if status:
             logger.warning("audio: %s", status)
         # sounddevice always passes a 2-D (frames, channels) array for InputStream.
         mono = indata[:, 0]
-        # Copy: resample() returns a shared/reused (or strided-view) buffer, and
-        # the queue defers consumption past the next callback.
-        pcm = resample(mono, native_rate, SAMPLE_RATE).copy()
+        # Copy: at the native 16 kHz the resampler passes PortAudio's buffer through,
+        # and the queue defers consumption past the next callback.
+        pcm = resampler(mono).copy()
         if recording is not None:
             loop.call_soon_threadsafe(recording.write, pcm)
         loop.call_soon_threadsafe(enqueue_audio, audio_q, state, pcm)
@@ -2637,6 +2678,16 @@ async def run_session(args):
                 stream.close()
         except Exception:  # noqa: S110 -- PortAudio may already be gone at exit
             pass
+        else:
+            # The filter still holds the stream's last 6-40 ms (probe-dependent at 44.1
+            # kHz HQ). stop() has joined the callback thread, so draining it races
+            # nothing, and one loop turn first lands the blocks already scheduled.
+            await asyncio.sleep(0)
+            tail = resampler.flush()
+            if len(tail):
+                if recording is not None:
+                    recording.write(tail)
+                enqueue_audio(audio_q, state, tail)
         # worker() may already be dead. A blocking put could then strand
         # shutdown behind a saturated queue, so land the sentinel with the
         # established evict-oldest handshake (T8.1).

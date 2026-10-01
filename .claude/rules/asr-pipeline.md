@@ -22,6 +22,34 @@ paths:
   `buffer_size_in_seconds`=60 sample ring) pops on a NON-speech window only, so >60 s of unbroken
   speech logs `circular-buffer.cc:Push … Overflow!` and doubles it — lossless, bounded by the longest
   speech run, unrelated to the segment queue, and no drain prevents that line.
+- **Capture resamples through ONE stateful band-limited stream (`Resampler`, soxr HQ).** The mic
+  runs at 44.1 kHz; the old per-block `resample()` (now `linear_resample`) had no anti-alias filter
+  (12 kHz came through 2.1 dB down, folded to 4 kHz; 48 kHz took a bare `[::3]` stride) and floored
+  every block's output (256 frames → 92 of 92.88 samples: −0.95 % duration, a phase jump per
+  ~5 ms block). Cost 6.6 µs per 256-frame block. HQ holds a stop-position-dependent 6-40 ms in
+  its filter (first output after ~40 ms); `run_session` drains it into the recording and the queue
+  after `stream.stop()` joins the callback thread, ahead of the sentinel — without that drain a
+  50 × 256-frame session reached the worker and the WAV 327 samples short
+  (`test_a_44k_session_delivers_its_whole_stream_to_the_worker_and_the_wav`).
+  `linear_resample` stays for the pinned corpora alone — `fetch_real_clips.py` and
+  `eval_long_form.py` cut their SHA-256-pinned PCM through it — so every corpus CER here measures
+  audio that passed the old recipe. `tests/test_resampler.py` (74 cases, tester-2's FFT oracle) owns
+  length, block-size invariance, passband and ≥40 dB stopband. CER A/B through the NPU VAC path, 300 Common Voice clips (48 kHz mp3 → 44.1 kHz,
+  −60 dBFS floor), N=6364, paired: old per-block 256-frame path **0.1131**, `Resampler`
+  **0.1113**, 441-frame linear (no remainder loss) 0.1109; old − new = +0.0019, 95 % CI
+  [−0.0055, +0.0094], 209 of 300 hypotheses identical (226 with equal edit counts) ⇒ no
+  measurable CER change on clean read
+  speech, shipped as the correctness fix it is (the old path delivered 29,473,319 of 29,755,200
+  samples). Live meeting audio — far-field, fricative-rich, noisy — is unmeasured
+  (`.scratch/perf/resample_ab.py`).
+  **Never pad an evaluator clip with digital silence when comparing frontends**: the band-limited
+  arm leaves ~1e-8 RMS filter residue there, silero opened a spurious ~0.6 s segment on it, and
+  whisper hallucinated `ご視聴ありがとうございました` into it on 6 of 82 Common Voice clips (the
+  per-block linear arm on 2, the 441-frame one on 0). Ordinary analog-mic capture is expected to
+  carry a noise floor (a digital mute or gate could still deliver zeros); a −60 dBFS floor
+  removed the spurious segment on all 5 affected probe clips (4 hallucinations, 1 emptied clip)
+  and the 300-clip rerun shows 0 in every arm — evidence for that floor, not a proof that no live
+  input can open such a segment.
 - **`--save-audio` records at CAPTURE** (`AudioRecording`, opt-in): every resampled block lands in
   `transcripts/<start>.wav` (16 kHz mono int16, `× 32768` = `replay.load_wav_f32_16k`'s inverse) BEFORE
   the queue, so blocks backpressure later drops stay on disk — a superset of what the recogniser saw ⇒

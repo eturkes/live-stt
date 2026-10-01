@@ -20,14 +20,3 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `models/README.md` in agent register. Docs tier.
    **Accept:** `rg -n --hidden 'human-facing' .agent/spec.md .claude/rules/` → every hit names the
    same surface set as `human-docs.md` or points at it; the gate stays green.
-
-3. **Band-limited streaming resampler** — the mic runs at 44.1 kHz and `resample()` interpolates each
-   callback block on its own: no anti-alias filter (8-22 kHz folds into the speech band) and each
-   block's fractional remainder is discarded (256 frames → 92 of 92.88 samples, −0.95 % duration, a
-   phase jump per block). Kernel tier.
-   **Accept:** (a) A/B on real speech at 44.1 kHz (Common Voice clips from their 48 kHz mp3s, cut into
-   callback-sized blocks) through the shipped NPU VAC path, CER per arm: `resample()` vs a stateful
-   band-limited resampler, paired on the same clips; (b) ship it unless CER rises — stream output
-   length equals the ideal within one sample (locked), 16 kHz input passes through unchanged (goldens
-   unmoved), per-block cost recorded against the callback budget; (c) a CER rise ⇒ record the
-   measurement in `asr-pipeline.md` and keep `resample()`; the gate stays green.

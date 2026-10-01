@@ -30,6 +30,7 @@ from live_stt import (
     _split_decode_segment,
     audio_path,
     emit_line,
+    linear_resample,
     resample,
     session_stamp,
     submit_audio_sentinel,
@@ -54,68 +55,68 @@ def test_resample_identity():
     np.testing.assert_array_equal(out, audio)
 
 
-def test_resample_halving():
+def test_linear_resample_halving():
     audio = np.linspace(-1.0, 1.0, 3200, dtype=np.float32)
-    out = resample(audio, 32000, 16000)
+    out = linear_resample(audio, 32000, 16000)
     assert len(out) == 1600
     assert out.dtype == np.float32
 
 
-def test_resample_upsampling():
+def test_linear_resample_upsampling():
     audio = np.linspace(-1.0, 1.0, 1600, dtype=np.float32)
-    out = resample(audio, 16000, 48000)
+    out = linear_resample(audio, 16000, 48000)
     assert len(out) == 4800
 
 
-def test_resample_preserves_first_endpoint():
+def test_linear_resample_preserves_first_endpoint():
     audio = np.array([1.0, -1.0], dtype=np.float32)
-    out = resample(audio, 16000, 32000)
+    out = linear_resample(audio, 16000, 32000)
     assert len(out) == 4
     assert out[0] == 1.0
     # np.interp clamps indices past the end to the last sample's value.
     assert out[-1] == -1.0
 
 
-def test_resample_integer_decimation_48k_to_16k_matches_slice():
+def test_linear_resample_integer_decimation_48k_to_16k_matches_slice():
     # Optimization: the 48k->16k path uses audio[::3] instead of np.interp.
     # Verify content matches a manual decimation.
     audio = np.arange(4800, dtype=np.float32) / 4800.0
-    out = resample(audio, 48000, 16000)
+    out = linear_resample(audio, 48000, 16000)
     assert len(out) == 1600
     np.testing.assert_array_equal(out, audio[::3])
 
 
-def test_resample_integer_decimation_32k_to_16k_matches_slice():
+def test_linear_resample_integer_decimation_32k_to_16k_matches_slice():
     audio = np.arange(3200, dtype=np.float32) / 3200.0
-    out = resample(audio, 32000, 16000)
+    out = linear_resample(audio, 32000, 16000)
     assert len(out) == 1600
     np.testing.assert_array_equal(out, audio[::2])
 
 
-def test_resample_index_cache_repeat_calls():
+def test_linear_resample_index_cache_repeat_calls():
     # The cache reuses precomputed indices AND the output buffer across same-shape
     # calls — audio_callback copies the result before enqueueing. Copy when retaining.
     a = np.random.RandomState(0).randn(4410).astype(np.float32) * 0.1
-    out_a = resample(a, 44100, 16000).copy()
+    out_a = linear_resample(a, 44100, 16000).copy()
     b = np.random.RandomState(1).randn(4410).astype(np.float32) * 0.1
-    out_b = resample(b, 44100, 16000).copy()
+    out_b = linear_resample(b, 44100, 16000).copy()
     # Different inputs -> different outputs (after copying out of the shared buffer).
     assert not np.array_equal(out_a, out_b)
     # Same input -> same output across calls.
-    out_a_again = resample(a, 44100, 16000).copy()
+    out_a_again = linear_resample(a, 44100, 16000).copy()
     np.testing.assert_array_equal(out_a, out_a_again)
 
 
-def test_resample_returns_shared_output_buffer():
+def test_linear_resample_returns_shared_output_buffer():
     # Document the buffer-reuse contract: same key -> same buffer object.
     a = np.linspace(-0.5, 0.5, 882, dtype=np.float32)
     b = np.linspace(0.5, -0.5, 882, dtype=np.float32)
-    out_a = resample(a, 44100, 16000)
-    out_b = resample(b, 44100, 16000)
+    out_a = linear_resample(a, 44100, 16000)
+    out_b = linear_resample(b, 44100, 16000)
     assert out_a is out_b
 
 
-def test_resample_matches_np_interp_for_typical_rates():
+def test_linear_resample_matches_np_interp_for_typical_rates():
     # The custom interp must agree with np.interp for our supported rates.
     rng = np.random.default_rng(42)
     for n_in, orig, target in [
@@ -125,7 +126,7 @@ def test_resample_matches_np_interp_for_typical_rates():
         (160, 16000, 48000),
     ]:
         audio = rng.standard_normal(n_in).astype(np.float32) * 0.1
-        got = resample(audio, orig, target).copy()
+        got = linear_resample(audio, orig, target).copy()
         xp = np.arange(n_in, dtype=np.float64)
         step = orig / target
         indices = np.arange(int(n_in / step), dtype=np.float64) * step
@@ -133,25 +134,28 @@ def test_resample_matches_np_interp_for_typical_rates():
         np.testing.assert_allclose(got, expected, atol=1e-6)
 
 
-def test_resample_dtype_preserved_for_integer_decimation():
+def test_linear_resample_dtype_preserved_for_integer_decimation():
     audio = np.array([0.1, -0.1, 0.2, -0.2, 0.3, -0.3], dtype=np.float32)
-    out = resample(audio, 48000, 16000)
+    out = linear_resample(audio, 48000, 16000)
     assert out.dtype == np.float32
 
 
 def test_audio_callback_pipeline_end_to_end():
-    # Walk the exact resample+copy pipeline the live audio_callback runs, for
-    # both the integer-decim path (48k) and the custom-interp path (44.1k).
+    # Walk the exact Resampler+copy pipeline the live audio_callback runs: one stream
+    # per session, so a session's output length is the ideal one, never a per-block
+    # floor. The filter holds its tail until flush, which run_session drains at stop.
     rng = np.random.default_rng(7)
-    for native_rate, n_frames in [(48000, 960), (44100, 882), (32000, 640)]:
-        indata = rng.standard_normal((n_frames, 1)).astype(np.float32) * 0.1
-        mono = indata[:, 0]
-        pcm = resample(mono, native_rate, 16000).copy()
-        expected_samples = int(n_frames * 16000 / native_rate)
-        assert len(pcm) == expected_samples
-        assert pcm.dtype == np.float32
-        # The copy must be contiguous and independent of the shared buffer.
-        assert pcm.flags.c_contiguous
+    for native_rate, n_frames in [(48000, 960), (44100, 882), (44100, 256), (32000, 640)]:
+        resampler = live_stt.Resampler(native_rate)
+        total = 0
+        for _ in range(50):
+            indata = rng.standard_normal((n_frames, 1)).astype(np.float32) * 0.1
+            pcm = resampler(indata[:, 0]).copy()
+            assert pcm.dtype == np.float32
+            assert pcm.flags.c_contiguous
+            total += len(pcm)
+        total += len(resampler.flush())
+        assert abs(total - round(50 * n_frames * 16000 / native_rate)) <= 1
 
 
 # --- RingBuffer (VAD pre-pad re-slicing, D-010 finding 2) ---
@@ -424,7 +428,7 @@ def test_the_recording_is_readable_before_close_and_round_trips(tmp_path):
     assert np.max(np.abs(loaded - expected)) <= 0.5 / 32768
 
 
-def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, **flags):
+def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, rate=SAMPLE_RATE, **flags):
     """run_session end to end over an in-process fake mic + worker, no device."""
     stream_blocks = [b.reshape(-1, 1) for b in blocks]
 
@@ -444,7 +448,7 @@ def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, **flags):
 
     fake_sd = types.SimpleNamespace(
         InputStream=InputStream,
-        query_devices=lambda *_a, **_k: {"default_samplerate": SAMPLE_RATE, "name": "fake"},
+        query_devices=lambda *_a, **_k: {"default_samplerate": rate, "name": "fake"},
     )
     seen = []
 
@@ -452,7 +456,7 @@ def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, **flags):
         while (chunk := await audio_q.get()) is not None:
             seen.append(chunk)
             if len(seen) == len(blocks):
-                state.request_stop()
+                state.request_stop()  # every callback has landed; the drain follows
 
     monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
     monkeypatch.setattr(live_stt, "TRANSCRIPT_DIR", tmp_path)
@@ -484,6 +488,22 @@ def test_save_audio_records_every_captured_block(monkeypatch, tmp_path):
         frames = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
     expected = np.clip(np.round(np.concatenate(blocks) * 32768.0), -32768, 32767)
     assert np.array_equal(frames, expected.astype("<i2"))
+
+
+def test_a_44k_session_delivers_its_whole_stream_to_the_worker_and_the_wav(monkeypatch, tmp_path):
+    """The resampler's filter holds the last 6-40 ms; stopping must drain it.
+
+    50 callbacks of 256 frames at 44.1 kHz carry 4644 samples at 16 kHz; without the
+    shutdown flush the worker and the WAV both ended 327 short (reviewer-4's witness).
+    """
+    rng = np.random.default_rng(3)
+    blocks = [(rng.standard_normal(256) * 0.1).astype(np.float32) for _ in range(50)]
+    seen = _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, rate=44100, save_audio=True)
+    ideal = round(50 * 256 * SAMPLE_RATE / 44100)
+    assert abs(sum(len(chunk) for chunk in seen) - ideal) <= 1
+    (path,) = tmp_path.glob("*.wav")
+    with wave.open(str(path), "rb") as w:
+        assert abs(w.getnframes() - ideal) <= 1
 
 
 def test_a_session_without_the_flag_writes_no_audio(monkeypatch, tmp_path):

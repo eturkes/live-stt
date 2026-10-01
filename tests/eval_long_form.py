@@ -63,7 +63,7 @@ from live_stt import (  # noqa: E402
     VAD_MODEL,
     VAD_PRE_PAD_S,
     check_models,
-    resample,
+    linear_resample,
 )
 
 MANIFEST = TESTS / "long_form.json"
@@ -253,7 +253,7 @@ def decode_crop(mp3: bytes, aligned_start: int, aligned_end: int) -> np.ndarray:
     if start < 0 or end > len(audio) or aligned_start >= aligned_end:
         raise ValueError("alignment crop falls outside decoded source audio")
     crop = np.ascontiguousarray(audio[start:end], dtype=np.float32)
-    return resample(crop, sample_rate, SAMPLE_RATE)
+    return linear_resample(crop, sample_rate, SAMPLE_RATE)
 
 
 def vad_profile(audio: np.ndarray) -> dict:

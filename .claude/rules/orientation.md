@@ -4,7 +4,7 @@ Real-time Japanese STT + English translation. STT is fully local, no API keys (D
 single-user tool at 0.1.0: performance is the bar — skip robustness and flexibility aimed at
 unpredictable users or use-cases. One developer (agent), one user.
 
-Pipeline: mic → `resample` → 8 s `AudioQueue` → silero VAD → **VAC controller** (speech start opens a
+Pipeline: mic → `Resampler` → 8 s `AudioQueue` → silero VAD → **VAC controller** (speech start opens a
 LocalAgreement-2 buffer in `streaming.py`; every `VAC_CHUNK_S`=1 s re-decodes the open buffer and
 commits what two decodes agree on; speech end flushes the tail) → **whisper large-v3-turbo int8 on
 OpenVINO NPU** (D-016) → `CodexTranslator` over a persistent `codex app-server` (D-011) → `emit_line`

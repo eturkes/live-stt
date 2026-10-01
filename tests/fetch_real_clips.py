@@ -45,7 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cer import normalize  # noqa: E402  (after sys.path injection)
-from live_stt import SAMPLE_RATE, resample  # noqa: E402
+from live_stt import SAMPLE_RATE, linear_resample  # noqa: E402
 
 CACHE = ROOT / "spike" / "backends" / "cache"
 MANIFEST = ROOT / "tests" / "short_corpus.json"
@@ -281,7 +281,7 @@ def _decode_audio(
             f"sample-count mismatch for {context}: {len(samples)} != {expected_samples}"
         )
     if rate != SAMPLE_RATE:
-        samples = resample(samples, rate, SAMPLE_RATE)
+        samples = linear_resample(samples, rate, SAMPLE_RATE)
     if samples.size == 0 or not np.isfinite(samples).all():
         raise RuntimeError(f"invalid canonical audio for {context}")
     return np.ascontiguousarray(samples, dtype=np.float32)

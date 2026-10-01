@@ -123,6 +123,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   ruling): an update due while more than `VAC_BACKLOG_S`=0.5 s of capture is queued waits for the
   drain, so the cadence stretches to the decode. That pair is the mechanism + fix measured on the
   09-24 capture's drops; shapes, numbers and the `live` backpressure arm → `asr-pipeline.md`.
+- Capture resamples through ONE band-limited soxr stream per session (`Resampler`), drained at stop;
+  the per-block linear recipe survives as `linear_resample` for the hash-pinned corpora alone. No
+  CER change on 300 clean clips (0.1131 → 0.1113, CI spans 0); shipped as the correctness fix
+  (`asr-pipeline.md`).
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out. `--save-audio` (opt-in)
   adds the capture WAV `transcripts/<start>.wav` (~115 MB/h), the real-audio input `replay.py` reads.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
@@ -171,8 +175,6 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **3** Band-limited streaming resampler
-  - Kernel tier; accept → `.agent/deferred.md` → *Band-limited streaming resampler*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
