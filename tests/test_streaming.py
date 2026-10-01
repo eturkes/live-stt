@@ -434,15 +434,31 @@ def test_settled_publication_bounds_voice_to_src_on_the_committed_trace():
     import eval_latency  # noqa: PLC0415 -- sibling script, importable only off tests/
 
     trace = json.loads(eval_latency.TRACE.read_text(encoding="utf-8"))
-    whole, split, counts = eval_latency.source_lags(trace["clips"]["retention_probe"])
-    assert counts["divergences"] == 0
+    clip = trace["clips"]["retention_probe"]
+    whole, split, counts = eval_latency.source_lags(clip)
+    assert counts["divergences"] == 0  # every hypothesis still meets its own buffer
     assert counts["unplaced"] == 0
     assert (counts["utterances"], counts["pieces"]) == (8, 28)
-    assert len(whole) == len(split) == 1135  # every character is charged, none vanish
+    # 1138, not the 1135 the recorded run committed: the boundary anchor recovers 3
+    # characters count slicing dropped, on an unchanged trim schedule (user-approved move).
+    assert len(whole) == len(split) == 1138  # every character is charged, none vanish
     w, s = eval_latency._quantiles(whole), eval_latency._quantiles(split)
-    assert (w["p50"], w["max"]) == (13.077, 33.198)
+    assert (w["p50"], w["max"]) == (13.084, 33.198)
     assert s["p50"] is not None and s["max"] is not None
     assert s["p50"] <= 6.0 and s["max"] <= 12.5
+
+
+def test_the_replay_fidelity_check_fires_off_the_recorded_trim_schedule(monkeypatch):
+    """Positive control: a processor that trims elsewhere must read as divergent."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import json
+
+    import eval_latency  # noqa: PLC0415 -- sibling script, importable only off tests/
+
+    trace = json.loads(eval_latency.TRACE.read_text(encoding="utf-8"))
+    monkeypatch.setattr(eval_latency, "VAC_TRIM_S", 6.0)
+    _, _, counts = eval_latency.source_lags(trace["clips"]["retention_probe"])
+    assert counts["divergences"] > 0
 
 
 def test_settled_boundary_cuts_only_where_text_left_the_buffer():
@@ -457,3 +473,75 @@ def test_settled_boundary_cuts_only_where_text_left_the_buffer():
     assert live_stt.settled_boundary(utterance, 7, "") == len(utterance)
     # Punctuation alone never forms a piece.
     assert live_stt.settled_boundary("、" + "この", 0, "この") == 0
+
+
+def _scripted(hypotheses: list[tuple[str, list[Segment]] | str]) -> StreamingProcessor:
+    """A processor whose k-th decode returns the k-th scripted hypothesis (no trims)."""
+    script = iter(hypotheses)
+
+    def decode(_audio: np.ndarray) -> tuple[str, list[Segment]]:
+        item = next(script)
+        return (item, []) if isinstance(item, str) else item
+
+    processor = StreamingProcessor(decode=decode)
+    processor.insert_audio(np.zeros(SAMPLE_RATE, dtype=np.float32))
+    return processor
+
+
+def _commits(processor: StreamingProcessor, updates: int) -> str:
+    return "".join(processor.process()[0] for _ in range(updates))
+
+
+def test_a_punctuation_inserted_into_the_published_prefix_is_not_republished():
+    # ABCDE is published; the next decode re-spells it with 、 inside. Slicing by
+    # count re-anchored one character early and committed E a second time.
+    p = _scripted(["ABCDE", "ABCDEF", "AB、CDEFG", "AB、CDEFGH"])
+    assert _commits(p, 4) == "ABCDEFG"
+
+
+def test_a_character_dropped_from_the_published_prefix_does_not_drop_the_next():
+    # Re-spelled one character shorter: the count boundary landed one late and F,
+    # never published, was treated as published and lost.
+    p = _scripted(["ABCDE", "ABCDEF", "ABDEFG", "ABDEFGH"])
+    assert _commits(p, 4) == "ABCDEFG"
+
+
+def test_a_substituted_character_keeps_the_boundary_where_it_was():
+    p = _scripted(["ABCDE", "ABCDEF", "ABXDEFG", "ABXDEFGH"])
+    assert _commits(p, 4) == "ABCDEFG"  # control: count and alignment agree
+
+
+def test_span_jitter_alone_leaves_commits_unchanged():
+    def at(start: float, text: str) -> tuple[str, list[Segment]]:
+        return text, [Segment(start, start + 1.0, text)]
+
+    jittered = _scripted([at(0.0, "ABCDE"), at(0.2, "ABCDEF"), at(0.0, "ABCDEFG")])
+    steady = _scripted(["ABCDE", "ABCDEF", "ABCDEFG"])
+    assert _commits(jittered, 3) == _commits(steady, 3) == "ABCDEF"  # control
+
+
+def test_a_shorter_hypothesis_commits_nothing_and_keeps_the_record():
+    p = _scripted(["ABCDE", "ABCDEF", "ABC", "ABCDEFG", "ABCDEFGH"])
+    assert _commits(p, 5) == "ABCDEFG"  # control: the shrink guard predates alignment
+
+
+def test_a_span_join_outrunning_the_text_commits_it_once_and_cuts():
+    # (' 会議', ' ') rejoins to '会議' only after strip, so raw counting saw 3 characters
+    # of a 2-character text: the commit ran past emitted, the published segment was
+    # never wholly covered, and no cut ever freed its audio (reviewer-1, reviewer-8).
+    spans = [Segment(0.0, 0.4, " 会議"), Segment(0.4, 0.5, " ")]
+    p = _scripted([("会議", spans), ("", [])])  # the trimmed buffer holds nothing more
+    p.insert_audio(np.zeros(9 * SAMPLE_RATE, dtype=np.float32))  # past the trim threshold
+    assert _commits(p, 2) == "会議"
+    assert p.trims == 1 and p.forced_trims == 0
+
+
+def test_a_cut_after_a_whitespace_led_span_keeps_the_retained_head():
+    # ' ABC' is 4 characters of span for 3 of text: counted raw, the cut after it
+    # marked D trimmed while its audio stayed, and D was committed again (reviewer-8).
+    spans = [Segment(0.0, 3.0, " ABC"), Segment(3.0, 9.5, "DEFG")]
+    retained = [Segment(0.0, 6.5, "DEFG")]  # what the buffer left after the cut decodes to
+    p = _scripted([("ABCDEFG", spans), ("DEFG", retained)])
+    p.insert_audio(np.zeros(9 * SAMPLE_RATE, dtype=np.float32))
+    assert _commits(p, 2) + p.finish() == "ABCDEFG"
+    assert p.trims == 1

@@ -37,21 +37,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    them; no win ⇒ the table lands in `asr-pipeline.md` as the D-016 re-open record; the gate stays
    green.
 
-4. **Streaming boundary artifacts** — live captions carry duplicated fragments
-   (`大学院生が大学院生が`) and lost heads (`ュアル` for ビジュアル); user ruling: REOPEN the duplication
-   closed after two attempts. Offline the committed traces show I=0 (no reproducer); one mechanism
-   is witnessed — spans whose join outruns the stripped text let `process()` commit past `emitted`
-   (`会議会議`, reviewer-1). Kernel.
-   **Accept:** (a) instrumented replay classifies every insertion and deletion against references
-   (`cer.alignment`) as same-length re-spelling, segment-sum overflow, normal trim cut, forced
-   trim, final flush or elsewhere, on `retention_probe`, ≥2 long-form sections, `long.wav` and any
-   user-recorded `--save-audio` session; (b) a fix that removes the `whisper/long` golden
-   duplication (that golden moves — named here) and cuts boundary-attributed I+D, with retention
-   CER ≤ 0.0609, long-form CER not worse, max buffer ≤ 12 s, forced trims 0, and a red lock
-   separating a real re-spelling from span jitter; or (c) the failed attempt recorded with what it
-   taught; the gate stays green.
-
-5. **Screen each segment inside a released piece** — one trim can release several whisper segments
+4. **Screen each segment inside a released piece** — one trim can release several whisper segments
    as one piece, and the screen drops that piece whole, so a loop segment takes its clean
    neighbours with it (tester-1 trace: `繰り返し`×12 + one clean sentence, both dropped). Kernel.
    **Accept:** a piece is screened per released segment (segment counts from the trimming decode,
@@ -59,7 +45,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    dropped alone with its clean neighbour published, red on the unfixed worker; the gate stays
    green.
 
-6. **Session report reads two-way transcripts** — a transcript records no per-line decode language,
+5. **Session report reads two-way transcripts** — a transcript records no per-line decode language,
    so `session_report.py` re-screens every source line under one `--source-lang`: an English line a
    two-way session published reads as a latin `declined` caption (reviewer-6, authored mixed
    transcript: `latin_drops=1`). Data tier.

@@ -77,21 +77,37 @@ paths:
 - Append-only is load-bearing: a shrinking `emitted` re-commits on-screen characters. Holding it
   append-only removed every insertion on the retention clip (I 12→0, CER 0.0686→0.0583). Committed
   characters must never be rewritten or duplicated once shown.
-- **`whisper/long`'s golden pins a real duplication (`…に送ってに送って…`) — REOPENED by user ruling
-  after two measured attempts, as `.agent/deferred.md` → *Streaming boundary artifacts*; the failed
-  attempts below stay binding evidence.** Cause: `emitted` is a character COUNT
-  re-derived from the latest hypothesis where it must denote what was PUBLISHED — `process()` pins
-  `stable = max(agreed, len(self.emitted))` then assigns `self.emitted = text[:stable]`, so a decode
-  that RE-SPELLS an already-published prefix at the same length re-anchors the boundary to earlier
-  audio and `finish()` flushes `previous[len(emitted):]` a second time. Instrumented NPU replay of
-  `long.wav`: 13 updates, **0 trims** ⇒ not a trim effect, and append-only covers the SHRINKING case
-  alone. The policy is fine; the bookkeeping is wrong. Both fixes cost more than the artifact — a
-  `startswith` commit guard starves `_trim` (max_buffer 11.248 → 23.9/25.5 s, **RTF 1.15**, above real
-  time), and an audio-time cut at `finish()` traded 4 duplicated characters for 6 dropped ones
-  (retention CER 0.0583 → **0.0635**, D 35 → 41; preserved whole on branch
-  `attempt/p009-audio-time-cut` @ `bd37bf7`). A third attempt must first separate a genuine
-  re-spelling from ordinary span jitter — 6 of 157 commits move backward, median 0.084 s / max
-  0.452 s, against the ~0.7 s real re-spelling — and is a funded roadmap unit, never polish.
+- **The published boundary is ALIGNED, never counted (`StreamingProcessor._anchor`).** `emitted` must
+  denote what was PUBLISHED, yet `process()` re-derived it as `text[:len(emitted)]`, so a decode that
+  re-spells the published prefix — an inserted 、, a dropped particle, パック→バック — moved the boundary
+  a character early (re-commit: `…に送ってに送って…`, らら/のの) or late (lost character). Mechanism
+  witnessed on whisper-ja-760M's retention trace: all 10 of its boundary doublings sat one update
+  after a silent re-anchor. The fix aligns the last `ANCHOR_TAIL`=24 published characters by edit
+  distance against the text from where they should start (text end free, window ±`ANCHOR_DRIFT`=4);
+  equal-cost ends — an edit at the very end, dropped vs inserted vs re-spelled — go to the end after
+  which the text continues as the PREVIOUS decode did right after the published end, else the end
+  nearest the old one; evidence never outbids cost, because a repeated short phrase (そうそう) puts a
+  confirming continuation after a LATER repeat and taking it swallowed new speech. Below half
+  agreement the count stands; a decode stopping short of the published end commits nothing.
+  Trims fire on a commit, where count slicing WOULD have committed (so the committed trace keeps its
+  whole trim schedule: 0 offset divergences, 1 + 3 commits changed), or past `buffer_trim_s` +
+  `ANCHOR_STALL_S`=4 (12 s; traced buffers never pass 11.25 s) — without the last two an aligned
+  empty commit starved `_trim` into a forced trim at 29 s, the old `startswith` guard's failure.
+  Span whitespace is normalized in `process()` (`' ABC'` counted 4: a cut there retained D yet
+  marked it trimmed → ABCDDEFG). Measured on the NPU through the shipped VAC path: turbo retention
+  **0.0609 → 0.0592** (S36 D35 I0 → S37 D32 I0), long-form §01+§03 0.2546 → 0.2486; whisper-ja-760M
+  retention **0.0626 → 0.0532** (I 21 → 11; the rest is one 11-char hallucination), long-form
+  0.2213 → 0.2153; the `whisper/long` golden lost its `に送ってに送って` (that golden moved by the
+  row's acceptance). The two earlier attempts stay binding evidence: a `startswith` commit guard
+  starved `_trim` (max buffer 11.248 → 23.9/25.5 s, RTF 1.15), and an audio-time cut at `finish()`
+  traded 4 duplicated characters for 6 dropped ones (retention CER 0.0583 → 0.0635; branch
+  `attempt/p009-audio-time-cut` @ `bd37bf7`). **Ambiguous by construction, documented, not bugs:**
+  a 2-3 character insertion right before the last published character reads as a 1-character
+  re-spelling (edit distance prefers it); a terminal deletion whose continuation ALSO changed reads
+  as a re-spelling; a thin rewrite (<50 % agreement) keeps the count, as HEAD did. A re-spelling
+  inside the RETAINED segment shifts the next piece boundary (`settled_boundary`) by its length —
+  no published character lost or repeated. Locks: `tests/test_boundary_anchor.py` (tester-4, 36
+  cases incl. a seeded 576-edit property) + six `test_streaming.py` cases, red on the old processor.
 - The `on_update` seam (`worker` / `_vac_segments` / `replay.py`) is what makes commit timing
   observable at all; `commit_audio_s` is otherwise discarded at `commit, _ = await …`.
 

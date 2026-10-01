@@ -77,9 +77,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
 - `vac_decode_trace.json` + `build_vac_trace.py` + `eval_latency.py` — per-update `(buffer_s, decode_s)`
   **plus the hypothesis that produced each one**. Storing the hypotheses is what makes the trace
   replayable: `StreamingProcessor` is a pure function of decode outputs + buffer lengths, so replaying
-  them reproduces the measured commit/trim trajectory with no model, and `divergences == 0` certifies
-  each cost was charged to the buffer it was measured on. 122 KB ⇒ read the per-clip summary keys, not
-  `series`. Rebuild needs the NPU + the whisper prelude.
+  them reproduces the measured TRIM trajectory with no model, and `divergences == 0` certifies each
+  cost and hypothesis was charged to the buffer it was measured on — a trim-schedule check, never a
+  commit match: commits follow the CURRENT processor (`commit_changes` counts where they differ
+  from the recorded run; the boundary anchor changes 1 + 3 there while keeping every trim). 122 KB ⇒
+  read the per-clip summary keys, not `series`. Rebuild needs the NPU + the whisper prelude.
 - `eval_two_way_settled.py` — the same trace under two-way's commit rule, which withholds every commit
   until the LID accepts a label. Four arms over both clips; the table and its refutation live in
   `asr-pipeline.md`. **Its own positive control is the no-withholding arm**, which must reproduce

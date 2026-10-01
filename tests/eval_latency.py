@@ -172,15 +172,19 @@ def source_lags(clip: dict[str, Any]) -> tuple[list[float], list[float], dict[st
 
     Re-runs the shipped StreamingProcessor over the recorded hypotheses, each decode
     seeing a buffer of its recorded length, because a split point is a fact of the
-    processor's trim state that the trace does not store. `divergences` counts
-    replayed commits that differ from the recorded ones: zero is what makes this the
-    measured trajectory rather than a model of it. Characters are placed exactly as
-    the committed arm of `clip_lags` places them, and every one is counted -- a
+    processor's trim state that the trace does not store. `divergences` counts updates
+    whose replayed trim leaves a buffer offset other than the recorded next one: zero is
+    what keeps every recorded hypothesis charged to the buffer it was decoded from.
+    `commit_changes` counts replayed commits that differ from the recorded ones -- the
+    current processor's own effect on that trajectory, never a fidelity failure.
+    Characters are placed exactly as the committed arm of `clip_lags` places them, and
+    every one is counted -- a
     remainder the worker would refuse to publish alone is charged to speech end.
     """
     whole: list[float] = []
     split: list[float] = []
-    counts = {"divergences": 0, "pieces": 0, "utterances": 0, "unplaced": 0}
+    counts = {"divergences": 0, "commit_changes": 0, "pieces": 0, "utterances": 0, "unplaced": 0}
+    series = clip["series"]
     now = 0.0
     processor: StreamingProcessor | None = None
     utterance = ""
@@ -188,7 +192,7 @@ def source_lags(clip: dict[str, Any]) -> tuple[list[float], list[float], dict[st
     placed: list[float] = []  # audio time of each character of `utterance`
     start = 0.0
     cut_mark = 0
-    for row in clip["series"]:
+    for k, row in enumerate(series):
         if processor is None:
             processor = StreamingProcessor(decode=lambda _audio: ("", []), buffer_trim_s=VAC_TRIM_S)
             start = processor.offset_s = row["buffer_end_s"] - row["buffer_s"]
@@ -201,7 +205,11 @@ def source_lags(clip: dict[str, Any]) -> tuple[list[float], list[float], dict[st
         commit, commit_audio_s = processor.process()
         if row["final"]:
             commit += processor.finish()
-        counts["divergences"] += commit != row["commit"]
+        counts["commit_changes"] += commit != row["commit"]
+        if not row["final"]:
+            following = series[k + 1]
+            recorded = following["buffer_end_s"] - following["buffer_s"]
+            counts["divergences"] += abs(processor.offset_s - recorded) > 0.002
         if commit:
             end = row["buffer_end_s"] if row["final"] else commit_audio_s
             if end is None:  # no spans to place it by: charged from the last endpoint
@@ -313,6 +321,7 @@ def report(trace: dict[str, Any], pairing: dict[str, Any] | None) -> dict[str, A
             "source_split_s": _quantiles(split),
             "source_pieces": source_counts["pieces"],
             "source_divergences": source_counts["divergences"],
+            "source_commit_changes": source_counts["commit_changes"],
             "vad_close_s": VAD_MIN_SILENCE_S,
             **counts,
         }
@@ -368,7 +377,7 @@ def render(out: dict[str, Any]) -> str:
         )
         lines.append(
             f"      voice -> SRC: {row['utterances']} utterances -> {row['source_pieces']} lines, "
-            f"divergences={row['source_divergences']}"
+            f"divergences={row['source_divergences']} commit_changes={row['source_commit_changes']}"
         )
     turn = out.get("translate_turn_s")
     if turn:

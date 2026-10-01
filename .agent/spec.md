@@ -104,6 +104,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   compute and zero CER cost (retention CER 0.0609, unmoved). Time-to-SETTLED is unchanged at 2.535 s
   and the dim tail is rewritten on 105 of 180 updates (`redraws`, `eval_latency.py`) — quote the two
   numbers separately. The published line and the transcript stay committed-only + append-only.
+- **The published boundary is aligned, never counted** (user ruling reopened the closed
+  duplication): a decode that re-spells published text no longer re-commits or skips a character.
+  NPU retention CER turbo 0.0609 → 0.0592, whisper-ja-760M 0.0626 → 0.0532; the `whisper/long`
+  golden lost its duplication; mechanism, trim rules + ambiguous cases → `asr-pipeline.md`.
 - **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
   that moves committed text out of the VAC buffer publishes it at once as its own `SRC n` line + turn,
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
@@ -185,11 +189,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
 - [ ] **3** JA-tuned Whisper checkpoint
   - Kernel tier; accept → `.agent/deferred.md` → *JA-tuned Whisper checkpoint*.
-- [ ] **4** Streaming boundary artifacts
-  - Kernel tier; accept → `.agent/deferred.md` → *Streaming boundary artifacts*.
-- [ ] **5** Screen each segment inside a released piece
+- [ ] **4** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **6** Session report reads two-way transcripts
+- [ ] **5** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded

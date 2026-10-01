@@ -553,35 +553,27 @@ def test_a_repetitive_piece_does_not_drop_the_clean_remainder(
     assert run.state.dropped_captions == 1
 
 
-def test_whitespace_matched_engine_spans_do_not_publish_before_a_trim(
+def test_an_anchored_deletion_does_not_publish_before_a_trim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spans whose join outruns the stripped text let process() commit past emitted.
+    """A decode that drops a published character shrinks emitted without a commit.
 
-    The raw-length identity then grows a gap no trim made; only a trim may publish.
-    (reviewer-1's witness, ported.)
+    len(utterance) - len(emitted) then grows with no trim behind it; only a trim may
+    publish (reviewer-1 found the same gap through whitespace-bearing spans).
     """
-    from types import SimpleNamespace
+    script = iter(
+        ["あいうえお", "あいうえおか", "あいえおかき", "あいえおかきく", "あいえおかきくけ"]
+    )
 
-    class Rec(live_stt.WhisperEngine):
-        def __init__(self) -> None:
-            self.hotwords = ""
-            self.supports_hotwords = False
+    class Rec:
+        hotwords = ""
 
-        def generate(self, samples, *, timestamps=False, language=None):  # type: ignore[override]
-            return SimpleNamespace(
-                texts=["会議"],
-                chunks=[
-                    SimpleNamespace(start_ts=0.0, end_ts=0.4, text=" 会議"),
-                    SimpleNamespace(start_ts=0.4, end_ts=0.5, text=" "),
-                ],
-            )
+        def decode_segments(self, samples, language=None):
+            return next(script, "あいえおかきくけ"), []
 
-    text, spans = Rec().decode_segments(np.zeros(16000, dtype=np.float32), language="ja")
-    assert "".join(s.text for s in spans).strip() == text == "会議"
-    run = _drive(monkeypatch, CLEAN[:4], trim_s=0.5, recognizer=Rec())
+    run = _drive(monkeypatch, CLEAN[:5], trim_s=0.5, recognizer=Rec())
     assert all(p.trims == p.forced_trims == 0 for p in run.processors)
-    assert all(line.window == len(CLEAN[:4]) + 1 for line in run.lines), (
+    assert all(line.window == len(CLEAN[:5]) + 1 for line in run.lines), (
         "SRC published without a normal or forced trim",
         [(line.window, line.text) for line in run.lines],
     )

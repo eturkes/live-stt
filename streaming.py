@@ -3,7 +3,8 @@
 Ported from ufal/whisper_streaming (Macháček et al., IJCNLP 2023). The policy is
 unchanged — a unit is emitted only once two consecutive decodes of the growing
 buffer agree on it, so output is append-only and never rewritten — but two
-mechanisms had to be rebuilt because this stack cannot supply what upstream uses.
+mechanisms had to be rebuilt because this stack cannot supply what upstream uses, and a
+third keeps re-spelled hypotheses from moving the published boundary.
 
 1. COMMIT UNIT = CHARACTER, not word. Reference Whisper splits ja/zh/th/lo/my/yue
    on unicode code points rather than spaces (`Tokenizer.split_to_word_tokens`),
@@ -19,6 +20,10 @@ mechanisms had to be rebuilt because this stack cannot supply what upstream uses
    text the emitted prefix already covers — a point both decodes agree on by
    construction. Everything before it is emitted, nothing after it is, which is
    what makes the cut lossless in both directions.
+
+3. PUBLISHED BOUNDARY = ALIGNED, not counted. A later decode re-spells the published
+   prefix (an inserted 、, パック for バック), so its count no longer marks what was shown;
+   `_anchor` locates the published tail by edit distance instead.
 
 Nothing here prompts the model. Feeding recent transcript back as prev-text made
 the recogniser loop: CER 1.8919 on the pause-free clip, 2,126 insertions against
@@ -43,6 +48,12 @@ SAMPLE_RATE = 16000
 # Whisper's window is 30 s. Enforced AFTER a decode, so a catch-up fold can hand it more
 # once trims have already failed (asr-pipeline.md).
 HARD_TRIM_S = 28.0
+# Boundary re-anchoring (StreamingProcessor._anchor): how much published tail is located,
+# and how far from the old boundary it may be found.
+ANCHOR_TAIL = 24
+ANCHOR_DRIFT = 4
+# Buffer seconds past buffer_trim_s after which a cut no longer waits for a commit.
+ANCHOR_STALL_S = 4.0
 
 
 def common_prefix(a: str, b: str) -> int:
@@ -89,10 +100,23 @@ class StreamingProcessor:
 
     def process(self) -> tuple[str, float | None]:
         text, segments = self.decode(self.audio)
+        if segments:
+            # Whisper chunks carry the whitespace `text` stripped (' Hello', ' '), which
+            # put every count one character off the audio it named: a cut after ' ABC'
+            # retained D yet counted it trimmed (ABCDDEFG, reviewer-8).
+            first, last = segments[0], segments[-1]
+            segments = [
+                Segment(first.start_s, first.end_s, first.text.lstrip()),
+                *segments[1:],
+            ]
+            segments[-1] = Segment(last.start_s, last.end_s, segments[-1].text.rstrip())
         agreed = common_prefix(text, self.previous)
+        published = len(self.emitted)
+        anchor = self._anchor(text)
         self.previous = text
-        stable = max(agreed, len(self.emitted))
+        stable = max(agreed, anchor)
         buffered_s = len(self.audio) / SAMPLE_RATE
+        final_s = 0
         if buffered_s > self.buffer_trim_s and len(segments) >= 2:
             # A segment that is no longer the last one is final: its audio has
             # stopped growing, so no later decode can extend it and waiting for a
@@ -100,8 +124,11 @@ class StreamingProcessor:
             # deadlocks -- a lagging commit point cannot trim, the buffer grows,
             # a longer buffer makes agreement slower still, and measured lag ran
             # to 5.62 s median / 25.38 s max, worse than the shipped VAD policy.
-            stable = max(stable, sum(len(segment.text) for segment in segments[:-1]))
-        commit = text[len(self.emitted) : stable]
+            # Clamped: a decoder whose spans still outrun the text would otherwise commit
+            # past it and leave emitted behind the commit.
+            final_s = min(len(text), sum(len(segment.text) for segment in segments[:-1]))
+            stable = max(stable, final_s)
+        commit = text[anchor:stable]
         # `emitted` records what was PUBLISHED, so it may only grow inside a buffer.
         # A decode that retracts below it (shorter hypothesis) would otherwise shrink
         # the record, and the next decode would re-commit characters already on
@@ -112,11 +139,68 @@ class StreamingProcessor:
         # until a second decode confirms it, so this trails the buffer end and is
         # the only honest reference point for latency.
         commit_audio_s = self._audio_time_at(segments, stable)
-        if commit and buffered_s > self.buffer_trim_s:
-            self._trim(segments)
+        # A decode that only re-spells published text commits nothing, yet its emitted
+        # prefix may already cover a final segment; gating that cut on this commit alone
+        # starved _trim into a forced trim at 29 s (reviewer-8) -- the earlier startswith
+        # guard's failure mode. So it also cuts wherever count slicing WOULD have
+        # committed, which keeps every recorded trim schedule (tests/eval_latency.py).
+        # Past the stall bound any available cut is taken, commit or not: the traced
+        # buffers never pass 11.25 s, so recorded schedules keep, and a punctuation
+        # flip-flop in a published segment can no longer starve the buffer.
+        counted = max(agreed, published, final_s) > published
+        stalled = buffered_s >= self.buffer_trim_s + ANCHOR_STALL_S
+        if (commit or counted or stalled) and stable <= len(text):
+            if buffered_s > self.buffer_trim_s:
+                self._trim(segments)
         if len(self.audio) / SAMPLE_RATE > HARD_TRIM_S:
             self._force_trim()
         return commit, commit_audio_s
+
+    def _anchor(self, text: str) -> int:
+        """Where the published `emitted` ends inside `text`.
+
+        A later decode re-spells the published prefix -- an inserted 、, a dropped
+        particle, パック for バック -- and slicing it by len(emitted) lands the boundary
+        a character early, re-committing a published one (らら, のの: 10 of
+        whisper-ja-760M's 21 retention insertions), or late, dropping one. The last
+        ANCHOR_TAIL published characters are aligned by edit distance against the text
+        from where they should start, the text's end free: the cheapest end is the
+        boundary. Longest-block matching locked onto a LATER repeat of a short phrase
+        (ああい → あい + new ああい) and swallowed new speech (reviewers 7, 8).
+        Past the end of `text` means the decode no longer reaches the published end:
+        process() then commits nothing and keeps the record, as before.
+        """
+        emitted = self.emitted
+        n = len(emitted)
+        if text.startswith(emitted):
+            return n
+        tail = emitted[-ANCHOR_TAIL:]
+        start = n - len(tail)
+        window = text[start : n + ANCHOR_DRIFT]
+        # cost[j]: edit distance of the tail so far against window[:j] (start pinned).
+        cost = list(range(len(window) + 1))
+        for i, char in enumerate(tail, 1):
+            row = [i]
+            for j, other in enumerate(window, 1):
+                row.append(min(cost[j - 1] + (char != other), cost[j] + 1, row[j - 1] + 1))
+            cost = row
+        best = min(cost)
+        if 2 * best > len(tail):
+            return n  # too little in common to locate anything by
+        # Equal costs are an edit at the very end of the published tail -- dropped,
+        # inserted or re-spelled -- which text alone cannot separate. The last decode
+        # can: the end after which this text continues as that one did right after the
+        # published end is the boundary; else the end nearest the old one. Evidence never
+        # outbids cost: repeated short phrases (そうそう) put a confirming continuation
+        # after a LATER repeat, and taking it swallowed new speech (reviewer-8).
+        ends = [start + j for j, c in enumerate(cost) if c == best]
+        follow = self.previous[n : n + 2]
+        evidenced = [end for end in ends if follow and text.startswith(follow, end)]
+        if evidenced:
+            return min(evidenced, key=lambda end: (abs(end - n), -end))
+        if ends[-1] == len(text) < n:
+            return max(n, len(text) + 1)  # the text stops short of the published end
+        return min(ends, key=lambda end: (abs(end - n), -end))
 
     def _audio_time_at(self, segments: list[Segment], index: int) -> float | None:
         """Absolute audio time of character `index`, interpolated inside its segment."""
@@ -165,6 +249,6 @@ class StreamingProcessor:
 
     def finish(self) -> str:
         """Emit the unconfirmed tail; at end of audio there is nothing left to confirm."""
-        tail = self.previous[len(self.emitted) :]
+        tail = self.previous[self._anchor(self.previous) :]
         self.emitted = self.previous
         return tail
