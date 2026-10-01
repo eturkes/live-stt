@@ -24,7 +24,7 @@ Two modes, and the cheap one is the default because the artifact is committed:
     uv run python tests/eval_en_pairing.py --live     # spend ~215 real turns, rewrite the trace
 
 `--live` writes `tests/en_pairing_trace.json`; the default re-derives every
-verdict from it plus `caption_trace.json`, so the ruling reruns from a clean
+verdict from it plus `caption_trace_turbo.json`, so the ruling reruns from a clean
 clone with no codex, no model and no accelerator. Episode bookkeeping is
 `eval_term_census.learner`, shared with M12.3, so the two tables are comparable
 by construction rather than by restatement.
@@ -66,7 +66,10 @@ from live_stt import (  # noqa: E402
 )
 from tests.eval_term_census import learner, pinned_sections  # noqa: E402
 
-TRACE = TESTS / "caption_trace.json"
+# The learner's input is a FIXED caption stream: turbo's, frozen when whisper-ja-760M replaced
+# it, because these verdicts grade the learner, not the recogniser (760M hears 兵十 where turbo
+# heard 標柱, which reshapes every term below without saying anything about the learner).
+TRACE = TESTS / "caption_trace_turbo.json"
 MANIFEST = TESTS / "long_form.json"
 TURNS = TESTS / "en_pairing_trace.json"
 

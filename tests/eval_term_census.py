@@ -3,7 +3,8 @@
 
 D-015's `observe_en` keys a learned English spelling on the JA string the
 RECOGNISER produced, so the key is a hypothesis, not the name. Two questions
-follow and this answers both from `caption_trace.json` alone -- no model, no
+follow and this answers both from `caption_trace_turbo.json` (turbo's frozen
+stream) alone -- no model, no
 accelerator, no audio, under a second -- the way `eval_latency.py` derives
 caption lag, so a fresh clone can rerun it:
 
@@ -65,7 +66,9 @@ from live_stt import (  # noqa: E402
 # moves it in one place and no arm can report one floor's candidates under
 # another's trust.
 
-TRACE = TESTS / "caption_trace.json"
+# The same frozen turbo stream eval_en_pairing reads: this census and those verdicts describe one
+# population, and the learner's floor is what they grade, not the recogniser.
+TRACE = TESTS / "caption_trace_turbo.json"
 MANIFEST = TESTS / "long_form.json"
 DEFAULT_TERM = "兵十"
 CONTEXT_CHARS = 6  # raw characters shown either side of an aligned occurrence
@@ -410,7 +413,7 @@ def pinned_sections(manifest: dict, trace: dict) -> list[tuple[str, str, list[di
             raise SystemExit(
                 f"section {key} was traced from a different WAV\n  trace:  "
                 f"{recorded['wav_sha256']}\n  pinned: {pinned}\n"
-                "rebuild it: tests/build_caption_trace.py"
+                "restore it from git: turbo's frozen stream is not rebuildable"
             )
         captions = [c for c in trace["captions"] if c["section"] == key]
         sections.append((key, section["reference"]["text"], captions))

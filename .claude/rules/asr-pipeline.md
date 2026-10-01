@@ -144,7 +144,7 @@ paths:
   knee is sharp — 1.15 leaves a 510-char loop intact, 1.2 takes it to 0, 1.25 buys nothing more.
   `return_timestamps=True` markedly reduces (never eliminates) looping. Shipped
   `ASR_REPETITION_PENALTY`=1.2 costs 3 substitutions in 1,166 characters ⇒ retention CER **0.0609**
-  shipped, 0.0583 penalty-free.
+  with it, 0.0583 penalty-free (both turbo, before the boundary fix and the 760M swap).
 - **`WhisperPipeline` latches OMITTED language and nothing else; an EXPLICIT token always wins.**
   That split is the whole architecture of two-way, so read both halves. `generate(language=…)`
   persists into every later call and an auto-detect call latches what it detected, so a call that
@@ -155,7 +155,8 @@ paths:
   `set_generation_config()` and a positional config do not clear it either. But passing
   `"<|ja|>"` to that same en-latched instance returns correct Japanese at **0.983 s against a
   0.971 s cold control** ⇒ switching an existing pipeline explicitly is free, and the design that
-  follows is ONE resident pipeline plus a standalone LID choosing the token per utterance.
+  follows is an explicit token per decode, chosen per utterance by a standalone LID — on one
+  resident pipeline per MODEL (whisper-ja-760M for `ja`, plus turbo for `en` under `--two-way`).
   Evidence `.scratch/latch-probe.json`, `.scratch/latch-reset.log`.
   What is refused is **whisper's OWN detector as the gate**: it needs a fresh pipeline to re-detect
   (0.46 s p50 / 0.60 s max construct + 0.54 s detect, RSS flat at 201 MB over 40), it is reliable
@@ -241,8 +242,12 @@ paths:
   median **+0.050 s per update** against a single-pipeline control, ABBA drift-cancelled
   (`.scratch/coresidency_probe2.py`, `.scratch/coresidency2.json`). Run 1's +0.224 s figure was not
   drift-cancelled and is **RETRACTED — never quote it.** Since one pipeline switches language
-  explicitly for free, the second copy is an unfunded fallback that only an explicit-switch
-  regression would justify.
+  explicitly for free, a second copy of the SAME model buys nothing. A second, DIFFERENT model is
+  what the JA-tuned checkpoint funds: whisper-ja-760M decodes Japanese and roughly doubles English
+  CER (FLEURS-en 0.0255 → 0.0482), so `--two-way` holds turbo for `<|en|>` decodes
+  (`WhisperEngine(..., english_dir)`, user ruling) at about these costs — measured for two turbo
+  copies; the mixed 760M + turbo pair is unmeasured. One-way builds one pipeline, and
+  `--source-lang en` builds turbo alone.
 - **A standalone spoken LID settles that token, and its operating point is measured: ECAPA
   VoxLingua107 on ONNX Runtime CPU, first decision at 2.0 s.** 21M params / 86.657 MB, Apache-2.0,
   an end-to-end raw-PCM ONNX graph with FBANK + per-utterance CMVN folded in, so it shares nothing
@@ -475,42 +480,44 @@ paths:
 
 ## Latency budget — per stage, `tests/eval_latency.py`
 
-Every figure re-derives from `vac_decode_trace.json` + `en_pairing_trace.json` in under a second, no
-hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_long` (44.7 s) runs
-0.1-0.2 s cheaper on every row.
+Every figure re-derives from `vac_decode_trace.json` (whisper-ja-760M, the lower-cost of two NPU
+recordings) + `en_pairing_trace.json` in under a second, no hardware. `retention_probe` (182 s
+pause-free) is the demanding clip; `stress_long` (44.7 s) reads within ~0.1 s on most rows.
 
 | stage | p50 | p90 | max | what it is |
 | --- | --- | --- | --- | --- |
-| update decode | 0.645 | 0.814 | 1.006 | one `process()` |
-| commit lag | 2.535 | 4.600 | 8.157 | voice → committed character on the meter |
-| provisional lag | 1.187 | 1.615 | 2.385 | voice → the same character shown UNCONFIRMED |
-| redraw bound | 2.114 | 5.192 | 9.131 | upper bound: every redraw of a slot recharged as a fresh wait |
-| publication | 1.173 | 1.444 | 1.444 | speech end → the LAST `SRC n:` = `VAD_MIN_SILENCE_S` + final decode |
-| voice → SRC | 5.546 | 8.644 | 11.977 | voice → the character's numbered line (one-line rule: 13.077 / 24.457 / 33.198) |
+| update decode | 0.667 | 0.942 | 1.107 | one `process()` |
+| commit lag | 2.353 | 3.428 | 6.402 | voice → committed character on the meter |
+| provisional lag | 1.237 | 1.690 | 2.476 | voice → the same character shown UNCONFIRMED |
+| redraw bound | 1.646 | 4.208 | 7.844 | upper bound: every redraw of a slot recharged as a fresh wait |
+| publication | 1.222 | 1.414 | 1.414 | speech end → the LAST `SRC n:` = `VAD_MIN_SILENCE_S` + final decode |
+| voice → SRC | 5.670 | 8.508 | 10.294 | voice → the character's numbered line (one-line rule: 13.151 / 24.559 / 33.464) |
 | translate turn | 2.170 | 4.310 | 6.340 | `SRC n:` → `TGT n:` (steady 2.140, rotating 4.695) |
 
-- **Decode cost is `0.417 s fixed + 7.15 ms/char`** (`stress_long`: 0.360 + 5.77). The fixed term is
-  Whisper's encoder over a 30 s window, measured FLAT at 0.31 s for buffers of 1.0 s through 28.0 s
+- **Decode cost is `0.501 s fixed + 5.66 ms/char`** (`stress_long`: 0.552 + 3.78; turbo read 0.417 +
+  7.15). The fixed term is Whisper's encoder over a 30 s window — whisper-ja-760M keeps turbo's
+  32-layer encoder, which measured FLAT at 0.31 s (turbo) for buffers of 1.0 s through 28.0 s
   via `perf_metrics.get_encode_inference_duration`; feature extraction adds ~1.8 ms per buffer second
   and `return_timestamps=True` is free (`get_word_level_timestamps_processing_duration` = 0). So
   shortening the buffer touches the MARGINAL half only — 11.25 s → 5 s buys ~0.15 s — and 0.35 s is
   the floor under any update cadence.
 - **The commit lag is a DISPLAY POLICY cost, not a compute cost.** `lag = audio-time holdback +
-  decode_s`, and the holdback (p50 1.207 s) is LocalAgreement-2 withholding text until a second decode
-  confirms it. The same decode already held that text: showing its unconfirmed tail costs nothing and
-  takes p50 to 1.187 s, max to 2.385 s. `provisional_lag_s` is that arm, run on the same virtual clock
+  decode_s`, and the holdback is LocalAgreement-2 withholding text until a second decode confirms
+  it. The same decode already held that text: showing its unconfirmed tail costs nothing and takes
+  p50 to 1.237 s, max to 2.476 s. `provisional_lag_s` is that arm, run on the same virtual clock
   and the same per-character placement as the committed arm, so their difference is the policy alone.
 - **Both arms measure FIRST APPEARANCE ⇒ the gap is NOT a settled-text speedup.** Settled text still
-  lands at 2.535 s p50 — `emitted` is append-only and the published line is unchanged — and the gap
-  buys an earlier UNSETTLED rendering of the same character. `redraws` carries that cost: **105 of
-  180 updates** on `retention_probe` (20 of 44 on `stress_long`) diverge from their predecessor
+  lands at 2.353 s p50 — `emitted` is append-only and the published line is unchanged — and the gap
+  buys an earlier UNSETTLED rendering of the same character. `redraws` carries that cost: **90 of
+  180 updates** on `retention_probe` (25 of 44 on `stress_long`) diverge from their predecessor
   before it ended, i.e. rewrite already-visible characters, which land in the dimmed tail by
   construction. `redraw_bound_s` is that cost charged as a fresh wait per redraw — a loose UPPER
-  bound, double-counting by construction — and reads p50 2.114 / p90 5.192 / max 9.131. Quote 1.187 s
-  for time-to-first-glimpse and 2.535 s for time-to-settled; neither alone describes the screen.
+  bound, double-counting by construction — and reads p50 1.646 / p90 4.208 / max 7.844. Quote 1.237 s
+  for time-to-first-glimpse and 2.353 s for time-to-settled; neither alone describes the screen.
   Two-way's withheld first commit moves NEITHER number (subsection below).
 - **`VAC_CHUNK_S` is floored by decode cost, not by taste.** Work rate = `decode_s / VAC_CHUNK_S`:
-  0.645 today, 0.86 at 0.75 s, **1.29 at 0.5 s** — past real time, so the audio queue never drains.
+  0.667 today, 0.89 at 0.75 s, **1.33 at 0.5 s** — past real time, where the catch-up rule stretches
+  the cadence to the decode (~0.67 s) and every update runs back to back (unmeasured).
   Every candidate below 0.75 s needs the fixed 0.35 s term cut first.
 - Translation is **2.170 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
   bare turn, this one is production order over 215 captions.
@@ -561,7 +568,7 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
 Two-way commits nothing until the LID accepts a label, which cannot happen before `LID_MIN_SECONDS`
 of voiced buffer exists. **The queue row's premise is REFUTED for the shipped case: that hold moves
 time-to-SETTLED by nothing.** LocalAgreement-2 already commits almost nothing on update 1, so at the
-2.0 s gate both clips read their published numbers unchanged and 13 characters in total are re-dated.
+2.0 s gate both clips read their published numbers unchanged and 12 characters in total are re-dated.
 Time-to-FIRST-GLIMPSE is untouched in every arm — the dim tail renders upstream of the commit rule.
 The evaluator replays `vac_decode_trace.json` on the same virtual clock, the same per-character
 placement and the same `_quantiles` as the commit-lag row above, so its no-withholding arm reproduces
@@ -569,10 +576,10 @@ placement and the same `_quantiles` as the commit-lag row above, so its no-withh
 
 | arm | `stress_long` p50/p90/max | `retention_probe` p50/p90/max | re-dated |
 | --- | --- | --- | --- |
-| one-way, no withholding | 2.357 / 4.112 / 8.098 | 2.535 / 4.600 / 8.157 | 0 / 0 |
-| accepted at the 2.0 s gate | 2.357 / 4.112 / 8.098 | 2.535 / 4.600 / 8.157 | 2 / 11 |
-| abstained once, accepted at 3.0 s | 2.364 / 4.112 / 8.098 | 2.594 / 4.600 / 8.157 | 17 / 147 |
-| never accepted (held label) | 10.881 / 20.401 / 24.706 | 13.077 / 24.457 / 33.198 | 251 / 1043 |
+| one-way, no withholding | 2.435 / 3.740 / 6.405 | 2.353 / 3.428 / 6.402 | 0 / 0 |
+| accepted at the 2.0 s gate | 2.435 / 3.740 / 6.405 | 2.353 / 3.428 / 6.402 | 2 / 10 |
+| abstained once, accepted at 3.0 s | 2.439 / 3.740 / 6.405 | 2.398 / 3.506 / 6.402 | 36 / 177 |
+| never accepted (held label) | 11.641 / 21.591 / 24.744 | 13.151 / 24.559 / 33.464 | 270 / 1080 |
 
 `re-dated` counts characters committed before acceptance and is an UPPER bound on how many moved: one
 whose own clock already runs past the accepting update keeps it. **The last row is an upper bound
@@ -586,9 +593,9 @@ long speech, and never as the cost of the 409 held utterances.
 
 VAC awaits each decode — update and final alike — inside the coroutine draining `audio_q`, so unlike
 the sherpa two-stage worker it does NOT feed VAD during decode: capture stacks at 1 s/s into
-`AUDIO_HEADROOM_S`=8 s for the whole blocking span. Per-update NPU decode measured p50 0.552/0.645 s
-and max 0.764/1.006 s on the two pause-free clips against a 1 s update cadence, the trim rule capping
-the buffer at 11.248 s. **Two rules hold the line, each owning one live failure shape:**
+`AUDIO_HEADROOM_S`=8 s for the whole blocking span. Per-update NPU decode (whisper-ja-760M) measured
+p50 0.668/0.667 s and max 1.003/1.107 s on the two pause-free clips against a 1 s update cadence, the
+trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248 s). **Two rules hold the line, each owning one live failure shape:**
 
 - **The catch-up rule owns sustained overload.** Each update consumes exactly `VAC_CHUNK_S`, so
   decodes slower than that stack `decode_s − 1` of backlog per update. An update due while more than
@@ -619,14 +626,15 @@ the buffer at 11.248 s. **Two rules hold the line, each owning one live failure 
   11.12 s — and inside a regime that already discards un-emitted text.
 - **The `live` arm of `tests/eval_backpressure.py` is the lock**: both traced clips at ×1.75 (the
   first rung at or above the live/trace ratios 1.42 and 1.64 of ≥ 1 s updates) with the middle update
-  charged the measured 3.53 s. The old code drops 97 / 1323 blocks there; the fix drops none, queue
-  peak 3.52 / 3.66 s. Neither rule alone passes: 8 s without catch-up still drops 947 blocks on
-  `retention_probe`, and catch-up at 2 s drops on the stall. The recorded-cost ladder now first drops
-  at ×6 on both clips (×2.0 / ×1.5 before). **Its `forced_trims=1` on `retention_probe` is a harness
-  artifact** — off the recorded trajectory the replayed hypotheses no longer match their buffers, so
+  charged the measured 3.53 s. On the turbo trace the old code dropped 97 / 1323 blocks there and the
+  fix none (queue peak 3.52 / 3.66 s); on the whisper-ja-760M trace the fix drops none, queue peak
+  4.04 / 4.14 s, 0 forced trims. Neither rule alone passes: 8 s without catch-up still dropped 947
+  blocks on `retention_probe`, and catch-up at 2 s drops on the stall. The recorded-cost ladder first
+  drops at ×6 / ×4 (turbo: ×6 / ×6; ×2.0 / ×1.5 before catch-up). **A `forced_trims=1` on
+  `retention_probe` there (turbo trace) is a harness artifact** — off the recorded trajectory the replayed hypotheses no longer match their buffers, so
   `_trim` finds no cut; the same arm on the REAL NPU recogniser trims normally (max buffer 11.12 s,
   0 forced trims, 0 drops).
-- **What catch-up costs in accuracy — real NPU recogniser, `retention_probe` at ×1.75 on the virtual
+- **What catch-up costs in accuracy — real NPU recogniser (turbo, before the 760M swap), `retention_probe` at ×1.75 on the virtual
   clock**, trace-interpolated costs with real text and segments:
   `tests/eval_retention.py --pace 1.75 [--stall] [--no-catchup]`.
 
@@ -647,9 +655,15 @@ the buffer at 11.248 s. **Two rules hold the line, each owning one live failure 
 - **Carry is the cross-utterance instrument:** a caption costing more wall time than its own audio
   hands the difference to its successor (silence between captions drains further, so ignoring gaps
   is conservative, and catch-up only lowers a caption's decode sum). Over 215 captions of narration
-  the worst carry is **0.017 s**; carry reaches 2 s at ×1.541 and the 8 s headroom at **×1.762**.
+  (whisper-ja-760M, `caption_trace.json`) the worst carry is **0.137 s**; carry reaches 2 s at ×1.228
+  and the 8 s headroom at **×1.338** — against ×1.541 / ×1.762 on turbo's trace. Read the gap as
+  partly machine state: this trace is the lower-cost of two recordings at load average ~6 (decode
+  sums 473.9 s and 550.8 s, turbo's quieter run 427.9 s), while a same-conditions VAC replay of
+  section 01 put whisper-ja-760M ~10 % FASTER (179.0 s vs 199.5 s). Unresolved; the
+  `test_backpressure` ×1.25 reserve lock holds.
 - **A caption's `decode_s` is a SUM of that utterance's update decodes, never one blocking call** —
-  reading its 7.420 s max against `AUDIO_HEADROOM_S` reports a stall that did not happen. Never
+  reading its 6.213 s max (turbo: 7.420 s) against `AUDIO_HEADROOM_S` reports a stall that did not
+  happen. Never
   re-derive real-time risk from per-caption sums.
 - Rerun cost varies ~20 % run to run, and the burst is machine state rather than a path property: the
   same clip/section/device at RTF 1.098 (`git show f25cfb5:tests/caption_trace.json`) carries

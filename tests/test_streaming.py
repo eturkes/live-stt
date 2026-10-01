@@ -438,12 +438,12 @@ def test_settled_publication_bounds_voice_to_src_on_the_committed_trace():
     whole, split, counts = eval_latency.source_lags(clip)
     assert counts["divergences"] == 0  # every hypothesis still meets its own buffer
     assert counts["unplaced"] == 0
-    assert (counts["utterances"], counts["pieces"]) == (8, 28)
-    # 1138, not the 1135 the recorded run committed: the boundary anchor recovers 3
-    # characters count slicing dropped, on an unchanged trim schedule (user-approved move).
-    assert len(whole) == len(split) == 1138  # every character is charged, none vanish
+    assert (counts["utterances"], counts["pieces"]) == (8, 29)
+    # The whisper-ja-760M trace (rebuilt with the checkpoint swap, whose queue row names
+    # the move); turbo's read 1135 -> 1138 chars, whole p50 13.077 -> 13.084 s.
+    assert len(whole) == len(split) == 1202  # every character is charged, none vanish
     w, s = eval_latency._quantiles(whole), eval_latency._quantiles(split)
-    assert (w["p50"], w["max"]) == (13.084, 33.198)
+    assert (w["p50"], w["max"]) == (13.151, 33.464)
     assert s["p50"] is not None and s["max"] is not None
     assert s["p50"] <= 6.0 and s["max"] <= 12.5
 

@@ -13,8 +13,8 @@ This is the fixed procedure a "**Did not verify (L-004)**" disclaimer points at.
 stability, continuous >10 s decode behaviour and the full-file narration path. Paced production replay
 owns the 44.722 s / 20 ms-callback / decode-RTF 0.20 backpressure case and all 7 short clips, and it
 extends to the shipped VAC branch on real NPU per-update cost for both pause-free clips: `drop=0`,
-`forced_trims=0`, segment queue 0 (VAC owns none), audio queue peak 0.760 s / 1.060 s of the 8.000 s
-headroom, longest contiguous decode 0.764 s / 1.006 s — and contiguous == max single decode, so one
+`forced_trims=0`, segment queue 0 (VAC owns none), audio queue peak 1.000 s / 1.240 s of the 8.000 s
+headroom, longest contiguous decode 1.003 s / 1.107 s (whisper-ja-760M) — and contiguous == max single decode, so one
 update fires per drain and updates never bunch. The `live` arm replays the machine state that dropped
 audio live (×1.75 decode cost plus one 3.53 s blocking span) drop-free under the catch-up rule, and
 the long-form carry arm confirms the reserve with no corpus at all. `eval_retention.py` is the shipped path's accuracy gate. Pure tests own drain-on-shutdown,

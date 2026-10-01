@@ -5,7 +5,7 @@ Two-way publishes nothing until the LID accepts a label, which cannot happen bef
 `LID_MIN_SECONDS` of voiced buffer exists. The queue row assumed that withholding the
 first commit shifts settled text later. It does not, on either committed clip:
 LocalAgreement-2 already commits almost nothing on update 1, so at the 2.0 s gate the
-shift is ZERO and 13 characters across both clips are re-dated at all.
+shift is ZERO and 12 characters across both clips are re-dated at all (13 on turbo's trace).
 
 Same virtual clock, same per-character placement and the same `_quantiles` as
 `eval_latency.py`'s commit-lag arm, so the no-withholding arm reproduces that stage's

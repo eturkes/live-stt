@@ -21,23 +21,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** `rg -n --hidden 'human-facing' .agent/spec.md .claude/rules/` → every hit names the
    same surface set as `human-docs.md` or points at it; the gate stays green.
 
-3. **JA-tuned Whisper checkpoint** — most live errors are misrecognitions, not streaming artifacts
-   (≤218 of 27,184 characters of the 10-01 run are adjacent repeats). User ruling: REOPEN D-016's
-   checkpoint selection inside the same OpenVINO NPU pipeline. Candidates fixed before measuring
-   (researcher-1): `efwkjn/whisper-ja-760M@00daeaf`, `kotoba-tech/kotoba-whisper-v2.0@7eb5752`,
-   `efwkjn/whisper-ja-1.5B@72c13fb`, int8_asym like the shipped turbo. Kernel.
-   **Accept:** (a) each candidate compiles on exact `NPU` and decodes with timestamps from a warm
-   cache, or its blocker is recorded; (b) one harness for all (`.scratch/perf/model_eval.py`):
-   FLEURS-ja 150 + FLEURS-en 150 whole-clip CER (S/D/I), `retention_probe` + long-form §01/§03 CER
-   through the shipped VAC path, per-update decode p50/p90/max, jfk runaway; (c) WIN = lower JA CER
-   on FLEURS-ja AND retention, long-form not worse by >0.005, per-update p90 ≤ 1.0 s on a quiet NPU;
-   an EN CER rise >0.01 or an undeclared licence ⇒ user ruling before any swap; (d) a swap moves
-   `models/README.md`, the model path, the whisper replay golden + retention CER figure (graders
-   named here), `vac_decode_trace.json` + `caption_trace.json` and the rule numbers derived from
-   them; no win ⇒ the table lands in `asr-pipeline.md` as the D-016 re-open record; the gate stays
-   green.
-
-4. **Screen each segment inside a released piece** — one trim can release several whisper segments
+3. **Screen each segment inside a released piece** — one trim can release several whisper segments
    as one piece, and the screen drops that piece whole, so a loop segment takes its clean
    neighbours with it (tester-1 trace: `繰り返し`×12 + one clean sentence, both dropped). Kernel.
    **Accept:** a piece is screened per released segment (segment counts from the trimming decode,
@@ -45,7 +29,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    dropped alone with its clean neighbour published, red on the unfixed worker; the gate stays
    green.
 
-5. **Session report reads two-way transcripts** — a transcript records no per-line decode language,
+4. **Session report reads two-way transcripts** — a transcript records no per-line decode language,
    so `session_report.py` re-screens every source line under one `--source-lang`: an English line a
    two-way session published reads as a latin `declined` caption (reviewer-6, authored mixed
    transcript: `latin_drops=1`). Data tier.

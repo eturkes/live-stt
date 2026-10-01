@@ -6,8 +6,8 @@ unpredictable users or use-cases. One developer (agent), one user.
 
 Pipeline: mic → `Resampler` → 8 s `AudioQueue` → silero VAD → **VAC controller** (speech start opens a
 LocalAgreement-2 buffer in `streaming.py`; every `VAC_CHUNK_S`=1 s re-decodes the open buffer and
-commits what two decodes agree on; speech end flushes the tail) → **whisper large-v3-turbo int8 on
-OpenVINO NPU** (D-016) → `CodexTranslator` over a persistent `codex app-server` (D-011) → `emit_line`
+commits what two decodes agree on; speech end flushes the tail) → **whisper int8 on OpenVINO NPU**
+(D-016: whisper-ja-760M for Japanese, large-v3-turbo for English) → `CodexTranslator` over a persistent `codex app-server` (D-011) → `emit_line`
 → stdout + `transcripts/<start-time>.txt`. Partial text renders on the meter status line; one
 settled piece = one numbered `SRC` line = one translation turn — a trim publishes the committed text
 it moved out of the buffer, speech end publishes the rest. `--engine k2v2|parakeet` selects the sherpa

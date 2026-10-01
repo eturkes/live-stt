@@ -322,14 +322,13 @@ def _carry_at(captions, scale: float) -> float:
 def test_long_form_decode_duty_holds_real_time_with_a_scale_ladder_reserve():
     """Margin, not a point reading -- decode cost varies ~20 % run to run (D-016).
 
-    Measured carry is 0.017 s over 215 captions, one of them over duty by that
-    0.017 s, so the queue empties inside every utterance and its peak is a single
-    update decode -- which this trace does not record and M11.4's per-update trace
-    measures at 0.764/1.006 s. The load-bearing number is the knee: carry reached
-    the old 2 s headroom at x1.541 decode cost and reaches the shipped 8 s at
-    x1.762, so 848 s of narration independently reproduces M11.4's x1.5
-    SCALE_LADDER reserve on 4.4x the audio and against a corpus its two pause-free
-    clips never covered.
+    Measured carry is 0.137 s over 215 captions (whisper-ja-760M; turbo's read
+    0.017 s), so the queue empties inside every utterance and its peak is a single
+    update decode -- which this trace does not record and the per-update trace
+    measures at 1.003/1.107 s. The load-bearing number is the knee: carry reaches
+    the old 2 s headroom at x1.228 decode cost and the shipped 8 s at x1.338
+    (turbo: x1.541 / x1.762), so the x1.25 checked here is the reserve 848 s of
+    narration holds -- partly machine state, asr-pipeline.md.
     """
     captions = json.loads(CAPTION_TRACE.read_text(encoding="utf-8"))["captions"]
     for scale in (rung for rung in SCALE_LADDER if rung <= 1.25):

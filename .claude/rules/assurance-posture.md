@@ -22,7 +22,7 @@ carve-out is inert, this repo having no prototype. Three things it fixes locally
   move, and the change records the original check's firing. A mid-unit wish to move one is a question
   for the user. The graders this holds: the `replay.py` goldens, `gate.py`'s step inventory,
   `test_backpressure.py`'s `AUDIO_HEADROOM_S` and `SEGMENT_QUEUE_MAX` bounds, the
-  `CAPTION_REPEAT_*` locks, the retention CER 0.0609 a decode change must re-derive, and every
+  `CAPTION_REPEAT_*` locks, the retention CER 0.0532 (whisper-ja-760M; turbo read 0.0609) a decode change must re-derive, and every
   `eval_*.py` threshold that exits or raises — `eval_cer.py`'s `MAX_CER` 0.15 and
   `MAX_EXCESS_DEL_RATE` 0.04, `eval_long_form.py`'s `SURFACE_BUDGET` 0.10, `eval_backpressure.py`'s
   bounds. Read that list as a starting point and check the script: where an evaluator only REPORTS,

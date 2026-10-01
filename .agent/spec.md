@@ -62,19 +62,22 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
   cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
-- **D-016** whisper large-v3-turbo int8 on OpenVINO **NPU** is the shipped recogniser; `hotwords`
-  forfeited with that choice. Checkpoint selection inside this pipeline is REOPENED by user
-  ruling (`.agent/deferred.md` → *JA-tuned Whisper checkpoint*); engine selection stays closed, and
+- **D-016** Whisper int8 on OpenVINO **NPU** is the shipped recogniser — whisper-ja-760M for
+  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open; the turbo
+  wording in Intent is the user's to edit); `hotwords` forfeited with the NPU. Engine selection
+  stays closed, and
   so are its two constructor properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
   `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
   re-derive (`asr-pipeline.md`). **D-010** sherpa k2v2/parakeet stay as the `--engine` CPU fallback
   (VAD-segment decode, no partials).
-- **JA-tuned checkpoint** (user rulings, queue *JA-tuned Whisper checkpoint*): decided AFTER the
-  boundary-artifact fix, re-measured under the fixed policy; adopt `whisper-ja-760M` only if it wins
-  every JA leg. If adopted, it decodes Japanese and turbo stays resident for English (`--two-way`,
-  `--source-lang en`); its undeclared licence is acceptable for this personal, local-only tool.
-  Measured so far (NPU, one harness): FLEURS-ja 0.0499 → 0.0469, long-form 0.2546 → 0.2213,
-  retention 0.0609 → 0.0626 (10 boundary doublings), FLEURS-en 0.0255 → 0.0482; 1.5B + kotoba out.
+- **JA-tuned checkpoint** (user rulings): decided AFTER the
+  boundary-artifact fix, re-measured under the fixed policy; `whisper-ja-760M` won every JA leg and
+  is ADOPTED: it decodes Japanese and turbo stays resident for English (`--two-way`, `--source-lang
+  en`); its undeclared licence is acceptable for this personal, local-only tool. NPU, one harness,
+  fixed processor, turbo → 760M: FLEURS-ja 0.0499 → 0.0469, retention 0.0592 → 0.0532, long-form
+  §01+§03 0.2486 → 0.2153, FLEURS-en 0.0255 → 0.0482, quiet per-update p90 0.761 s. kotoba-v2.0 eliminated
+  on every arm (EN 0.9945, retention 0.2238); 1.5B by the first WIN leg (FLEURS-ja 0.0560 > 0.0499),
+  its VAC/long-form/jfk arms deliberately not run (~9x slower decode = real-time leg hopeless).
 - **D-002** one file: `live_stt.py` + `streaming.py`. A further split needs a cohesive one-way
   subsystem boundary named out loud. **D-006** never re-densify `live_stt.py` for "LLM readability".
 - **D-014** deterministic WAV replay is the regression harness. **D-015** `observe_en` learns an
@@ -100,10 +103,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   models being Japanese-only. This SUPERSEDES the queue row's "`--source-lang` stays the manual
   override and pins the label outright when given". `--source-lang` without `--two-way` is unchanged.
 - The status line shows the whole latest decode: committed text normal, the tail LocalAgreement-2
-  still withholds **dimmed**. Time-to-FIRST-GLIMPSE 2.535 → 1.187 s p50, 8.157 → 2.385 s max, at zero
-  compute and zero CER cost (retention CER 0.0609, unmoved). Time-to-SETTLED is unchanged at 2.535 s
-  and the dim tail is rewritten on 105 of 180 updates (`redraws`, `eval_latency.py`) — quote the two
-  numbers separately. The published line and the transcript stay committed-only + append-only.
+  still withholds **dimmed**. Time-to-FIRST-GLIMPSE 2.353 → 1.237 s p50, 6.402 → 2.476 s max, at zero
+  compute and zero CER cost (whisper-ja-760M trace; turbo's read 2.535 → 1.187, 8.157 → 2.385).
+  Time-to-SETTLED is unchanged at 2.353 s and the dim tail is rewritten on 90 of 180 updates
+  (`redraws`, `eval_latency.py`) — quote the two numbers separately. The published line and the transcript stay committed-only + append-only.
 - **The published boundary is aligned, never counted** (user ruling reopened the closed
   duplication): a decode that re-spells published text no longer re-commits or skips a character.
   NPU retention CER turbo 0.0609 → 0.0592, whisper-ja-760M 0.0626 → 0.0532; the `whisper/long`
@@ -111,12 +114,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
   that moves committed text out of the VAC buffer publishes it at once as its own `SRC n` line + turn,
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
-  `retention_probe` p50 13.08 → 5.55 s, max 33.20 → 11.98 s (`eval_latency.py`). The screen judges
+  `retention_probe` p50 13.15 → 5.67 s, max 33.46 → 10.29 s (`eval_latency.py`, whisper-ja-760M;
+  turbo's trace read 13.08 → 5.55, 33.20 → 11.98). The screen judges
   each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`. The
   one-utterance-one-line wording in Intent is the user's to edit.
 - A runaway caption (each published piece is one) is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
-  0.0583 → 0.0609. `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
+  0.0583 → 0.0609 (measured on turbo). `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
   adjudicated over 1409 live captions and REFUSED, the tripling invariant flooring it at 40 and
   excluding the whole 31..36 admissible band. Language gate is **text-side only**
   (`latin > 4 × japanese`, on text DECODED under `ja` — a two-way piece decoded under `en` skips it);
@@ -151,8 +155,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   of transcribed Japanese speech", so English input has no defined behaviour there.
   **Two-way translation SHIPS behind `--two-way`, default OFF**: with the flag absent the process
   constructs today's JA pipeline, builds ONE translation leg and decodes under `ASR_LANGUAGE`. The
-  architecture the research picked is law — ONE resident whisper pipeline handed an EXPLICIT language
-  token per utterance by a standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), the settled
+  architecture the research picked is law — an EXPLICIT language token per utterance, settled by a
+  standalone ECAPA LID on ONNX Runtime CPU (`asr-pipeline.md`), routes each decode to whisper-ja-760M
+  (`ja`) or a resident large-v3-turbo (`en`, loaded under `--two-way` alone; user ruling), the settled
   label also selecting one of two immutable direction-specific threads (`translation-leg.md`), the
   reverse one opening LAZILY on its own first turn. The flag decides HOW MANY legs exist and nothing
   else, so no `--two-way` conditional sits inside `CodexTranslator`. One app-server is behind both
@@ -187,11 +192,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **3** JA-tuned Whisper checkpoint
-  - Kernel tier; accept → `.agent/deferred.md` → *JA-tuned Whisper checkpoint*.
-- [ ] **4** Screen each segment inside a released piece
+- [ ] **3** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **5** Session report reads two-way transcripts
+- [ ] **4** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded

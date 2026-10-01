@@ -85,8 +85,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
 - `eval_two_way_settled.py` — the same trace under two-way's commit rule, which withholds every commit
   until the LID accepts a label. Four arms over both clips; the table and its refutation live in
   `asr-pipeline.md`. **Its own positive control is the no-withholding arm**, which must reproduce
-  `eval_latency.py`'s `commit_lag_s` exactly (2.357 / 4.112 / 8.098 over n=277, 2.535 / 4.600 / 8.157
-  over n=1135) — same clock, same per-character placement, same `_quantiles`, so a drift there means
+  `eval_latency.py`'s `commit_lag_s` exactly (2.435 / 3.740 / 6.405 over n=299, 2.353 / 3.428 / 6.402
+  over n=1202, whisper-ja-760M) — same clock, same per-character placement, same `_quantiles`, so a drift there means
   the replay diverged rather than the rule. The `never accepted` arm forces a path abstention does not
   take and is an upper bound only.
 - `caption_trace.json` + `build_caption_trace.py` — the shipped path's caption stream over the whole
@@ -98,7 +98,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   file instead of paying for an accelerator run. A caption's `decode_s` is a per-utterance SUM, so read
   real-time risk as carry (`asr-pipeline.md`).
 - `en_pairing_trace.json` + `eval_en_pairing.py` + `test_en_pairing.py` — what a REAL translator hands
-  the learner. `--live` puts all 215 committed captions through `SessionContext` + `CodexTranslator` in
+  the learner. Its caption input is `caption_trace_turbo.json`, turbo's stream frozen at the
+  whisper-ja-760M swap: the verdicts grade the learner, and 760M hearing 兵十 where turbo heard 標柱
+  would reshape every term without testing the learner at all. `--live` puts all 215 committed captions through `SessionContext` + `CodexTranslator` in
   production's order (`observe_ja` → `_translate` → `observe_en`); the default mode re-derives every
   verdict from the trace offline. **Deviation from production, reported per run:** a leg disabled by
   `TRANSLATE_MAX_FAILURES` is restarted against the same context, since this measures the learner and
@@ -312,7 +314,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   appends `processor.finish()` AFTER `process()` returned that timestamp; and **never derive lag from
   final updates alone** — that collapses every early in-speech commit into one utterance-close event and
   re-measures the VAD policy VAC exists to beat (finals-only reads 4.6× inflated). Qualifier:
-  `commit_audio_s` moves BACKWARD on 6 of 157 commits (max 0.452 s), so those characters are placed at
+  `commit_audio_s` moves BACKWARD on 4 of 180 commits of the whisper-ja-760M trace, max 0.609 s
+  (turbo's: 6 of 157, max 0.452 s), so those characters are placed at
   the previous endpoint and their lag is understated by that much.
 - **L-016 — gitignored bulk corpora stay reachable by a script's runtime `open()`** even where the
   agent must keep them out of context. Construct such a path INSIDE the script rather than naming it on

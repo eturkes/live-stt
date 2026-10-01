@@ -68,10 +68,15 @@ _SESSION_STATUS_FD: int | None = None
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 VAD_MODEL = MODELS_DIR / "silero_vad.onnx"
+# whisper-ja-760M (efwkjn, turbo depth, Japanese-tuned) decodes Japanese: over one NPU harness
+# under the shipped VAC path it beat turbo on FLEURS-ja 0.0499 -> 0.0469, retention 0.0592 ->
+# 0.0532 and long-form 0.2486 -> 0.2153, and decodes ~10 % faster. It roughly doubles English
+# CER (0.0255 -> 0.0482), so turbo stays the English decoder (user ruling).
+WHISPER_EN_DIR = MODELS_DIR / "openvino/whisper-large-v3-turbo-int8-ov"
 ENGINE_DIRS = {
     "k2v2": MODELS_DIR / "sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01",
     "parakeet": MODELS_DIR / "sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8",
-    "whisper": MODELS_DIR / "openvino/whisper-large-v3-turbo-int8-ov",
+    "whisper": MODELS_DIR / "openvino/whisper-ja-760m-int8-ov",
 }
 WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa-onnx
 # NPU is the default accelerator: unconditioned CER ties the GPU (long_form
@@ -92,7 +97,7 @@ OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
 # accepted and then SILENTLY IGNORED on this build -- sizes 2..8 all return the
 # baseline text -- so this is the only repetition knob that reaches the NPU.
 ASR_REPETITION_PENALTY = 1.2
-# Source language. Whisper large-v3-turbo is multilingual; the pin exists because
+# Source language. Whisper is multilingual; the pin exists because
 # this is a Japanese captioner, and the caption screen below is pinned with it.
 # Annotated `str`, not inferred: --source-lang rebinds it, and a bare literal
 # narrows to Literal["ja"], which makes pyright drop every non-ja branch unread.
@@ -500,7 +505,7 @@ class WhisperEngine:
     device-agnostic.
     """
 
-    def __init__(self, model_dir: Path, device: str = ASR_DEVICE):
+    def __init__(self, model_dir: Path, device: str = ASR_DEVICE, english_dir: Path | None = None):
         import openvino_genai  # noqa: PLC0415  -- optional dep; sherpa engines skip it
 
         self.device = device
@@ -509,6 +514,16 @@ class WhisperEngine:
         OPENVINO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         self._pipeline = openvino_genai.WhisperPipeline(
             str(model_dir), device, CACHE_DIR=str(OPENVINO_CACHE_DIR)
+        )
+        # A second resident pipeline, for <|en|> decodes alone: +2.0 GB RSS and +0.050 s
+        # per alternating update, measured for two turbo copies (asr-pipeline.md); the
+        # 760M + turbo pair is unmeasured. One-way never builds it.
+        self._english = (
+            None
+            if english_dir is None
+            else openvino_genai.WhisperPipeline(
+                str(english_dir), device, CACHE_DIR=str(OPENVINO_CACHE_DIR)
+            )
         )
 
     def set_hotwords(self, terms: str) -> None:
@@ -525,7 +540,10 @@ class WhisperEngine:
         keywords: dict[str, object] = {"repetition_penalty": ASR_REPETITION_PENALTY}
         if self.hotwords:
             keywords["hotwords"] = self.hotwords
-        return self._pipeline.generate(
+        pipeline = (
+            self._english if language == "en" and self._english is not None else self._pipeline
+        )
+        return pipeline.generate(
             # The binding takes the array through the buffer protocol; its stub
             # declares the narrower Sequence[SupportsFloat]. Converting for real
             # would copy every sample of every decode into a Python list.
@@ -558,11 +576,13 @@ class WhisperEngine:
 
 
 def load_recognizer(
-    engine: str, device: str = ASR_DEVICE
+    engine: str, device: str = ASR_DEVICE, two_way: bool = False
 ) -> sherpa_onnx.OfflineRecognizer | WhisperEngine:
     d = ENGINE_DIRS[engine]
     if engine in WHISPER_ENGINES:
-        return WhisperEngine(d, device)
+        if ASR_LANGUAGE == "en":
+            return WhisperEngine(WHISPER_EN_DIR, device)  # English alone: turbo alone
+        return WhisperEngine(d, device, WHISPER_EN_DIR if two_way else None)
     if engine == "k2v2":
         # int8 encoder + fp32 decoder/joiner ≈ fp32 CER (HILab table), RTF 0.054.
         return sherpa_onnx.OfflineRecognizer.from_transducer(
@@ -730,8 +750,10 @@ def check_models(engine: str, two_way: bool = False) -> str | None:
         missing.append("silero_vad.onnx")
     d = ENGINE_DIRS[engine]
     marker = "openvino_encoder_model.xml" if engine in WHISPER_ENGINES else "tokens.txt"
-    if not (d / marker).exists():
-        missing.append(d.name + "/")
+    dirs = [d]
+    if engine in WHISPER_ENGINES and (two_way or ASR_LANGUAGE == "en"):
+        dirs = [WHISPER_EN_DIR] if ASR_LANGUAGE == "en" else [d, WHISPER_EN_DIR]
+    missing += [path.name + "/" for path in dirs if not (path / marker).exists()]
     if two_way:
         for name in ("voxlingua107.onnx", "lang_map.json"):
             if not (LID_MODEL_DIR / name).exists():
@@ -740,9 +762,9 @@ def check_models(engine: str, two_way: bool = False) -> str | None:
         return None
     return (
         f"Missing model files under {MODELS_DIR}/: {', '.join(missing)}\n"
-        "Download from https://github.com/k2-fsa/sherpa-onnx/releases "
-        "(asr-models tag holds the model tarballs and silero_vad.onnx); "
-        "see models/README.md."
+        "See models/README.md: the sherpa models and silero_vad.onnx download from "
+        "https://github.com/k2-fsa/sherpa-onnx/releases (asr-models tag), and the "
+        "Japanese Whisper model needs a one-time conversion."
     )
 
 
@@ -2562,7 +2584,9 @@ async def run_session(args):
         import sounddevice as sd
 
     print(f"Loading {args.engine} model...")
-    rec = load_recognizer(args.engine, getattr(args, "asr_device", ASR_DEVICE))
+    rec = load_recognizer(
+        args.engine, getattr(args, "asr_device", ASR_DEVICE), getattr(args, "two_way", False)
+    )
     vad, window = make_vad()
     language_detector = LanguageDetector() if getattr(args, "two_way", False) else None
     if language_detector is not None:
@@ -2739,7 +2763,10 @@ def main():
         "--engine",
         choices=sorted(ENGINE_DIRS),
         default="whisper",
-        help="Local STT engine (default: whisper = large-v3-turbo int8 on OpenVINO).",
+        help=(
+            "Local STT engine (default: whisper = whisper-ja-760M int8 on OpenVINO, "
+            "large-v3-turbo for English)."
+        ),
     )
     parser.add_argument(
         "--asr-device",
