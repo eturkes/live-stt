@@ -20,3 +20,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `models/README.md` in agent register. Docs tier.
    **Accept:** `rg -n --hidden 'human-facing' .agent/spec.md .claude/rules/` → every hit names the
    same surface set as `human-docs.md` or points at it; the gate stays green.
+
+3. **Opt-in session audio** — no live audio exists, so accuracy work can only score read-speech
+   corpora, never the user's real meetings (user ruling: add it, off by default). Data tier.
+   **Accept:** `--save-audio` writes every captured block, before the queue, to
+   `transcripts/<start>.wav` (16 kHz mono int16, created on the first block, header valid after every
+   write), whatever `-o`/`--no-save` say, and the flag off writes no WAV; a fake-mic `run_session`
+   lock proves both and reddens with the write neutralized; `replay.py` reads the file; README states
+   the flag, ~115 MB/h and consent; the gate stays green.

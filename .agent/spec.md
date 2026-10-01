@@ -164,6 +164,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
+- [ ] **3** Opt-in session audio
+  - Data tier; accept → `.agent/deferred.md` → *Opt-in session audio*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
