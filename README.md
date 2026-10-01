@@ -67,6 +67,7 @@ Startup prints the translation status: `Translation: gpt-6-luna via codex app-se
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
 | `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
+| `--save-audio` | off | Also save the microphone audio as a WAV file in `transcripts/`. See [Saved audio](#saved-audio). |
 | `--device N` | system default | Input device index (see `--list-devices`) |
 | `--list-devices` | off | Print audio devices and exit |
 
@@ -102,11 +103,31 @@ The number is the caption number. A late translation is worse than none, because
 
 `transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
+### Saved audio
+
+Use `--save-audio` to keep the microphone audio of a session. live-stt then writes a WAV file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
+
+```
+Audio: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.wav
+```
+
+The file holds 16 kHz mono 16-bit PCM, which is the rate the recognizer uses. It holds all captured audio, including audio that the recognizer had to drop under load. The file uses about 115 MB per hour of session. It is created with the first audio block and stays playable if the session ends abruptly. The audio always goes to `transcripts/`, also with `-o` or `--no-save`, because `-o` appends to an existing file and a WAV file cannot be appended to.
+
+To replay a saved session through the recognizer offline, use `replay.py`:
+
+```sh
+uv run python replay.py transcripts/2026-08-31T13-40-55.wav --engine whisper
+```
+
+The replay does not reproduce the live captions exactly, because the live run timed its decodes against the real clock.
+
+Speech of other people is in the file too. Get their consent before you save audio of a meeting.
+
 ## How it works
 
 ### Audio → JA pipeline (all local)
 
-1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 2 seconds of PCM, independent of callback block size.
+1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz (linear interp; integer-decim fast path for 48k/32k) and enters a queue capped at 8 seconds of PCM, independent of callback block size.
 2. **Endpoint.** Capture drains into silero VAD, which splits speech on ≥0.5 s silences. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing.
 3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables. Both engine paths re-slice from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) to recover the lead-in. The sherpa path then copies each closed segment into an 8-segment queue; the whisper path has no such queue.
 4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. Showing it cut the wait to SEE a character from 2.535 s to 1.187 s (median) and from 8.157 s to 2.385 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 105 of 180 decodes rewrote part of it. The numbered `SRC n:` line carries the committed text only, and follows at the end of the utterance. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 11.2 s on the measured clips. Decode RTF is 0.48-0.61 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.

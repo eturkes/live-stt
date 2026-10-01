@@ -24,7 +24,8 @@ translation turn, `EN n:` ~1 s later; every run saves a transcript.
 Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
-  `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` · `--asr-device`.
+  `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` · `--asr-device` ·
+  `--save-audio`.
 - `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
 - `gate.py` — THE gate, 7 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
   `-v`). Green = 7 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
@@ -117,7 +118,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   ruling): an update due while more than `VAC_BACKLOG_S`=0.5 s of capture is queued waits for the
   drain, so the cadence stretches to the decode. That pair is the mechanism + fix measured on the
   09-24 capture's drops; shapes, numbers and the `live` backpressure arm → `asr-pipeline.md`.
-- Transcripts save by default; `-o PATH` overrides, `--no-save` opts out.
+- Transcripts save by default; `-o PATH` overrides, `--no-save` opts out. `--save-audio` (opt-in)
+  adds the capture WAV `transcripts/<start>.wav` (~115 MB/h), the real-audio input `replay.py` reads.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
   (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
   SRC/TGT drain remain in the session, validated by regression tests and the user-run live check.
@@ -164,8 +166,6 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **3** Opt-in session audio
-  - Data tier; accept → `.agent/deferred.md` → *Opt-in session audio*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`

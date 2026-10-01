@@ -8,6 +8,8 @@ import errno
 import io
 import subprocess
 import sys
+import types
+import wave
 from datetime import datetime
 
 import numpy as np
@@ -21,12 +23,15 @@ from live_stt import (
     DECODE_SPLIT_TRIGGER_S,
     SAMPLE_RATE,
     TRANSCRIPT_DIR,
+    AudioRecording,
     RingBuffer,
     TranscriptFile,
     _merge_chunk_text,
     _split_decode_segment,
+    audio_path,
     emit_line,
     resample,
+    session_stamp,
     submit_audio_sentinel,
     transcript_path,
 )
@@ -341,11 +346,13 @@ def test_emit_line_line_clear_gated_on_stdout_tty(monkeypatch, capsys):
 
 
 def _save_args(**overrides):
-    return argparse.Namespace(**{"output": None, "no_save": False, **overrides})
+    return argparse.Namespace(
+        **{"output": None, "no_save": False, "save_audio": False, **overrides}
+    )
 
 
 def test_transcript_path_defaults_to_timestamped_session_file():
-    path = transcript_path(_save_args())
+    path = transcript_path(_save_args(), session_stamp())
     assert path is not None
     assert path.parent == TRANSCRIPT_DIR
     assert path.suffix == ".txt"
@@ -355,11 +362,134 @@ def test_transcript_path_defaults_to_timestamped_session_file():
 
 def test_transcript_path_output_flag_overrides_default(tmp_path):
     target = tmp_path / "sub" / "session.txt"
-    assert transcript_path(_save_args(output=str(target))) == target
+    assert transcript_path(_save_args(output=str(target)), session_stamp()) == target
 
 
 def test_transcript_path_none_when_saving_disabled():
-    assert transcript_path(_save_args(no_save=True)) is None
+    assert transcript_path(_save_args(no_save=True), session_stamp()) is None
+
+
+# --- opt-in session audio (--save-audio) ---
+
+
+def test_audio_path_is_off_unless_asked_for():
+    assert audio_path(_save_args(), session_stamp()) is None
+
+
+def test_audio_shares_the_default_transcript_stem():
+    stamp = session_stamp()
+    transcript = transcript_path(_save_args(), stamp)
+    audio = audio_path(_save_args(save_audio=True), stamp)
+    assert transcript is not None and audio is not None
+    assert (audio.parent, audio.stem, audio.suffix) == (transcript.parent, transcript.stem, ".wav")
+
+
+def test_audio_stays_in_the_session_directory_whatever_the_transcript_flags(tmp_path):
+    stamp = session_stamp()
+    for flags in ({"output": str(tmp_path / "x.txt")}, {"no_save": True}):
+        assert audio_path(_save_args(save_audio=True, **flags), stamp) == (
+            TRANSCRIPT_DIR / f"{stamp}.wav"
+        )
+
+
+def test_the_recording_defers_creation_to_the_first_block(tmp_path):
+    path = tmp_path / "nested" / "session.wav"
+    recording = AudioRecording(path)
+    assert path.parent.is_dir()
+    assert not path.exists()
+    recording.close()
+    assert not path.exists()
+
+
+def test_the_recording_is_readable_before_close_and_round_trips(tmp_path):
+    path = tmp_path / "session.wav"
+    blocks = [
+        np.linspace(-1.0, 1.0, 85, dtype=np.float32),
+        np.full(85, 0.25, dtype=np.float32),
+        np.array([1.5, -1.5], dtype=np.float32),  # out-of-range PCM clips, never wraps
+    ]
+    recording = AudioRecording(path)
+    # The header is patched on every write, so a session that dies after ANY block,
+    # the first included, leaves a file every reader accepts at its true length.
+    for written, block in enumerate(blocks, start=1):
+        recording.write(block)
+        with wave.open(str(path), "rb") as w:
+            assert (w.getnchannels(), w.getsampwidth(), w.getframerate()) == (1, 2, SAMPLE_RATE)
+            assert w.getnframes() == sum(len(b) for b in blocks[:written])
+    recording.close()
+    import replay  # noqa: PLC0415 -- the consumer this format exists for
+
+    loaded = replay.load_wav_f32_16k(path)
+    expected = np.clip(np.concatenate(blocks), -1.0, 32767 / 32768)
+    assert np.max(np.abs(loaded - expected)) <= 0.5 / 32768
+
+
+def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, **flags):
+    """run_session end to end over an in-process fake mic + worker, no device."""
+    stream_blocks = [b.reshape(-1, 1) for b in blocks]
+
+    class InputStream:
+        def __init__(self, callback, **_kwargs):
+            self.callback = callback
+
+        def start(self):
+            for block in stream_blocks:
+                self.callback(block, len(block), None, None)
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    fake_sd = types.SimpleNamespace(
+        InputStream=InputStream,
+        query_devices=lambda *_a, **_k: {"default_samplerate": SAMPLE_RATE, "name": "fake"},
+    )
+    seen = []
+
+    async def worker(_rec, _vad, _window, audio_q, state, *_args, **_kwargs):
+        while (chunk := await audio_q.get()) is not None:
+            seen.append(chunk)
+            if len(seen) == len(blocks):
+                state.request_stop()
+
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+    monkeypatch.setattr(live_stt, "TRANSCRIPT_DIR", tmp_path)
+    monkeypatch.setattr(live_stt, "load_recognizer", lambda *_a: object())
+    monkeypatch.setattr(live_stt, "make_vad", lambda: (None, 512))
+    monkeypatch.setattr(live_stt, "worker", worker)
+    monkeypatch.setattr(live_stt, "_install_signal_handlers", lambda _state: None)
+    args = types.SimpleNamespace(
+        engine="whisper",
+        asr_device="NPU",
+        two_way=False,
+        device=None,
+        output=None,
+        no_save=True,
+        no_translate=True,
+        context="",
+        **flags,
+    )
+    asyncio.run(live_stt.run_session(args))
+    return seen
+
+
+def test_save_audio_records_every_captured_block(monkeypatch, tmp_path):
+    blocks = [np.full(160, 0.25, dtype=np.float32), np.linspace(-1, 1, 320, dtype=np.float32)]
+    seen = _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=True)
+    assert len(seen) == len(blocks)  # the recording rides beside the queue, not instead of it
+    (path,) = tmp_path.glob("*.wav")
+    with wave.open(str(path), "rb") as w:
+        frames = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+    expected = np.clip(np.round(np.concatenate(blocks) * 32768.0), -32768, 32767)
+    assert np.array_equal(frames, expected.astype("<i2"))
+
+
+def test_a_session_without_the_flag_writes_no_audio(monkeypatch, tmp_path):
+    blocks = [np.full(160, 0.25, dtype=np.float32)]
+    _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=False)
+    assert list(tmp_path.glob("*.wav")) == []
 
 
 def test_transcript_file_defers_creation_to_first_line(tmp_path):

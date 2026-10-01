@@ -23,6 +23,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+import wave
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -823,13 +824,23 @@ async def submit_audio_sentinel(audio_q: asyncio.Queue) -> None:
                 pass
 
 
-def transcript_path(args):
+def session_stamp() -> str:
+    return f"{datetime.now().astimezone():%Y-%m-%dT%H-%M-%S}"
+
+
+def transcript_path(args, stamp):
     """Resolve this session's transcript path; None when saving is off."""
     if args.no_save:
         return None
     if args.output:
         return Path(args.output)
-    return TRANSCRIPT_DIR / f"{datetime.now().astimezone():%Y-%m-%dT%H-%M-%S}.txt"
+    return TRANSCRIPT_DIR / f"{stamp}.txt"
+
+
+def audio_path(args, stamp):
+    """`--save-audio` lands beside the default transcript whatever `-o` says: `-o`
+    APPENDS across runs, and a WAV cannot, so a shared name would overwrite."""
+    return TRANSCRIPT_DIR / f"{stamp}.wav" if getattr(args, "save_audio", False) else None
 
 
 class TranscriptFile:
@@ -858,6 +869,39 @@ class TranscriptFile:
     def close(self):
         if self._f is not None:
             self._f.close()
+
+
+class AudioRecording:
+    """Every captured block as 16 kHz mono int16 WAV, created on the first block.
+
+    Written at CAPTURE, before the queue, so a block backpressure later drops is
+    still on disk: the file holds everything the mic delivered, a superset of what
+    the recogniser saw. `wave.writeframes` re-patches the header on every call
+    (5.9 us per 85-sample block, measured), so a crash leaves a playable file.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._w: wave.Wave_write | None = None
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(self, pcm: np.ndarray) -> None:
+        if self._w is None:
+            self._w = wave.open(str(self.path), "wb")
+            self._w.setnchannels(1)
+            self._w.setsampwidth(2)
+            self._w.setframerate(SAMPLE_RATE)
+            # Commits a zero-length header: wave sizes its header to the FIRST write and
+            # skips that write's patch, which left the first block buffered and the file
+            # empty on disk until a second one arrived.
+            self._w.writeframes(b"")
+        # x 32768, matching replay.load_wav_f32_16k's / 32768.
+        scaled = np.clip(np.round(pcm * 32768.0), -32768, 32767)
+        self._w.writeframes(scaled.astype("<i2").tobytes())
+
+    def close(self) -> None:
+        if self._w is not None:
+            self._w.close()
 
 
 _stdout_live = True
@@ -2442,12 +2486,17 @@ async def run_session(args):
     loop = asyncio.get_running_loop()
     audio_q: asyncio.Queue = AudioQueue()
 
-    output_path = transcript_path(args)
+    stamp = session_stamp()
+    output_path = transcript_path(args, stamp)
     output_file = TranscriptFile(output_path) if output_path else None
     if output_path:
         print(f"Transcript: {output_path}")
     else:
         print("Transcript: not saved (--no-save)")
+    recording_path = audio_path(args, stamp)
+    recording = AudioRecording(recording_path) if recording_path else None
+    if recording_path:
+        print(f"Audio: {recording_path}")
     log_session_marker(output_path)
 
     context = SessionContext(getattr(args, "context", "") or "")
@@ -2482,6 +2531,8 @@ async def run_session(args):
         # Copy: resample() returns a shared/reused (or strided-view) buffer, and
         # the queue defers consumption past the next callback.
         pcm = resample(mono, native_rate, SAMPLE_RATE).copy()
+        if recording is not None:
+            loop.call_soon_threadsafe(recording.write, pcm)
         loop.call_soon_threadsafe(enqueue_audio, audio_q, state, pcm)
 
     _install_signal_handlers(state)
@@ -2554,6 +2605,8 @@ async def run_session(args):
             pass
         if output_file:
             output_file.close()
+        if recording is not None:
+            recording.close()
         write_stdout("\n")
 
 
@@ -2639,6 +2692,14 @@ def main():
         "--no-save",
         action="store_true",
         help="Do not save the transcript to disk.",
+    )
+    parser.add_argument(
+        "--save-audio",
+        action="store_true",
+        help=(
+            f"Also save the microphone audio as a WAV file in {TRANSCRIPT_DIR.name}/, "
+            "named like the default transcript. It uses about 115 MB per hour."
+        ),
     )
     parser.add_argument(
         "--device",

@@ -22,6 +22,16 @@ paths:
   `buffer_size_in_seconds`=60 sample ring) pops on a NON-speech window only, so >60 s of unbroken
   speech logs `circular-buffer.cc:Push … Overflow!` and doubles it — lossless, bounded by the longest
   speech run, unrelated to the segment queue, and no drain prevents that line.
+- **`--save-audio` records at CAPTURE** (`AudioRecording`, opt-in): every resampled block lands in
+  `transcripts/<start>.wav` (16 kHz mono int16, `× 32768` = `replay.load_wav_f32_16k`'s inverse) BEFORE
+  the queue, so blocks backpressure later drops stay on disk — a superset of what the recogniser saw ⇒
+  `replay.py` over it is never the live trajectory (replay never waits on `queued_samples`, so
+  catch-up folds differ). Lazy; `wave.writeframes` re-patches the header per block (5.9 µs per
+  85-sample block) ⇒ a crash leaves a playable file — once the zero-length priming write exists, since
+  wave sizes its header to the FIRST write and skips that write's patch (first block buffered, file
+  empty on disk; locked by an independent reopen after every block). Always `TRANSCRIPT_DIR`, never beside `-o`,
+  which APPENDS across runs where a WAV cannot. Lock: `test_save_audio_records_every_captured_block`
+  (fake mic through the real `run_session`).
 - `RING_SECONDS`=60 bounds the tested envelope: a VAD segment outliving the ring loses its unretained
   head.
 - silero's `max_speech_duration` (20 s) is a SOFT cap — it raises thresholds (0.5→0.9,
