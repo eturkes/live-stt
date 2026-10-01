@@ -21,26 +21,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** `rg -n --hidden 'human-facing' .agent/spec.md .claude/rules/` → every hit names the
    same surface set as `human-docs.md` or points at it; the gate stays green.
 
-3. **Publish long utterances at settled segments** — 63.85 % of the 10-01 run's source characters sat
-   in captions ≥100 chars, whose `TGT` waits for the whole utterance plus a turn (user ruling: split
-   at settled segments; supersedes UNCAPPED). Kernel tier.
-   **Accept:** (a) after a non-final VAC update whose trim moved committed text out of the buffer
-   (`len(utterance) − len(processor.emitted)` past what is published), that committed text publishes
-   at once as its own `SRC n` line + translator turn, the remainder at speech end; a forced trim
-   publishes only text already committed; a piece without a word character waits for the next.
-   (b) RAW invariant: an utterance's raw pieces concatenate to its unsplit text and `on_segment`
-   stays one raw observation per utterance ⇒ replay goldens + retention CER 0.0609 unmoved.
-   (c) Publication semantics, locked through the real worker: `caption_defect` screens each piece;
-   the learner observes once per utterance over its published pieces; numbering exactly-once and in
-   order; EOF/shutdown publishes the remainder; two-way publishes nothing before LID acceptance,
-   releases settled text at acceptance, discards it on a token rebuild, and publishes a
-   never-accepted utterance whole under `<!>`. (d) `eval_latency.py` adds per-character voice →
-   `SRC` for both arms on the committed trace, divergences 0: `retention_probe` p50 13.08 → ≤6 s,
-   max 33.20 → ≤12.5 s. (e) One real-translator run of both arms' streams on that trace's timing
-   reports per-character voice → `TGT`, queue wait and stale skips (commit body, one sample).
-   (f) Decisions, `asr-pipeline.md` and README replace the UNCAPPED ruling; the gate stays green.
-
-4. **Band-limited streaming resampler** — the mic runs at 44.1 kHz and `resample()` interpolates each
+3. **Band-limited streaming resampler** — the mic runs at 44.1 kHz and `resample()` interpolates each
    callback block on its own: no anti-alias filter (8-22 kHz folds into the speech band) and each
    block's fractional remainder is discarded (256 frames → 92 of 92.88 samples, −0.95 % duration, a
    phase jump per block). Kernel tier.

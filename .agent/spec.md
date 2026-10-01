@@ -97,8 +97,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
   compute and zero CER cost (retention CER 0.0609, unmoved). Time-to-SETTLED is unchanged at 2.535 s
   and the dim tail is rewritten on 105 of 180 updates (`redraws`, `eval_latency.py`) — quote the two
   numbers separately. The published line and the transcript stay committed-only + append-only.
-- Utterances stay **UNCAPPED** — one utterance is one line and one turn, at any length.
-- A runaway caption is **DROPPED whole**, never collapsed or truncated; the screen sits at
+- **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
+  that moves committed text out of the VAC buffer publishes it at once as its own `SRC n` line + turn,
+  the remainder at speech end; no length cap exists. Voice → `SRC` per character on
+  `retention_probe` p50 13.08 → 5.55 s, max 33.20 → 11.98 s (`eval_latency.py`). The screen judges
+  each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`. The
+  one-utterance-one-line wording in Intent is the user's to edit.
+- A runaway caption (each published piece is one) is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
   0.0583 → 0.0609. `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
   adjudicated over 1409 live captions and REFUSED, the tripling invariant flooring it at 40 and
@@ -166,9 +171,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **3** Publish long utterances at settled segments
-  - Kernel tier; accept → `.agent/deferred.md` → *Publish long utterances at settled segments*.
-- [ ] **4** Band-limited streaming resampler
+- [ ] **3** Band-limited streaming resampler
   - Kernel tier; accept → `.agent/deferred.md` → *Band-limited streaming resampler*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded

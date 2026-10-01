@@ -15,6 +15,13 @@ weight of the headline number.
     3    publication  `vac_decode_trace.json`   VAD_MIN_SILENCE_S + the final decode
     4    translate    `en_pairing_trace.json`   one codex turn, per caption
     decode           `vac_decode_trace.json`   the unit cost stages 1-3 are built from
+    voice -> SRC      `vac_decode_trace.json`   per character, until its numbered line
+
+Stage 3 times the LAST piece of an utterance. `voice -> SRC` times every character:
+a trim publishes the committed text it moved out of the buffer as its own line
+(`settled_boundary`), so a character waits for its piece, not for speech end. Its
+`whole` arm is the one-line-per-utterance policy that rule replaced, on the same
+clock and the same placement, so the gap is the publication policy alone.
 
 Stage 2 is answered per CHARACTER, not per commit. A commit carries several
 characters spanning an audio interval, and the reader waited longest for the
@@ -72,8 +79,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from live_stt import VAC_CHUNK_S, VAD_MIN_SILENCE_S  # noqa: E402
-from streaming import common_prefix  # noqa: E402
+import numpy as np  # noqa: E402
+
+from live_stt import VAC_CHUNK_S, VAC_TRIM_S, VAD_MIN_SILENCE_S, settled_boundary  # noqa: E402
+from streaming import SAMPLE_RATE, Segment, StreamingProcessor, common_prefix  # noqa: E402
 
 TRACE = ROOT / "tests" / "vac_decode_trace.json"
 PAIRING = ROOT / "tests" / "en_pairing_trace.json"
@@ -158,6 +167,69 @@ def clip_lags(
     return lags, counts
 
 
+def source_lags(clip: dict[str, Any]) -> tuple[list[float], list[float], dict[str, int]]:
+    """Per-character voice -> `SRC n:` lag: (whole-utterance arm, split arm, counts).
+
+    Re-runs the shipped StreamingProcessor over the recorded hypotheses, each decode
+    seeing a buffer of its recorded length, because a split point is a fact of the
+    processor's trim state that the trace does not store. `divergences` counts
+    replayed commits that differ from the recorded ones: zero is what makes this the
+    measured trajectory rather than a model of it. Characters are placed exactly as
+    the committed arm of `clip_lags` places them, and every one is counted -- a
+    remainder the worker would refuse to publish alone is charged to speech end.
+    """
+    whole: list[float] = []
+    split: list[float] = []
+    counts = {"divergences": 0, "pieces": 0, "utterances": 0, "unplaced": 0}
+    now = 0.0
+    processor: StreamingProcessor | None = None
+    utterance = ""
+    published = 0
+    placed: list[float] = []  # audio time of each character of `utterance`
+    start = 0.0
+    cut_mark = 0
+    for row in clip["series"]:
+        if processor is None:
+            processor = StreamingProcessor(decode=lambda _audio: ("", []), buffer_trim_s=VAC_TRIM_S)
+            start = processor.offset_s = row["buffer_end_s"] - row["buffer_s"]
+            utterance, published, placed, cut_mark = "", 0, [], 0
+        spans = [Segment(a, b, piece) for a, b, piece in row["segments"]]
+        text = "".join(span.text for span in spans).strip() if spans else row.get("text", "")
+        processor.decode = lambda _audio, text=text, spans=spans: (text, spans)
+        processor.audio = np.zeros(round(row["buffer_s"] * SAMPLE_RATE), dtype=np.float32)
+        now = max(now, row["buffer_end_s"]) + row["decode_s"]
+        commit, commit_audio_s = processor.process()
+        if row["final"]:
+            commit += processor.finish()
+        counts["divergences"] += commit != row["commit"]
+        if commit:
+            end = row["buffer_end_s"] if row["final"] else commit_audio_s
+            if end is None:  # no spans to place it by: charged from the last endpoint
+                counts["unplaced"] += 1
+                end = start
+            span = max(end, start) - start
+            placed += [start + span * (i + 0.5) / len(commit) for i in range(len(commit))]
+            start = max(end, start)
+            utterance += commit
+        if row["final"]:
+            split += [now - at for at in placed[published:]]
+            whole += [now - at for at in placed]
+            counts["pieces"] += 1
+            counts["utterances"] += 1
+            processor = None
+            continue
+        cuts = processor.trims + processor.forced_trims
+        if cuts <= cut_mark:
+            continue
+        cut_mark = cuts
+        boundary = settled_boundary(utterance, published, processor.emitted)
+        if boundary > published:
+            split += [now - at for at in placed[published:boundary]]
+            counts["pieces"] += 1
+            published = boundary
+    return whole, split, counts
+
+
 def redraw_bound_lags(clip: dict[str, Any]) -> list[float]:
     """Pessimistic companion to the provisional arm: a redrawn slot waits again.
 
@@ -220,6 +292,7 @@ def report(trace: dict[str, Any], pairing: dict[str, Any] | None) -> dict[str, A
         provisional, pcounts = clip_lags(clip, provisional=True)
         counts["redraws"] = pcounts["redraws"]
         finals = [row["decode_s"] for row in series if row["final"]]
+        whole, split, source_counts = source_lags(clip)
         out["clips"][name] = {
             "audio_s": clip["audio_s"],
             "utterances": clip["utterances"],
@@ -236,6 +309,10 @@ def report(trace: dict[str, Any], pairing: dict[str, Any] | None) -> dict[str, A
             # close the utterance, then one full decode publishes it. Its own
             # detection granularity (one 32 ms window) is not in the trace.
             "publication_s": _quantiles([VAD_MIN_SILENCE_S + cost for cost in finals]),
+            "source_whole_s": _quantiles(whole),
+            "source_split_s": _quantiles(split),
+            "source_pieces": source_counts["pieces"],
+            "source_divergences": source_counts["divergences"],
             "vad_close_s": VAD_MIN_SILENCE_S,
             **counts,
         }
@@ -270,6 +347,8 @@ def render(out: dict[str, Any]) -> str:
             "provisional_lag_s",
             "redraw_bound_s",
             "publication_s",
+            "source_whole_s",
+            "source_split_s",
             "carry_s",
         ):
             q = row[stage]
@@ -286,6 +365,10 @@ def render(out: dict[str, Any]) -> str:
             f"      updates={row['updates']} commits={row['commits']} finals={row['finals']} "
             f"unplaced={row['unplaced']} non_monotone={row['non_monotone']} "
             f"redraws={row['redraws']}"
+        )
+        lines.append(
+            f"      voice -> SRC: {row['utterances']} utterances -> {row['source_pieces']} lines, "
+            f"divergences={row['source_divergences']}"
         )
     turn = out.get("translate_turn_s")
     if turn:

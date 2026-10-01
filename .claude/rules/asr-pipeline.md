@@ -339,9 +339,25 @@ paths:
   (`latin > japanese`) drops **6 genuine Japanese captions**, because a Latin letter is one phoneme
   where a Japanese character is a whole syllable, so one loanword outnumbers the kana around it.
   `CAPTION_LATIN_RATIO`=4 cuts the gap at 0.20.
-- **Utterances stay UNCAPPED (user ruling).** One utterance = one line = one turn, whatever its
-  length: a caption publishes only at utterance end and `VAD_MAX_SPEECH_S`=20 is a soft cap, so
-  clean-caption p99 is 136-312 characters ≈ 18-40 s of speech and the live max is 664 ≈ 88 s.
+- **Long utterances publish at settled segments (user ruling; supersedes UNCAPPED).** Utterance
+  length is unbounded — `VAD_MAX_SPEECH_S`=20 is a soft cap, clean-utterance p99 136-312 characters ≈
+  18-40 s, live max 664 ≈ 88 s, and 63.85 % of the 10-01 session's characters sat in utterances of
+  100+ — so a one-line rule made every such `TGT` wait for the whole utterance. `settled_boundary`
+  advances the open utterance's published prefix whenever a trim moves committed text out of the
+  buffer: a cut COUNT into the raw commit stream (len(utterance) == trimmed + len(emitted) through
+  `process`/`_trim`/`_force_trim`, the last emptying emitted so only committed text drains), never
+  the latest hypothesis, which may re-spell shown text. A piece is whatever whisper segments the trim
+  released (p50 36/43 characters on the two traces); a piece without a word character waits, and a
+  punctuation-only remainder at speech end publishes only when the utterance published nothing yet.
+  Per-piece semantics, locked through the real worker: the screen judges each piece (a dropped piece
+  burns no number, a published one is never recalled, and a loop split below 40 repeated characters
+  per piece passes — the translator stalls measured began at 120, on four units, fresh threads and
+  the previous model, so a split loop's turn cost is unmeasured); the learner
+  observes ONCE per utterance over the pieces that passed, so support and lease still count
+  utterances; `on_segment` stays one RAW observation per utterance (goldens unmoved, raw pieces
+  concatenate to it). Two-way publishes nothing while the label is unaccepted, releases everything
+  settled at acceptance, discards it on a token rebuild, and publishes a never-accepted utterance
+  whole under `<!>`.
 
 ## Sherpa fallback path (D-010)
 
@@ -419,7 +435,8 @@ hardware. `retention_probe` (182 s pause-free) is the demanding clip; `stress_lo
 | commit lag | 2.535 | 4.600 | 8.157 | voice → committed character on the meter |
 | provisional lag | 1.187 | 1.615 | 2.385 | voice → the same character shown UNCONFIRMED |
 | redraw bound | 2.114 | 5.192 | 9.131 | upper bound: every redraw of a slot recharged as a fresh wait |
-| publication | 1.173 | 1.444 | 1.444 | speech end → `SRC n:` = `VAD_MIN_SILENCE_S` + final decode |
+| publication | 1.173 | 1.444 | 1.444 | speech end → the LAST `SRC n:` = `VAD_MIN_SILENCE_S` + final decode |
+| voice → SRC | 5.546 | 8.644 | 11.977 | voice → the character's numbered line (one-line rule: 13.077 / 24.457 / 33.198) |
 | translate turn | 2.170 | 4.310 | 6.340 | `SRC n:` → `TGT n:` (steady 2.140, rotating 4.695) |
 
 - **Decode cost is `0.417 s fixed + 7.15 ms/char`** (`stress_long`: 0.360 + 5.77). The fixed term is

@@ -54,8 +54,10 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 4. **Latency + endpointing (VAC cadence, NOT the old 0.6 s VAD-segment rule)** — one sentence, then stop.
    Pass: partial text grows on the meter status line *while you are still speaking* (first characters
    ~1.0-1.4 s in), the trailing DIM run being the unconfirmed tail, which may be rewritten between
-   ticks while the normal-intensity run never is; then the numbered `SRC n:` line lands after you stop; a brief mid-sentence pause does
-   not split it; committed characters are never rewritten or duplicated once shown. On
+   ticks while the normal-intensity run never is; then the numbered `SRC n:` line lands after you
+   stop — speech past ~8 s also publishes settled pieces as their own lines while you talk, each with
+   its own `TGT`; a brief mid-sentence pause does not split it; committed characters are never
+   rewritten or duplicated once shown, across piece lines included. On
    `--engine k2v2|parakeet` the old rule still applies: no partials, `SRC n:` ~0.6 s after you stop.
 5. **Translation cadence** — Codex up. Pass: each `TGT n:` trails its `SRC n:` by ~1 s, shared `n` keeps
    pairs matched; `--no-translate` suppresses every TGT line.

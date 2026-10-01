@@ -419,3 +419,41 @@ def test_vac_reports_each_decode_once_to_on_update():
     pairs = zip(updates, updates[1:], strict=False)
     assert all(a["buffer_end_s"] < b["buffer_end_s"] for a, b in pairs)
     assert all(0 < u["buffer_s"] <= u["buffer_end_s"] and u["decode_s"] >= 0 for u in updates)
+
+
+def test_settled_publication_bounds_voice_to_src_on_the_committed_trace():
+    """Row 3's latency claim, re-derived from committed state on every gate run.
+
+    The whole arm is the positive control: it must reproduce the one-line-per-
+    utterance figures this policy replaced, or the replay left the recorded
+    trajectory and the split arm measures nothing.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import json
+
+    import eval_latency  # noqa: PLC0415 -- sibling script, importable only off tests/
+
+    trace = json.loads(eval_latency.TRACE.read_text(encoding="utf-8"))
+    whole, split, counts = eval_latency.source_lags(trace["clips"]["retention_probe"])
+    assert counts["divergences"] == 0
+    assert counts["unplaced"] == 0
+    assert (counts["utterances"], counts["pieces"]) == (8, 28)
+    assert len(whole) == len(split) == 1135  # every character is charged, none vanish
+    w, s = eval_latency._quantiles(whole), eval_latency._quantiles(split)
+    assert (w["p50"], w["max"]) == (13.077, 33.198)
+    assert s["p50"] is not None and s["max"] is not None
+    assert s["p50"] <= 6.0 and s["max"] <= 12.5
+
+
+def test_settled_boundary_cuts_only_where_text_left_the_buffer():
+    utterance = "空が青いです。この料理は"
+    # Nothing trimmed yet: everything committed is still in the buffer.
+    assert live_stt.settled_boundary(utterance, 0, utterance) == 0
+    # The first sentence left the buffer.
+    assert live_stt.settled_boundary(utterance, 0, "この料理は") == 7
+    # Already published that far: no new piece.
+    assert live_stt.settled_boundary(utterance, 7, "この料理は") == 7
+    # A forced trim empties emitted: every committed character drains, none invented.
+    assert live_stt.settled_boundary(utterance, 7, "") == len(utterance)
+    # Punctuation alone never forms a piece.
+    assert live_stt.settled_boundary("、" + "この", 0, "この") == 0

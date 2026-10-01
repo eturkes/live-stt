@@ -5,10 +5,10 @@ keys); translation rides the Codex subscription via a persistent
 `codex app-server` (D-011), degrading to source-only when unavailable.
 
 Japanese appears on the status line while the speaker is still talking, as the
-streaming policy settles each piece (~2.5 s behind the voice). The numbered
-`SRC n:` line lands once at the end of the utterance and its `TGT n:` line follows
-when the translation turn completes (~1 s), so pairs stay unambiguous even when
-the next utterance lands first.
+streaming policy settles each piece (~2.5 s behind the voice). A numbered `SRC n:`
+line lands each time settled text leaves the streaming buffer and once more when
+the utterance ends; its `TGT n:` line follows when that translation turn completes
+(~2.5 s), so pairs stay unambiguous even when the next line lands first.
 """
 
 import argparse
@@ -997,6 +997,26 @@ def drop_caption(state, text, defect):
 # captions a 2-character floor admitted 10 forms and exactly one reached
 # support — the protagonist's name, which the recogniser writes in katakana and
 # a 3-character floor hid in 47 of its 50 occurrences.
+# A piece holding no letter, kana or ideograph (a lone 、) waits for the next one.
+_WORD_CHAR = re.compile(r"\w")
+
+
+def settled_boundary(utterance: str, published: int, emitted: str) -> int:
+    """How far the published prefix of an open utterance may advance after an update.
+
+    A trim moves committed text out of the buffer, so no later decode can extend it
+    and it can publish now rather than at speech end. len(utterance) == trimmed +
+    len(emitted) holds through process(), _trim and _force_trim (which empties
+    emitted, so only already-committed text drains), so the boundary is a cut COUNT
+    into the raw commit stream -- never the latest hypothesis, which may re-spell
+    what was already shown.
+    """
+    settled = len(utterance) - len(emitted)
+    if settled > published and _WORD_CHAR.search(utterance, published, settled):
+        return settled
+    return published
+
+
 _TERM_RUN = re.compile(r"[ァ-ヺー]{2,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-]+")
 
 # A proper noun is what stays capitalized mid-sentence; a sentence's first word is
@@ -1883,16 +1903,18 @@ async def _vac_segments(
     on_update=None,
     detector=None,
 ):
-    """Silero-controlled streaming: partial captions during speech, one line at its end.
+    """Silero-controlled streaming: partial captions during speech, lines as text settles.
 
     Speech-start opens a streaming buffer, every VAC_CHUNK_S of new audio re-decodes
     it and commits what two decodes agree on, and speech-end flushes the unconfirmed
     tail because at an utterance boundary nothing is left to confirm it against.
 
-    Committed text lands on the status line as it settles, so the reader sees it at
-    the measured 2.5 s lag; the numbered `SRC n:` line and the single translation turn
-    still fire once per utterance, which keeps transcripts and SRC/TGT pairing intact
-    and keeps one utterance to one billable turn.
+    Committed text lands on the status line as it settles, at the measured 2.5 s lag.
+    A numbered `SRC n:` line + one translation turn fires each time a trim moves
+    committed text out of the buffer, and once more for the remainder at speech end:
+    63.85 % of a live session's characters sat in captions of 100+ characters, whose
+    translation otherwise waited for the whole utterance (voice -> SRC p50 13.08 ->
+    5.55 s, max 33.20 -> 11.98 s on retention_probe, tests/eval_latency.py).
     """
     loop = asyncio.get_running_loop()
     buf = np.empty(0, dtype=np.float32)
@@ -1908,7 +1930,10 @@ async def _vac_segments(
     pending = 0
     consumed = 0  # absolute sample index of everything fed to the VAD
     seq = 0
-    utterance = ""
+    utterance = ""  # raw committed text of the open utterance, append-only
+    published = 0  # characters of `utterance` already out as SRC lines
+    cut_mark = 0  # processor trims (normal + forced) already turned into lines
+    shown: list[str] = []  # this utterance's pieces that passed the screen
     utterance_start = 0
     utterance_decode_s = 0.0
     biased: frozenset[str] = frozenset()  # terms the model was actually given
@@ -1930,8 +1955,33 @@ async def _vac_segments(
 
         return decode
 
+    def publish(text: str) -> None:
+        """One piece: the screen, one number, one transcript line, one turn."""
+        nonlocal seq
+        defect = caption_defect(text)
+        if defect:
+            # Dropped before anything downstream sees it, so the reader's terminal,
+            # the transcript, the numbering, the term learner and the translator
+            # are all untouched by construction (P-018). A piece already published
+            # stays published: settled text is never recalled.
+            drop_caption(state, text, defect)
+            return
+        seq += 1
+        # Eight locks stub emit_line with a four-positional lambda, so the
+        # unmarked call keeps its exact shape instead of passing held=marked.
+        if marked:
+            emit_line("SRC", seq, text, output_file, held=True)
+        else:
+            emit_line("SRC", seq, text, output_file)
+        shown.append(text)
+        if translator is not None:
+            # The decode token is the settled source label; inferring direction
+            # from its already-conditioned text would discard the audio evidence.
+            translator.submit(seq, text, token)
+
     async def update(final: bool) -> None:
         nonlocal processor, utterance, utterance_decode_s, held, label, token, marked
+        nonlocal published, cut_mark
         assert processor is not None
         # The rejected 1 s arm false-routed English as Japanese at 0.9822. Score
         # each later untrimmed ring prefix once; processor.audio stops being one
@@ -1952,6 +2002,8 @@ async def _vac_segments(
                     processor.offset_s = utterance_start / SAMPLE_RATE
                     processor.insert_audio(prefix)
                     utterance = ""
+                    published = 0
+                    cut_mark = 0
                     state.partial = ""
                     state.provisional = ""
         marked = detector is not None and label is None
@@ -1967,6 +2019,17 @@ async def _vac_segments(
         utterance_decode_s += decode_s
         if commit:
             utterance += commit
+        # Before LID acceptance the script itself is unsettled, so nothing leaves the
+        # buffer as a line; acceptance releases everything settled so far at once. Only
+        # a trim moves the boundary: spans whose join outruns the stripped text (' 会議',
+        # ' ') let process() commit without growing emitted, which read as a cut.
+        cuts = processor.trims + processor.forced_trims
+        if not final and not marked and cuts > cut_mark:
+            cut_mark = cuts
+            boundary = settled_boundary(utterance, published, processor.emitted)
+            if boundary > published:
+                publish(utterance[published:boundary])
+                published = boundary
         # This decode already produced the text LocalAgreement-2 is still
         # withholding, so showing it costs no compute and no accuracy: measured
         # over both pinned clips it takes the reader's wait from 2.535 s to
@@ -1976,39 +2039,27 @@ async def _vac_segments(
         # Before LID acceptance even the agreed run may have the wrong script, so
         # all text stays provisional; finish() makes the tail empty at VAD close.
         tail = processor.previous[len(processor.emitted) :]
-        state.partial = "" if marked else utterance
+        state.partial = "" if marked else utterance[published:]
         state.provisional = utterance + tail if marked else tail
         if on_update is not None:
             on_update(buffer_s, buffer_end_s, commit_audio_s, commit, final, decode_s)
 
     async def finalize() -> None:
-        """Close the open utterance: flush its tail, then publish it once."""
-        nonlocal processor, pending, seq, label, token, marked
+        """Close the open utterance: flush its tail, then publish what remains."""
+        nonlocal processor, pending, published, cut_mark, label, token, marked
         await update(final=True)
         # 409 of 1,926 census utterances never accept. Withholding them would lose
         # one caption in five, so they publish under the held label and say so.
-        defect = caption_defect(utterance) if utterance else None
-        if defect:
-            # Dropped before anything downstream sees it, so the reader's terminal,
-            # the transcript, the numbering, the term learner and the translator
-            # are all untouched by construction -- observe_ja included, or three
-            # runaways repeating one unit would promote a decode artifact into the
-            # term list (P-018).
-            drop_caption(state, utterance, defect)
-        elif utterance:
-            seq += 1
-            # Eight locks stub emit_line with a four-positional lambda, so the
-            # unmarked call keeps its exact shape instead of passing held=marked.
-            if marked:
-                emit_line("SRC", seq, utterance, output_file, held=True)
-            else:
-                emit_line("SRC", seq, utterance, output_file)
-            if context is not None:
-                context.observe_ja(utterance, biased)
-            if translator is not None:
-                # The decode token is the settled source label; inferring direction
-                # from its already-conditioned text would discard the audio evidence.
-                translator.submit(seq, utterance, token)
+        rest = utterance[published:]
+        # A punctuation-only remainder would print as a line of its own; an utterance
+        # that published nothing yet keeps the one-line rule whatever it holds.
+        if rest and (not published or _WORD_CHAR.search(rest)):
+            publish(rest)
+        # Once per utterance over the text that reached the screen: support and lease
+        # count utterances, and a runaway the screen dropped must not promote a decode
+        # artifact into the term list (P-018).
+        if context is not None and shown:
+            context.observe_ja("".join(shown), biased)
         if on_segment is not None:
             n = consumed - utterance_start
             on_segment(utterance_start, n, n, utterance_decode_s, utterance)
@@ -2016,6 +2067,9 @@ async def _vac_segments(
         state.provisional = ""
         processor = None
         pending = 0
+        published = 0
+        cut_mark = 0
+        shown.clear()
         label = None
         token = held
         marked = False
