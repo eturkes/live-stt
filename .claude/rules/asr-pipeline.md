@@ -77,8 +77,9 @@ paths:
 - Append-only is load-bearing: a shrinking `emitted` re-commits on-screen characters. Holding it
   append-only removed every insertion on the retention clip (I 12→0, CER 0.0686→0.0583). Committed
   characters must never be rewritten or duplicated once shown.
-- **`whisper/long`'s golden pins a real duplication (`…に送ってに送って…`) — CLOSED by user ruling after
-  two measured attempts. Do not re-derive or re-fix it.** Cause: `emitted` is a character COUNT
+- **`whisper/long`'s golden pins a real duplication (`…に送ってに送って…`) — REOPENED by user ruling
+  after two measured attempts, as `.agent/deferred.md` → *Streaming boundary artifacts*; the failed
+  attempts below stay binding evidence.** Cause: `emitted` is a character COUNT
   re-derived from the latest hypothesis where it must denote what was PUBLISHED — `process()` pins
   `stable = max(agreed, len(self.emitted))` then assigns `self.emitted = text[:stable]`, so a decode
   that RE-SPELLS an already-published prefix at the same length re-anchors the boundary to earlier

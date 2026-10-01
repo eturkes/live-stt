@@ -63,8 +63,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
   cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
 - **D-016** whisper large-v3-turbo int8 on OpenVINO **NPU** is the shipped recogniser; `hotwords`
-  forfeited with that choice. Engine/model selection is closed, and so are its two constructor
-  properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
+  forfeited with that choice. Checkpoint selection inside this pipeline is REOPENED by user
+  ruling (`.agent/deferred.md` → *JA-tuned Whisper checkpoint*); engine selection stays closed, and
+  so are its two constructor properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
   `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
   re-derive (`asr-pipeline.md`). **D-010** sherpa k2v2/parakeet stay as the `--engine` CPU fallback
   (VAD-segment decode, no partials).
@@ -175,6 +176,14 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
+- [ ] **3** Two-way English captions pass the screen
+  - Kernel tier; accept → `.agent/deferred.md` → *Two-way English captions pass the screen*.
+- [ ] **4** JA-tuned Whisper checkpoint
+  - Kernel tier; accept → `.agent/deferred.md` → *JA-tuned Whisper checkpoint*.
+- [ ] **5** Streaming boundary artifacts
+  - Kernel tier; accept → `.agent/deferred.md` → *Streaming boundary artifacts*.
+- [ ] **6** Screen each segment inside a released piece
+  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
