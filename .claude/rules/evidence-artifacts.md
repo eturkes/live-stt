@@ -6,7 +6,7 @@ paths:
 
 # Evidence artifacts — corpora, traces, evaluators
 
-Fast locks run in the gate. **The ten `eval_*.py` scripts are ON-DEMAND and never gate steps**: five
+Fast locks run in the gate. **The eleven `eval_*.py` scripts are ON-DEMAND and never gate steps**: five
 need gitignored weights, a corpus or the real translator plus minutes of compute, so run one when a
 decode change raises an accuracy question. `eval_latency.py`, `eval_two_way_settled.py`,
 `eval_term_census.py`, `eval_en_pairing.py` (default mode) and `eval_lag.py` need none of that,
@@ -74,6 +74,17 @@ because they replay committed traces — a fresh clone runs them in under a seco
   scoring is `--score`-only and a section keeps recorded rows while its WAV + reference hashes hold, so
   acquisition reruns without re-decoding. Downstream consumers resolve their section from the artifact
   (`source.wav`), never from a constant.
+- `eval_anchor_scenarios.py` — scripted decode runs through `StreamingProcessor` over the
+  committed caption text: 11 re-spelling scenarios (persistent, one- and two-decode re-spellings,
+  head drops, total drops, garbage, each disturbance also on the final decode) × `--scripts`
+  (3000) scripts at a fixed `--seed`, scored exact / dup / loss / subst against the utterance,
+  which no re-spelling or drop touches past the published end (garbage scenarios replace it too,
+  so their exact rate is no processor's to win). `--baseline PATH` replays the same scripts
+  through another `streaming.py` (`git show REV:streaming.py > F`) and counts the scripts only one
+  side gets exact. Report-only: `_thin` shipped with a measured residual of baseline-only scripts
+  (`asr-pipeline.md`), so a nonzero count is a number to compare, not a failure. ~7 s, no
+  weights. **Synthetic by construction: it ranks two processors, and its rates describe no live
+  session.**
 - `vac_decode_trace.json` + `build_vac_trace.py` + `eval_latency.py` — per-update `(buffer_s, decode_s)`
   **plus the hypothesis that produced each one**. Storing the hypotheses is what makes the trace
   replayable: `StreamingProcessor` is a pure function of decode outputs + buffer lengths, so replaying
@@ -330,6 +341,7 @@ uv run python tests/eval_two_way_settled.py [--json]    # two-way's commit rule 
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware
 uv run python tests/eval_en_pairing.py [--live]         # what a real translator pairs; default <1 s
 uv run python tests/eval_lag.py [--json]                # live TGT-behind-SRC lag, trace only, <1 s
+uv run python tests/eval_anchor_scenarios.py [--baseline F] [--json]   # anchor scenarios, ~7 s
 uv run python tests/build_lag_trace.py [--check]        # rebuild that trace from the transcripts
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)
 uv run python tests/eval_cer.py                         # 2-engine CER + RTF baseline (models + corpus)

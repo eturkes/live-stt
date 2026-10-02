@@ -38,11 +38,12 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
   [--source-lang L]`.
-- `tests/` — fast locks (`uv run pytest -q`) + ten on-demand evaluators, inventory and per-file
+- `tests/` — fast locks (`uv run pytest -q`) + eleven on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
   `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py`, `eval_en_pairing.py` and
-  `eval_lag.py` replay committed traces and run in under a second in a fresh clone. Each runs as
+  `eval_lag.py` replay committed traces and run in under a second in a fresh clone;
+  `eval_anchor_scenarios.py` scripts decode runs over committed caption text in ~7 s. Each runs as
   `uv run python tests/<name>.py`, `eval_long_form.py` adding `--with soundfile`; flags per script in
   `evidence-artifacts.md`.
 - `tests/lag_sessions.json` + `tests/build_lag_trace.py` — the text-free reduction of the two live
@@ -109,9 +110,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
   (`redraws`, `eval_latency.py`) — quote the two numbers separately. The published line and the transcript stay committed-only + append-only.
 - **The published boundary is aligned, never counted** (user ruling reopened the closed
   duplication): a decode that re-spells published text no longer re-commits or skips a character, ambiguous
-  end-of-prefix rewrites excepted.
+  end-of-prefix rewrites and the thin-rewrite limits excepted.
   NPU retention CER turbo 0.0609 → 0.0592, whisper-ja-760M 0.0626 → 0.0532; the `whisper/long`
-  golden lost its duplication; mechanism, trim rules + ambiguous cases → `asr-pipeline.md`.
+  golden lost its duplication; mechanism, trim rules + ambiguous cases → `asr-pipeline.md`. A
+  decode re-spelling most of the published tail moves the boundary only once the next decode agrees,
+  or at utterance end (user ruling); taking it at once is REFUSED, a reversion then re-committing
+  published text. It ships with a measured residual where the old count wins (18 of 315,805
+  scenario scripts against ~64,000 the other way; user ruling restated the "no script" bar).
 - **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
   that moves committed text out of the VAC buffer publishes it at once as its own `SRC n` line + turn,
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
@@ -197,8 +202,6 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
 - [ ] **4** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **5** Thin rewrite keeps new speech
-  - Kernel tier, funded; accept → `.agent/deferred.md` → *Thin rewrite keeps new speech*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`

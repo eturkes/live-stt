@@ -23,7 +23,9 @@ third keeps re-spelled hypotheses from moving the published boundary.
 
 3. PUBLISHED BOUNDARY = ALIGNED, not counted. A later decode re-spells the published
    prefix (an inserted 、, パック for バック), so its count no longer marks what was shown;
-   `_anchor` locates the published tail by edit distance instead.
+   `_anchor` locates the published tail by edit distance instead. A decode that re-spells
+   most of that tail moves the boundary only once a second decode agrees, or at end of audio
+   (`_thin`).
 
 Nothing here prompts the model. Feeding recent transcript back as prev-text made
 the recogniser loop: CER 1.8919 on the pause-free clip, 2,126 insertions against
@@ -49,7 +51,8 @@ SAMPLE_RATE = 16000
 # once trims have already failed (asr-pipeline.md).
 HARD_TRIM_S = 28.0
 # Boundary re-anchoring (StreamingProcessor._anchor): how much published tail is located,
-# and how far from the old boundary it may be found.
+# and how far past the old boundary it may be found above half agreement (_thin searches the
+# whole decode).
 ANCHOR_TAIL = 24
 ANCHOR_DRIFT = 4
 # Buffer seconds past buffer_trim_s after which a cut no longer waits for a commit.
@@ -63,6 +66,17 @@ def common_prefix(a: str, b: str) -> int:
             break
         n += 1
     return n
+
+
+def tail_costs(tail: str, window: str) -> list[int]:
+    """cost[j]: edit distance of `tail` against window[:j] -- start pinned, end free."""
+    cost = list(range(len(window) + 1))
+    for i, char in enumerate(tail, 1):
+        row = [i]
+        for j, other in enumerate(window, 1):
+            row.append(min(cost[j - 1] + (char != other), cost[j] + 1, row[j - 1] + 1))
+        cost = row
+    return cost
 
 
 @dataclass
@@ -92,6 +106,8 @@ class StreamingProcessor:
     offset_s: float = 0.0
     emitted: str = ""  # text already output for the CURRENT buffer
     previous: str = ""  # previous hypothesis for the current buffer
+    found_in: str = ""  # decode `emitted` was last LOCATED in; "" after a count fallback
+    held: str | None = None  # re-spelled published prefix a thin decode proposed
     forced_trims: int = 0
     trims: int = 0
 
@@ -112,7 +128,7 @@ class StreamingProcessor:
             segments[-1] = Segment(last.start_s, last.end_s, segments[-1].text.rstrip())
         agreed = common_prefix(text, self.previous)
         published = len(self.emitted)
-        anchor = self._anchor(text)
+        anchor, found = self._anchor(text)
         self.previous = text
         stable = max(agreed, anchor)
         buffered_s = len(self.audio) / SAMPLE_RATE
@@ -135,6 +151,10 @@ class StreamingProcessor:
         # screen -- the doubled-character artefact seen in live output.
         if stable <= len(text):
             self.emitted = text[:stable]
+            # A counted record names no place in `text`, so what follows it there is no
+            # evidence for _thin: garbage counted into the record, then a repeated phrase
+            # (チンチロリン、チンチロリン) after it, confirmed a wrong end in the scenario harness.
+            self.found_in = text if found else ""
         # Absolute audio time the commit reaches. LocalAgreement holds text back
         # until a second decode confirms it, so this trails the buffer end and is
         # the only honest reference point for latency.
@@ -156,8 +176,8 @@ class StreamingProcessor:
             self._force_trim()
         return commit, commit_audio_s
 
-    def _anchor(self, text: str) -> int:
-        """Where the published `emitted` ends inside `text`.
+    def _anchor(self, text: str, final: bool = False) -> tuple[int, bool]:
+        """Where the published `emitted` ends inside `text`, and whether it was found there.
 
         A later decode re-spells the published prefix -- an inserted 、, a dropped
         particle, パック for バック -- and slicing it by len(emitted) lands the boundary
@@ -168,25 +188,20 @@ class StreamingProcessor:
         boundary. Longest-block matching locked onto a LATER repeat of a short phrase
         (ああい → あい + new ああい) and swallowed new speech (reviewers 7, 8).
         Past the end of `text` means the decode no longer reaches the published end:
-        process() then commits nothing and keeps the record, as before.
+        process() then commits nothing and keeps the record, as before. Not found = the
+        old count, which names no place in `text`.
         """
         emitted = self.emitted
         n = len(emitted)
+        held, self.held = self.held, None
         if text.startswith(emitted):
-            return n
+            return n, True
         tail = emitted[-ANCHOR_TAIL:]
         start = n - len(tail)
-        window = text[start : n + ANCHOR_DRIFT]
-        # cost[j]: edit distance of the tail so far against window[:j] (start pinned).
-        cost = list(range(len(window) + 1))
-        for i, char in enumerate(tail, 1):
-            row = [i]
-            for j, other in enumerate(window, 1):
-                row.append(min(cost[j - 1] + (char != other), cost[j] + 1, row[j - 1] + 1))
-            cost = row
+        cost = tail_costs(tail, text[start : n + ANCHOR_DRIFT])
         best = min(cost)
         if 2 * best > len(tail):
-            return n  # too little in common to locate anything by
+            return self._thin(text, tail, held, final)
         # Equal costs are an edit at the very end of the published tail -- dropped,
         # inserted or re-spelled -- which text alone cannot separate. The last decode
         # can: the end after which this text continues as that one did right after the
@@ -197,10 +212,50 @@ class StreamingProcessor:
         follow = self.previous[n : n + 2]
         evidenced = [end for end in ends if follow and text.startswith(follow, end)]
         if evidenced:
-            return min(evidenced, key=lambda end: (abs(end - n), -end))
+            return min(evidenced, key=lambda end: (abs(end - n), -end)), True
         if ends[-1] == len(text) < n:
-            return max(n, len(text) + 1)  # the text stops short of the published end
-        return min(ends, key=lambda end: (abs(end - n), -end))
+            return max(n, len(text) + 1), True  # the text stops short of the published end
+        return min(ends, key=lambda end: (abs(end - n), -end)), True
+
+    def _thin(self, text: str, tail: str, held: str | None, final: bool) -> tuple[int, bool]:
+        """Below half agreement: the boundary moves only once two decodes agree on it.
+
+        Keeping the count lost the speech after a re-spelling of most of the tail
+        (ABCDEFGH → XXGH: IJK dropped, reviewer-7). Taking the end the continuation marks
+        at once moved the record into a one-decode spelling, so the reversion, head drop
+        or total drop after it re-committed published text (total-drop exact output 99.9 →
+        50.6 % on the scenario harness, consultants 1 + 2). So that end is HELD for one
+        decode, which commits nothing and keeps the record (a HARD_TRIM_S force trim still
+        fires), and the next decode adopts it
+        by proposing the same re-spelled prefix; anything else keeps the count, which
+        self-heals across a blip because every count names the same published length.
+        Evidence = what followed the published end in the decode the record was last
+        FOUND in, since a held or counted decode's own continuation proves nothing. It
+        may sit at any end the tail reaches with at least one matching character
+        (cost < max(len(tail), j): a head the decoder restores costs insertions past
+        ANCHOR_DRIFT); cost, then nearness, picks among several. finish() adopts
+        unconfirmed: no decode is left to confirm it, and the count would drop the tail.
+        """
+        n = len(self.emitted)
+        follow = self.found_in[n : n + 2]
+        if not follow:
+            return n, False
+        start = n - len(tail)
+        cost = tail_costs(tail, text[start:])
+        seen = [
+            start + j
+            for j, c in enumerate(cost)
+            if c < max(len(tail), j) and text.startswith(follow, start + j)
+        ]
+        if not seen:
+            return n, False
+        end = min(seen, key=lambda end: (cost[end - start], abs(end - n), -end))
+        if final or held == text[:end]:
+            return end, True
+        if held is None:
+            self.held = text[:end]
+            return max(n, len(text) + 1), True  # past the text: no commit, record kept
+        return n, False
 
     def _audio_time_at(self, segments: list[Segment], index: int) -> float | None:
         """Absolute audio time of character `index`, interpolated inside its segment."""
@@ -230,6 +285,7 @@ class StreamingProcessor:
             return
         self.emitted = self.emitted[cut_chars:]
         self.previous = self.previous[cut_chars:]
+        self.found_in = self.found_in[cut_chars:]
         self.audio = self.audio[int(cut_s * SAMPLE_RATE) :]
         self.offset_s += cut_s
         self.trims += 1
@@ -245,10 +301,13 @@ class StreamingProcessor:
         self.audio = self.audio[-keep:]
         self.emitted = ""
         self.previous = ""
+        self.found_in = ""
+        self.held = None
         self.forced_trims += 1
 
     def finish(self) -> str:
         """Emit the unconfirmed tail; at end of audio there is nothing left to confirm."""
-        tail = self.previous[self._anchor(self.previous) :]
+        end, _ = self._anchor(self.previous, final=True)
+        tail = self.previous[end:]
         self.emitted = self.previous
         return tail

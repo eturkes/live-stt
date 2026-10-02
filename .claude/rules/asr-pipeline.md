@@ -88,7 +88,8 @@ paths:
   which the text continues as the PREVIOUS decode did right after the published end, else the end
   nearest the old one; evidence never outbids cost, because a repeated short phrase (そうそう) puts a
   confirming continuation after a LATER repeat and taking it swallowed new speech. Below half
-  agreement the count stands; a decode stopping short of the published end commits nothing.
+  agreement `_thin` decides (next bullet); a decode stopping short of the published end commits
+  nothing.
   Trims fire on a commit, where count slicing WOULD have committed (so the committed trace keeps its
   whole trim schedule: 0 offset divergences, 1 + 3 commits changed on turbo's pre-swap trace), or past `buffer_trim_s` +
   `ANCHOR_STALL_S`=4 (12 s; traced buffers never pass 11.25 s) — without the last two an aligned
@@ -104,10 +105,43 @@ paths:
   `attempt/p009-audio-time-cut` @ `bd37bf7`). **Ambiguous by construction, documented, not bugs:**
   a 2-3 character insertion right before the last published character reads as a 1-character
   re-spelling (edit distance prefers it); a terminal deletion whose continuation ALSO changed reads
-  as a re-spelling; a thin rewrite (<50 % agreement) keeps the count, as HEAD did. A re-spelling
+  as a re-spelling. A re-spelling
   inside the RETAINED segment shifts the next piece boundary (`settled_boundary`) by its length —
   no published character lost or repeated. Locks: `tests/test_boundary_anchor.py` (tester-4, 36
   cases incl. a seeded 576-edit property) + six `test_streaming.py` cases, red on the old processor.
+- **Below half agreement the boundary moves only once two decodes agree (`_thin`, user ruling).**
+  The count alone dropped the speech after a re-spelling of most of the tail (reviewer-7: ABCDEFGH
+  → XXGHIJK lost IJK; turbo's retention trace counted `があった森永の美味しい牛乳` 4 early, cancelled
+  only by the next decode). Evidence = the ≤2 characters that followed the published end in
+  `found_in`, the decode the record was last FOUND in — never a held or counted decode, whose
+  continuation proves nothing; a counted record clears `found_in`, which keeps garbage plus a
+  repeated phrase (チンチロリン、チンチロリン) from confirming a wrong end. It may sit at any end the
+  tail reaches with ≥1 matching character (`cost < max(len(tail), j)`: a restored head costs
+  insertions past `ANCHOR_DRIFT`); cost, then nearness, picks. The first evidenced decode is HELD —
+  no commit, record kept, no ordinary trim (the `HARD_TRIM_S` force trim still fires) — and the
+  next adopts the end by proposing the same re-spelled
+  prefix, else the count stands; `finish()` adopts unconfirmed, no decode being left to confirm it.
+  **Taking the end at once is REFUSED** (consultant-1 + consultant-2 BLOCK): it moves the record
+  into a one-decode spelling, so the reversion, head drop or total drop after it re-commits
+  published text. `tests/eval_anchor_scenarios.py --baseline <old streaming.py>`, 11 scenarios ×
+  ~2,870 scripts, seed 11: 0 scripts the old processor outputs exactly and this one does not —
+  sampling-bounded: seed 0 finds 1, `--scripts 30000 --seed 7` 18 of 315,805 against ~64,000 the
+  other way (user ruling: shipped, the contract's "no script" restated as these numbers); exact
+  output old → new: persistent re-spelling 23.7 → 74.6 %, two-decode re-spelling 24.0 → 74.6 %,
+  one-decode head drop 63.6 → 92.9 %, final-decode drop 51.7 → 91.2 %, total drop 99.9 → 99.9 %
+  (the at-once rule: 50.6 %). **A synthetic ranking only**: the committed whisper-ja-760M clips
+  reach the thin branch 0 times in 224 updates, frozen turbo 3 on the old processor and 2 now,
+  and every recorded clip (760M + frozen turbo) replays byte-identical commits. Limits: with no
+  located continuation, or a second decode proposing another prefix, the count stands (loss or
+  repeat up to the re-spelled span); a held decode's dim tail is count-sliced for that one
+  update. **Where the old count wins, documented, not bugs:** a same-length re-spelling holding
+  the continuation earlier adopts the earlier end (ABCDEFGH, ABCDEFGHIJ, XGIJXXYYIJK ×2 →
+  re-commits IJXXYY, reviewer-2), and so does an unconfirmed final decode (XGHIJXXXIJ;
+  `1。これは私が小` → final `雑が小さい雑雑雑さい` publishes `さい雑雑雑さい`, reviewer-1), the count
+  being right there only because the length held; a two-decode head drop can confirm a short
+  re-spelled prefix and drop speech on restoration (`…カン、カンと鐘…` loses `カン、`, reviewer-1,
+  seed 0). Locks: `tests/test_thin_rewrite.py`
+  (tester-1, 49 cases: 24 locks red on the old processor, 25 controls green on both).
 - The `on_update` seam (`worker` / `_vac_segments` / `replay.py`) is what makes commit timing
   observable at all; `commit_audio_s` is otherwise discarded at `commit, _ = await …`.
 
