@@ -197,6 +197,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
 - [ ] **4** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
+- [ ] **5** Thin rewrite keeps new speech
+  - Kernel tier, funded; accept → `.agent/deferred.md` → *Thin rewrite keeps new speech*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
