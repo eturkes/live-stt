@@ -191,6 +191,37 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **1** A dropped trailing mark swallows the next spoken character
   - Kernel tier, funded by the 10-02 live-session request; accept → `.agent/deferred.md` →
     *A dropped trailing mark swallows the next spoken character*.
+  - **RESUME (session paused mid-unit).** Finish line in force = the 10-02 request: deliver end to
+    end, full gate green on a clean tree at the closing commit, final message per that request
+    (what changed, gate + skipped/not-run, teammates, advisor `none`, unconfirmed, `git status`,
+    closing SHA) PLUS the diagnosis answer (`.scratch/s1002/diagnosis.md`). Done: queue 12a79af;
+    translation turn correlation 9c5dc14 (closed its row).
+  - Uncommitted = this unit, also snapshotted on `wip/dropped-mark` @ 2a08400: `streaming.py`
+    (sha c09619af), `tests/test_dropped_mark.py`, `tests/eval_anchor_scenarios.py`
+    (`markdrop`, `markdrop_edit`), `.claude/rules/asr-pipeline.md`, the eval entry of
+    `.claude/rules/evidence-artifacts.md`.
+  - Final shape vs the reviewed one (sha 33775063): give-back needs the last PUBLISHED character
+    (`published_last`) to be a mark too (reviewer-3 F3: a record re-spelling C as 。 re-committed
+    C); a lone published mark skips `_thin` (reviewer-3/4 F1); the give-back runs inside the
+    evidenced pool (reviewer-3 F2). Rerun on this shape: 176 streaming locks green; 4 new locks red
+    on 33775063 and 16 of 28 red on 12a79af; scenario `--scripts 30000 --seed 7` vs 12a79af: lost
+    201 (195 repeat a mark, 5 a word char, 1 two chars), won 47,508; seed 11: 18 / 4,782.
+    NOT rerun on this shape: NPU replay golden + retention CER (0.0532 held on 33775063), gate.
+  - Measured + refused: give-back on `_thin`'s count fallback fixes `AB。`→`XBそれ` but loses
+    197 vs 18 scripts at seed 11 (total-drop/garbage counts stop self-healing). So the row's
+    "no equal-cost end spends a word character on the mark" holds above half agreement + for a
+    lone mark only — a contract narrowing the user has NOT approved yet.
+  - Stale text to rewrite to the final shape: the unit paragraph in `asr-pipeline.md` (214 / flip-only
+    taxonomy) and the `eval_anchor_scenarios.py` docstring ("214 one-decode mark flips").
+  - Teammates, all stopped: tester-2 `wt/tester-2` @ 98180eb (suite, red 13/24 on 12a79af, rerun
+    here); reviewer-3 + reviewer-4 verdicts `.scratch/s1002/reviewer-{3,4}.md` (F1-F4 / F1-F2,
+    V1) on 33775063, NOT yet re-reviewed on the final shape; probes in
+    `.scratch/s1002/reviewer-probes/` (scripts still name their old `/tmp` paths). tester-1
+    `wt/tester-1` @ 84539be is merged in 9c5dc14.
+  - Next action: `AskUserQuestion` — approve the contract narrowing; fund row *A trim cut at an
+    early segment end re-publishes speech* now or later; ASR direction (症例数 → 小レース, GPU
+    hotwords). Then fix the stale text, rerun NPU golden + retention CER on the final shape, send
+    reviewer-3/4 one re-review round, gate, commit (delete this row + its queue row), report.
 - [ ] **2** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
