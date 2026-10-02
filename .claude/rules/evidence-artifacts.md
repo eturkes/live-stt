@@ -272,10 +272,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
   an assumption.
 - **L-026 — a model bench is evidence only if the harness mirrors production failure handling and the
   judge sees raw candidates.** Import the real config/instructions/thread options rather than retyping
-  them. A `codex app-server` turn that times out keeps running server-side, so without
-  `turn/interrupt` + note drain one stall silently converts every later turn into a timeout. That is
-  not enough when a turn STALLS rather than errors: open a fresh thread per measured turn and put a
-  real-input CANARY after every risky one — a row is credible only if the canary behind it is healthy,
+  them. A `codex app-server` turn that times out keeps running server-side until
+  `turn/interrupt {threadId, turnId}` ends it; without `turnId` the server rejects the interrupt and
+  the next `turn/start` on that thread is steered INTO the running turn, which is how one stall
+  silently converted every later turn into a timeout. Open a fresh thread per measured turn anyway
+  and put a real-input CANARY after every risky one — a row is credible only if the canary behind it is healthy,
   so carry `canary_s` in the matrix and restart the server when it is not. Present judge candidates
   between explicit `[Cn]`/`[/Cn]` markers, never through `repr()` or quotes, which caps the
   format-contract score for the whole field at once. Interleave repetitions across configs, run configs

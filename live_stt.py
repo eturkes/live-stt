@@ -1327,6 +1327,7 @@ class _Leg:
     thread_id: str | None = None
     brief: str = ""  # glossary this thread was started with
     turns: int = 0
+    unfinished: tuple[str, str] | None = None  # (thread, turn) of a turn/start not yet completed
 
 
 class CodexTranslator:
@@ -1430,11 +1431,10 @@ class CodexTranslator:
 
         The turn pays the one-time uncached-prompt cost (~3 s) before the first
         caption instead of on it, and proves the whole translation path (auth,
-        entitlement, instructions) up front. A probe of a SURVIVING server needs
-        the fresh thread just as much as a spawn does: a stalled turn poisons its
-        thread and interrupt-plus-drain does not clear it (L-026), so a turn on
-        the thread that collected the three strikes would measure that wedge
-        rather than the server. It is also the only channel the glossary rides.
+        entitlement, instructions) up front. A probe of a SURVIVING server opens a
+        fresh thread too: a turn there cannot be steered into one the strikes left
+        running (L-026's "poisoned thread" was that steering, behind an interrupt
+        that lacked its turnId), and it is the only channel the glossary rides.
         """
         leg = self._select_leg(source)
         leg.thread_id = await asyncio.wait_for(self._new_thread(), CODEX_CONTROL_TIMEOUT_S)
@@ -1500,12 +1500,10 @@ class CodexTranslator:
             return False
         requested_source = source or ASR_LANGUAGE
         self._recoveries += 1
-        # Stale notes fail the probe turn on both paths: the EOF cleanup's own
-        # wake sentinel (T8.3), or the late output of a turn that stalled rather
-        # than errored, which keeps arriving after _abort_turn drained. The turn
-        # collects one of those instead of its own turn/completed and raises,
-        # failing a recovery that had in fact succeeded -- measured against a
-        # real codex as `init failed (RuntimeError: {})` in 0.41 s.
+        # The EOF cleanup's wake sentinel (T8.3) names no turn, so _turn's
+        # correlation cannot skip it: left queued it fails the probe turn, and a
+        # recovery that had in fact succeeded read as `init failed (RuntimeError:
+        # {})` in 0.41 s against a real codex.
         while not self._notes.empty():
             self._notes.get_nowait()
         # A surviving process keeps every thread except the one that struck out.
@@ -1522,6 +1520,7 @@ class CodexTranslator:
                 process_leg.thread_id = None
                 process_leg.brief = ""
                 process_leg.turns = 0
+                process_leg.unfinished = None
         recovered = await (self._probe(leg.source) if live else self._respawn(leg.source))
         if recovered:
             self._poisoned_source = None
@@ -1655,6 +1654,7 @@ class CodexTranslator:
             leg.thread_id = None
             leg.brief = ""
             leg.turns = 0
+            leg.unfinished = None
         # _disable records the enabled->disabled transition once (startup/3-strike
         # both record theirs; a death in an idle gap was the silent case) — T8.5.
         self._disable("codex app-server exited")
@@ -1807,21 +1807,42 @@ class CodexTranslator:
 
     async def _turn(self, text: str, leg: "_Leg | None" = None) -> str:
         leg = leg or self._active_leg
-        await self._request(
+        # A snapshot: EOF cleanup clears leg.thread_id before this turn reads the notes the
+        # server sent ahead of its exit, and a completed caption must still collect them.
+        thread_id = leg.thread_id
+        resp = await self._request(
             "turn/start",
             {
-                "threadId": leg.thread_id,
+                "threadId": thread_id,
                 "input": [{"type": "text", "text": text}],
                 "effort": TRANSLATE_EFFORT,
                 "summary": "none",
             },
         )
+        # A turn/start on a thread whose turn is still running is STEERED into that turn
+        # and answers with its id (codex 0.159.2), so collecting it would publish the
+        # stalled caption's translation under this one.
+        turn_id = ((resp or {}).get("turn") or {}).get("id")
+        if turn_id is not None and (thread_id, turn_id) == leg.unfinished:
+            raise RuntimeError("turn/start joined the unfinished turn")
+        if thread_id is not None and turn_id is not None:
+            leg.unfinished = (thread_id, turn_id)
         parts: list[str] = []
         final = None
         while True:
             note = await self._notes.get()
             method = note.get("method", "")
             params = note.get("params", {})
+            # Every thread's notes share one stream, and a timed-out turn keeps emitting
+            # long after _abort_turn drained: its late completion published as a later
+            # caption's TGT and shifted every pair behind it (10-02 live: TGT 1370 = SRC
+            # 1326, 4.8 min stale). A note naming nothing is the EOF wake sentinel.
+            thread = params.get("threadId")
+            turn = params.get("turnId") or (params.get("turn") or {}).get("id")
+            if (thread is not None and thread != thread_id) or (
+                turn is not None and turn_id is not None and turn != turn_id
+            ):
+                continue
             if method == "item/agentMessage/delta":
                 parts.append(params.get("delta", ""))
             elif method == "item/completed":
@@ -1829,6 +1850,7 @@ class CodexTranslator:
                 if item.get("type") == "agentMessage":
                     final = item.get("text")
             elif method == "turn/completed":
+                leg.unfinished = None
                 return (final or "".join(parts)).strip()
             elif method == "error" and not params.get("willRetry"):
                 raise RuntimeError(json.dumps(params.get("error", {}))[:300])
@@ -1840,14 +1862,18 @@ class CodexTranslator:
             return
         leg = leg or self._active_leg
         try:
-            if leg.thread_id:
+            # Without turnId the server answers -32600 and the turn runs on: every interrupt
+            # this leg sent before the 10-02 session was a no-op. The pair keeps the turn
+            # named against its own thread across a rotation. With no turn reported (a
+            # turn/start that never answered) only that rejected thread-only form remains.
+            params = None
+            if leg.unfinished:
+                params = {"threadId": leg.unfinished[0], "turnId": leg.unfinished[1]}
+            elif leg.thread_id:
+                params = {"threadId": leg.thread_id}
+            if params:
                 self._write(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 0,
-                        "method": "turn/interrupt",
-                        "params": {"threadId": leg.thread_id},
-                    }
+                    {"jsonrpc": "2.0", "id": 0, "method": "turn/interrupt", "params": params}
                 )
             await asyncio.sleep(1.0)
             while not self._notes.empty():

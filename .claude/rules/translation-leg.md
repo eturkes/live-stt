@@ -87,6 +87,30 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   sentinel onto `_notes`, so a turn parked mid-collect raises at once instead of waiting out
   `TRANSLATE_TIMEOUT_S`. The enabled→disabled flip logs once. `submit` counts backlog evictions into
   `dropped_translations` (meter `tdrop=`; `TRANSLATE_QUEUE_MAX`=50, drop-oldest).
+- **A turn collects only its own notes, and an abort interrupts the turn it names.** Every
+  thread's notifications share one stdout, and codex 0.159.2 names their owner: `threadId` +
+  `turnId` (`turn.id` on `turn/started`/`turn/completed`). `_turn` snapshots the thread it starts on
+  (EOF cleanup clears the leg's thread before queued notes are read) and the id the `turn/start`
+  response names, and skips a note naming another thread or turn; a note naming neither (the EOF
+  sentinel) still reaches it. `turn/interrupt` REQUIRES `turnId` — `{threadId}` alone answers
+  `-32600 missing field turnId`, so every interrupt this leg sent before the fix was a no-op; with it
+  the turn ends `interrupted` in ~10 ms. The leg keeps its unfinished turn as a `(thread, turn)`
+  pair, so a rotation never pairs a new thread with an old turn. A `turn/start` on a thread whose
+  turn still runs is STEERED into that turn and answers with its id ⇒ `_turn` refuses that pair
+  (one strike). **Residual:** with no unfinished turn named yet, a `turn/start` that never answers
+  names no turn, so its abort sends the rejected thread-only form and a later steer into that turn
+  goes unrecognised — the 29 started turns in the live session's 14:40-14:45 trace window (host
+  `~/.codex/logs_2.sqlite`) reported `turn/started` at p50 52 ms, max 66 ms after their
+  `turn/start` (reviewer-2 reproduced).
+  Real app-server through the real `CodexTranslator`, old → new: a 900-character turn timed out at
+  3 s, a glossary rotation moved the leg, and the next caption published that turn's late
+  translation (`今日は晴れています。` → `1. This is a story I heard…`) → 0 of 16 captions misattributed
+  over 2 runs; a degenerate stall steered the next two captions into itself (3 timeouts, disabled) →
+  the stall ends `interrupted` and every later caption translates in 1.4-2.6 s. Live footprint
+  before the fix: ≥12 of 1321 `TGT` lines in the 10-02 session carried another caption's
+  translation, all inside DNS-failure / websocket-idle-timeout windows (`~/.codex/logs_2.sqlite`
+  on the host). Locks: `tests/test_turn_correlation.py` (tester-1, plus reviewer-1's EOF and
+  reviewer-2's rotation cases).
 - **L-033 — validate liveness at the COMMIT point, not only at spawn.** `start()` re-checks
   `_reader_task.done()` / `returncode` immediately before `enabled=True`, so a warm-up health check
   that completes just before the child dies cannot strand later turns over a dead reader.
@@ -108,17 +132,18 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
     `_reader_task`, leaving the survivor a reader no one owns whose eventual EOF calls `_disable` on
     a translator that by then holds a healthy leg, and enqueues a wake sentinel into its notes. Only
     a dead process makes that abandonment safe.
-  - **The fresh thread is the probe, not an extra.** A stalled turn poisons its THREAD and
-    interrupt-plus-drain does not clear it (L-026), so a turn on the thread that took the three
-    strikes measures the wedge and reports a healthy server dead. `_new_thread` → `_instructions` →
-    `translator_brief` is also the only channel the CURRENT glossary rides, on either arm.
+  - **The probe opens a fresh thread**: a turn there cannot be steered into one the strikes left
+    running, and `_new_thread` → `_instructions` → `translator_brief` is the only channel the
+    CURRENT glossary rides, on either arm. L-026's "a stalled turn poisons its THREAD" was that
+    steering behind the `turnId`-less interrupt; a correctly interrupted thread translates its next
+    turn normally.
   - The design fork was priced and inline won: a background recovery task buys idle-gap repair for
     one more task to order against `close()` and the SIGHUP path, while `run()` inherits that
     ordering whole.
-  - **Drain `_notes` before the handshake**, on both arms. The EOF cleanup's own wake sentinel is
-    still queued, and a turn that STALLED rather than errored keeps emitting after `_abort_turn`
-    drained; the probe turn collects that `{method:error}` and raises — measured as
-    `init failed (RuntimeError: {})` in 0.41 s, throwing away a server that had in fact started.
+  - **Drain `_notes` before the handshake**, on both arms. The EOF cleanup's own wake sentinel
+    names no turn, so correlation cannot skip it; left queued, the probe turn collects that
+    `{method:error}` and raises — measured as `init failed (RuntimeError: {})` in 0.41 s, throwing
+    away a server that had in fact started.
   - `submit` queues while the leg is down but still recoverable, because `run()` is parked on that
     queue and nothing else wakes it; a caption arriving inside the backoff is discarded in `run()`,
     which keeps a degrade out of the backlog and out of `tdrop=`.
@@ -200,7 +225,9 @@ from the repo alone: `uv run python tests/eval_lag.py`.
   turns wedged at `TRANSLATE_TIMEOUT_S`=15 s each (n=294-296, sourced, never translated) spent the
   three strikes; `_disable` fired at 3595 s and `_probe` restored the leg at 3601 s; the captions
   queued across those ~50 s drained afterwards, each landing tens of seconds after the words were
-  spoken. A successful turn cannot exceed `TRANSLATE_TIMEOUT_S` ⇒ **every lag above 15 s is queue
+  spoken. Inference, matching the real-server probe: one stall steered the next two captions into
+  itself behind the `turnId`-less interrupt, which is how one wedge spent all three strikes. A
+  successful turn cannot exceed `TRANSLATE_TIMEOUT_S` ⇒ **every lag above 15 s is queue
   wait by construction**, which is what `TRANSLATE_MAX_STALENESS_S` now cuts. Session 1's own tail is
   the same shape one order smaller and needs no cascade: its max-lag caption had one ahead of it,
   while its slowest standalone turn took 7 s.

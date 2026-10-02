@@ -1185,11 +1185,10 @@ def test_recovery_routes_on_the_surviving_process_not_on_the_trigger(monkeypatch
 
 
 def test_the_probe_opens_a_fresh_thread_carrying_the_current_glossary(monkeypatch):
-    # A stalled turn poisons its THREAD and interrupt-plus-drain does not clear
-    # it (L-026: on one shared thread a stalled turn made a later real-speech
-    # control hang, where a fresh thread measured 3.4 s). The three strikes are
-    # exactly that class, so a probe reusing the thread would measure the wedge
-    # and report a healthy server dead. The fresh thread is also what re-carries
+    # A turn/start on a thread whose turn still runs is steered into it, so a
+    # probe reusing the thread the strikes left busy would measure that turn and
+    # report a healthy server dead (L-026's "poisoned thread", behind an
+    # interrupt that lacked its turnId). The fresh thread is also what re-carries
     # the terms learned since startup, since the glossary rides only there.
     async def scenario():
         codex = _Codex()

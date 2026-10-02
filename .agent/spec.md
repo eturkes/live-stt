@@ -188,27 +188,24 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** Correlate each translation turn with its own server turn
-  - Kernel tier, funded by the 10-02 live-session request; accept → `.agent/deferred.md` →
-    *Correlate each translation turn with its own server turn*.
-- [ ] **2** A dropped trailing mark swallows the next spoken character
+- [ ] **1** A dropped trailing mark swallows the next spoken character
   - Kernel tier, funded by the 10-02 live-session request; accept → `.agent/deferred.md` →
     *A dropped trailing mark swallows the next spoken character*.
-- [ ] **3** Live-mic validation pass
+- [ ] **2** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **4** Reconcile the human-facing doc set
+- [ ] **3** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **5** Screen each segment inside a released piece
+- [ ] **4** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **6** Session report reads two-way transcripts
+- [ ] **5** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **7** A trim cut at an early segment end re-publishes speech
+- [ ] **6** A trim cut at an early segment end re-publishes speech
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *A trim cut at an early segment end
     re-publishes speech*.
 
