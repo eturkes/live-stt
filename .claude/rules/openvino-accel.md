@@ -34,12 +34,14 @@ source .envrc                                             # from the repo root: 
 - **The `LD_LIBRARY_PATH` half: a tarball at the wheel's own version swaps in its genai build.**
   `py_openvino_genai` finds `libopenvino_genai.so.<ver>` through `RUNPATH`, which `LD_LIBRARY_PATH`
   outranks, and both tarballs put their runtime dirs there (host profile, `env.sh`). Sonames carry
-  the patch version, so the swap needs an exact match — 2026.4.0 wheels against the 2026.4.0 host
-  tarball mapped the tarball's 8.4 MB distro build beside the wheel's core, where the wheel ships a
-  13.3 MB manylinux build of the same commit. `.envrc` drops every entry holding `libopenvino.so*` or
-  `libtbb.so*` and keeps the farm. Proof = `/proc/self/maps`: every `libopenvino.so*`,
-  `libopenvino_genai.so*` + `libtbb*` path sits under the venv — an NPU compile then maps the farm's
-  `libopenvino_intel_npu_compiler*`, correctly outside it.
+  the patch version, so the swap needs an exact match — 2026.4.1 wheels against the 2026.4.1
+  container tarball map its 8.4 MB genai + 3.8 MB tokenizers builds (host tarball: 8.9 + 3.9 MB)
+  beside the wheel's core, where the wheel ships 13.3 MB + 4.2 MB manylinux builds; a patch apart,
+  nothing swaps. `.envrc` drops
+  every entry holding `libopenvino.so*` or `libtbb.so*` and keeps the farm. Proof =
+  `/proc/self/maps` after an NPU decode: every `libopenvino.so*`, `libopenvino_genai.so*`,
+  `libopenvino_tokenizers.so` + `libtbb*` path sits under the venv, the NPU compiler loader under
+  the farm's pin, correctly outside it.
 - direnv applies `.envrc` in hooked interactive shells ALONE, and the user's shells hook none on
   either layer ⇒ **the live CLI cleans its own session**: `_session_env` hands the supervised child
   the environment minus every `PYTHONPATH` entry holding an `openvino/` package and every
@@ -68,9 +70,22 @@ source .envrc                                             # from the repo root: 
   **on the host OpenVINO is an ordinary `pyproject.toml` dependency installed by plain `uv sync`** —
   no farm, no `env.sh`, no second environment; `.envrc` keeps the host tarball off its library path.
 - `intel-accel/` is a reversible container-only symlink farm over the host Intel drivers, with a pinned
-  Ubuntu IGC that avoids the host IGC's newer-glibc requirement. Its `/run/host/...` targets dangle
-  harmlessly on the host and stay outside project repos. After a host Intel-driver update, rebuild with
-  `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`, then rerun the self-test.
+  Ubuntu IGC that avoids the host IGC's newer-glibc requirement and a pinned NPU compiler pair. Its
+  `/run/host/...` targets dangle harmlessly on the host and stay outside project repos. After a host
+  Intel-driver update, rebuild with `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`,
+  then rerun the self-test AND the whisper golden on an empty cache (`## Model cache`).
+- **The NPU compiler pair must be the UMD release's own.** UMD 1.38 dlopens
+  `libopenvino_intel_npu_compiler_loader.so` from its own dir, and that loader loads the compiler
+  beside it. Driver 1.38 validates compiler rev `d8047fb` (its `intel-driver-compiler-npu` .deb);
+  the OpenVINO 2026.4.1 archives bundle a 2026.5.0 compiler (`runtime/npu_compiler_version.txt`),
+  and every whisper decoder blob its ubuntu24 build compiles fails the first decode —
+  `zeFenceHostSynchronize ZE_RESULT_ERROR_UNKNOWN` after ~60 s — under 2026.4.0 and 2026.4.1 wheels
+  alike, while the self-test's trivial model passes. The host-tarball build of the same compiler
+  needs glibc 2.43, so no container run reaches it: its failure on the host is inferred, the user's
+  to confirm. `make_farm.py` links `intel-accel/npu-compiler/`
+  (that .deb's pair, glibc 2.38, loads on both layers) ahead of every other copy and warns once the
+  host UMD moves off its `UMD_VERSION`; a driver update re-pins from the new release's .deb. The
+  host's `/usr/lib64` pair carries no rpm owner — hand-placed — and is the user's to keep matched.
 
 ## Placement + benchmarking
 
@@ -90,9 +105,21 @@ source .envrc                                             # from the repo root: 
 ## Model cache
 
 `models/openvino/cache` is `OPENVINO_CACHE_DIR` and fully regenerable — `live_stt.py` mkdirs it before
-every compile, so deleting it whole is safe. **Measured cold-compile cost of an empty cache = 105.7 s**
-for a whisper NPU replay against 12.2 s warm ⇒ clear it only when reclaiming the disk is worth ~93 s on
-the next run.
+every compile, so deleting it whole is safe. **Measured cold-compile cost of an empty cache = 129 s**
+for the whisper NPU golden against 7.4 s warm (2026.4.1) ⇒ clear it only when reclaiming the disk is
+worth ~2 min on the next run. One cache serves both layers: blob names stay fixed across releases,
+and a container-compiled blob imports on the host at the same wheel version (the host's 10-02
+session published its first caption 17 s after start, on the 10-01 container-compiled 760M pair).
+
+- **A cache hit hides the compiler.** A warm run imports blobs and never compiles, so a compiler,
+  driver or wheel change qualifies on an EMPTY cache — a private dir through
+  `live_stt.OPENVINO_CACHE_DIR`, never by clearing the shared one.
+- **A wheel upgrade can reject a cached decoder blob and DELETE it on load**: 2026.4.1 dropped
+  2026.4.0's whisper decoder blobs (encoders import across both), so the first run after a bump
+  recompiles the decoder (~5 s) with whatever compiler that layer holds. A blob a good compiler made
+  imports and decodes under a bad one (container-proven), so pre-compiling the shared cache should
+  carry the host past a bad host compiler for the shipped models — a bridge, not a fix; any cache
+  miss on that layer compiles with the bad pair again.
 
 ## Host OpenCL loader
 

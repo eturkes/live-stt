@@ -19,10 +19,14 @@ On the default engine, Japanese builds on the status line while you speak, about
   aarch64, and Windows amd64. If `PYTHONPATH` names a different OpenVINO
   build, that entry hides the installed package. The OpenVINO import then fails
   with a message that does not name `PYTHONPATH`. If `LD_LIBRARY_PATH` holds an
-  OpenVINO build at the installed version, that build's GenAI library loads in
-  place of the installed one. On Linux, `live-stt` removes both kinds of entry
-  from its own session. Other commands, such as `replay.py`, need those entries
-  removed first. The committed `.envrc` does this when direnv is active.
+  OpenVINO build at the installed version, that build's GenAI and tokenizers
+  libraries load in place of the installed ones. On Linux, `live-stt` removes
+  both kinds of entry from its own session. Other commands, such as `replay.py`,
+  need those entries removed first. The committed `.envrc` does this when direnv
+  is active.
+- On Linux, the NPU needs the Intel NPU driver and the NPU compiler from the
+  same driver release. A compiler from another OpenVINO release can compile the
+  Whisper model and then fail every decode.
 - PortAudio system library for `sounddevice`:
   - Debian/Ubuntu: `sudo apt install libportaudio2`
   - Fedora/openSUSE: `sudo dnf install portaudio` / `sudo zypper install portaudio`

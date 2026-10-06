@@ -110,8 +110,10 @@ the SHA-256 sums above instead. They cover all three files.
 
 `models/openvino/cache/` holds compiled OpenVINO blobs. live-stt creates it and
 fills it on the first run of each engine and device. It is safe to delete. An
-empty cache costs about 105 seconds of compile time on the next Whisper run,
-against about 12 seconds warm, and it grows to about 2 GB for the default model.
+empty cache costs about 130 seconds of compile time on the next Whisper run. A
+warm run takes about 7 seconds. The cache grows to about 2 GB for the default
+model.
+After an OpenVINO upgrade, the first run can recompile part of the cache.
 
 Both Whisper models are INT8 weight-compressed to the OpenVINO IR format. The
 Japanese model comes from `efwkjn/whisper-ja-760M`, which declares no license.
