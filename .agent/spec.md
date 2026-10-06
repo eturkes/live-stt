@@ -188,7 +188,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** A dropped trailing mark swallows the next spoken character
+- [ ] **1** Run the wheels at the host's OpenVINO 2026.4.1
+  - Data tier, funded by the 10-07 request; accept → `.agent/deferred.md` → *Run the wheels at the
+    host's OpenVINO 2026.4.1*. Scratch = `.scratch/ov2641/` (`venv-2640` = the old-arm venv copy).
+- [ ] **2** A dropped trailing mark swallows the next spoken character
   - Kernel tier, funded by the 10-02 live-session request; accept → `.agent/deferred.md` →
     *A dropped trailing mark swallows the next spoken character*.
   - **RESUME (session paused mid-unit).** Finish line in force = the 10-02 request: deliver end to
@@ -224,24 +227,24 @@ Detail → `.claude/rules/`, which each `D-###` names.
     early segment end re-publishes speech* now or later; ASR direction (症例数 → 小レース, GPU
     hotwords). Then fix the stale text, rerun NPU golden + retention CER on the final shape, send
     reviewer-3/4 one re-review round, gate, commit (delete this row + its queue row), report.
-- [ ] **2** Live-mic validation pass
+- [ ] **3** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **3** Reconcile the human-facing doc set
+- [ ] **4** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **4** Screen each segment inside a released piece
+- [ ] **5** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **5** Session report reads two-way transcripts
+- [ ] **6** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **6** A trim cut at an early segment end re-publishes speech
+- [ ] **7** A trim cut at an early segment end re-publishes speech
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *A trim cut at an early segment end
     re-publishes speech*.
-- [ ] **7** Re-measure the fresh-session baseline
+- [ ] **8** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
