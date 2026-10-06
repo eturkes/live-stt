@@ -62,3 +62,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    nowhere; a phrase the speaker genuinely repeats across a segment boundary (`そうそう`,
    `はい。はい。`) keeps both copies; a lock replaying the `1173`/`1174` shape, red before; retention
    CER and the long-form replay no worse than recorded; the gate stays green.
+
+7. **Re-measure the fresh-session baseline** — `assurance-posture.md` states a fresh MAIN session
+   opens at 47K over 89 KB attached (global `CLAUDE.md` 27.0 KB, `.agent/spec.md` 14.2 KB, three
+   bare rules files 28.7 KB); `wc -c` now reads 98.3 KB (28.0 / 21.9 / 28.9 KB), so the literal the
+   teammate-budget paragraph quotes no longer describes a fresh session. Docs tier.
+   **Accept:** a fresh session on a clean tree, measured with `context-gauge`, plus `wc -c` over
+   the attached set → the paragraph carries those numbers, or drops the literal for the recipe;
+   the gate stays green.

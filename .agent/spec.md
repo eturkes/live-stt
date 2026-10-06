@@ -241,6 +241,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **6** A trim cut at an early segment end re-publishes speech
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *A trim cut at an early segment end
     re-publishes speech*.
+- [ ] **7** Re-measure the fresh-session baseline
+  - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
