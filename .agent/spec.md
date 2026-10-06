@@ -196,10 +196,12 @@ Detail → `.claude/rules/`, which each `D-###` names.
     (what changed, gate + skipped/not-run, teammates, advisor `none`, unconfirmed, `git status`,
     closing SHA) PLUS the diagnosis answer (`.scratch/s1002/diagnosis.md`). Done: queue 12a79af;
     translation turn correlation 9c5dc14 (closed its row).
-  - Uncommitted = this unit, also snapshotted on `wip/dropped-mark` @ 2a08400: `streaming.py`
-    (sha c09619af), `tests/test_dropped_mark.py`, `tests/eval_anchor_scenarios.py`
-    (`markdrop`, `markdrop_edit`), `.claude/rules/asr-pipeline.md`, the eval entry of
-    `.claude/rules/evidence-artifacts.md`.
+  - The user's next-session task comes FIRST; resume this unit only after it closes.
+  - This unit lives on `wip/dropped-mark` @ 2a08400 ALONE — `main`'s tree is clean, kept off the
+    unreviewed shape: `streaming.py` (sha c09619af), `tests/test_dropped_mark.py`,
+    `tests/eval_anchor_scenarios.py` (`markdrop`, `markdrop_edit`), `.claude/rules/asr-pipeline.md`,
+    the eval entry of `.claude/rules/evidence-artifacts.md`. Restore = `git cherry-pick -n 2a08400`
+    (touches no `spec.md`); re-verify `sha256sum streaming.py` = c09619af… before building on it.
   - Final shape vs the reviewed one (sha 33775063): give-back needs the last PUBLISHED character
     (`published_last`) to be a mark too (reviewer-3 F3: a record re-spelling C as 。 re-committed
     C); a lone published mark skips `_thin` (reviewer-3/4 F1); the give-back runs inside the
