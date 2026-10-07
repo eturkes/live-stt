@@ -128,6 +128,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   turbo's trace read 13.08 → 5.55, 33.20 → 11.98). The screen judges
   each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`. The
   one-utterance-one-line wording in Intent is the user's to edit.
+  A decode re-telling what a trim just moved out loses that head, the retained text (what the
+  trimming decode heard past the cut) being the evidence; a trimming decode that already spelled the
+  phrase twice is text-identical to a real repeat and waits for saved audio (user ruling).
 - A runaway caption (each published piece is one) is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
   0.0583 → 0.0609 (measured on turbo). `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
@@ -192,61 +195,23 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** A trim cut at an early segment end re-publishes speech
-  - Kernel tier, funded 10-07 (user ruling); accept → `.agent/deferred.md` → *A trim cut at an
-    early segment end re-publishes speech*.
-  - **RESUME (10-07 session paused mid-unit).** Finish line = the 10-02 request's `Met when`
-    (deliver end to end, full gate green on a clean tree at the closing commit, final message:
-    what changed, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git
-    status`, closing SHA) widened by user ruling to this row, PLUS the diagnosis answer
-    (`.scratch/s1002/diagnosis.md`, `.scratch/s1007/row6-notes.md`). Done: 75b31a2 dropped-mark
-    unit (closed its row); e64a5ed this row's contract (Shape B scope) + row 7 (Shape A).
-  - Uncommitted, snapshot `wip/trim-retold` @ 026fe19 (touches no `spec.md`): `streaming.py` (sha
-    e749fe69: `_retold` + `head_costs` + `_behead`, fields `cut_text`/`retained`,
-    `RETOLD_OPENING`=8), `tests/test_trim_republish.py` (tester-3's 35 + 8 MAIN locks from the
-    reviewer reproducers), the `_retold` bullet in `.claude/rules/asr-pipeline.md`. Restore =
-    `git cherry-pick -n 026fe19`; re-verify `sha256sum streaming.py` = e749fe69… first.
-  - Reworked shape vs reviewed fd43804 (`review/unit2`): evidence = the trimming decode's retained
-    text ALONE, a 1-char retained text counts (r7/r8 F1 partial-decode immunization, F2 empty
-    retained via `previous`, r8 F3); a head drops only where removing it aligns the retained
-    opening better than keeping it, by more than its own cost (r7 F3 re-spelled heard repeat, r8
-    F4 later opener recurrence); one `head_costs` table replaces per-head DP (r7 F4 / r8 C1: 6.9 s
-    → 0.02 s at 440 chars). Rerun on THIS shape: 211 streaming locks + 43 suite green; suite red
-    16/43 on e64a5ed, 8/43 on fd43804 (L-022 `cp` restore); all 19 reviewer reproducers green;
-    real NPU decode replay (`trim_probe.jsonl`, 1127 updates, 229 finishes) 0 fires, 0 diffs.
-  - NOT rerun on this shape: NPU golden + retention CER + long-form (32 pass / 0.0532 / 0.2153,
-    hyps byte-identical to e64a5ed, bind 021d31cd = fd43804: `.scratch/s1007/npu_unit2.log`,
-    `vac_eval.final.json`; rerun = `vac_eval.py OUT STREAMING_PY` + `pytest tests/test_replay.py`
-    under the prelude), gate, re-review.
-  - Stale text to rewrite to this shape: the `_retold` bullet in `asr-pipeline.md` (says "common
-    prefix < 2", "previous until replaced"; residual list). At close append
-    `.scratch/s1007/decisions-clause.md` to the settled-segment `Decisions` bullet.
-  - Teammates, all stopped: tester-3 `wt/tester-3` @ 2a3c0a3 (suite; red 11/35 on e64a5ed,
-    rerun here); reviewer-7 + reviewer-8 verdicts `.scratch/s1007/reviewer-{7,8}.md` on fd43804
-    (F1-F4 each, BLOCK), NOT yet re-reviewed on this shape; their probes in
-    `.scratch/s1007/reviewer-probes/` (`rr/` adapted to the primary tree; the rest name `/tmp` +
-    the removed `review-unit2` worktree). Roster `.scratch/s1007/roster.md`.
-  - Next action: rewrite the stale bullet; NPU golden + retention + long-form on this shape; one
-    re-review round (reviewer-7 ← its F1-F4, reviewer-8 ← its F1-F4 + C1) on a pinned snapshot;
-    gate -v; commit (delete this row + its queue row, merge `wt/tester-3`'s file, drop
-    `review/unit2`, `wt/tester-3`, `wip/trim-retold`); final report per the finish line.
-- [ ] **2** Live-mic validation pass
+- [ ] **1** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **3** Reconcile the human-facing doc set
+- [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **4** Screen each segment inside a released piece
+- [ ] **3** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **5** Session report reads two-way transcripts
+- [ ] **4** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **6** Re-measure the fresh-session baseline
+- [ ] **5** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
-- [ ] **7** A decode spelling one phrase twice publishes both copies across a trim
+- [ ] **6** A decode spelling one phrase twice publishes both copies across a trim
   - Kernel tier, unfunded, needs a `--save-audio` session; accept → `.agent/deferred.md` → *A
     decode spelling one phrase twice publishes both copies across a trim*.
 

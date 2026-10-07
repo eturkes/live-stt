@@ -166,6 +166,34 @@ paths:
   re-spelled prefix and drop speech on restoration (`…カン、カンと鐘…` loses `カン、`, reviewer-1,
   seed 0). Locks: `tests/test_thin_rewrite.py`
   (tester-1, 49 cases: 24 locks red on the old processor, 25 controls green on both).
+- **A post-trim decode that re-tells the trimmed text loses that head (`_retold`).** Whisper puts a
+  segment's `end_s` up to ~2 s early, so `_trim` keeps audio whose text it just moved out, and the
+  next decode re-tells it ahead of the retained text — 10-02 live: `SRC 1173` → `1174` repeated
+  `そういうことがあるらしいんですよね。` (post-trim `emitted` = `そ` sat at the head's first character,
+  so the anchor found it and agreement committed the rest), `307`/`308`, `877`/`878`, `402`/`403`.
+  **Evidence = the retained text alone** (`retained`, the trimming decode past the cut, kept until
+  the next trim; one character counts): a later decode stopping inside the re-telling would vouch
+  for it, and an empty retained text would gain evidence one decode later (reviewers 7, 8). On every
+  decode until the next trim, a head `text[:h]` drops — with its segment characters, before
+  agreement — where it re-spells the moved-out text's end (cost ≤ h/4), the retained opener's first
+  2 characters follow it, and removing it aligns the retained opening (`RETOLD_OPENING`=8) better
+  than keeping it by more than its own cost. So a repeat the trimming decode heard heads the
+  retained text and stays, re-spelled included (`明です。` for `説明です。`); a repeat said later
+  follows the retained text and stays; a later recurrence of the opener keeps the speech before it;
+  an empty retained text is no evidence and the decode stands. One `head_costs` table prices every
+  head: per-head alignment cost 4.3-6.9 s per decode at 440 cut characters, the table ~0.03 s.
+  **Scope (user ruling):** the trimming decode already holding the second copy (`9`/`10`,
+  `290`/`291`) is text-identical to a real repeat and stays queued for saved audio. **Residuals:** a
+  real repeat the trimming decode dropped and the next one restores reads as a re-telling
+  (ambiguous by construction); a re-telling stands where the decode re-spells the retained opener's
+  first 2 characters, or where dropping it gains no more alignment than it costs. Locks:
+  `tests/test_trim_republish.py` (43 cases: tester-3's 35 — the four live shapes, a head lasting to
+  the next trim, an empty decode in between, `finish()`, the worker's `SRC` lines, repeat + scope
+  controls — and 8 from the reviewer reproducers; 16 red on the prior processor, 8 on the first fix
+  shape). Real audio through the shipped NPU path (long, stress_med, stress_long, retention_probe,
+  gongitsune §01-§06): 32 trims, no re-telling decode, retained text never empty; retention CER
+  0.0532 and long-form §01+§03 0.2153 unchanged, every hypothesis byte-identical to the prior
+  processor's.
 - The `on_update` seam (`worker` / `_vac_segments` / `replay.py`) is what makes commit timing
   observable at all; `commit_audio_s` is otherwise discarded at `commit, _ = await …`.
 

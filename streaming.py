@@ -58,6 +58,9 @@ ANCHOR_TAIL = 24
 ANCHOR_DRIFT = 4
 # Buffer seconds past buffer_trim_s after which a cut no longer waits for a commit.
 ANCHOR_STALL_S = 4.0
+# Retained characters a post-trim decode's opening is aligned against (_retold): enough to
+# outvote one re-spelled or dropped character, local enough for a decode that stops short.
+RETOLD_OPENING = 8
 
 
 def common_prefix(a: str, b: str) -> int:
@@ -72,6 +75,37 @@ def common_prefix(a: str, b: str) -> int:
 def _mark(char: str) -> bool:
     """Punctuation or space: whisper re-decides these between decodes of the same audio."""
     return char.isspace() or unicodedata.category(char)[0] in "PZ"
+
+
+def _behead(segments: list[Segment], n: int) -> list[Segment]:
+    """Segments with the first n characters of their joined text removed."""
+    kept = []
+    for segment in segments:
+        if n and n >= len(segment.text):
+            n -= len(segment.text)
+            continue
+        share = n / len(segment.text) if segment.text else 0.0
+        start_s = segment.start_s + share * (segment.end_s - segment.start_s)
+        kept.append(Segment(start_s, segment.end_s, segment.text[n:]))
+        n = 0
+    return kept
+
+
+def head_costs(told: str, text: str) -> list[int]:
+    """cost[h]: edit distance of text[:h] against told's cheapest suffix -- start free, end pinned.
+
+    One table for every h: a separate alignment per candidate head made a repeated
+    two-character opener cubic (4.3 s per decode at 440 trimmed characters, reviewer-8).
+    """
+    row = [0] * (len(told) + 1)
+    costs = [0]
+    for i, char in enumerate(text, 1):
+        new = [i]
+        for j, other in enumerate(told, 1):
+            new.append(min(row[j] + 1, new[j - 1] + 1, row[j - 1] + (char != other)))
+        row = new
+        costs.append(row[-1])
+    return costs
 
 
 def tail_costs(tail: str, window: str) -> list[int]:
@@ -115,6 +149,8 @@ class StreamingProcessor:
     found_in: str = ""  # decode `emitted` was last LOCATED in; "" after a count fallback
     held: str | None = None  # re-spelled published prefix a thin decode proposed
     published_last: str = ""  # last character actually published; `emitted` may re-spell it
+    cut_text: str = ""  # what the last trim moved out; the audio it kept may re-tell its end
+    retained: str = ""  # what the trimming decode heard past that cut
     forced_trims: int = 0
     trims: int = 0
 
@@ -133,6 +169,9 @@ class StreamingProcessor:
                 *segments[1:],
             ]
             segments[-1] = Segment(last.start_s, last.end_s, segments[-1].text.rstrip())
+        retold = self._retold(text)
+        if retold:
+            text, segments = text[retold:], _behead(segments, retold)
         agreed = common_prefix(text, self.previous)
         published = len(self.emitted)
         anchor, found = self._anchor(text)
@@ -282,6 +321,44 @@ class StreamingProcessor:
             return max(n, len(text) + 1), True  # past the text: no commit, record kept
         return n, False
 
+    def _retold(self, text: str) -> int:
+        """Length of a head re-telling what the last trim moved out, else 0.
+
+        Whisper places a segment's end_s up to ~2 s early, so the cut keeps audio whose
+        text was just published, and the next decode re-tells it ahead of the retained
+        text (10-02: SRC 1173 -> 1174, 307 -> 308). The retained text -- what the
+        trimming decode heard past the cut -- is the evidence, and it alone: a head is
+        re-told only where this decode does not open the way the retained text does but
+        reaches it right after a run re-spelling the moved-out text's end. A repeat the
+        trimming decode heard heads the retained text, and one said later follows it, so
+        both keep their copies; with no retained text the decode stands. A later decode
+        is no evidence: one that stopped inside the re-telling would vouch for it.
+        """
+        told, heard = self.cut_text, self.retained
+        if not told or not heard:
+            return 0
+        opening = heard[:RETOLD_OPENING]
+
+        def missed(at: int) -> int:
+            return min(tail_costs(opening, text[at : at + len(opening) + ANCHOR_DRIFT]))
+
+        stay = missed(0)
+        need = min(2, len(heard))
+        window = text[: len(told) + ANCHOR_DRIFT]
+        start = text.find(heard[:need], 1)
+        if not stay or not 0 < start <= len(window):
+            return 0
+        costs = head_costs(told, window)
+        best = (stay, 0)
+        while 0 < start <= len(window):
+            # A head must buy more alignment than it costs: a decode re-spelling the
+            # retained opener (明です。 for 説明です。) still opens the way it does, and a later
+            # recurrence of the opener would take new speech into the head (reviewers 7, 8).
+            if costs[start] <= start // 4:
+                best = min(best, (costs[start] + missed(start), start))
+            start = text.find(heard[:need], start + 1)
+        return best[1]
+
     def _audio_time_at(self, segments: list[Segment], index: int) -> float | None:
         """Absolute audio time of character `index`, interpolated inside its segment."""
         covered = 0
@@ -308,8 +385,10 @@ class StreamingProcessor:
                 cut_chars = covered
         if cut_s <= 0 or cut_s * SAMPLE_RATE >= len(self.audio):
             return
+        self.cut_text = self.emitted[:cut_chars]
         self.emitted = self.emitted[cut_chars:]
         self.previous = self.previous[cut_chars:]
+        self.retained = self.previous
         self.found_in = self.found_in[cut_chars:]
         self.audio = self.audio[int(cut_s * SAMPLE_RATE) :]
         self.offset_s += cut_s
@@ -328,6 +407,8 @@ class StreamingProcessor:
         self.previous = ""
         self.found_in = ""
         self.held = None
+        self.cut_text = ""
+        self.retained = ""
         self.forced_trims += 1
 
     def finish(self) -> str:
