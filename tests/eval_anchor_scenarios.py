@@ -3,13 +3,16 @@
 
 Each script grows one utterance from the committed narration captions by 2-6 characters per
 decode, then disturbs it the way Whisper re-decodes a buffer: re-spells part of the published
-text (persistently, for one decode or two), drops its head, drops everything published, or
-returns unrelated text. The truth is the utterance itself: no re-spelling or drop touches the
-text past the published end, so a correct processor outputs it exactly; the garbage scenarios
-replace that text too, so their exact rate is no processor's to win. `--baseline` replays the
+text (persistently, for one decode or two), drops its head, drops everything published,
+returns unrelated text, or drops the mark the published text ends in. The truth is the utterance
+itself: no re-spelling or drop touches the text past the published end, so a correct processor
+outputs it exactly; the garbage scenarios replace that text too, so their exact rate is no
+processor's to win. `--baseline` replays the
 same scripts through another streaming.py and counts the scripts only one of them gets exact.
 Report-only: the shipped `_thin` loses a few scripts the old count wins (seed 11: 0; seed 0: 1;
-`--scripts 30000 --seed 7`: 18 of 315,805 against ~64,000 the other way, user-accepted).
+`--scripts 30000 --seed 7`: 18 of 315,805 against ~64,000 the other way, user-accepted); the
+dropped-mark give-back loses 201 there (197 `flip1`; 200 repeat one mark) against
+47,508 `markdrop*` scripts won.
 Synthetic by construction: it ranks two processors, and its rates describe no live session.
 """
 
@@ -40,6 +43,8 @@ SCENARIOS = (
     "lasthead",
     "lasttotal",
     "lastgarbage",
+    "markdrop",  # published text ends in 、/。 and every later decode drops that mark (10-02 live)
+    "markdrop_edit",  # the same, plus one earlier published character re-spelled for good
 )
 
 
@@ -100,6 +105,23 @@ def script(
         other = rng.randrange(len(corpus) - 60)
         return corpus[other : other + rng.randint(3, reach + 6)]
 
+    if kind.startswith("markdrop"):
+        # The decode that agreed on the published end stopped at the mark, so no continuation
+        # evidences where the boundary moved once a later decode drops it.
+        marks = [i + 1 for i in range(2, length - 3) if truth[i] in "、。"]
+        if not marks:
+            return None
+        published = rng.choice(marks)
+        kept = truth[: published - 1]
+        if kind == "markdrop_edit":
+            at = rng.randrange(max(0, published - 12), published - 1)
+            kept = kept[:at] + rng.choice(alphabet) + kept[at + 1 :]
+        texts = [truth[:reach] for reach in lengths if reach < published] + [truth[:published]] * 2
+        reach = published
+        while reach < length:
+            reach = min(length, reach + rng.randint(2, 6))
+            texts.append(kept + truth[published:reach])
+        return truth, texts + [texts[-1]]
     if kind.startswith("last"):
         texts[-1] = disturbed(lengths[-1], kind[4:])
         return truth, texts

@@ -41,6 +41,7 @@ decoder prefix, and this pipeline exposes neither.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -66,6 +67,11 @@ def common_prefix(a: str, b: str) -> int:
             break
         n += 1
     return n
+
+
+def _mark(char: str) -> bool:
+    """Punctuation or space: whisper re-decides these between decodes of the same audio."""
+    return char.isspace() or unicodedata.category(char)[0] in "PZ"
 
 
 def tail_costs(tail: str, window: str) -> list[int]:
@@ -108,6 +114,7 @@ class StreamingProcessor:
     previous: str = ""  # previous hypothesis for the current buffer
     found_in: str = ""  # decode `emitted` was last LOCATED in; "" after a count fallback
     held: str | None = None  # re-spelled published prefix a thin decode proposed
+    published_last: str = ""  # last character actually published; `emitted` may re-spell it
     forced_trims: int = 0
     trims: int = 0
 
@@ -145,6 +152,8 @@ class StreamingProcessor:
             final_s = min(len(text), sum(len(segment.text) for segment in segments[:-1]))
             stable = max(stable, final_s)
         commit = text[anchor:stable]
+        if commit:
+            self.published_last = commit[-1]
         # `emitted` records what was PUBLISHED, so it may only grow inside a buffer.
         # A decode that retracts below it (shorter hypothesis) would otherwise shrink
         # the record, and the next decode would re-commit characters already on
@@ -200,7 +209,10 @@ class StreamingProcessor:
         start = n - len(tail)
         cost = tail_costs(tail, text[start : n + ANCHOR_DRIFT])
         best = min(cost)
-        if 2 * best > len(tail):
+        # A lone published mark is "mostly re-spelled" by any single edit, so it would reach
+        # _thin, whose count spends the next character on the mark.
+        lone_mark = len(tail) == 1 and _mark(tail) and _mark(self.published_last)
+        if 2 * best > len(tail) and not lone_mark:
             return self._thin(text, tail, held, final)
         # Equal costs are an edit at the very end of the published tail -- dropped,
         # inserted or re-spelled -- which text alone cannot separate. The last decode
@@ -211,11 +223,24 @@ class StreamingProcessor:
         ends = [start + j for j, c in enumerate(cost) if c == best]
         follow = self.previous[n : n + 2]
         evidenced = [end for end in ends if follow and text.startswith(follow, end)]
-        if evidenced:
-            return min(evidenced, key=lambda end: (abs(end - n), -end)), True
-        if ends[-1] == len(text) < n:
+        if not evidenced and ends[-1] == len(text) < n:
             return max(n, len(text) + 1), True  # the text stops short of the published end
-        return min(ends, key=lambda end: (abs(end - n), -end)), True
+        pool = evidenced or ends
+        end = min(pool, key=lambda end: (abs(end - n), -end))
+        if (
+            _mark(tail[-1])
+            and _mark(self.published_last)
+            and end - 1 in pool
+            and not _mark(text[end - 1])
+            and tail_costs(tail[:-1], text[start : end - 1])[-1] == best - 1
+        ):
+            # A mark carries no audio, so a word character in its slot is new speech: where
+            # dropping the mark ties with spending that character on it, the nearer end ate
+            # the first mora of the next word whenever a decode dropped a published 。 (10-02
+            # live: 。れどおりに for 。それどおりに, 25 of 441 joins). Inside the evidence pool
+            # too: a continuation evidences both ends of a repeated mora (。こ → ここから).
+            end -= 1
+        return end, True
 
     def _thin(self, text: str, tail: str, held: str | None, final: bool) -> tuple[int, bool]:
         """Below half agreement: the boundary moves only once two decodes agree on it.

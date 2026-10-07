@@ -116,7 +116,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   decode re-spelling most of the published tail moves the boundary only once the next decode agrees,
   or at utterance end (user ruling); taking it at once is REFUSED, a reversion then re-committing
   published text. It ships with a measured residual where the old count wins (18 of 315,805
-  scenario scripts against ~64,000 the other way; user ruling restated the "no script" bar).
+  scenario scripts against ~64,000 the other way; user ruling restated the "no script" bar). A published
+  mark a decode drops gives back the character the nearer end spent on it, at ≥ half tail agreement
+  or for a lone mark; extending the give-back into `_thin`'s count is REFUSED (user ruling: 197
+  scenario scripts lost against 18 at seed 11).
 - **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
   that moves committed text out of the VAC buffer publishes it at once as its own `SRC n` line + turn,
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
@@ -188,41 +191,19 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** A dropped trailing mark swallows the next spoken character
-  - Kernel tier, funded by the 10-02 live-session request; accept → `.agent/deferred.md` →
-    *A dropped trailing mark swallows the next spoken character*.
-  - **RESUME (session paused mid-unit).** Finish line in force = the 10-02 request: deliver end to
-    end, full gate green on a clean tree at the closing commit, final message per that request
-    (what changed, gate + skipped/not-run, teammates, advisor `none`, unconfirmed, `git status`,
-    closing SHA) PLUS the diagnosis answer (`.scratch/s1002/diagnosis.md`). Done: queue 12a79af;
-    translation turn correlation 9c5dc14 (closed its row).
-  - This unit lives on `wip/dropped-mark` @ 2a08400 ALONE — `main`'s tree is clean, kept off the
-    unreviewed shape: `streaming.py` (sha c09619af), `tests/test_dropped_mark.py`,
-    `tests/eval_anchor_scenarios.py` (`markdrop`, `markdrop_edit`), `.claude/rules/asr-pipeline.md`,
-    the eval entry of `.claude/rules/evidence-artifacts.md`. Restore = `git cherry-pick -n 2a08400`
-    (touches no `spec.md`); re-verify `sha256sum streaming.py` = c09619af… before building on it.
-  - Final shape vs the reviewed one (sha 33775063): give-back needs the last PUBLISHED character
-    (`published_last`) to be a mark too (reviewer-3 F3: a record re-spelling C as 。 re-committed
-    C); a lone published mark skips `_thin` (reviewer-3/4 F1); the give-back runs inside the
-    evidenced pool (reviewer-3 F2). Rerun on this shape: 176 streaming locks green; 4 new locks red
-    on 33775063 and 16 of 28 red on 12a79af; scenario `--scripts 30000 --seed 7` vs 12a79af: lost
-    201 (195 repeat a mark, 5 a word char, 1 two chars), won 47,508; seed 11: 18 / 4,782.
-    NOT rerun on this shape: NPU replay golden + retention CER (0.0532 held on 33775063), gate.
-  - Measured + refused: give-back on `_thin`'s count fallback fixes `AB。`→`XBそれ` but loses
-    197 vs 18 scripts at seed 11 (total-drop/garbage counts stop self-healing). So the row's
-    "no equal-cost end spends a word character on the mark" holds above half agreement + for a
-    lone mark only — a contract narrowing the user has NOT approved yet.
-  - Stale text to rewrite to the final shape: the unit paragraph in `asr-pipeline.md` (214 / flip-only
-    taxonomy) and the `eval_anchor_scenarios.py` docstring ("214 one-decode mark flips").
-  - Teammates, all stopped: tester-2 `wt/tester-2` @ 98180eb (suite, red 13/24 on 12a79af, rerun
-    here); reviewer-3 + reviewer-4 verdicts `.scratch/s1002/reviewer-{3,4}.md` (F1-F4 / F1-F2,
-    V1) on 33775063, NOT yet re-reviewed on the final shape; probes in
-    `.scratch/s1002/reviewer-probes/` (scripts still name their old `/tmp` paths). tester-1
-    `wt/tester-1` @ 84539be is merged in 9c5dc14.
-  - Next action: `AskUserQuestion` — approve the contract narrowing; fund row *A trim cut at an
-    early segment end re-publishes speech* now or later; ASR direction (症例数 → 小レース, GPU
-    hotwords). Then fix the stale text, rerun NPU golden + retention CER on the final shape, send
-    reviewer-3/4 one re-review round, gate, commit (delete this row + its queue row), report.
+- [ ] **1** A trim cut at an early segment end re-publishes speech
+  - Kernel tier, funded 10-07 (user ruling); accept → `.agent/deferred.md` → *A trim cut at an
+    early segment end re-publishes speech*.
+  - **RESUME (10-07 session, in progress).** Finish line = the 10-02 request's `Met when`
+    (`.scratch/s1002/diagnosis.md` = its diagnosis answer), widened by user ruling to this row
+    (funded 10-07): full gate green on a clean tree at the closing commit, final message per that
+    request. Dropped-mark unit closed in the previous commit (contract narrowed by user ruling).
+  - User ruling 10-07: scope = Shape B (trimming decode spelled the phrase once; the next decode
+    re-transcribes it: 1173, 307, 877, 402); Shape A (the trimming decode already spelled it twice:
+    9, 290, 90, 695, 1010, 98 — text-identical to a real repeat) → a new queue row needing a
+    `--save-audio` session. ASR terms (症例数) = `--context` on the NPU, no code.
+  - Findings + candidate rule + real-audio probe (32 trims over ~1,110 s, 0 fires):
+    `.scratch/s1007/row6-notes.md`; scripts `trim_probe.py`, `trim_analyze.py`, `shape_census.py`.
 - [ ] **2** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
@@ -237,10 +218,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
 - [ ] **5** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **6** A trim cut at an early segment end re-publishes speech
-  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *A trim cut at an early segment end
-    re-publishes speech*.
-- [ ] **7** Re-measure the fresh-session baseline
+- [ ] **6** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded

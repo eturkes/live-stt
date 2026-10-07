@@ -75,8 +75,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   acquisition reruns without re-decoding. Downstream consumers resolve their section from the artifact
   (`source.wav`), never from a constant.
 - `eval_anchor_scenarios.py` — scripted decode runs through `StreamingProcessor` over the
-  committed caption text: 11 re-spelling scenarios (persistent, one- and two-decode re-spellings,
-  head drops, total drops, garbage, each disturbance also on the final decode) × `--scripts`
+  committed caption text: 13 scenarios (persistent, one- and two-decode re-spellings, head drops,
+  total drops, garbage, each disturbance also on the final decode, and a dropped trailing mark
+  alone or with one earlier re-spelled character) × `--scripts`
   (3000) scripts at a fixed `--seed`, scored exact / dup / loss / subst against the utterance,
   which no re-spelling or drop touches past the published end (garbage scenarios replace it too,
   so their exact rate is no processor's to win). `--baseline PATH` replays the same scripts

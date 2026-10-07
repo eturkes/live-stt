@@ -9,21 +9,15 @@ row deletes it from this file and from `.agent/spec.md`'s `Tasks` in one
 commit. `tests/test_law_consistency.py` locks that pairing and rejects naming a row by `rank N`
 anywhere else, since a rank retargets onto a different unit the moment an earlier row dies.
 
-1. **A dropped trailing mark swallows the next spoken character** — `_anchor` ties deleting the
-   published tail's final `。`/`、` against substituting it with the next decoded character and takes
-   the nearer end, which spends that character on the mark: the first mora of the next word vanishes
-   (`。ゃあ`, `。れどおりに`, `。ースの3人`). 25 of 441 sentence joins plus 9 line starts in the 10-02
-   session; the shipped processor reproduces `SRC 1137` byte-identically (`仕様書を書いて。` ×2, then
-   `仕様書を書いてそれどおりに…` publishes `仕様書を書いて。れどおりに…`), and the old count rule cut
-   at the same place. Kernel.
-   **Accept:** while the published tail ends in punctuation or a space, no equal-cost end that spends
-   a word character on that mark is chosen over the end that drops it — a mark carries no audio, so
-   a word character in its slot is new speech; a mark re-spelled as another mark (`。` → `、`) keeps
-   today's boundary. Locks red on the unfixed processor for the live shapes, plus that control.
-   Every existing streaming lock unchanged; the whisper NPU replay golden and the retention CER
-   re-derived on the NPU (a moved golden moves only where a published mark meets a decode that drops
-   it, recorded in the commit body); `eval_anchor_scenarios.py --baseline` against the old processor
-   reported. The gate stays green.
+1. **A trim cut at an early segment end re-publishes speech** — `_trim` cuts the audio at the last
+   covered segment's `end_s`, and whisper places that end up to ~2 s early, so the retained audio
+   still holds the tail of the piece just published and the next decode re-transcribes it into the
+   next line (10-02: `SRC 1173` → `1174` repeats `そういうことがあるらしいんですよね。`; `9`/`10`,
+   `290`/`291`, `307`/`308` the same shape, typescript-confirmed on `1173`). Kernel, funded 10-07.
+   **Accept:** a post-trim decode whose head re-spells the published tail publishes that head
+   nowhere; a phrase the speaker genuinely repeats across a segment boundary (`そうそう`,
+   `はい。はい。`) keeps both copies; a lock replaying the `1173`/`1174` shape, red before; retention
+   CER and the long-form replay no worse than recorded; the gate stays green.
 
 2. **Live-mic validation pass** — user-only (L-004), the largest untested surface: M13.2, the four
    2026-09-06 polish fixes and M14's `_respawn` arm have never met a mic (`_probe` has); standing
@@ -53,17 +47,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    transcript carries what the report needs, or the report takes a flag that skips the latin rule
    for two-way sessions; a lock over an authored mixed transcript, red before; the gate stays green.
 
-6. **A trim cut at an early segment end re-publishes speech** — `_trim` cuts the audio at the last
-   covered segment's `end_s`, and whisper places that end up to ~2 s early, so the retained audio
-   still holds the tail of the piece just published and the next decode re-transcribes it into the
-   next line (10-02: `SRC 1173` → `1174` repeats `そういうことがあるらしいんですよね。`; `9`/`10`,
-   `290`/`291`, `307`/`308` the same shape, typescript-confirmed on `1173`). Kernel, unfunded.
-   **Accept:** a post-trim decode whose head re-spells the published tail publishes that head
-   nowhere; a phrase the speaker genuinely repeats across a segment boundary (`そうそう`,
-   `はい。はい。`) keeps both copies; a lock replaying the `1173`/`1174` shape, red before; retention
-   CER and the long-form replay no worse than recorded; the gate stays green.
-
-7. **Re-measure the fresh-session baseline** — `assurance-posture.md` states a fresh MAIN session
+6. **Re-measure the fresh-session baseline** — `assurance-posture.md` states a fresh MAIN session
    opens at 47K over 89 KB attached (global `CLAUDE.md` 27.0 KB, `.agent/spec.md` 14.2 KB, three
    bare rules files 28.7 KB); `wc -c` now reads 98.3 KB (28.0 / 21.9 / 28.9 KB), so the literal the
    teammate-budget paragraph quotes no longer describes a fresh session. Docs tier.

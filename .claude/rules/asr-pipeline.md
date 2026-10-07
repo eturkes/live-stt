@@ -90,6 +90,30 @@ paths:
   confirming continuation after a LATER repeat and taking it swallowed new speech. Below half
   agreement `_thin` decides (next bullet); a decode stopping short of the published end commits
   nothing.
+  **A published mark the decode drops gives back the character it spent.** Where the published
+  tail ends in a mark (punctuation, space), the last character actually published
+  (`published_last`) is a mark too, the chosen end (evidenced first, then nearest) spends a word
+  character on that mark, the end before it ties, and the tail minus the mark aligns one cheaper there, the boundary moves back one: a mark
+  carries no audio, so a word character in its slot is new speech. Whisper drops or moves a
+  published `。` between decodes, and the nearer end ate the next word's first mora — 10-02 live,
+  whisper-ja-760M: 25 of 441 sentence joins plus 9 line starts (`。れどおりに` for `。それどおりに`,
+  `。ゃあ`, `。ースの3人`); the count rule cut at the same place. Three guards (reviewers 3 + 4):
+  `published_last`, because the record may re-spell a published word character as a mark (`ABC` →
+  `AB。`) and giving back there re-committed `C`; the evidence pool, since a continuation evidences
+  both tied ends of a repeated mora (`。こ` → `ここから`); a lone published mark skips `_thin`, whose
+  count spent the next character (`。` → `それ` published `。れ`). **Scope (user ruling):** below half
+  agreement over a longer tail `_thin`'s count stands ⇒ `AB。` → `XBそれ` still publishes `AB。れ`;
+  giving back there lost 197 scenario scripts against 18 at seed 11, total drops and garbage no
+  longer self-healing. Scenario harness (`markdrop` = the live shape, `markdrop_edit` = it plus one
+  earlier re-spelled character), `--scripts 30000 --seed 7` against the prior processor: 47,508 won
+  (24,156 of 24,156 + 23,352) against 201 lost — 197 `flip1`, where one decode re-spells the
+  published mark as a word character and the next reverts, so the given-back character re-commits
+  the mark (`ました。。兵十`), plus 1 `headdrop1`, 1 `totaldrop1`, 2 `garbage1`; 200 of the 201 repeat
+  one mark (`。` 127, `、` 68, `?` 5), 1 two characters. Seed 11: 18 lost, 4,782 won. Refused variants:
+  filtering every tied end before the evidence check (39 lost at seed 11); giving back at every tied
+  end (re-committed whole phrases, `ていました。`). Retention CER 0.0532 and the whisper NPU golden
+  unmoved. Locks: `tests/test_dropped_mark.py` (tester-2's 24 + 4 reviewer reproducers: 16 of 28 red
+  on the prior processor, 4 on the reviewed shape).
   Trims fire on a commit, where count slicing WOULD have committed (so the committed trace keeps its
   whole trim schedule: 0 offset divergences, 1 + 3 commits changed on turbo's pre-swap trace), or past `buffer_trim_s` +
   `ANCHOR_STALL_S`=4 (12 s; traced buffers never pass 11.25 s) — without the last two an aligned
@@ -123,7 +147,7 @@ paths:
   prefix, else the count stands; `finish()` adopts unconfirmed, no decode being left to confirm it.
   **Taking the end at once is REFUSED** (consultant-1 + consultant-2 BLOCK): it moves the record
   into a one-decode spelling, so the reversion, head drop or total drop after it re-commits
-  published text. `tests/eval_anchor_scenarios.py --baseline <old streaming.py>`, 11 scenarios ×
+  published text. `tests/eval_anchor_scenarios.py --baseline <old streaming.py>`, then 11 scenarios ×
   ~2,870 scripts, seed 11: 0 scripts the old processor outputs exactly and this one does not —
   sampling-bounded: seed 0 finds 1, `--scripts 30000 --seed 7` 18 of 315,805 against ~64,000 the
   other way (user ruling: shipped, the contract's "no script" restated as these numbers); exact
