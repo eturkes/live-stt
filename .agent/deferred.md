@@ -12,13 +12,17 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
 1. **A trim cut at an early segment end re-publishes speech** — `_trim` cuts the audio at the last
    covered segment's `end_s`, and whisper places that end up to ~2 s early, so the retained audio
    still holds the tail of the piece just published and the next decode re-transcribes it into the
-   next line (10-02: `SRC 1173` → `1174` repeats `そういうことがあるらしいんですよね。`; `9`/`10`,
-   `290`/`291`, `307`/`308` the same shape, typescript-confirmed on `1173`). Kernel, funded 10-07.
+   next line (10-02: `SRC 1173` → `1174` repeats `そういうことがあるらしいんですよね。`; `307`/`308`,
+   `877`/`878`, `402`/`403` the same shape). Typescript: the trimming decode spelled the phrase
+   once, and its text past the cut (the retained text) opens on NEW speech (`それを…`, `まだ何も…`,
+   `のを…`) that the post-trim decode only reaches after the re-spelled head. Kernel, funded 10-07.
    **Accept:** a post-trim decode whose head re-spells the published tail publishes that head
    nowhere; a phrase the speaker genuinely repeats across a segment boundary (`そうそう`,
    `はい。はい。`) keeps both copies; a lock replaying the `1173`/`1174` shape, red before; retention
-   CER and the long-form replay no worse than recorded; the gate stays green.
-
+   CER and the long-form replay no worse than recorded; the gate stays green. Scope (user ruling
+   10-07): the retained text is the evidence — a post-trim decode that opens the way the retained
+   text does, or a cut that retained no text, publishes as today; the trimming decode already
+   holding the second copy is the next row's shape.
 2. **Live-mic validation pass** — user-only (L-004), the largest untested surface: M13.2, the four
    2026-09-06 polish fixes and M14's `_respawn` arm have never met a mic (`_probe` has); standing
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
@@ -54,3 +58,15 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** a fresh session on a clean tree, measured with `context-gauge`, plus `wc -c` over
    the attached set → the paragraph carries those numbers, or drops the literal for the recipe;
    the gate stays green.
+
+7. **A decode spelling one phrase twice publishes both copies across a trim** — the trimming decode
+   itself spells a phrase twice in adjacent text; `final_s` commits the first copy, the trim
+   publishes it, and the second copy, already the retained text's head, publishes next (10-02:
+   `9`/`10`, `290`/`291`, `90`/`91`, `695`/`696`, `1010`/`1011`). Text-identical to a real repeat
+   (`98`/`99`, `5回目で終わったり、7回目で終わったり`, reads real), so only the audio decides and
+   10-02 saved none. Kernel, unfunded.
+   **Accept:** a `--save-audio` session holding the shape, replayed through `replay.py`, measures
+   whisper's spans for both copies against a real repeat; a rule that publishes one copy of the
+   decoder's duplicate and both copies of a real repeat ships with a lock over that replay, red
+   before, retention CER and the long-form replay no worse than recorded, the gate green — or the
+   measurement shows the spans cannot separate them and the row closes as a documented residual.

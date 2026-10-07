@@ -220,6 +220,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
 - [ ] **6** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
+- [ ] **7** A decode spelling one phrase twice publishes both copies across a trim
+  - Kernel tier, unfunded, needs a `--save-audio` session; accept → `.agent/deferred.md` → *A
+    decode spelling one phrase twice publishes both copies across a trim*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
 row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
