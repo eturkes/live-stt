@@ -216,8 +216,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
     decode spelling one phrase twice publishes both copies across a trim*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
-row = that unit's whole contract; the session body names the rows it funds, and a `maintain.md`
-Queue body naming none funds every row.
+row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds,
+and the `auto/maintain.md` Queue body funds every row.
 
 ## Phase
 
@@ -227,8 +227,8 @@ behind its default-off `--two-way` flag. M1-M14 shipped and closed
 re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`), and IMPLEMENT closed with `Tasks`
 above carrying what it did not fund.
 
-One session per `maintain.md` body — Request, Queue, Security review, Dependency upgrade — the body
-naming the `.agent/deferred.md` rows it funds or the maintenance task it wants, each closing
+One session per `maintain.md` body (`auto/` | `steered/`) — Request, Queue, Security review,
+Dependency upgrade — the body naming the `.agent/deferred.md` rows it funds or the maintenance task it wants, each closing
 gate-green under `uv run --no-sync python gate.py` with this file current
 — plus, where the request touches decode quality, a CER number the commit body records. The standing
 MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018

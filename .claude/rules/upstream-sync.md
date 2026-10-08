@@ -11,9 +11,9 @@ overrides, adapts, retires or marks inapplicable that structure, and names its r
 user's waiver; every phase body follows it, and a retired structure stays retired. Where the
 template and a rules file disagree, the rules file wins. A clause with no row below binds as written.
 
-`last-sync = agents@5471e83`. A refresh = one migration-only session on
-`~/.local/app/agents/claude/prompts/refresh.md`, which derives the upstream delta from that value;
-re-read this table and `assurance-posture.md` before acting on the template's words.
+`last-sync = agents@2cedb4f`. A refresh = one migration-only session on
+`~/.local/app/agents/claude/prompts/{auto,steered}/refresh.md`, which derives the upstream delta
+from that value; re-read this table and `assurance-posture.md` before acting on the template's words.
 
 The table = the index of every ruling, keyed on quoted template text (project or global
 `CLAUDE.md`); `tests/test_law_consistency.py` holds each key to a live anchor.

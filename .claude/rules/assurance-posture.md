@@ -90,9 +90,9 @@ a review row. The cap bounds presentation, never coverage — a check set that w
 unit is oversized (L-031) ⇒ report that and let MAIN split it. The report is the whole record; no
 ledger carries rows between sessions.
 
-`<window>` in a gauge record = what `context-gauge` prints (mechanics → global `CLAUDE.md`): the raw
-**1M** for MAIN, **272K** for a teammate; `/240K` in every gauge M11-M13 recorded, `/273K` in the
-later ones. Compare units by absolute K; the percentage is denominator-relative. **Size by WORK
+`<window>` in a gauge record = what `context-gauge` prints, the loop's compaction trigger (mechanics
+→ global `CLAUDE.md` `Context occupancy`); `/240K` in every gauge M11-M13 recorded, `/273K` in the
+later ones, and the raw `/1M` for MAIN before the trigger became the denominator. Compare units by absolute K; the percentage is denominator-relative. **Size by WORK
 above the fresh-session baseline, never by a `main=` total**, because the baseline moves with the
 attached state while the work does not. The analogs = the last three closed M-series units:
 **106K / 121K / 130K** of work (`main=` 181K / 196K / 205K less a ≈75K baseline that carried 182 KB
@@ -101,7 +101,6 @@ being the SMALLEST unit by estimate, where the small denominator makes the ratio
 absolute 130K is the signal. Size a new unit bottom-up against those work figures, never against a
 literal written here. **A fresh MAIN session now opens at 47K** over 89 KB attached — global
 `CLAUDE.md` 27.0 KB, `CLAUDE.md` 14.4 KB, `CLAUDE.local.md` 5.1 KB, `.agent/spec.md` 14.2 KB, the
-three bare rules files 28.7 KB. MAIN at 1M is collapse-managed and has no compaction window a unit
-must fit, so the budget that binds is a teammate's: `context-alert` hands it off at 205K, so a
-brief's bottom-up work plus that teammate's own opening baseline (unmeasured here) must land under
-205K.
+three bare rules files 28.7 KB. MAIN's trigger sits far past any unit here, so the budget that
+binds is a teammate's: a brief's bottom-up work plus that teammate's own opening baseline
+(unmeasured here) must land under its `context-alert` hand-off (global `CLAUDE.md` `Teammate size`).
