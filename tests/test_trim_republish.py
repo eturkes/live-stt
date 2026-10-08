@@ -37,6 +37,15 @@ class _Script:
         self.calls = 0
 
     def __call__(self, samples: Audio) -> tuple[str, list[Segment]]:
+        if (
+            self.calls
+            and len(samples) == int(0.75 * SAMPLE_RATE)
+            and self.frames[self.calls - 1].cut
+        ):
+            # `_echo` re-decodes the audio up to the first span: a scripted span was really
+            # spoken, so that audio holds exactly its text -- every repeat here is a real one.
+            spoken = self.frames[self.calls - 1]
+            return spoken.text[: spoken.cut], [Segment(0.0, 0.75, spoken.text[: spoken.cut])]
         assert self.calls < len(self.frames), "unscripted decode"
         frame = self.frames[self.calls]
         self.calls += 1
@@ -246,7 +255,7 @@ def test_empty_retained_text_keeps_existing_publication(overlap: str):
     )
 
 
-def test_already_doubled_trimming_decode_stays_out_of_scope():
+def test_a_doubled_trimming_decode_whose_audio_holds_both_copies_keeps_both():
     retained = OVERLAP + CONTINUATION
     assert _run(PUBLISHED, retained, [_Frame(retained), _Frame(retained)], committed=1) == (
         PUBLISHED + retained

@@ -182,8 +182,7 @@ paths:
   follows the retained text and stays; a later recurrence of the opener keeps the speech before it;
   an empty retained text is no evidence and the decode stands. One `head_costs` table prices every
   head: per-head alignment cost 4.3-6.9 s per decode at 440 cut characters, the table ~0.03 s.
-  **Scope (user ruling):** the trimming decode already holding the second copy (`9`/`10`,
-  `290`/`291`) is text-identical to a real repeat and stays queued for saved audio. **Residuals:** a
+  The trimming decode already holding the second copy is `_echo`'s (next bullet). **Residuals:** a
   real repeat the trimming decode dropped and the next one restores reads as a re-telling
   (ambiguous by construction); a re-telling stands where the decode re-spells the retained opener's
   first 2 characters, or where dropping it gains no more alignment than it costs. Locks:
@@ -194,6 +193,35 @@ paths:
   gongitsune §01-§06): 32 trims, no re-telling decode, retained text never empty; retention CER
   0.0532 and long-form §01+§03 0.2153 unchanged, every hypothesis byte-identical to the prior
   processor's.
+- **A trimming decode spelling one phrase twice across its last segment boundary keeps the copy the
+  audio holds (`_echo`, user ruling: audio-verified).** Whisper ends the penultimate segment with
+  the run the last segment opens with, `final_s` commits the first copy, the trim cuts between the
+  copies and both publish (10-08 replay of `transcripts/2026-10-08T14-02-20.wav`: SRC 117, 162, 166,
+  322, the 162 shape also live as SRC 151/152; 10-02 `9`/`10`, `290`/`291` read the same, no audio
+  kept). Text cannot separate it from a phrase said twice, so the audio decides: past
+  `buffer_trim_s`, where the penultimate segment ends with k ≥ 2 characters the last opens with and
+  the decode ends `run + last`, `process()` decodes `audio[:penultimate end_s]` once more; the
+  first copy stays where that decode holds the run within `len(run)//4` edits inside its last
+  `len(run) + ANCHOR_DRIFT` characters, else it leaves `text` and the penultimate span before
+  agreement, and the drop licenses a cut as a commit does (the dropped copy was SRC 117's whole
+  commit; uncut, every later update re-decoded the doubled audio and paid the probe again) — a
+  held or stopped-short anchor, or a `_trim` finding no cut, still leaves the buffer uncut.
+  Measured: the pre-cut decode heard the run in 0 of the 4 doubled trims and in 7 of 7 constructed
+  real repeats (each buffer plus its own post-cut audio, ≤ ¼ edits — the bound is sized on those 7,
+  not an operating point); the trigger fired on exactly those 4 of 172 trim-eligible updates in 57
+  minutes and on 0 of 35 across every pinned clip, so retention, long-form and the committed traces
+  are unchanged by construction (`.scratch/s1008/trigger_census.py`). Cost = one extra decode per
+  trigger, drain blocked, estimated ~0.6 s off the latency table below (unmeasured).
+  `build_vac_trace.py` asserts one decode per update, so a rebuild whose clip triggers stops there.
+  Residuals: a doubling split anywhere but the last boundary stands, as does a duplicate whose probe
+  decode happens to end on the run; a real repeat whose probe re-spells it past a quarter of its
+  characters loses its first copy. NPU, the 10-08 WAV replayed through the shipped path: 290 of 290
+  utterances and 408 lines, exactly the four doubled ones changed, each phrase once; retention
+  0.0532 and long-form §01+§03 0.2153 with every hypothesis byte-identical. Locks: `tests/test_trim_echo.py`
+  (tester-1, 67 cases: the four replay transitions, the worker's `SRC` lines with and without a
+  translator, the 7 measured repeats, probe placement and budget boundaries, the final decode; 38
+  red with `_echo` neutralized); `test_trim_republish.py`'s scripted decoder answers the probe with
+  the span's own text, every repeat there being a real one.
 - The `on_update` seam (`worker` / `_vac_segments` / `replay.py`) is what makes commit timing
   observable at all; `commit_audio_s` is otherwise discarded at `commit, _ = await …`.
 

@@ -87,10 +87,11 @@ def trace_clip(path: Path, rec: object) -> dict[str, Any]:
     updates: list[dict[str, Any]] = []
 
     def on_update(buffer_s, buffer_end_s, commit_audio_s, commit, final, decode_s):
-        # process() calls decode exactly once, so the k-th hypothesis is this
-        # update's; asserting it keeps a future extra decode from silently
-        # shifting the whole series.
-        assert len(hypotheses) == len(updates) + 1, "one decode per update"
+        # process() calls decode once, so the k-th hypothesis is this update's;
+        # asserting it keeps an extra decode from silently shifting the whole series.
+        # `_echo`'s pre-cut probe is one, and no pinned clip triggers it (0 of 35
+        # trim-eligible updates), so a rebuild that does stops here.
+        assert len(hypotheses) == len(updates) + 1, "one decode per update (an _echo probe?)"
         text, segments = hypotheses[-1]
         row = {
             "buffer_s": round(buffer_s, 6),

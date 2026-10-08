@@ -119,6 +119,17 @@ def tail_costs(tail: str, window: str) -> list[int]:
     return cost
 
 
+def substring_cost(run: str, text: str) -> int:
+    """Edit distance of `run` against its cheapest substring of `text` -- both ends free."""
+    row = [0] * (len(text) + 1)
+    for i, char in enumerate(run, 1):
+        new = [i]
+        for j, other in enumerate(text, 1):
+            new.append(min(row[j] + 1, new[j - 1] + 1, row[j - 1] + (char != other)))
+        row = new
+    return min(row)
+
+
 @dataclass
 class Segment:
     start_s: float
@@ -172,12 +183,20 @@ class StreamingProcessor:
         retold = self._retold(text)
         if retold:
             text, segments = text[retold:], _behead(segments, retold)
+        buffered_s = len(self.audio) / SAMPLE_RATE
+        echo = 0
+        if buffered_s > self.buffer_trim_s and len(segments) >= 2:
+            echo = self._echo(text, segments)
+            if echo:
+                at = len(text) - len(segments[-1].text)
+                before = segments[-2]
+                segments[-2] = Segment(before.start_s, before.end_s, before.text[:-echo])
+                text = text[: at - echo] + text[at:]
         agreed = common_prefix(text, self.previous)
         published = len(self.emitted)
         anchor, found = self._anchor(text)
         self.previous = text
         stable = max(agreed, anchor)
-        buffered_s = len(self.audio) / SAMPLE_RATE
         final_s = 0
         if buffered_s > self.buffer_trim_s and len(segments) >= 2:
             # A segment that is no longer the last one is final: its audio has
@@ -215,9 +234,12 @@ class StreamingProcessor:
         # Past the stall bound any available cut is taken, commit or not: the traced
         # buffers never pass 11.25 s, so recorded schedules keep, and a punctuation
         # flip-flop in a published segment can no longer starve the buffer.
+        # A dropped echo cuts too: the copy it removed was often all this decode had to
+        # commit, and an uncut buffer re-decodes the doubled audio -- and pays the pre-cut
+        # decode again -- on every later update (10-08 replay, SRC 117).
         counted = max(agreed, published, final_s) > published
         stalled = buffered_s >= self.buffer_trim_s + ANCHOR_STALL_S
-        if (commit or counted or stalled) and stable <= len(text):
+        if (commit or counted or stalled or echo) and stable <= len(text):
             if buffered_s > self.buffer_trim_s:
                 self._trim(segments)
         if len(self.audio) / SAMPLE_RATE > HARD_TRIM_S:
@@ -358,6 +380,33 @@ class StreamingProcessor:
                 best = min(best, (costs[start] + missed(start), start))
             start = text.find(heard[:need], start + 1)
         return best[1]
+
+    def _echo(self, text: str, segments: list[Segment]) -> int:
+        """Length of a run ending the penultimate segment that the last re-tells unheard, else 0.
+
+        Whisper can spell a phrase twice across a segment boundary -- ending one segment and
+        opening the last -- while its audio lies wholly past that boundary: final_s commits the
+        first copy, the trim cuts there and publishes it, and the retained copy publishes next
+        (10-08 replay: 4 of 172 trim-eligible updates; live SRC 151/152). Text cannot tell that
+        from a phrase said twice, so the audio before the boundary decides, decoded once more: a
+        real first copy is heard there (7 of 7 constructed repeats), a duplicate is not (0 of 4).
+        """
+        before, last = segments[-2], segments[-1].text
+        run = next(
+            (
+                last[:k]
+                for k in range(min(len(before.text), len(last)), 1, -1)
+                if before.text.endswith(last[:k])
+            ),
+            "",
+        )
+        cut = int(before.end_s * SAMPLE_RATE)
+        if not run or not 0 < cut < len(self.audio) or not text.endswith(run + last):
+            return 0
+        heard, _ = self.decode(self.audio[:cut])
+        if substring_cost(run, heard[-(len(run) + ANCHOR_DRIFT) :]) <= len(run) // 4:
+            return 0
+        return len(run)
 
     def _audio_time_at(self, segments: list[Segment], index: int) -> float | None:
         """Absolute audio time of character `index`, interpolated inside its segment."""

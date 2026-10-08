@@ -129,8 +129,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`. The
   one-utterance-one-line wording in Intent is the user's to edit.
   A decode re-telling what a trim just moved out loses that head, the retained text (what the
-  trimming decode heard past the cut) being the evidence; a trimming decode that already spelled the
-  phrase twice is text-identical to a real repeat and waits for saved audio (user ruling).
+  trimming decode heard past the cut) being the evidence; a trimming decode that spelled the phrase
+  twice across its last segment boundary keeps the first copy only where a decode of the audio
+  before that boundary hears it (`_echo`, user ruling: audio-verified).
 - A runaway caption (each published piece is one) is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
   0.0583 → 0.0609 (measured on turbo). `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
@@ -195,27 +196,24 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** A decode spelling one phrase twice publishes both copies across a trim
-  - Kernel tier, funded (user ruling 10-08: audio-verified rule); accept → `.agent/deferred.md` →
-    *A decode spelling one phrase twice publishes both copies across a trim*.
-- [ ] **2** Anchor residuals re-commit published text
+- [ ] **1** Anchor residuals re-commit published text
   - Kernel tier, funded (user ruling 10-08: attempt now); accept → `.agent/deferred.md` →
     *Anchor residuals re-commit published text*.
-- [ ] **3** Live-mic validation pass
+- [ ] **2** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **4** Reconcile the human-facing doc set
+- [ ] **3** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **5** Screen each segment inside a released piece
+- [ ] **4** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **6** Session report reads two-way transcripts
+- [ ] **5** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **7** Re-measure the fresh-session baseline
+- [ ] **6** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
