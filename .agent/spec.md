@@ -120,7 +120,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   scenario scripts against ~64,000 the other way; user ruling restated the "no script" bar). A published
   mark a decode drops gives back the character the nearer end spent on it, at ≥ half tail agreement
   or for a lone mark; extending the give-back into `_thin`'s count is REFUSED (user ruling: 197
-  scenario scripts lost against 18 at seed 11).
+  scenario scripts lost against 18 at seed 11). A decode re-telling the shown end past the located
+  boundary skips that run unless it spells it twice or the publishing decode heard it next
+  (`_past_retelling`, user ruling 10-08: attempt); the one real-decode loss and the residuals →
+  `asr-pipeline.md`.
 - **Long utterances publish at settled segments** (user ruling; supersedes UNCAPPED): each trim
   that moves committed text out of the VAC buffer publishes it at once as its own `SRC n` line + turn,
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
@@ -196,24 +199,21 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** Anchor residuals re-commit published text
-  - Kernel tier, funded (user ruling 10-08: attempt now); accept → `.agent/deferred.md` →
-    *Anchor residuals re-commit published text*.
-- [ ] **2** Live-mic validation pass
+- [ ] **1** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **3** Reconcile the human-facing doc set
+- [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **4** Screen each segment inside a released piece
+- [ ] **3** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **5** Session report reads two-way transcripts
+- [ ] **4** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **6** Re-measure the fresh-session baseline
+- [ ] **5** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded

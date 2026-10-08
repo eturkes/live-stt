@@ -61,6 +61,9 @@ ANCHOR_STALL_S = 4.0
 # Retained characters a post-trim decode's opening is aligned against (_retold): enough to
 # outvote one re-spelled or dropped character, local enough for a decode that stops short.
 RETOLD_OPENING = 8
+# Shortest published run a decode may re-tell before the boundary skips it (_past_retelling):
+# below 3, ordinary reduplication (そうそう, いろいろ) and mora repeats dominate.
+RETELL_MIN = 3
 
 
 def common_prefix(a: str, b: str) -> int:
@@ -160,6 +163,8 @@ class StreamingProcessor:
     found_in: str = ""  # decode `emitted` was last LOCATED in; "" after a count fallback
     held: str | None = None  # re-spelled published prefix a thin decode proposed
     published_last: str = ""  # last character actually published; `emitted` may re-spell it
+    shown: str = ""  # what this buffer published, as published; `emitted` may re-spell it
+    heard: str = ""  # what the decode that published `shown`'s end heard after it
     cut_text: str = ""  # what the last trim moved out; the audio it kept may re-tell its end
     retained: str = ""  # what the trimming decode heard past that cut
     forced_trims: int = 0
@@ -195,6 +200,8 @@ class StreamingProcessor:
         agreed = common_prefix(text, self.previous)
         published = len(self.emitted)
         anchor, found = self._anchor(text)
+        if found:
+            anchor = self._past_retelling(text, anchor)
         self.previous = text
         stable = max(agreed, anchor)
         final_s = 0
@@ -212,6 +219,8 @@ class StreamingProcessor:
         commit = text[anchor:stable]
         if commit:
             self.published_last = commit[-1]
+            self.shown += commit
+            self.heard = text[stable:]
         # `emitted` records what was PUBLISHED, so it may only grow inside a buffer.
         # A decode that retracts below it (shorter hypothesis) would otherwise shrink
         # the record, and the next decode would re-commit characters already on
@@ -381,6 +390,30 @@ class StreamingProcessor:
             start = text.find(heard[:need], start + 1)
         return best[1]
 
+    def _past_retelling(self, text: str, end: int) -> int:
+        """`end` moved past a run that re-tells the published end, else `end`.
+
+        The anchor locates `emitted`, a record later decodes may re-spell, so where the record
+        and what was shown part ways the end can land before text re-telling the shown end:
+        a reverted re-spelling (`っていうていう`), a head the decoder restores (`そういうそういう`),
+        a count taken off a garbage decode -- 6 re-commits of 3-8 characters in the 10-08
+        replay. The run is a real repeat, and stays, where this decode spells it twice or the
+        decode that published the end heard it next (a truncated `ごち` for `ごちゃ` included).
+        """
+        told = self.shown
+        k = next(
+            (
+                k
+                for k in range(min(len(told), len(text) - end), RETELL_MIN - 1, -1)
+                if text.startswith(told[-k:], end)
+            ),
+            0,
+        )
+        run = told[-k:]
+        if k and run * 2 not in text and not (self.heard and run.startswith(self.heard[:k])):
+            return end + k
+        return end
+
     def _echo(self, text: str, segments: list[Segment]) -> int:
         """Length of a run ending the penultimate segment that the last re-tells unheard, else 0.
 
@@ -436,6 +469,8 @@ class StreamingProcessor:
             return
         self.cut_text = self.emitted[:cut_chars]
         self.emitted = self.emitted[cut_chars:]
+        kept = len(self.shown) - len(self.emitted)
+        self.shown = self.shown[max(0, kept) :] if self.emitted else ""
         self.previous = self.previous[cut_chars:]
         self.retained = self.previous
         self.found_in = self.found_in[cut_chars:]
@@ -453,6 +488,8 @@ class StreamingProcessor:
         self.offset_s += (len(self.audio) - keep) / SAMPLE_RATE
         self.audio = self.audio[-keep:]
         self.emitted = ""
+        self.shown = ""
+        self.heard = ""
         self.previous = ""
         self.found_in = ""
         self.held = None
@@ -462,7 +499,9 @@ class StreamingProcessor:
 
     def finish(self) -> str:
         """Emit the unconfirmed tail; at end of audio there is nothing left to confirm."""
-        end, _ = self._anchor(self.previous, final=True)
+        end, found = self._anchor(self.previous, final=True)
+        if found:
+            end = self._past_retelling(self.previous, end)
         tail = self.previous[end:]
         self.emitted = self.previous
         return tail

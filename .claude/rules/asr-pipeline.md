@@ -166,6 +166,35 @@ paths:
   re-spelled prefix and drop speech on restoration (`…カン、カンと鐘…` loses `カン、`, reviewer-1,
   seed 0). Locks: `tests/test_thin_rewrite.py`
   (tester-1, 49 cases: 24 locks red on the old processor, 25 controls green on both).
+- **A decode re-telling the published end past the located boundary skips that run
+  (`_past_retelling`, user ruling 10-08: attempt).** `_anchor` locates `emitted`, a record later
+  decodes re-spell, so where record and screen part ways the located end can sit before text that
+  re-tells the SHOWN end — 10-08 replay, 6 re-commits of 3-8 characters in 290 utterances: a
+  re-spelling the next decode reverts (`やりやすくっていうていう`, live SRC 186; `ちょっといょっとい`),
+  a head restored ahead of the published text (`そういうそういう`), a count off a garbage decode
+  (`入れるっていうていう`). `shown` = what the buffer published, as published (sliced with `emitted`
+  at `_trim`, cleared at `_force_trim`); `heard` = what the publishing decode heard past it. Where
+  `_anchor` LOCATED the end — `_thin`'s confirmed or final end included, never a held, stopped-short
+  or count-fallback one — the longest run of
+  ≥ `RETELL_MIN`=3 characters ending `shown` that the text continues with is skipped, in `process()`
+  and `finish()` alike, `emitted` keeping `text[:stable]`; it stays where the text spells it twice
+  or a nonempty `heard` agrees with it over their overlap, the real-repeat evidence (`ごちゃごちゃ`
+  with the first copy re-spelled for good; `ごち` heard for `ごちゃ`). Over the logged decodes
+  (`.scratch/s1008/trace_replay.py`): 10-08, 5 of 290 utterances change — 4 re-commits gone (−14
+  spurious characters) and 1 loss of 2 real characters where a count-drifted record had already
+  mis-published (u139, `…あってるんですよね。人のワーク…` → `…。ワーク…`); every pinned clip
+  unchanged (229 utterances). Scenario harness: seed 11 0 lost / 223 won, `--scripts 30000 --seed 7`
+  0 lost / 1960 won. Refused on the way: keeping the record on a count fallback (real decodes 5
+  better / 2 worse); a veto reading the previous decode alone (6 real-repeat losses at seed 7, the
+  first copy re-spelled for good); requiring the record to end with the run (removes every real
+  win). Residuals: a re-telling across a trim, a garbage decode and a restoration
+  (`か?って書いてあ`, the one left), and a real repeat said after the publishing decode ended and
+  re-spelled now reads as a re-telling. NPU, the 10-08 WAV through the shipped path: 290 of 290
+  utterances and 408 lines, exactly those 5 changed; retention 0.0532 and long-form §01+§03 0.2153
+  with every hypothesis byte-identical. Locks: `tests/test_retell_guard.py` (tester-2, 63 cases:
+  the four replay shapes through `process()` and `finish()`, the next decode after a guarded one
+  publishing no part of the run, real-repeat and located-only controls, state lifecycle across
+  trims, a generated suffix oracle; 26 red on the prior processor, 21 with the guard neutralized).
 - **A post-trim decode that re-tells the trimmed text loses that head (`_retold`).** Whisper puts a
   segment's `end_s` up to ~2 s early, so `_trim` keeps audio whose text it just moved out, and the
   next decode re-tells it ahead of the retained text — 10-02 live: `SRC 1173` → `1174` repeated
