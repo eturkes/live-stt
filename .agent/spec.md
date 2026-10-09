@@ -160,6 +160,11 @@ Detail → `.claude/rules/`, which each `D-###` names.
   the per-block linear recipe survives as `linear_resample` for the hash-pinned corpora alone. No
   CER change on 300 clean clips (0.1131 → 0.1113, CI spans 0); shipped as the correctness fix
   (`asr-pipeline.md`).
+- silero hears a LEVELED copy of each window (`LeveledVad`, user ruling 10-09): gain toward
+  `VAD_TARGET_DBFS`=−25 off the p90 window RMS of the last 10 s, capped at 16×; whisper, ring, LID
+  and `--save-audio` keep raw audio. A quiet far-field meeting had opened the VAD on 124 of 2,672 s.
+  Gain stays exactly 1.0 on all 21 pinned clips; the FLEURS LID census re-cut under it (user ruling:
+  regenerate), 0 false routes at 2 s. A quiet empty room is unmeasured (`live-smoke.md` item 9).
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out. `--save-audio` (opt-in)
   adds the capture WAV `transcripts/<start>.wav` (~115 MB/h), the real-audio input `replay.py` reads.
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
@@ -199,23 +204,21 @@ Detail → `.claude/rules/`, which each `D-###` names.
 
 ## Tasks
 
-- [ ] **1** A quiet mic never opens the VAD
-  - Kernel tier, funded (user ruling 10-09); accept → `.agent/deferred.md` → *A quiet mic never opens the VAD*.
-- [ ] **2** Live-mic validation pass
+- [ ] **1** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **3** Reconcile the human-facing doc set
+- [ ] **2** Reconcile the human-facing doc set
   - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
     `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **4** Screen each segment inside a released piece
+- [ ] **3** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **5** Session report reads two-way transcripts
+- [ ] **4** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **6** Re-measure the fresh-session baseline
+- [ ] **5** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded

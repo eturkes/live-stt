@@ -24,6 +24,7 @@ import sys
 import time
 import unicodedata
 import wave
+from collections import deque
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -105,9 +106,9 @@ ASR_LANGUAGE: str = "ja"
 
 # Two-way LID (`--two-way`, default OFF): a standalone ECAPA VoxLingua107 graph on
 # ONNX Runtime CPU hands the ONE resident whisper pipeline an explicit language
-# token per utterance, rather than a second recogniser (asr-pipeline.md). The
-# thresholds are the spike's operating point over 1,926 utterances: at 2 s of
-# voiced buffer they accept 1,338 correct / 178 abstain / 0 false of 1,516. Margin
+# token per utterance, rather than a second recogniser (asr-pipeline.md). Over the
+# census's 1,747 utterances (FLEURS cut by the shipped leveled VAD), at 2 s of
+# voiced buffer they accept 1,328 correct / 172 abstain / 0 false of 1,500. Margin
 # is |ja - en| over the RAW 107-way softmax and is never renormalized over the
 # pair, which is what rejects third-language and non-speech audio outright.
 LID_MODEL_DIR = MODELS_DIR / "lid/d2-ecapa"
@@ -153,6 +154,27 @@ VAD_MAX_SPEECH_S = 20.0
 # into silence is harmless.
 VAD_PRE_PAD_S = 0.4
 RING_SECONDS = 60  # ring capacity; bounds VAD pre-pad re-slicing memory
+# silero is level-sensitive and whisper is not. A far-field meeting at speech p90
+# -43.8 dBFS (every pinned clip sits at -11..-24) opened the VAD on 124 s of 2,672,
+# 4.6 % of the characters whisper hears in the raw audio; 10-08 at -35.3 reached
+# 57 %. So silero alone hears each window boosted toward VAD_TARGET_DBFS, gain read
+# off the p90 window RMS of the last VAD_LEVEL_WINDOW_S: 0.839 / 0.892 of whisper's
+# text on 10-09 / 10-08. -25 keeps the gain at exactly 1.0 on every window of all 21
+# pinned clips, where -22 adds 0.04 / 0.01 but boosts loud clips (user ruling). A
+# fixed x8 read 0.820 / 0.894 and re-segmented every corpus; silero v5/v6 and TEN
+# VAD all read lower.
+VAD_TARGET_DBFS = -25.0
+VAD_MAX_GAIN = 16.0
+VAD_LEVEL_WINDOW_S = 10.0
+VAD_LEVEL_PERCENTILE = 90
+# Digital or mp3 silence carries no level: admitted, a clip's silent lead-in made
+# the first speech windows read quiet and shifted its segments by 40 ms. The live
+# mic's floor sits at -48..-52 dBFS.
+VAD_LEVEL_FLOOR_DBFS = -70.0
+# Gain stays 1 until this much admitted history exists: with none, a -40 dBFS lead-in
+# boosted the first speech windows of retention_probe and both stressors and
+# re-segmented them (stress_med 2 -> 1); at 1 s cv_long still moved.
+VAD_LEVEL_MIN_S = 2.0
 
 # Offline recognizers delete whole phrases on long continuous segments (M9.4).
 # Leave ordinary utterances on the exact single-decode path; split only >10 s
@@ -599,9 +621,36 @@ def load_recognizer(
     )
 
 
+class LeveledVad(sherpa_onnx.VoiceActivityDetector):
+    """silero hearing each window boosted toward VAD_TARGET_DBFS; callers keep raw audio.
+
+    Both feeders hand accept_waveform one window per call, so the history counts
+    windows. The boosted copy reaches silero alone: the ring, whisper, LID and the
+    recording all slice the caller's samples.
+    """
+
+    def __init__(self, cfg: sherpa_onnx.VadModelConfig):
+        super().__init__(cfg, buffer_size_in_seconds=60)
+        windows_per_s = SAMPLE_RATE / cfg.silero_vad.window_size
+        self._levels: deque[float] = deque(maxlen=round(VAD_LEVEL_WINDOW_S * windows_per_s))
+        self._min_levels = round(VAD_LEVEL_MIN_S * windows_per_s)
+        self.gain = 1.0
+
+    def accept_waveform(self, samples: np.ndarray) -> None:
+        rms = float(np.sqrt(np.mean(samples * samples)))
+        if rms > 10 ** (VAD_LEVEL_FLOOR_DBFS / 20):
+            self._levels.append(rms)
+            if len(self._levels) >= self._min_levels:
+                level = float(np.percentile(self._levels, VAD_LEVEL_PERCENTILE))
+                self.gain = min(VAD_MAX_GAIN, max(1.0, 10 ** (VAD_TARGET_DBFS / 20) / level))
+        if self.gain != 1.0:
+            samples = np.clip(samples * self.gain, -1.0, 1.0).astype(np.float32, copy=False)
+        super().accept_waveform(samples)
+
+
 def make_vad(
     max_speech_s: float | None = VAD_MAX_SPEECH_S,
-) -> tuple[sherpa_onnx.VoiceActivityDetector, int]:
+) -> tuple[LeveledVad, int]:
     """Returns (vad, window_size_in_samples).
 
     max_speech_s overrides silero's soft cap (past it the threshold rises and
@@ -617,7 +666,7 @@ def make_vad(
         cfg.silero_vad.max_speech_duration = max_speech_s
     cfg.sample_rate = SAMPLE_RATE
     window = int(cfg.silero_vad.window_size)
-    return sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60), window
+    return LeveledVad(cfg), window
 
 
 def _decode(rec: sherpa_onnx.OfflineRecognizer | WhisperEngine, samples: np.ndarray) -> str:
@@ -2138,8 +2187,8 @@ async def _vac_segments(
         """Close the open utterance: flush its tail, then publish what remains."""
         nonlocal processor, pending, published, cut_mark, label, token, marked
         await update(final=True)
-        # 409 of 1,926 census utterances never accept. Withholding them would lose
-        # one caption in five, so they publish under the held label and say so.
+        # 246 of 1,747 census utterances never accept. Withholding them would lose
+        # one caption in seven, so they publish under the held label and say so.
         rest = utterance[published:]
         # A punctuation-only remainder would print as a line of its own; an utterance
         # that published nothing yet keeps the one-line rule whatever it holds.

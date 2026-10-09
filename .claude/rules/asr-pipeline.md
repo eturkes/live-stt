@@ -13,6 +13,33 @@ paths:
   included** ⇒ each segment is re-sliced from the fed-sample ring with `VAD_PRE_PAD_S`=0.4, on the
   legacy VAD-segment path and on the VAC buffer alike. Every VAD or `worker` edit preserves it
   (D-010).
+- **silero hears a LEVELED copy; everything else keeps raw audio (`LeveledVad`, user ruling 10-09).**
+  silero v4 at threshold 0.5 is level-sensitive and whisper is not: the 10-09 `--save-audio`
+  meeting (speech window-RMS p90 −43.8 dBFS; 10-08 −35.3; every pinned clip −11..−24) published
+  1,103 characters live, while whisper-ja-760M over the raw WAV in fixed 30 s windows, no VAD, hears
+  12,319 (×4 gain: 12,282). Scored as the char-weighted share of that oracle's segments the VAD
+  holds open, 10-09 / 10-08: shipped 0.046 / 0.570; threshold 0.3 0.151; silero v5 0.364 / 0.712,
+  v6 0.129 / 0.682, TEN 0.048 / 0.496 (all VAD-only, never through whisper); fixed ×8 0.820 / 0.894
+  but it re-segments every pinned corpus (gongitsune_01 67 → 44); the rule 0.839 / 0.892. End to end
+  (each WAV through the real `worker`, NPU, `.scratch/s1009/e2e.py`), 10-09 / 10-08: 753 → 11,292
+  and 10,942 → 16,436 published characters (44 → 452, 408 → 582 lines), 0
+  `ご視聴ありがとうございました`-family captions in any arm, screen drops 0 → 0 and 1 → 1; decode sum
+  73 → 1,144 s and 1,365 → 1,981 s over 2,672 / 3,421 s, max single decode 1.20 / 2.03 s. Rule, per
+  `accept_waveform` window: gain = clamp(10^(`VAD_TARGET_DBFS`/20) / p90 of the admitted window RMS
+  of the last `VAD_LEVEL_WINDOW_S`=10 s, 1, `VAD_MAX_GAIN`=16); a window ≤ `VAD_LEVEL_FLOOR_DBFS`=−70
+  is never admitted (digital silence shifted a clip's segments by 40 ms) and the gain holds 1 until
+  `VAD_LEVEL_MIN_S`=2 s are (a −40 dBFS lead-in re-segmented stress_med 2 → 1). −25 dBFS holds the
+  gain at exactly 1.0 on every window of the 21 top-level pinned WAVs ⇒ the replay goldens and the
+  retention, long-form, stressor and VAC-trace clips segment byte-identically by construction; the
+  FLEURS corpora are NOT among them — the LID census re-cut under the rule (1,926 → 1,747
+  utterances, below). −22 gains +0.04 / +0.01 and boosts loud clips. The ring, whisper, LID and
+  `--save-audio` slice the caller's samples, never the copy. Cost ~0.08 ms per 32 ms window (61 µs
+  of it the percentile), under 1 % of a core.
+  **Unmeasured: a quiet EMPTY room.** Gain climbs to 16× on room tone once speech stops; the two
+  sessions hold only 48 s / 25 s of whisper-silent gaps ≥ 3 s, the VAD open 0.2 / 3.3 s inside them
+  with 0.5 s trimmed off each gap end (whole gaps 0.7 / 4.6 s; unleveled, trimmed: 0.0 / 1.7) ⇒
+  `live-smoke.md` item 9. After 10 s of quiet, a sudden loud talker reaches silero clipped for
+  ~1 s (31 windows) until the p90 catches up. Locks: `tests/test_vad_leveling.py` (tester-1).
 - **`VoiceActivityDetector` owns two buffers with different drain rules; every feeder must pop.**
   Closed segments queue in `segments_`, each owning a copy of its audio, and `pop()` is the only
   drain the Python binding exposes (no `clear()`) ⇒ a consumer that never pops retains **~3.8 MB per
@@ -409,23 +436,26 @@ paths:
   renormalize over `{ja, en}` — the global argmax IS the non-target rejection, and it rejected 25 of
   25 synthetic silence, noise and hum probes. An absolute cap on the best non-target score changes
   no cell after that argmax and is deliberately not in the gate.
-  **Score nothing before 2.0 s of voiced buffer.** At that gate, over the 1,030 JA + 896 EN
-  production-VAD buffers cut from the two committed FLEURS corpora: **0 false routes in 1,516
-  two-second views**, 1,338 correct, 178 abstentions (11.74 %); held out on the hash-parity split
-  the thresholds never saw, 690/776 correct, 0 false, 86 abstain. **1 s is refused and no threshold
-  rescues it** — one EN buffer routes to `ja` carrying score 0.9822 and margin 0.9822, and 1 s
-  accepts only 933 of 1,925 at all. Retry each later prefix that exists, stop at the first
-  acceptance: first-correct lands at 2 s for 1,338 utterances, 3 s for 120, 5 s for 20, 8 s for 2,
-  VAD-final for 37, and **409 of 1,926 never accept**. Label flips between accepted prefixes of one
-  utterance are **0** once 1 s is suppressed (0/4,528 adjacent pairs, 0/4,535 across a held
+  **Score nothing before 2.0 s of voiced buffer.** The thresholds were picked on the spike's cut
+  (pre-`LeveledVad`): 1,516 two-second views, 1,338 correct / 178 abstain / 0 false, and held out on
+  the hash-parity split the thresholds never saw, 690/776 correct, 0 false, 86 abstain. The census
+  re-cuts with the shipped leveled VAD (user ruling 10-09): over the 987 JA + 760 EN buffers cut
+  from the two committed FLEURS corpora, **0 false routes in 1,500 two-second views**, 1,328
+  correct, 172 abstentions (11.47 %); the held-out split was not re-derived on that cut (the census
+  carries no clip ids). **1 s is refused and no threshold rescues it** — one EN buffer routes to
+  `ja` carrying score 0.9822 and margin 0.9822 on both cuts, and 1 s accepts only 918 of 1,746 at
+  all. Retry each later prefix that exists, stop at the first acceptance: first-correct lands at
+  2 s for 1,328 utterances, 3 s for 117, 5 s for 23, 8 s for 3, VAD-final for 30, and **246 of
+  1,747 never accept** (spike cut: 409 of 1,926). Label flips between accepted prefixes of one
+  utterance are **0** once 1 s is suppressed (0/4,549 adjacent pairs, 0/4,556 across a held
   abstention) ⇒ freezing the first accepted label costs nothing measurable here.
-  **Abstention is the common case on short speech and its fallback is UNPROVEN.** 410 of 1,926
-  VAD-final buffers are shorter than 2 s and the gate accepts only 28 of them, abstaining on 93.17 %,
-  so "hold the last accepted label, JA at startup" carries roughly a fifth of utterances. This
-  corpus cannot score that rule: it holds no bilingual sequence and therefore no switch rate.
-  Holding beats a coin guess only where language persistence exceeds 50 %, and beats forcing the
-  pairwise winner only where the switch rate among abstentions stays under **3.93 %** — forcing
-  those 178 costs 7 false routes.
+  **Abstention is the common case on short speech and its fallback is UNPROVEN.** 247 of 1,747
+  VAD-final buffers are shorter than 2 s and the gate accepts only 24 of them, abstaining on
+  90.28 %, so "hold the last accepted label, JA at startup" carries roughly a seventh of utterances
+  (spike cut: a fifth). This corpus cannot score that rule: it holds no bilingual sequence and
+  therefore no switch rate. Holding beats a coin guess only where language persistence exceeds
+  50 %, and beats forcing the pairwise winner only where the switch rate among abstentions stays
+  under **4.07 %** — forcing those 172 costs 7 false routes.
   **Cost 27.415 ms p50 at 1 s, 137.559 ms p50 at VAD-final** (p90 29.257 / 239.959) on 4 intra-op /
   1 inter-op threads, 184 MB RSS at 1 s and 434 MB on the longest 22.384 s buffer.
   **At the shipped 2.0 s gate: 35.6 ms**, the minimum over 6 runs × 60 reps under onnxruntime 1.30.0
@@ -443,7 +473,7 @@ paths:
   p50. Both rejected alternates, so neither is re-priced: NVIDIA AmberNet (29M) matches the accuracy
   but ships under NGC terms rather than an OSI licence and exports only a feature-input core, so
   using it means porting NeMo's PCM frontend first; Silero-95 (4.7M, MIT, deprecated) reaches zero
-  false routes only by abstaining on 1,047 of 1,516.
+  false routes only by abstaining on 1,047 of the spike cut's 1,516.
   **Not measured — the implementation must assume none of it:** no live-mic or known-user speech, no
   accents, room noise or overlap, no code-switching inside one utterance, no real third-language
   speech, and no cost of running this CPU detector concurrently with NPU whisper. The held-out zero
@@ -483,12 +513,12 @@ paths:
   domain), resample 44.1k→16k, pad 1 s of silence each end, `replay.py --engine whisper` ⇒ segment 3 is
   a 528-char loop at **RTF 1.106** — a runaway costs more than real time. `soundfile` is absent from
   `.venv`; add `--with soundfile` to read the FLAC.
-- **One unreplicated ambient capture produced nothing at all.** A single 10 min 20 s live capture of
-  handling noise and room ambience published zero captions, logged zero lines and dropped zero
-  blocks. Nothing downstream is established by that — it kept no artifact, so even "the VAD never
-  opened" is inference, not record. It has not been repeated ⇒ read it as ONE observation consistent
-  with the synthetic result above,
-  not as a guarantee that a quiet room costs the pipeline nothing. What it does not license: a claim
+- **One unreplicated ambient capture produced nothing at all — before `LeveledVad`, so it says nothing
+  about the leveled VAD.** A single 10 min 20 s live capture of handling noise and room ambience
+  published zero captions, logged zero lines and dropped zero blocks. Nothing downstream is
+  established by that — it kept no artifact, so even "the VAD never opened" is inference, not
+  record. It has not been repeated ⇒ read it as ONE observation consistent with the synthetic result
+  above, not as a guarantee that a quiet room costs the pipeline nothing. What it does not license: a claim
   about loudness, about rooms in general, or about any ambience richer than the one sampled.
 
 ## Publication screen — `caption_defect()`
@@ -727,10 +757,10 @@ placement and the same `_quantiles` as the commit-lag row above, so its no-withh
 `re-dated` counts characters committed before acceptance and is an UPPER bound on how many moved: one
 whose own clock already runs past the accepting update keeps it. **The last row is an upper bound
 too, never a forecast** — it forces both long-form clips into the held path, which is not what
-abstention does. Abstention concentrates in utterances shorter than 2 s (93.17 % of the 410 finals
+abstention does. Abstention concentrates in utterances shorter than 2 s (90.28 % of the 247 finals
 under 2 s never accept), where the final update arrives carrying the whole caption at once and no
 earlier commit is left to withhold. Read that row as the cost of a detector that never accepts on
-long speech, and never as the cost of the 409 held utterances.
+long speech, and never as the cost of the 246 held utterances.
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 

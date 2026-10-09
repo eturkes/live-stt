@@ -33,13 +33,13 @@ because they replay committed traces — a fresh clone runs them in under a seco
   red instead of re-qualifying it silently.
 - `lid_census.json` + `build_lid_census.py` + `test_lid_census.py` — the LID decision table, reduced
   to what the three-part decision rule reads and nothing else: `view_fields` `[spoken, utterance,
-  bucket, argmax, argmax_score, ja, en]` over 8,628 `views` (buckets `1s` 1925, `2s` 1516, `3s` 1453,
-  `5s` 1188, `8s` 620, `VADfin` 1926) for 1,926 utterances cut by the production VAD from the two
+  bucket, argmax, argmax_score, ja, en]` over 8,286 `views` (buckets `1s` 1746, `2s` 1500, `3s` 1445,
+  `5s` 1211, `8s` 637, `VADfin` 1747) for 1,747 utterances cut by the production VAD from the two
   committed FLEURS corpora, plus 25 `synthetic` probes under `synthetic_fields`. Probabilities are
   the RAW 107-way softmax and are never renormalized over `{ja, en}` — renormalizing is the thing the
   rule rejects, so a renormalized census could not fire it. It is what lets the decision table run
   weights-free in a fresh clone, and its consumer is `tests/test_language_detector.py`, which replays
-  the whole table through `lid_accept` and reproduces 1,338 correct / 178 abstain / 0 false at 2 s —
+  the whole table through `lid_accept` and reproduces 1,328 correct / 172 abstain / 0 false at 2 s —
   compare that Counter to a Counter, since one that never incremented `false` compares unequal to a
   dict carrying an explicit zero for it.
   **It regenerates from committed state, and a green run IS the credit**:

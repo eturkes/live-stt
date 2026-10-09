@@ -70,7 +70,7 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    regression. **M14's `start_new_session=True` fix is VALIDATED on a real mic** over a 26-minute
    143-caption session: `SRC 143` then `TGT 143` six seconds later, drain order SRC 142 → SRC 143 →
    TGT 142 → TGT 143, zero `-- translation` markers, `Stopped.`, no hang, process fully exited. That
-   retires this item's L-004 debt; items 1, 3, 4, 5, 7 and 8 stay outstanding.
+   retires this item's L-004 debt; items 1, 3, 4, 5, 7, 8 and 9 stay outstanding.
 7. **Ctrl+C mid-decode** — `uv run live-stt --engine parakeet`, speak continuously for >20 s, pause, then
    Ctrl+C while the slower long-block decode runs. Pass: that block's `SRC n:` still lands, its `TGT n:`
    follows if Codex is up, then `Stopped.` with no hang — VAD feeder and sequential decoder both drain
@@ -81,6 +81,12 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    appended there and nothing new in `transcripts/`; `--no-save` → prints
    `Transcript: not saved (--no-save)` and writes no file; start-then-immediate-Ctrl+C with no speech
    leaves no file (lazy creation).
+9. **Quiet speech + an empty room (`LeveledVad`, never met a mic)** — `uv run live-stt --save-audio
+   2> stt.log` through a meeting whose speakers sit far from the mic, then ≥5 min of the empty room.
+   Pass: the far speech publishes `SRC` lines from the first seconds on; the empty room publishes
+   nothing — no `ご視聴ありがとうございました`-family caption, no `caption dropped` burst. The leveled
+   copy boosts room tone up to 16× once speech stops, while the two saved sessions hold only 48 s and
+   25 s of whisper-silent gaps; keep the WAV, `replay.py` re-derives either half.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

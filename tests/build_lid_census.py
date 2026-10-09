@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate `tests/lid_census.json` from the two committed FLEURS corpora.
 
-The census is the gate's only evidence that the three-part LID rule holds over 1,926
+The census is the gate's only evidence that the three-part LID rule holds over 1,747
 utterances, and it used to be a reduction of gitignored spike output that could not be
 rerun from committed state. This script is that reduction re-expressed over inputs the
 repo pins, so the fixture survives the loss of `models/lid/results/*.json.gz`.

@@ -52,18 +52,18 @@ def test_fixture_schema_and_census() -> None:
     assert CENSUS["runtime"] == builder.RUNTIME == "onnxruntime CPUExecutionProvider"
     assert CENSUS["labels_total"] == 107
     assert len(CENSUS["model_sha256"]) == 64
-    assert CENSUS["utterances"] == 1926
-    assert len(VIEWS) == 8628
+    assert CENSUS["utterances"] == 1747
+    assert len(VIEWS) == 8286
     assert len(SYNTHETIC) == 25
     assert Counter(row[2] for row in VIEWS) == {
-        "1s": 1925,
-        "2s": 1516,
-        "3s": 1453,
-        "5s": 1188,
-        "8s": 620,
-        "VADfin": 1926,
+        "1s": 1746,
+        "2s": 1500,
+        "3s": 1445,
+        "5s": 1211,
+        "8s": 637,
+        "VADfin": 1747,
     }
-    assert Counter(row[0] for row in VIEWS) == {"ja": 4485, "en": 4143}
+    assert Counter(row[0] for row in VIEWS) == {"ja": 4377, "en": 3909}
     assert builder.SAMPLE_RATE == live_stt.SAMPLE_RATE == 16_000
     assert builder.PREFIX_SECONDS == (1, 2, 3, 5, 8)
     assert builder.LANGUAGES == ("ja", "en")

@@ -10,14 +10,14 @@ Contract, in the order the cases sit below:
   argmax must be `ja` or `en`; that argmax's score must be >= `LID_MIN_SCORE`;
   `abs(ja - en)` must be >= `LID_MIN_MARGIN`. The pair is NEVER renormalized. Both floors
   are inclusive. No duration gate lives here -- unit (2) owns the schedule.
-- `tests/lid_census.json` -- the recorded spike scores, read but never edited. Keys:
-  `view_fields` = `["spoken", "utterance", "bucket", "argmax", "argmax_score", "ja",
-  "en"]` over 8,628 `views` (buckets `1s` 1925, `2s` 1516, `3s` 1453, `5s` 1188, `8s` 620,
-  `VADfin` 1926) for 1,926 utterances, plus `synthetic_fields` = `["id", "seconds",
-  "argmax", "argmax_score", "ja", "en"]` over 25 `synthetic` probes. The law this table
-  must reproduce: at the 2 s bucket, 1,338 correct / 178 abstain / 0 false of 1,516; 25 of
-  25 synthetic probes rejected; and the single 1 s English view that the rule accepts as
-  `ja` at score 0.98221, which is the input the schedule must never hand it.
+- `tests/lid_census.json` -- the census cut by the shipped (leveled) VAD, read but never
+  edited here. Keys: `view_fields` = `["spoken", "utterance", "bucket", "argmax",
+  "argmax_score", "ja", "en"]` over 8,286 `views` (buckets `1s` 1746, `2s` 1500, `3s` 1445,
+  `5s` 1211, `8s` 637, `VADfin` 1747) for 1,747 utterances, plus `synthetic_fields` =
+  `["id", "seconds", "argmax", "argmax_score", "ja", "en"]` over 25 `synthetic` probes. The law
+  this table must reproduce: at the 2 s bucket, 1,328 correct / 172 abstain / 0 false of
+  1,500; 25 of 25 synthetic probes rejected; and the single 1 s English view that the rule
+  accepts as `ja` at score 0.98221, which is the input the schedule must never hand it.
 - `--two-way` -- `action="store_true"`, default OFF. With `--source-lang`, and with
   `--engine k2v2` or `--engine parakeet`, it is a parse error (`SystemExit` 2).
   `--source-lang` alone keeps its one-way meaning. Flag off constructs no detector and
@@ -232,8 +232,8 @@ def test_the_two_second_bucket_reproduces_the_law_counts() -> None:
 
     # Counter-to-Counter, because a Counter that never incremented "false" compares
     # unequal to a plain dict carrying an explicit zero for it.
-    assert outcomes == Counter(correct=1338, abstain=178, false=0)
-    assert outcomes.total() == 1516
+    assert outcomes == Counter(correct=1328, abstain=172, false=0)
+    assert outcomes.total() == 1500
 
 
 def test_every_synthetic_probe_is_rejected() -> None:
@@ -272,15 +272,15 @@ def test_the_census_fixture_is_whole() -> None:
         "ja",
         "en",
     ]
-    assert CENSUS["utterances"] == 1926
-    assert len(VIEWS) == 8628
+    assert CENSUS["utterances"] == 1747
+    assert len(VIEWS) == 8286
     assert Counter(row["bucket"] for row in VIEWS) == {
-        "1s": 1925,
-        "2s": 1516,
-        "3s": 1453,
-        "5s": 1188,
-        "8s": 620,
-        "VADfin": 1926,
+        "1s": 1746,
+        "2s": 1500,
+        "3s": 1445,
+        "5s": 1211,
+        "8s": 637,
+        "VADfin": 1747,
     }
     assert len(SYNTHETIC) == 25
 
