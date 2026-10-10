@@ -54,13 +54,15 @@ one, with a `doc.md` twin as the positive control against an exclusion that swal
 `tests/test_law_consistency.py` rides the pytest step and locks the five law invariants a tool can
 decide. Three are the deferral queue's: `.agent/spec.md`'s `Tasks` pairs every `.agent/deferred.md`
 row with one open `- [ ] **N** Title` row, rank and title verbatim, any other checklist item being a
-rankless `- [x] <sha> Title`; and no scanned law file names a row by `rank N` at all. Pairing is
+rankless `- [x] <sha> Title` or the one `- [ ] RESUME: …` note that `pause.md` writes and
+`resume.md` deletes; and no scanned law file names a row by `rank N` at all. Pairing is
 checked ORDERED because independent rank/title membership passes a swap of two titles; that swap and
 the `at rank N` evasion form are both proven red by mutation, restoring from a `cp` snapshot rather
 than `git checkout` (L-022). The `Tasks` port is proven red the same way on a swap, a dropped row, a
 renamed or run-on title, a stray rank mark, a ranked or sha-less ticked row, an unranked, indented
-or two-space/tab-separated open row and a missing header, with a legal `- [x] <sha>` row as the
-positive control.
+or two-space/tab-separated open row, a second, ticked, empty, colon-less or ranked resume note and a
+missing header, with a legal `- [x] <sha>` row and a top-level and an indented resume note as the
+positive controls.
 
 The third is the same hole in the other direction: **law may name a queue row, and a row dies at its
 close while the pointer at it does not.** Every reference in the scanned files that names

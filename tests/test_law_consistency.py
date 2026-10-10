@@ -47,6 +47,10 @@ _RANK_MARK = re.compile(r"\*\*(\d+)\*\*")
 _CHECKLIST_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[.\].*$", re.MULTILINE)
 _OPEN_ROW = re.compile(r"- \[ \] \*\*(\d+)\*\* (.+)")
 _TICKED_ROW = re.compile(r"- \[x\] [0-9a-f]{7,40} \S.*")
+# The one open item that is no queue row: the resume note `pause.md` writes at the head of the open
+# unit, top-level or as its first sub-bullet, and `resume.md` deletes at close. The statusline reads
+# it to colour the phase; it carries no rank, so it cannot pair with a unit.
+_RESUME_ROW = re.compile(r"[ \t]*- \[ \] RESUME: \S.*")
 _RANK_REFERENCE = re.compile(r"\branks?\s+\d", re.IGNORECASE)
 _OVERRIDE_HEADER = "| template clause | repo ruling |"
 _OVERRIDE_SEPARATOR = "| --- | --- |"
@@ -87,8 +91,16 @@ def test_open_tasks_pair_every_queue_row_with_its_rank():
 
     tasks = _tasks()
     items = _CHECKLIST_ITEM.findall(tasks)
-    stray = [i for i in items if not (_OPEN_ROW.fullmatch(i) or _TICKED_ROW.fullmatch(i))]
-    assert not stray, f"a Tasks row is `- [ ] **N** Title` or `- [x] <sha> Title`: {stray}"
+    notes = [i for i in items if _RESUME_ROW.fullmatch(i)]
+    assert len(notes) <= 1, f"one resume note at most: {notes}"
+    stray = [
+        i
+        for i in items
+        if not (_OPEN_ROW.fullmatch(i) or _TICKED_ROW.fullmatch(i) or _RESUME_ROW.fullmatch(i))
+    ]
+    assert not stray, (
+        f"a Tasks row is `- [ ] **N** Title`, `- [x] <sha> Title` or `- [ ] RESUME: …`: {stray}"
+    )
     rows = [m for i in items if (m := _OPEN_ROW.fullmatch(i))]
     # Every rank mark in the section must head an open row: one on a ticked row, a sub-bullet or
     # the pointer paragraph would otherwise pair by position with a unit it does not name.

@@ -196,7 +196,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   funded row deletes it from `.agent/deferred.md` and from `Tasks` together, and a `- [x] <sha>` row
   lives only between the commits of one session. Every open `Tasks` row is one queue row, rank and
   title verbatim, in queue order — a find on the unit's path lands as a queue row with its acceptance
-  check plus a `Tasks` row, in one commit. `tests/test_law_consistency.py` locks the pairing.
+  check plus a `Tasks` row, in one commit — save a paused session's one `- [ ] RESUME: …` note
+  (`pause.md`), deleted at resume close. `tests/test_law_consistency.py` locks the pairing.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
   speaker diarization · web UI · auth / multi-user · metrics beyond the backlog/drop counters ·
   package split beyond `streaming.py` · CI mirroring the local hook · NPU for the sherpa fallbacks ·

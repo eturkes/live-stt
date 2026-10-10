@@ -76,14 +76,19 @@ Retired — never reintroduce:
   Neither is project memory: the queue is a monotonic funding list, so attaching it would make it a
   permanent growth term on every context.
 
-Global `Subagents` owns the triggers and the roles; the bindings this repo adds are these. A
-`reviewer` runs inside the unit that authored the diff, docs and law units included — D-012 retired
-the separate pass and the ledger, never the second reader. Phase close adds no review of its own; it
-is the last unit's. A diff whose vocabulary is security-flavoured (the `secrets` step, credential
-handling) stays MAIN-side (global `Subagents`), because astra's request classifier ends any context
-holding that material, every successor that reads it included.
+Global `Subagents` owns the triggers and the roles. `Session flow`'s IMPLEMENT + MAINTAIN teammate
+bindings hold here as written, this posture notwithstanding (user ruling): `scientist` reproduces
+every shipped result — CER, latency and census numbers included — before its commit, an NPU run
+naming the scientist as the brief's NPU holder (`toolchain.md`: two compiles on one cache corrupt
+it). The bindings this repo adds are these. One `reviewer` per lens runs inside the unit that
+authored the diff, docs and law units included; the lenses = `implement.md`'s review step:
+correctness/spec, claim soundness, guarantee-vs-claim gaps, verification integrity, `CLAUDE.md`
+conformance. D-012 retired the separate pass and the ledger, never the second reader. Phase close
+adds no review of its own; it is the last unit's. A diff whose vocabulary is security-flavoured (the
+`secrets` step, credential handling) stays MAIN-side (global `Subagents`), because the OpenAI request
+classifier ends any context holding that material, every successor that reads it included.
 
-Its report (`CLAUDE.md` review-termination rule, evidence bar → global `Subagents`) fixes the check
+Each report (`CLAUDE.md` review-termination rule, evidence bar → global `Subagents`) fixes the check
 set before reading the diff, then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its
 subchecks: adjudicate every subcheck, and route whatever a tool can decide into `gate.py` rather than
 a review row. The cap bounds presentation, never coverage — a check set that will not fit means the
