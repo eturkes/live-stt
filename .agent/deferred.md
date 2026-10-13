@@ -44,3 +44,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** a fresh session on a clean tree, measured with `context-gauge`, plus `wc -c` over
    the attached set → the paragraph carries those numbers, or drops the literal for the recipe;
    the gate stays green.
+
+6. **Name the shipped recogniser in two evaluator docstrings** — `tests/eval_retention.py` and
+   `tests/build_caption_trace.py` describe the path they replay as "whisper large-v3-turbo int8",
+   while `load_recognizer("whisper")` decodes Japanese on whisper-ja-760M (`live_stt.py`
+   `ENGINE_DIRS["whisper"]`, D-016) ⇒ a reader takes their numbers for turbo's. Docs tier.
+   **Accept:** both docstrings name whisper-ja-760M as the Japanese recogniser they replay;
+   `rg -n 'large-v3-turbo int8' tests/eval_retention.py tests/build_caption_trace.py` → 0 hits; the
+   gate stays green.

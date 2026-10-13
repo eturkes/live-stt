@@ -191,7 +191,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `codex app-server exited` off the log at 14:38:49.
 - `test_gate.py` locks `gate.py`'s step inventory with one seeded defect per blocking step, in a
   throwaway tree, plus the secret scan's real-tree scope, which that throwaway tree cannot see
-  shrink (`toolchain.md`).
+  shrink (`gate.md`).
 
 - `lag_sessions.json` + `build_lag_trace.py` + `eval_lag.py` + `test_lag_trace.py` — how far behind
   its source line a translation actually lands, on a real mic. `transcripts/` is gitignored ⇒ the two
@@ -237,7 +237,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
 - **The goldens and traces ARE contract-owned expected output, not a table smuggled past a contract.**
   `replay_goldens.json` is D-014's characterization snapshot and the committed traces are recorded
   measurements, so both answer "did the output change" for a contract that owns them. What the
-  template's verification-integrity clause forbids is the opposite direction: an implementation that
+  global `Engineering` verification-integrity clause forbids is the opposite direction: an implementation that
   returns a fixture's expected value, detects the gate, or is graded against a table written to match
   whatever it already emits.
 

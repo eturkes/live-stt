@@ -161,6 +161,9 @@ def steps() -> list[Step]:
         Step("pyright-tests", True, [*PYRIGHT, "tests/"]),
         Step("secrets", True, [*SECRETS, *scan_files()]),
         Step("import", True, [sys.executable, "-c", "import live_stt"]),
+        # A byte copy of the template's shape check, replaced whole at each refresh;
+        # `sh` keeps the step independent of the file's exec bit.
+        Step("spec-lint", True, ["sh", ".agent/spec-lint"]),
     ]
 
 

@@ -211,10 +211,10 @@ from the repo alone: `uv run python tests/eval_lag.py`.
 | `2026-09-15T16-48-03` | 1569 s | 143 | 143 | 0 | 0 | 2 s | 4 s | 11 s |
 | `2026-09-18T12-00-26` | 8018 s | 699 | 696 | 1 | 1 | 2 s | 5 s | 42 s |
 
-- **TGT behind SRC replicates at p50 2 s.** `spec.md`'s `Intent` asks for `EN n:` about a
-  second after its `JA n:` — quote it in that pre-role wording, which `Intent` alone owns — so this
-  is a recorded gap between the ask and the delivery. `Intent` is the user's ⇒ record the gap,
-  never re-label the ask and never edit that line. A 4.9× larger sample did not move that median,
+- **TGT behind SRC replicates at p50 2 s.** `spec.md`'s `Intent` asks for `TGT n:` about a
+  second after its `SRC n:`, so this is a recorded gap between the ask and the delivery. `Intent`
+  moves with the user's direction, never with a measurement ⇒ record the gap and keep the ask as
+  worded. A 4.9× larger sample did not move that median,
   which is what one sample could not establish: against a warm-thread bench median of 1.38 s general
   / 1.71 s clinical, the ~0.6 s excess is a property of the TURN, not of one session.
   **Queueing is REFUTED for the MEDIAN in both samples** — 130 of 143 and 602 of 696 captions were

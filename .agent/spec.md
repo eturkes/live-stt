@@ -3,11 +3,12 @@
 ## Intent
 
 Personal real-time Japanese→English live captioner, one user, one machine. Japanese appears while I
-speak (partials on the meter status line); one utterance = one numbered `JA n:` line = one
-translation turn, `EN n:` ~1 s later; every run saves a transcript.
+speak (partials on the meter status line); one settled piece of speech = one numbered `SRC n:` line =
+one translation turn, `TGT n:` ~1 s later; a long utterance publishes piece by piece as its segments
+settle; every run saves a transcript.
 
 - STT stays fully local, no API keys, no cloud fallback ever: silero VAD → VAC controller → whisper
-  large-v3-turbo int8 on the Intel NPU via OpenVINO.
+  int8 on the Intel NPU via OpenVINO — whisper-ja-760M for Japanese, large-v3-turbo for English.
 - Translation rides my ChatGPT/Codex subscription through a persistent `codex app-server` (zero
   marginal cost). Absent or failing codex degrades to JA-only — a hard requirement.
 - The CLI's UX is settled and approved. Remaining work = make the shipped path as robust and as
@@ -27,9 +28,11 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` · `--asr-device` ·
   `--save-audio`.
 - `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
-- `gate.py` — THE gate, 7 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
-  `-v`). Green = 7 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
+- `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
+  `-v`). Green = 8 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
   prelude).
+- `.agent/spec-lint` — this file's shape check, a byte copy of `~/.local/app/agents/claude/spec-lint`
+  that a refresh replaces whole; the gate's `spec-lint` step runs it.
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
@@ -53,7 +56,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
 - `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
-  `polish-register.md`, plus four evidence records.
+  `polish-register.md`, `phase-history.md`, plus four evidence records.
 - [Audio-hang post-mortem](postmortems/2026-09-11-audio-driver-hang.md) — SoundWire kernel Oops,
   Linux session containment, regression evidence, and the successful user-run live check.
 
@@ -64,8 +67,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
   cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
 - **D-016** Whisper int8 on OpenVINO **NPU** is the shipped recogniser — whisper-ja-760M for
-  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open; the turbo
-  wording in Intent is the user's to edit); `hotwords` forfeited with the NPU. Engine selection
+  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open); `hotwords`
+  forfeited with the NPU. Engine selection
   stays closed, and
   so are its two constructor properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
   `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
@@ -92,8 +95,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
 - **The published line grammar is `SRC n:` / `TGT n:`, in every mode** (user ruling) — `SRC` names
-  the line that was spoken, `TGT` the line that was translated, screen and transcript alike. It
-  supersedes the `JA n:` / `EN n:` wording still in `Intent`, which is the user's to edit. Two-way
+  the line that was spoken, `TGT` the line that was translated, screen and transcript alike. Two-way
   makes language tags unstable — an English utterance would publish `EN` first — so the tags name
   roles instead. `session_report.py` keeps reading legacy `JA`/`EN` transcripts, mapping `JA` to
   source and `EN` to translation: the first live session's saved transcript is in that grammar and a
@@ -129,8 +131,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
   `retention_probe` p50 13.15 → 5.67 s, max 33.46 → 10.29 s (`eval_latency.py`, whisper-ja-760M;
   turbo's trace read 13.08 → 5.55, 33.20 → 11.98). The screen judges
-  each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`. The
-  one-utterance-one-line wording in Intent is the user's to edit.
+  each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`.
   A decode re-telling what a trim just moved out loses that head, the retained text (what the
   trimming decode heard past the cut) being the evidence; a trimming decode that spelled the phrase
   twice across its last segment boundary keeps the first copy only where a decode of the audio
@@ -197,7 +198,18 @@ Detail → `.claude/rules/`, which each `D-###` names.
   lives only between the commits of one session. Every open `Tasks` row is one queue row, rank and
   title verbatim, in queue order — a find on the unit's path lands as a queue row with its acceptance
   check plus a `Tasks` row, in one commit — save a paused session's one `- [ ] RESUME: …` note
-  (`pause.md`), deleted at resume close. `tests/test_law_consistency.py` locks the pairing.
+  (`pause.md` | `pause-now.md`), deleted at resume close, and a routing session's one
+  `- [ ] ROUTE: …` row (`route.md`), deleted before its last commit. `tests/test_law_consistency.py`
+  locks the pairing.
+- One session per `maintain.md` body (`auto/` | `steered/`) — Request, Queue, Security review,
+  Dependency upgrade — the body naming the `.agent/deferred.md` rows it funds or the maintenance
+  task it wants, each closing gate-green under `uv run --no-sync python gate.py` with this file
+  current — plus, where the request touches decode quality, a CER number the commit body records.
+  The standing MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018
+  (`packaging-deps.md`); Dependabot files the advisories between requests.
+- **Live-stt in its current form must stay usable through every unit** (user ruling): a feature
+  that takes more than one unit lands behind a default-off flag and the shipped JA→EN path is green
+  at every commit.
 - **Out of scope, do not redebate:** config files / YAML / TOML for tunables · multi-mic mixing ·
   speaker diarization · web UI · auth / multi-user · metrics beyond the backlog/drop counters ·
   package split beyond `streaming.py` · CI mirroring the local hook · NPU for the sherpa fallbacks ·
@@ -221,26 +233,12 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
 - [ ] **5** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
+- [ ] **6** Name the shipped recogniser in two evaluator docstrings
+  - Docs tier, unfunded; accept → `.agent/deferred.md` → *Name the shipped recogniser in two
+    evaluator docstrings*.
 
-Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded
-row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds,
-and the `auto/maintain.md` Queue body funds every row.
+Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 
 ## Phase
 
-**MAINTAIN — scope: the whole product** (user ruling), the one-way JA→EN captioner plus two-way
-behind its default-off `--two-way` flag. M1-M14 shipped and closed
-(`.agent/archive/milestones-m1-m14.md`); 0.1.0 runs, the latency budget is committed and
-re-derivable (`tests/eval_latency.py`, table in `asr-pipeline.md`), and IMPLEMENT closed with `Tasks`
-above carrying what it did not fund.
-
-One session per `maintain.md` body (`auto/` | `steered/`) — Request, Queue, Security review,
-Dependency upgrade — the body naming the `.agent/deferred.md` rows it funds or the maintenance task it wants, each closing
-gate-green under `uv run --no-sync python gate.py` with this file current
-— plus, where the request touches decode quality, a CER number the commit body records. The standing
-MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018
-(`packaging-deps.md`); Dependabot files the advisories between requests.
-
-**Live-stt in its current form must stay usable through every unit** (user ruling): a feature that
-takes more than one unit lands behind a default-off flag and the shipped JA→EN path is green at every
-commit.
+MAINTAIN — the whole product (user ruling): the one-way JA→EN captioner plus two-way behind its default-off `--two-way` flag

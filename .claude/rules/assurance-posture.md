@@ -1,22 +1,26 @@
 # Assurance posture
 
-This file owns what assurance the repo actually runs; `upstream-sync.md` tables the `CLAUDE.md`
-clauses it overrides. Where the template and a rules file disagree, the rules file wins.
+This file owns what assurance the repo actually runs; `upstream-sync.md` tables the project and
+global `CLAUDE.md` clauses it overrides. Where the template and a rules file disagree, the rules file
+wins.
 
 **User ruling: personal tool, not an industrial product** — the apparatus reached ~11,100 lines
 around a 2,108-line tool and was cut with zero production change (`becc22b`, L-032). Verification =
-`python gate.py` (7 blocking steps, invocation → `toolchain.md`) + `replay.py` goldens +
+`python gate.py` (8 blocking steps, invocation → `toolchain.md`) + `replay.py` goldens +
 `tests/eval_cer.py` on demand. A unit closes when its acceptance holds under the gate and, where the
 unit touches decode quality, a CER number the commit body records.
 
-**Verification integrity binds every check here**; its "a prototype runs under PROTOTYPE law"
-carve-out is inert, this repo having no prototype. Three things it fixes locally:
+**Verification integrity binds every check here**; the template's "A prototype runs under PROTOTYPE
+law" carve-out is inert, this repo having no prototype. Three things it fixes locally:
 
 - **A test counts once seen RED, and L-022 neutralization is the witness.** The fix is still
   uncommitted when the lock is written, so "the unfixed revision" is the working tree with the fix
   neutralized and restored from a `cp` snapshot — never `git checkout`, which reverts the fix itself
   and re-runs the un-fixed baseline for every later mutant. The commit body records the mutation and
-  the command that reddened.
+  the command that reddened. A test pinning behavior that already passes has no unfixed revision ⇒
+  global `Engineering` credits it by the stack's mutation tool, as written (user ruling): tool-picked
+  mutants over the files the test imports or calls, scope + command + every survivor in the commit
+  body. Hand-picked L-022 mutants never credit such a pin.
 - **The grading check is FIXED for the unit running under it.** The funded `.agent/deferred.md` row
   is the approval, so a threshold, case or gate moves only where that row's acceptance names the
   move, and the change records the original check's firing. A mid-unit wish to move one is a question
@@ -51,13 +55,14 @@ time, split when a piece would force more than a couple of its own design ruling
 "close on partial acceptance if you run out of room" clause — that relabels a known overrun as a plan.
 
 **L-032 — keep assurance proportional to the artifact; measure the ratio periodically.** Ask what
-re-checks a defect for free and at what cost (`CLAUDE.md` assurance tiers): for a single-user tool a
-fast suite, a replay golden answering "did the output change", and an on-demand scoring script cover
-it, while provenance machinery costs more than the defects it catches. The tell was mechanical and
-visible three units before it was acted on — **the contract fingerprint needed a hand-written,
-individually-pinned migration clause in three consecutive units**, each waving through a legitimate
-code change. *A guard that must be escaped every time it fires is not a guard.* The cut deleted
-21,038 lines and took the suite from 466 tests / 48 s to 207 / 14.6 s with zero production change.
+re-checks a defect for free and at what cost (global `CLAUDE.md` assurance tiers): for a single-user
+tool a fast suite, a replay golden answering "did the output change", and an on-demand scoring
+script cover it, while provenance machinery costs more than the defects it catches. The tell was
+mechanical and visible three units before it was acted on — **the contract fingerprint needed a
+hand-written, individually-pinned migration clause in three consecutive units**, each waving through
+a legitimate code change. *A guard that must be escaped every time it fires is not a guard.* The cut
+deleted 21,038 lines and took the suite from 466 tests / 48 s to 207 / 14.6 s with zero production
+change.
 
 Retired — never reintroduce:
 
@@ -67,7 +72,8 @@ Retired — never reintroduce:
 - A separate review pass and `.agent/review*.md` (D-012). **`reviewer` itself is live INSIDE the
   unit that implements the diff** — what L-032 cut was apparatus, not a second reader. Every other
   teammate role global `Subagents` names stays live.
-- Contract fingerprints · claim registries · mutation matrices.
+- Contract fingerprints · claim registries · mutation matrices. A mutation-tool run the global
+  clause asks for is no matrix: its record is the commit body.
 - A separate project-memory file under `.agent/` ⇒ its law lives in these rules files, which reach
   MAIN and every teammate on their own. The attached set is **`.agent/spec.md` alone**: a MAIN-owned
   mutable ledger written mid-session, so it stays attached rather than moving here, where a frozen
@@ -77,9 +83,10 @@ Retired — never reintroduce:
   permanent growth term on every context.
 
 Global `Subagents` owns the fits and the roles; this repo adds no teammate mandate (user ruling) —
-`scientist` and `reviewer` included, each dispatched per its fit. A brief whose teammate runs whisper
-names that teammate as the NPU holder (`toolchain.md`: two compiles on one cache corrupt it). Where a
-diff earns review, one `reviewer` per lens runs inside the unit that authored it; the lenses =
+`scientist` and `reviewer` included, each dispatched per its fit. A brief whose teammate runs
+whisper names that teammate as the NPU holder (`toolchain.md`: two compiles on one cache corrupt
+it). Where a diff earns review, the `reviewer` runs inside the unit that authored it — one per lens
+in IMPLEMENT, one covering every lens elsewhere (the template's count); the lenses =
 `implement.md`'s review step: correctness/spec, claim soundness, guarantee-vs-claim gaps,
 verification integrity, `CLAUDE.md` conformance. D-012 retired the separate pass and the ledger,
 never the second reader. Phase close adds no review of its own; it is the last unit's. A diff whose
@@ -87,12 +94,12 @@ vocabulary is security-flavoured (the `secrets` step, credential handling) stays
 `Subagents`), because the OpenAI request classifier ends any context holding that material, every
 successor that reads it included.
 
-Each report (`CLAUDE.md` review-termination rule, evidence bar → global `Subagents`) fixes the check
-set before reading the diff, then folds it into **≤20 COMPOUND risk-ranked rows**, each carrying its
-subchecks: adjudicate every subcheck, and route whatever a tool can decide into `gate.py` rather than
-a review row. The cap bounds presentation, never coverage — a check set that will not fit means the
-unit is oversized (L-031) ⇒ report that and let MAIN split it. The report is the whole record; no
-ledger carries rows between sessions.
+Each report (global `CLAUDE.md` review-termination rule, evidence bar → `Subagents`) fixes the check
+set before reading the diff, then folds it into **one table of COMPOUND risk-ranked rows**, each
+carrying its subchecks: adjudicate every subcheck, and route whatever a tool can decide into
+`gate.py` rather than a review row. The table's size follows the check set — a check set too large
+to read as one table means the unit is oversized (L-031) ⇒ report that and let MAIN split it. The
+report is the whole record; no ledger carries rows between sessions.
 
 `<window>` in a gauge record = what `context-gauge` prints, the loop's compaction trigger (mechanics
 → global `CLAUDE.md` `Context occupancy`); `/240K` in every gauge M11-M13 recorded, `/273K` in the

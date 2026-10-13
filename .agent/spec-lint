@@ -1,0 +1,46 @@
+#!/bin/sh
+# spec-lint — shape of a phase-flow `.agent/spec.md` (template `Session flow`): the five
+# sections in order; `Tasks` rows `- [ ] …` | `- [x] <sha> …`, last line = the
+# `.agent/deferred.md` pointer; `Phase` = `<PHASE> — <scope>` + routed state alone.
+# Usage: spec-lint [spec.md] (default .agent/spec.md); AWK overrides the awk binary.
+# rc 0 = clean, 1 = findings on stdout, 2 = unreadable.
+# Portable awk (gawk, mawk, busybox) ⇒ no interval expressions; LC_ALL=C ⇒ `—` = 3 literal bytes.
+f=${1:-.agent/spec.md}
+[ -r "$f" ] || { echo "spec-lint: cannot read $f" >&2; exit 2; }
+LC_ALL=C ${AWK:-awk} -v f="$f" '
+function bad(n, m) { printf "spec-lint: %s:%d: %s\n", f, n, m; nb++ }
+BEGIN { split("Intent Artifacts Decisions Tasks Phase", W, " ")
+        PH = "(PROTOTYPE|ITERATE|IMPLEMENT|MAINTAIN) — [^ ]" }
+NR == 1 { sub(/^\357\273\277/, "") }
+{ sub(/\r$/, "") }
+/^ ? ? ?(```|~~~)/ { fence = !fence; next }
+fence { next }
+/^## / {
+  s = substr($0, 4); sub(/[ \t]+$/, "", s); k++
+  if (s != W[k]) bad(NR, "section `" s "`, expected " (k <= 5 ? "`" W[k] "`" : "none after `Phase`"))
+  sec = s; if (s == "Tasks") tnr = NR
+  next
+}
+sec == "Tasks" && /[^ \t]/ {
+  last = $0; lastnr = NR
+  if (/^[ \t]/ || /^- \[ \] [^ ]/ || /^- \[[xX]\] [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]+([ \t]|$)/) next
+  odd[++no] = NR; oddl[no] = $0; next
+}
+sec == "Phase" && /[^ \t]/ {
+  if (++pl == 1) {
+    if ($0 !~ "^(Phase: )?" PH) bad(NR, "Phase line 1 = `<PHASE> — <scope>` on one line")
+    next
+  }
+  if (/^>/) { if (sus) bad(NR, "request quote after a `Suspended:` line"); next }
+  if ($0 ~ "^Suspended: " PH) { sus = 1; next }
+  if (!nh++) hist = NR
+}
+END {
+  if (k < 5) bad(NR, "sections: " k " of 5 (Intent, Artifacts, Decisions, Tasks, Phase)")
+  for (i = 1; i <= no; i++)
+    if (!(odd[i] == lastnr && oddl[i] ~ /\.agent\/deferred\.md/)) bad(odd[i], "Tasks row = `- [ ] …` | `- [x] <sha> …`")
+  if (tnr && last !~ /\.agent\/deferred\.md/) bad(lastnr ? lastnr : tnr, "Tasks last line = pointer to .agent/deferred.md")
+  if (nh) bad(hist, "Phase = phase line + routed state alone; " nh " line(s) of history → .agent/archive/")
+  if (k >= 5 && !pl) bad(NR, "Phase is empty")
+  exit nb ? 1 : 0
+}' "$f"

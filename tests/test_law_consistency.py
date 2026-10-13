@@ -13,9 +13,10 @@ drifts out of the block goes unchecked, an unquoted prose key cannot be rechecke
 reworded or deleted clause leaves a quoted key overriding nothing while still reading as live law.
 All three are silent in prose and decidable here.
 
-`.agent/spec.md`'s `Intent` is the user's alone, so law that quotes it cannot repair its own
-citation when a unit renames the thing quoted: the quote goes false while the sentence around it
-still reads as the ask. Both texts sit in the tree, so the comparison is literal here.
+`.agent/spec.md`'s `Intent` outranks the rest, so law that quotes it must quote what it carries: a
+unit that renames the thing quoted and leaves `Intent` behind turns the quote false while the
+sentence around it still reads as the ask. Both texts sit in the tree, so the comparison is literal
+here.
 
 Membership is LITERAL, so this decides that an anchor still occurs, never that it is still its own
 row's clause — a phrase surviving elsewhere in the template reads as live, and the length floor only
@@ -47,17 +48,21 @@ _RANK_MARK = re.compile(r"\*\*(\d+)\*\*")
 _CHECKLIST_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[.\].*$", re.MULTILINE)
 _OPEN_ROW = re.compile(r"- \[ \] \*\*(\d+)\*\* (.+)")
 _TICKED_ROW = re.compile(r"- \[x\] [0-9a-f]{7,40} \S.*")
-# The one open item that is no queue row: the resume note `pause.md` writes at the head of the open
-# unit, top-level or as its first sub-bullet, and `resume.md` deletes at close. The statusline reads
-# it to colour the phase; it carries no rank, so it cannot pair with a unit.
-_RESUME_ROW = re.compile(r"[ \t]*- \[ \] RESUME: \S.*")
+# The open items that are no queue rows, one of each at most: the resume note `pause.md` and
+# `pause-now.md` write at the head of the open unit, top-level or as its first sub-bullet, and
+# `resume.md` deletes at close; and the finish line `route.md` writes at the head of `Tasks` and
+# deletes before its last commit, its close-out commits running this lock through the pre-commit
+# hook. The statusline reads the resume note to colour the phase; neither carries a rank, so neither
+# pairs.
+_NOTE_ROW = re.compile(r"[ \t]*- \[ \] (RESUME|ROUTE): \S.*")
 _RANK_REFERENCE = re.compile(r"\branks?\s+\d", re.IGNORECASE)
 _OVERRIDE_HEADER = "| template clause | repo ruling |"
 _OVERRIDE_SEPARATOR = "| --- | --- |"
 _ANCHOR = re.compile(r'"([^"]+)"')
-# How law cites the user-owned section: a backticked `Intent`. A bare one listing the five section
-# names attributes no wording and is not a citation. Everything backticked AFTER the citation in
-# that sentence is the quotation — what comes before it names the file the section lives in.
+# How law cites the section that outranks it: a backticked `Intent`. A bare one listing the five
+# section names attributes no wording and is not a citation. Everything backticked AFTER the
+# citation in that sentence is the quotation — what comes before it names the file the section
+# lives in.
 _INTENT_CITATION = "`Intent`"
 _FRAGMENT = re.compile(r"`([^`]+)`")
 _SENTENCE = re.compile(r"(?<=[.;]) ")
@@ -91,15 +96,16 @@ def test_open_tasks_pair_every_queue_row_with_its_rank():
 
     tasks = _tasks()
     items = _CHECKLIST_ITEM.findall(tasks)
-    notes = [i for i in items if _RESUME_ROW.fullmatch(i)]
-    assert len(notes) <= 1, f"one resume note at most: {notes}"
+    notes = [m.group(1) for i in items if (m := _NOTE_ROW.fullmatch(i))]
+    assert len(notes) == len(set(notes)), f"one RESUME and one ROUTE note at most: {notes}"
     stray = [
         i
         for i in items
-        if not (_OPEN_ROW.fullmatch(i) or _TICKED_ROW.fullmatch(i) or _RESUME_ROW.fullmatch(i))
+        if not (_OPEN_ROW.fullmatch(i) or _TICKED_ROW.fullmatch(i) or _NOTE_ROW.fullmatch(i))
     ]
     assert not stray, (
-        f"a Tasks row is `- [ ] **N** Title`, `- [x] <sha> Title` or `- [ ] RESUME: …`: {stray}"
+        "a Tasks row is `- [ ] **N** Title`, `- [x] <sha> Title`, `- [ ] RESUME: …` or"
+        f" `- [ ] ROUTE: …`: {stray}"
     )
     rows = [m for i in items if (m := _OPEN_ROW.fullmatch(i))]
     # Every rank mark in the section must head an open row: one on a ticked row, a sub-bullet or
@@ -170,12 +176,12 @@ def test_no_rank_reference_outside_the_queue():
 
 
 def test_every_intent_citation_quotes_live_intent_text():
-    """A citation of the user-owned `Intent` must quote wording that section actually carries.
+    """A citation of `Intent` must quote wording that section actually carries.
 
-    A unit renames what law quotes and rewrites its own prose with it; `Intent` is the user's, so
-    the rename stops at its edge and the citation then attributes the new wording to a section that
-    never said it. The SRC/TGT rename did that to the lag bullet, inside the sentence forbidding a
-    relabel of the ask, and every gate step stayed green because the two texts were never compared.
+    A unit renames what law quotes and rewrites its own prose with it; a rename that stops at the
+    edge of `Intent` leaves the citation attributing the new wording to a section that never said
+    it. The SRC/TGT rename did that to the lag bullet, inside the sentence forbidding a relabel of
+    the ask, and every gate step stayed green because the two texts were never compared.
 
     The queue joins the scan here: its rows are acceptance contracts and the EN-lag row cites
     `Intent` the same way, while the rank and title locks read it as their source of truth instead.

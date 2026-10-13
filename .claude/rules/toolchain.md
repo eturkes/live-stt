@@ -1,68 +1,36 @@
 # Toolchain
 
-**Gate = `uv run --no-sync python gate.py`** — 7 blocking steps, `--only NAME` runs one, `-v` prints
+**Gate = `uv run --no-sync python gate.py`** — 8 blocking steps, `--only NAME` runs one, `-v` prints
 step output. The script owns the exact step set and file list and `tests/test_gate.py` locks the
 inventory, so read the script instead of restating it: a gate that lives in prose gets silently
 shortened, which is how four commits reported a passing gate while its pyright step stayed red. Every
 step is fast and hermetic — no weights, no hardware, no network — and clears `PYTHONPATH` itself. A
 green run still reports **one skip**, the whisper NPU replay golden, which needs the prelude below;
-anything more skipping means absent weights or corpus.
+anything more skipping means absent weights or corpus. Each check's mechanics, coverage limits and
+firing record live in `gate.md`, which loads with the check's files.
 
-**Every skip declares itself, because pytest exits 0 on a skipped case.** The step runs `-rsxX` and
-`gate.py`'s `undeclared_demotions` reads the summary: a resource gate opens its reason with
-`absent: ` and keeps its case live, while a bare `pytest.mark.skip`, an `xfail` or an `xpass` fails
-the step. That is what a demotion is, and a demotion earns a `.agent/deferred.md` row and the user's
-approval first (`assurance-posture.md`). The gate also names its skips in `-v` output, so `green`
-reports them rather than leaving the count to prose — which is where the invariant sat while any new
-skip rode green. **The step owns its effective options, because `--no-summary` and `--runxfail` each
-empty that input in silence:** `-o addopts=` drops project-configured ones, `PYTEST_ADDOPTS` is
-stripped from the step env, and the closing tally is cross-checked against what the summary named, so
-whatever else suppresses the detail turns the step red instead of quiet — the tally is read off the
-LAST tallying line, so a plugin trailer printed after it cannot displace it. **Coverage limits, all
-three loud or out of reach rather than silently green:** the checker reads emitted
-`SKIPPED`/`XFAIL`/`XPASS` lines, so a DELETED case and a demoted tier leave no trace and stay under
-the approval law alone; in-tree pytest configuration outranks it, since a `conftest.py` setting
-`config.option.runxfail` reconfigures pytest itself and this repo ships no conftest at all; and a
-directory named with a `:<digits>: ` inside it false-REDS a declared skip, pytest's `location: reason`
-line being genuinely ambiguous there.
+**Every skip declares itself, because pytest exits 0 on a skipped case.** A resource gate opens its
+reason with `absent: ` and keeps its case live, while a bare `pytest.mark.skip`, an `xfail` or an
+`xpass` fails the step. That is what a demotion is, and a demotion earns a `.agent/deferred.md` row
+and the user's approval first (`assurance-posture.md`). The gate also names its skips in `-v` output,
+so `green` reports them rather than leaving the count to prose — which is where the invariant sat
+while any new skip rode green.
 
-**Every step ships the input that fires it, and the gate runs those inputs on itself.**
-`tests/test_gate.py` seeds one defect of each step's own class into a throwaway tree and asserts
-`gate FAILED: <step>` — pytest an `assert False`, ruff-check an `F401`, ruff-format bad spacing,
-pyright and pyright-tests `x: int = "s"`, secrets an AWS-shaped key, import a module that raises. The
-seeds ride the pytest step, so a green gate is simultaneously its own positive control: a step that
-stopped being able to fail turns the gate red instead of quietly green. The skip rule seeds four more
-pytest trees: `@pytest.mark.skip("flaky")`, the same tree under `addopts = "--no-summary --runxfail"`,
-a `PYTEST_ADDOPTS`-suppressed summary the tally still catches, and a declared-`absent:` twin as the
-positive control — without that twin, a check that flagged EVERY skip would pass the seed. A path
-holding `": "` is locked too, since the location ends at its line number. One scope hole that seeding
-cannot see gets its own lock — the seeded tree holds a single root-level file, so an over-grown
-`SCAN_SKIP_DIRS` or `tests/` exclusion would still catch it while the real tree went unscanned ⇒
-`test_secret_scan_reaches_the_real_tree` pins the walk to production, a nested file and a dotdir
-file. Feature locks prove themselves by neutralization instead (L-022), never by seeding.
+**Every step ships the input that fires it, and the gate runs those inputs on itself** (`gate.md`).
+Feature locks prove themselves by neutralization instead (L-022), never by seeding.
 
 **`ruff-format` governs Markdown too, and `CLAUDE.md` is carved out of it.** ruff 0.16 formats python
 blocks inside `.md`, so a bare version bump moved the step from 39 files to 62 — every repo `.md`,
 `CLAUDE.md` included, which `upstream-sync.md` forbids editing. `[tool.ruff] extend-exclude` in
-`pyproject.toml` carves out `CLAUDE.md` + `CLAUDE.local.md`; repo-owned prose keeps the coverage. Two
-locks own that scope: `test_the_format_step_reaches_a_markdown_code_block` seeds a misformatted block
-and demands `gate FAILED: ruff-format`, and `test_the_upstream_files_stay_out_of_the_format_step`
-copies production's own `pyproject.toml` into the tree, so the carve-out under test is the shipped
-one, with a `doc.md` twin as the positive control against an exclusion that swallowed every `.md`.
+`pyproject.toml` carves out `CLAUDE.md` + `CLAUDE.local.md`; repo-owned prose keeps the coverage.
 **A `python`-tagged block in repo prose is now gate-governed** — write it formatted, or tag it `sh`.
 
 `tests/test_law_consistency.py` rides the pytest step and locks the five law invariants a tool can
 decide. Three are the deferral queue's: `.agent/spec.md`'s `Tasks` pairs every `.agent/deferred.md`
 row with one open `- [ ] **N** Title` row, rank and title verbatim, any other checklist item being a
-rankless `- [x] <sha> Title` or the one `- [ ] RESUME: …` note that `pause.md` writes and
-`resume.md` deletes; and no scanned law file names a row by `rank N` at all. Pairing is
-checked ORDERED because independent rank/title membership passes a swap of two titles; that swap and
-the `at rank N` evasion form are both proven red by mutation, restoring from a `cp` snapshot rather
-than `git checkout` (L-022). The `Tasks` port is proven red the same way on a swap, a dropped row, a
-renamed or run-on title, a stray rank mark, a ranked or sha-less ticked row, an unranked, indented
-or two-space/tab-separated open row, a second, ticked, empty, colon-less or ranked resume note and a
-missing header, with a legal `- [x] <sha>` row and a top-level and an indented resume note as the
-positive controls.
+rankless `- [x] <sha> Title`, the one `- [ ] RESUME: …` note that `pause.md` | `pause-now.md` write
+and `resume.md` deletes, or the one `- [ ] ROUTE: …` row that `route.md` writes and deletes before its
+last commit; and no scanned law file names a row by `rank N` at all.
 
 The third is the same hole in the other direction: **law may name a queue row, and a row dies at its
 close while the pointer at it does not.** Every reference in the scanned files that names
@@ -70,8 +38,7 @@ close while the pointer at it does not.** Every reference in the scanned files t
 whitespace-squashed text since prose wrapping splits one across a line. `_QUEUE_LINK` in the test
 owns the exact form, and prose must not restate it — this paragraph would match its own example. A rank retargets onto the wrong unit; a title survives its unit and reads as
 live law describing queued work that no longer exists, which is what `upstream-sync.md` did to
-*Maintenance + security pass* for a whole phase. Mutation-proven red by restoring exactly that
-pointer, from a `cp` snapshot (L-022).
+*Maintenance + security pass* for a whole phase.
 
 The fourth locks `upstream-sync.md`'s override table, which a refresh re-reads against the template.
 Three things hold: the table opens on its exact header and every row sits in that one contiguous
@@ -86,7 +53,7 @@ phrase surviving elsewhere in the template reads as live. The 12-character floor
 off a word like `review`, which occurs everywhere and identifies nothing; the rest is a reader's call.
 
 The fifth locks what law quotes out of `.agent/spec.md`'s `Intent`: **a unit renames the thing
-quoted, rewrites its own prose with the new name, and stops at the section the user alone edits** —
+quoted, rewrites its own prose with the new name, and leaves `Intent` behind** —
 leaving a citation that attributes wording `Intent` never carried while still reading as the ask.
 Every backticked fragment after a backticked `Intent` in one whitespace-squashed sentence must occur
 in the `## Intent` section; text before the citation names the file rather than quoting it, a bare
@@ -94,18 +61,6 @@ in the `## Intent` section; text before the citation names the file rather than 
 citation may name the section. The queue is scanned here and nowhere else in this file, its rows
 being acceptance contracts that cite `Intent` the same way, while the rank and title locks read it as
 their source of truth.
-
-None of the five locks needs a seeded fixture — the tree itself was the firing input, red on two
-renamed spine titles, three rank references (one already retargeted onto the wrong unit), one
-prose-keyed row whose clause upstream had long dropped, and one pointer at a closed queue row.
-The fifth fires on the rename's own pre-fix citation, restored from a `cp` snapshot — the lag bullet
-of `translation-leg.md` as the grammar unit left it, carrying two role tags `Intent` does not; it
-reddens naming both. Prose must not restate that example either, this file being scanned too.
-Mutation-proven red for the fourth: a dead
-anchor, a generic short anchor, curly quotes, a changed header cell, a parse that yields no rows, and
-a row moved below the prose, into a pipe-less table or into a second table — each escape in both the
-spaced and the no-space pipe form. Every mutant is restored from a `cp` snapshot (L-022). **Coverage limit: the global half of the haystack needs `~/.claude/CLAUDE.md`** — present in
-every session here, so the check reports absence as a failure naming the anchor rather than skipping.
 
 **Pin the venv layer in every agent command.** `.venv` = container (agent dev + test), `.venv-host` =
 host (live-mic runtime, lowest latency). A venv path-bakes its layer, so a bare `uv run` from the

@@ -11,6 +11,7 @@ suite and recurse.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,6 +40,7 @@ INVENTORY = [
     ("pyright-tests", True),
     ("secrets", True),
     ("import", True),
+    ("spec-lint", True),
 ]
 BLOCKING = [name for name, blocking in INVENTORY if blocking]
 
@@ -144,8 +146,40 @@ def seed(tmp: Path, step: str) -> None:
         (tmp / "leak.py").write_text(f'aws_secret_access_key = "{key}"\n')
     elif step == "import":
         (tmp / "live_stt.py").write_text('raise RuntimeError("seeded")\n')
+    elif step == "spec-lint":
+        spec_shape(tmp, PHASE_LINE.replace("MAINTAIN — ", "MAINTAIN: "))
     else:
         raise AssertionError(f"no seed for {step}")
+
+
+# The last section of a spec the shape check passes: one phase line, nothing after it.
+PHASE_LINE = "MAINTAIN — the whole product"
+
+
+def spec_shape(tmp: Path, phase_line: str) -> None:
+    """A tree holding the shipped shape check and a minimal spec ending on `phase_line`."""
+    (tmp / ".agent").mkdir()
+    shutil.copyfile(ROOT / ".agent" / "spec-lint", tmp / ".agent" / "spec-lint")
+    sections = "".join(f"## {s}\n\nx\n\n" for s in ("Intent", "Artifacts", "Decisions"))
+    tasks = "## Tasks\n\n- [ ] **1** Row\n\nQueue → `.agent/deferred.md`\n\n"
+    (tmp / ".agent" / "spec.md").write_text(f"{sections}{tasks}## Phase\n\n{phase_line}\n")
+
+
+def test_the_spec_lint_step_reads_the_phase_line(tmp_path):
+    """The seed above fails for any reason the step fails, a missing `sh` or script included.
+
+    The finding text proves the check itself ran and read the defect, and the
+    clean twin is the positive control against a step that rejects every spec.
+    """
+    spec_shape(tmp_path, PHASE_LINE)
+    clean = gate(tmp_path, "--only", "spec-lint")
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    seeded = tmp_path / "seeded"
+    seeded.mkdir()
+    seed(seeded, "spec-lint")
+    done = gate(seeded, "--only", "spec-lint")
+    assert "spec-lint: .agent/spec.md:" in done.stdout, done.stdout + done.stderr
+    assert "gate FAILED: spec-lint" in done.stdout
 
 
 @pytest.mark.parametrize("step", BLOCKING)
