@@ -127,7 +127,8 @@ carry it are the ones the detector had under 2 s of audio to judge.
 
 **Run `uv run python session_report.py --log stt.log` after any soak** — it answers every question in
 this section mechanically off the saved transcript and the redirected stderr, so a session stays
-diagnosable once the scrollback is gone. Redirect stderr (`2> stt.log`) to give it the counters; the
+diagnosable once the scrollback is gone; pass `--two-way` for a `--two-way` session, or its English
+lines read as `declined` captions. Redirect stderr (`2> stt.log`) to give it the counters; the
 status line keeps drawing, so the record costs the soak no screen output — not zero work, which no
 live run has measured (item 2).
 

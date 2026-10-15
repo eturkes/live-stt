@@ -173,9 +173,12 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `2> stt.log` keeps the status line too (L-006, `asr-pipeline.md`). **A transcript records captions, not the flags that produced
   them**, so the session's language rides `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE`
   before anything is derived: re-running the shipped screen is the point, and an `en` session read
-  under the default reported a latin screen the live run never applied. The drop split is derived
-  from `caption_defect`'s own verdict (combined − repetition) rather than restating the latin rule,
-  which is how it follows that flag. Three rules the live corpus forced: **a session owns log time
+  under the default reported a latin screen the live run never applied. **`--two-way` (exclusive
+  with `--source-lang`) re-screens with the loop rule alone** (`screen()`): no line records its
+  decode language, an English line was decoded under `<|en|>` where the latin rule never runs, and a
+  Japanese one passed it at publication — re-screened under ja, every English line read as a
+  `declined` caption. The drop split is derived from `caption_defect`'s own verdict (combined −
+  repetition) rather than restating the latin rule, which is how it follows both flags. Three rules the live corpus forced: **a session owns log time
   from its own start until the next session starts**, never to its last caption, because
   `codex app-server exited` fires after the final caption by construction; **the run stamps that
   start itself** — `live_stt.log_session_marker` logs `session: <path>` under L-006's pair gate, so
@@ -337,7 +340,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
 ## On-demand commands
 
 ```sh
-uv run python session_report.py [--log F] [--json] [--source-lang L]   # re-derive a live session
+uv run python session_report.py [--log F] [--json] [--source-lang L | --two-way]  # a live session
 uv run python tests/eval_latency.py                     # per-stage latency budget, traces only, <1 s
 uv run python tests/eval_two_way_settled.py [--json]    # two-way's commit rule vs time-to-SETTLED
 uv run python tests/eval_term_census.py [--term T] [--floor N]   # term census + arms, no hardware

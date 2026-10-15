@@ -666,3 +666,57 @@ def test_the_marker_outranks_the_filename_for_a_default_named_session(tmp_path):
 
     assert [e.body for e in unclaimed] == [before_marker]
     assert [e.body for e in session.events] == [marker, after_marker]
+
+
+def test_a_two_way_sessions_english_lines_are_never_screen_declines(tmp_path, monkeypatch, capsys):
+    """Queue: Session report reads two-way transcripts (reviewer-6's authored mixed transcript).
+
+    The transcript records no per-line decode language. An English line a two-way session
+    published was decoded under <|en|>, where the latin rule never applies, so the report
+    re-screened it under ja and read it as a `declined` caption.
+    """
+    monkeypatch.setattr(sr.app, "ASR_LANGUAGE", "ja")
+    # main() rebinds it; teardown restores it.
+    monkeypatch.setattr(sr, "TWO_WAY", False, raising=False)
+    path = write(
+        tmp_path,
+        "2026-09-04T10-00-00",
+        [
+            event("10:00:01", "SRC", 1, CLEAN),
+            event("10:00:03", "TGT", 1, "Hello, good morning."),
+            event("10:00:10", "SRC", 2, ENGLISH),
+            event("10:00:20", "SRC", 3, LOOP),
+            "[2026-09-04T10:00:30+09:00] SRC 4 <!>: こんにちは",
+            event("10:00:32", "TGT", 4, "Hello."),
+            event("10:00:40", "SRC", 5, "Ha ha ha, fine."),
+            event("10:00:42", "TGT", 5, "はははは、いいよ。"),
+        ],
+    )
+    monkeypatch.setattr(sys, "argv", ["session_report.py", path, "--json"])
+    assert sr.main() == 0
+    one_way = json.loads(capsys.readouterr().out)
+    assert one_way["screen"]["latin_drops"] == 2, "the authored transcript lost its latin lines"
+
+    monkeypatch.setattr(sys, "argv", ["session_report.py", path, "--two-way", "--json"])
+    assert sr.main() == 0
+    two_way = json.loads(capsys.readouterr().out)
+    screen = two_way["screen"]
+    assert (screen["source_lang"], screen["latin_drops"]) == ("two-way", 0)
+    assert screen["combined_drops"] == screen["repetition_drops"] == 1
+    missing = {r["n"]: r for r in two_way["sessions"][0]["missing"]}
+    assert missing[2]["why"] != sr.DECLINED and not missing[2]["screened_now"]
+    assert missing[3]["why"] == sr.DECLINED
+    assert two_way["totals"]["held"] == 1
+    assert "Ha ha ha, fine." in [r["text"] for r in screen["longest_surviving"]]
+
+
+def test_two_way_and_source_lang_are_one_choice(tmp_path, monkeypatch, capsys):
+    """live-stt rejects the pair at parse time; the report reads a session the same way."""
+    path = write(tmp_path, "s", [event("10:00:20", "SRC", 1, ENGLISH)])
+    monkeypatch.setattr(
+        sys, "argv", ["session_report.py", path, "--two-way", "--source-lang", "en"]
+    )
+    with pytest.raises(SystemExit) as exit_:
+        sr.main()
+    assert exit_.value.code == 2
+    assert "not allowed with argument" in capsys.readouterr().err

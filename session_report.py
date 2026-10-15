@@ -57,6 +57,8 @@ _SESSION = re.compile(r"^session: (.*)$")
 # the FIRST `): ` -- a defect string may carry a bare `)` and a caption may carry
 # the whole separator, and only this anchor survives both.
 _DROPPED = re.compile(r"^caption dropped \((.*?)\): (.*)$")
+# Set from --two-way: a transcript records no per-line decode language (`screen`).
+TWO_WAY = False
 
 # Why a published caption never got a target line. Ordered by how much the evidence
 # pins it down: a logged decline is certain, a trailing gap is an inference.
@@ -190,6 +192,17 @@ def attach_logs(sessions: list[Session], events: list[LogEvent]) -> list[LogEven
         else:
             unclaimed.append(e)
     return unclaimed
+
+
+def screen(text: str) -> str | None:
+    """The shipped screen as the session applied it to a published line.
+
+    A --two-way line decoded under <|en|> never met the latin rule, and one decoded
+    under ja passed it at publication, while the transcript says which neither was:
+    re-screened under ja, an English line read as a `declined` caption. So a two-way
+    session re-runs the loop rule alone -- the shipped screen under a non-ja token.
+    """
+    return app.caption_defect(text, "en") if TWO_WAY else app.caption_defect(text)
 
 
 def repeat_span_at(text: str, bound: int) -> int:
@@ -370,7 +383,7 @@ def explain_missing(s: Session) -> list[dict]:
     rows = []
     for n in sorted(set(s.src) - set(s.tgt)):
         text = s.src[n].text
-        defect = app.caption_defect(text)
+        defect = screen(text)
         cause = failure_near(n)
         # Precedence is causal, not textual. Once the leg is down every caption
         # lacks a target whatever its text, so a screen verdict there is a
@@ -443,17 +456,15 @@ def sweep(caps: list[tuple[str, int, str]], lo: int, hi: int) -> list[dict]:
 def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
     caps = [(s.name, c.n, c.text) for s in sessions for c in s.src.values()]
     texts = [t for _, _, t in caps]
-    survivors = sorted(
-        ((app.repeat_span(t), t) for t in texts if not app.caption_defect(t)), reverse=True
-    )
+    survivors = sorted(((app.repeat_span(t), t) for t in texts if not screen(t)), reverse=True)
     lengths = sorted(len(t) for t in texts)
     all_lags = [x for s in sessions for _, x in lags(s)]
     # Split the drops off the SHIPPED verdict rather than restating the latin
     # rule: `caption_defect` returns the repetition reason first and is gated on
-    # ASR_LANGUAGE, so the subtraction follows --source-lang where a copy of the
-    # rule silently reported a latin screen an `en` session never ran.
+    # the decode language, so the subtraction follows --source-lang and --two-way where
+    # a copy of the rule silently reported a latin screen an `en` session never ran.
     repetition_drops = sum(1 for t in texts if app.repeat_span(t) >= app.CAPTION_REPEAT_MAX_CHARS)
-    combined_drops = sum(1 for t in texts if app.caption_defect(t))
+    combined_drops = sum(1 for t in texts if screen(t))
     latin_only = combined_drops - repetition_drops
 
     per_session = []
@@ -534,7 +545,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
             "unit_chars": app.CAPTION_REPEAT_UNIT_CHARS,
             "max_chars": app.CAPTION_REPEAT_MAX_CHARS,
             "latin_ratio": app.CAPTION_LATIN_RATIO,
-            "source_lang": app.ASR_LANGUAGE,
+            "source_lang": "two-way" if TWO_WAY else app.ASR_LANGUAGE,
             "repetition_drops": repetition_drops,
             "latin_drops": latin_only,
             "combined_drops": combined_drops,
@@ -670,11 +681,17 @@ def main() -> int:
     ap.add_argument("transcripts", nargs="*", help="Transcript files (default: transcripts/*.txt).")
     ap.add_argument("--log", action="append", default=[], help="Redirected stderr log; repeatable.")
     ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
-    ap.add_argument(
+    lang = ap.add_mutually_exclusive_group()
+    lang.add_argument(
         "--source-lang",
         choices=["ja", "en"],
         default=app.ASR_LANGUAGE,
         help="Source language the session ran with (default: %(default)s).",
+    )
+    lang.add_argument(
+        "--two-way",
+        action="store_true",
+        help="The session ran with --two-way: its English lines skip the latin rule.",
     )
     args = ap.parse_args()
 
@@ -683,6 +700,8 @@ def main() -> int:
     # shipped screen is re-run rather than re-implemented: without it an `en`
     # session is re-derived under a latin screen the live run never applied.
     app.ASR_LANGUAGE = args.source_lang
+    global TWO_WAY
+    TWO_WAY = args.two_way
 
     paths = args.transcripts or sorted(glob.glob("transcripts/*.txt"))
     if not paths:

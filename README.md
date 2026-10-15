@@ -240,7 +240,7 @@ The report shows:
 - caption length and repetition distributions
 - how far behind its `SRC` line each `TGT` line arrived
 
-Add `--json` for machine-readable output. With no saved sessions the report prints `no transcripts found` and exits 0.
+Add `--json` for machine-readable output. The transcript does not record the flags of the session, so give the report the same language flag that the session used: `--source-lang en` for an English session, or `--two-way` for a two-way session. Without `--two-way`, the report counts the English lines of a two-way session as refused captions. With no saved sessions the report prints `no transcripts found` and exits 0.
 
 ### Display
 

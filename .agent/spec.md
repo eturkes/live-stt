@@ -40,7 +40,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   stderr log (`live-stt 2> stt.log`, which keeps the status line); no hardware, weights or network,
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
-  [--source-lang L]`.
+  [--source-lang L | --two-way]`.
 - `tests/` — fast locks (`uv run pytest -q`) + eleven on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
@@ -229,18 +229,16 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Session report reads two-way transcripts
-  - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **3** Re-measure the fresh-session baseline
+- [ ] **2** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
-- [ ] **4** Name the shipped recogniser in two evaluator docstrings
+- [ ] **3** Name the shipped recogniser in two evaluator docstrings
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Name the shipped recogniser in two
     evaluator docstrings*.
-- [ ] **5** Speed the pytest gate step
+- [ ] **4** Speed the pytest gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the pytest gate step*.
-- [ ] **6** Speed the secrets gate step
+- [ ] **5** Speed the secrets gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the secrets gate step*.
-- [ ] **7** Screen each segment of the speech-end remainder
+- [ ] **6** Screen each segment of the speech-end remainder
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment of the speech-end
     remainder*.
 
