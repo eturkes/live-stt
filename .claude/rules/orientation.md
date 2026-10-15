@@ -23,7 +23,8 @@ codex degrades to source-only — a hard requirement, never a cloud fallback.
 - `tests/` — fast locks, on-demand `eval_*.py` evaluators, committed corpora + traces.
 - `models/` — gitignored weights; `models/README.md` carries the download commands.
 - `transcripts/` — gitignored saved sessions, one file per run, saving ON by default.
-- `README.md` — the only human-facing doc, together with the CLI strings in `live_stt.py`.
+- `README.md` — the user doc; it, `models/README.md` and the CLI strings in `live_stt.py` are the
+  human-facing set (`human-docs.md`).
 - `.agent/spec.md` = Intent · Artifacts · Decisions · Tasks · Phase; the sole attached state,
   imported by `CLAUDE.md` ⇒ it rides every session whole. Every line binds current or future work, so
   each unit prunes what its own close made dead; size is emergent. `.agent/deferred.md` = the

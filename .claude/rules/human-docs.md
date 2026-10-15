@@ -13,8 +13,8 @@ ALONE.** Those surfaces are `README.md`, `models/README.md`, and the user-facing
 deliberate. Confirm the dash rule with `command grep -nP '[\x{2013}\x{2014}]' README.md`, and keep any
 literal duplicated between code and README in sync.
 
-`README.md` is the only shipped prose document: it covers install, CLI, behaviour and the coverage
-boundary. `models/README.md` owns the weight-download commands and the engine layouts; engine-selection
+`README.md` is the user doc: it covers install, CLI, behaviour and the coverage boundary.
+`models/README.md` owns the weight-download commands and the engine layouts; engine-selection
 rationale lives in `.claude/rules/asr-pipeline.md` (D-016 for the whisper default and its device, D-010
 for the sherpa pair), so the READMEs point there rather than restating it.
 

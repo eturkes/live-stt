@@ -54,7 +54,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   this is what keeps those numbers re-derivable once the recordings are gone.
   `uv run python tests/build_lag_trace.py [--check]`.
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
-- `README.md` — the only human-facing doc, with the CLI strings in `live_stt.py`.
+- `README.md` — the user doc; it, `models/README.md` and the CLI strings in `live_stt.py` are the
+  human-facing set (`human-docs.md`).
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
   `polish-register.md`, `phase-history.md`, plus four evidence records.
 - [Audio-hang post-mortem](postmortems/2026-09-11-audio-driver-hang.md) — SoundWire kernel Oops,
@@ -226,21 +227,18 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Reconcile the human-facing doc set
-  - Docs tier; accept → `.agent/deferred.md` → *Reconcile the human-facing doc set*: every
-    `human-facing` statement in `.agent/spec.md` + `.claude/rules/` names `human-docs.md`'s set.
-- [ ] **3** Screen each segment inside a released piece
+- [ ] **2** Screen each segment inside a released piece
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **4** Session report reads two-way transcripts
+- [ ] **3** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **5** Re-measure the fresh-session baseline
+- [ ] **4** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
-- [ ] **6** Name the shipped recogniser in two evaluator docstrings
+- [ ] **5** Name the shipped recogniser in two evaluator docstrings
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Name the shipped recogniser in two
     evaluator docstrings*.
-- [ ] **7** Speed the pytest gate step
+- [ ] **6** Speed the pytest gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the pytest gate step*.
-- [ ] **8** Speed the secrets gate step
+- [ ] **7** Speed the secrets gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the secrets gate step*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
