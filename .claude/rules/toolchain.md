@@ -101,10 +101,11 @@ rules CI mirroring the hook out of scope. Update automation = `.github/dependabo
 between commits is the one thing a local hook cannot watch. Security scanning splits as below.
 
 **Security scanning is split by hermeticity.** Static analysis rides the existing `ruff-check` step
-(ruff's `S` / flake8-bandit ruleset). The `secrets` step runs `detect-secrets` over a tree walk
-`gate.py` owns — both offline, so the gate keeps its no-network contract. `pip-audit` needs an
-advisory feed and stays in the L-018 recipe (`packaging-deps.md`); Dependabot
-(`.github/dependabot.yml`, `package-ecosystem: uv`) watches between commits.
+(ruff's `S` / flake8-bandit ruleset). The `secrets` step runs `detect-secrets` over every file a
+commit can carry, git's tracked + untracked-unignored list (`scan_files`) — both offline, so the
+gate keeps its no-network contract. `pip-audit` needs an advisory feed and stays in the L-018 recipe
+(`packaging-deps.md`); Dependabot (`.github/dependabot.yml`, `package-ecosystem: uv`) watches
+between commits.
 
 **The secret scan runs with `HexHighEntropyString` off and skips `tests/*.json`.** This repo's
 evidence layer is MADE of SHA-256 — corpus fingerprints, content-addressed cache names, pinned

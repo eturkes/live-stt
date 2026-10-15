@@ -57,8 +57,8 @@ SECRETS = [
     "--disable-plugin",
     "HexHighEntropyString",
 ]
-# Bulk the scan must not walk: weights, bench corpora, venvs and caches, none of
-# them tracked. Pruning by name is what keeps the walk off several GB.
+# Bulk the fallback walk must skip (`scan_files`): weights, bench corpora, venvs and
+# caches, none of them tracked. Pruning by name keeps that walk off several GB.
 SCAN_SKIP_DIRS = frozenset(
     {
         ".git",
@@ -100,19 +100,41 @@ PYTEST_WORKERS = 6
 
 
 def scan_files() -> list[str]:
-    """Files the secret scan reads: the tree minus bulk, minus evidence JSON.
+    """Files the secret scan reads: every file a commit can carry, minus evidence JSON.
+
+    At a repository's top level that is git's own list, tracked + untracked-unignored.
+    Walking the disk instead read gitignored live-session logs (16.5 of 18.5 MB scanned,
+    most of the step's 36 s) and pruned all of `models/`, tracked `models/README.md`
+    included. Anywhere else -- the gate's seed trees, which may sit under an ignored
+    directory -- nothing is ignored, so the walk minus bulk stands.
 
     The hook takes explicit filenames and its own `--exclude-files` does not
     filter them, so the exclusion has to happen here.
     """
-    found: list[str] = []
-    for root, dirs, names in os.walk("."):
-        dirs[:] = sorted(d for d in dirs if d not in SCAN_SKIP_DIRS)
-        for name in sorted(names):
-            if os.path.basename(root) == "tests" and name.endswith(".json"):
-                continue
-            found.append(os.path.join(root, name))
-    return found
+    prefix = subprocess.run(
+        ["git", "rev-parse", "--show-prefix"], capture_output=True, text=True, check=False
+    )
+    if prefix.returncode == 0 and not prefix.stdout.strip():
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # A tracked file deleted from the work tree is still listed; it carries nothing.
+        paths = sorted(
+            os.path.join(".", p) for p in listed.stdout.split("\0") if p and os.path.isfile(p)
+        )
+    else:
+        paths = []
+        for root, dirs, names in os.walk("."):
+            dirs[:] = sorted(d for d in dirs if d not in SCAN_SKIP_DIRS)
+            paths += (os.path.join(root, name) for name in sorted(names))
+    return [
+        p
+        for p in paths
+        if not (p.endswith(".json") and os.path.basename(os.path.dirname(p)) == "tests")
+    ]
 
 
 def undeclared_demotions(out: str) -> str | None:

@@ -120,7 +120,57 @@ def test_secret_scan_reaches_the_real_tree(monkeypatch):
     # A production file, a nested one, and a dotdir one: dotdirs carry the rules.
     assert {"./live_stt.py", "./tests/test_gate.py", "./.claude/rules/toolchain.md"} <= found
     assert "./tests/replay_goldens.json" not in found  # the declared evidence-JSON exclusion
-    assert not [p for p in found if p.startswith("./models")]  # the declared bulk prune
+    # The weights are ignored; the README beside them is tracked, so a commit can carry it.
+    assert [p for p in found if p.startswith("./models")] == ["./models/README.md"]
+
+
+def git_tree(tmp: Path) -> Path:
+    """A throwaway repository: the scan reads git's list only at a repository's top level."""
+    subprocess.run(["git", "init", "-q", str(tmp)], check=True)
+    (tmp / ".gitignore").write_text("*.log\nignored/\n")
+    return tmp
+
+
+def test_the_secret_scan_reads_what_a_commit_can_carry(tmp_path, monkeypatch):
+    """Tracked + untracked-unignored, never an ignored file, a deleted one or evidence JSON."""
+    tree = git_tree(tmp_path)
+    for name in ("tracked.py", "gone.py", "untracked.py", "sub/nested.py", "tests/keep.py"):
+        (tree / name).parent.mkdir(exist_ok=True)
+        (tree / name).write_text("x = 1\n")
+    for name in ("session.log", "tests/evidence.json"):
+        (tree / name).write_text("{}\n")
+    subprocess.run(
+        ["git", "add", "tracked.py", "gone.py", "tests/evidence.json"], cwd=tree, check=True
+    )
+    (tree / "gone.py").unlink()
+    monkeypatch.chdir(tree)
+    assert scan_files() == [
+        "./.gitignore",
+        "./sub/nested.py",
+        "./tests/keep.py",
+        "./tracked.py",
+        "./untracked.py",
+    ]
+
+
+def test_a_key_a_commit_can_carry_reddens_the_scan_in_a_repository(tmp_path):
+    """The seed above runs outside any repository; this one runs git's list."""
+    tree = git_tree(tmp_path)
+    seed(tree, "secrets")
+    (tree / "leak.py").rename(tree / "leak.log")
+    assert gate(tree, "--only", "secrets").returncode == 0, "an ignored file was scanned"
+    (tree / "leak.log").rename(tree / "leak.py")
+    done = gate(tree, "--only", "secrets")
+    assert "gate FAILED: secrets" in done.stdout, done.stdout + done.stderr
+
+
+def test_a_seed_tree_under_an_ignored_directory_is_still_scanned(tmp_path):
+    """Below a repository's top level git lists nothing ignored, which would empty the scan."""
+    seeded = git_tree(tmp_path) / "ignored" / "seed"
+    seeded.mkdir(parents=True)
+    seed(seeded, "secrets")
+    done = gate(seeded, "--only", "secrets")
+    assert "gate FAILED: secrets" in done.stdout, done.stdout + done.stderr
 
 
 def seed(tmp: Path, step: str) -> None:

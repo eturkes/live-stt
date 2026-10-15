@@ -20,9 +20,17 @@ four more pytest trees: `@pytest.mark.skip("flaky")`, the same tree under `addop
 declared-`absent:` twin as the positive control — without that twin, a check that flagged EVERY skip
 would pass the seed. A path holding `": "` is locked too, since the location ends at its line
 number. One scope hole that seeding cannot see gets its own lock — the seeded tree holds a single
-root-level file, so an over-grown `SCAN_SKIP_DIRS` or `tests/` exclusion would still catch it while
-the real tree went unscanned ⇒ `test_secret_scan_reaches_the_real_tree` pins the walk to production,
-a nested file and a dotdir file.
+root-level file, so an over-grown exclusion would still catch it while the real tree went unscanned
+⇒ `test_secret_scan_reaches_the_real_tree` pins production, a nested file, a dotdir file and, of
+`models/`, the tracked README alone. **The scan reads git's list (tracked + untracked-unignored)
+only at a repository's top level** (`git rev-parse --show-prefix` empty) and walks minus
+`SCAN_SKIP_DIRS` anywhere else: below the top level git lists nothing ignored, so a seed tree under
+`.scratch/` would scan nothing and its seed would go vacuous. Three locks hold that split — a
+throwaway repository's list (deleted, ignored and evidence-JSON files out), the seeded key reddening
+through git's list beside an ignored copy that does not, and a seed tree under an ignored directory
+still reddening — each red under its neutralization (always walk, git below the top level, deleted
+or ignored files kept, untracked dropped, evidence JSON kept). **Coverage limit unchanged in kind:
+an ignored file holding a key is out of scope by design — a commit cannot carry it.**
 
 The pytest step runs on `PYTEST_WORKERS`=6 pytest-xdist workers (serial ≈39 s → ≈24 s on this host;
 per-test outcomes compared as junit maps, identical: 1229 pass + 1 skip) — seed trees included, so

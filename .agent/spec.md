@@ -229,12 +229,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Speed the secrets gate step
-  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the secrets gate step*.
-- [ ] **3** Screen each segment of the speech-end remainder
+- [ ] **2** Screen each segment of the speech-end remainder
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment of the speech-end
     remainder*.
-- [ ] **4** Run the pre-commit hook's suite in parallel
+- [ ] **3** Run the pre-commit hook's suite in parallel
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Run the pre-commit hook's suite in
     parallel*.
 

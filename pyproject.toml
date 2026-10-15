@@ -116,12 +116,14 @@ select = [
 ignore = ["S101"]
 
 [tool.ruff.lint.per-file-ignores]
-# The gate spawns a fixed argv it builds itself; no input reaches it.
-"gate.py" = ["S603"]
+# The gate spawns a fixed argv it builds itself; no input reaches it. Its `git` is
+# whatever PATH names, the same binary that makes the commit it scans for.
+"gate.py" = ["S603", "S607"]
 # Acquisition scripts fetch revision-addressed corpora over pinned https URLs and
 # verify SHA-256 on arrival (L-017); the suite spawns the real app and pty on
-# purpose, and one fixture carries a literal /tmp path as test DATA.
-"tests/*" = ["S310", "S603", "S606", "S108"]
+# purpose, plus `git` from PATH for throwaway repositories, and one fixture
+# carries a literal /tmp path as test DATA.
+"tests/*" = ["S310", "S603", "S606", "S607", "S108"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
