@@ -2,8 +2,8 @@
 """Re-derive D-016's pause-free state-retention CER on the shipped path (M11.5).
 
 Replays the 182 s pause-free probe through the real VAC path -- silero opening a
-LocalAgreement-2 buffer, whisper large-v3-turbo int8 on the requested OpenVINO
-device -- and scores the committed transcript against the probe's own reference.
+LocalAgreement-2 buffer, the Japanese recogniser whisper-ja-760M int8 on the requested
+OpenVINO device -- and scores the committed transcript against the probe's own reference.
 
 On-demand, never a gate step: it needs the gitignored weights, the gitignored
 probe WAV, and minutes of accelerator time. Run it when a decode or streaming

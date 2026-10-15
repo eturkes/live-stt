@@ -2,8 +2,8 @@
 """Record the shipped path's caption stream over the pinned narration (M12.1, M12.3).
 
 Replays every pinned 「ごん狐」 section through the real VAC path -- silero opening
-a LocalAgreement-2 buffer, whisper large-v3-turbo int8 on the requested OpenVINO
-device -- and writes one row per PUBLISHED caption to `caption_trace.json`,
+a LocalAgreement-2 buffer, the Japanese recogniser whisper-ja-760M int8 on the requested
+OpenVINO device -- and writes one row per PUBLISHED caption to `caption_trace.json`,
 numbered continuously across the six sections.
 
 **One decode per section, one session downstream.** Nothing on the shipped path
