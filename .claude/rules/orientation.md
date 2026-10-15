@@ -29,9 +29,27 @@ codex degrades to source-only — a hard requirement, never a cloud fallback.
   each unit prunes what its own close made dead; size is emergent. `.agent/deferred.md` = the
   deferral queue and `.agent/archive/<record>.md` = closed-milestone detail — both committed, outside
   that attached set, read on demand.
-- `.claude/rules/` = this law, the sole carrier of what a teammate must hold. `CLAUDE.md` is
-  refreshed byte-for-byte from upstream ⇒ never write a project delta into it (`upstream-sync.md`).
-  `.scratch/` = gitignored session workspace, nothing durable.
+- `.claude/rules/` = this law, the sole carrier of what a teammate must hold. `CLAUDE.md`,
+  `.claude/agents/` and `.agent/spec-lint` = template copies, overwritten whole at each refresh ⇒
+  never write a project delta into them. A repo ruling on a template clause lives in the rules file
+  owning its subject as a ruling tag: the clause's quoted text + a bold verdict (`_RULING_TAG` in
+  `tests/test_law_consistency.py` owns the form and holds each quote to live template text). A
+  clause without one binds as written. `.scratch/` = gitignored session workspace, nothing durable.
+
+Rulings on the template's spec layout (detail → `.agent/spec.md` `Decisions`):
+
+- Template ruling: "the phase checklist: `- [ ]` open units in order" + "ticked rows cleared at each
+  phase close + each MAINTAIN request's close" → **ADAPTED** (user rulings) — MAINTAIN has no phase
+  close ⇒ `Tasks` = the open queue rows 1:1, rank + title verbatim, in queue order, then the queue
+  pointer; a `- [x] <sha>` row lives only between one session's commits; a paused session adds its
+  one `- [ ] RESUME: …` note, a routing session its one `- [ ] ROUTE: …` row. A session's own step
+  checklist lives in `.scratch/tasks.md`; durable progress = commits + the paired rows.
+- Template ruling: "Routed state: `Phase` line 1 = `<PHASE> — <scope>`" → **ADAPTED** at the `Tasks`
+  lock alone — a routed phase's own checklist rows, beside a suspended MAINTAIN's queue rows, fail
+  its 1:1 pairing ⇒ the routing session asks the user how the lock follows before it writes them.
+- Template ruling: "detail → `docs/` or `.agent/archive/`" → **ADAPTED** — no `docs/`: decision
+  detail → the `.claude/rules/` file each `D-###` names; closed records → `.agent/archive/`;
+  incident records → `.agent/postmortems/`.
 
 `D-###` / `L-###` ids anchor a code or test comment to the rule that explains it. They live in these
 rules files, numbering monotonic with gaps where a rule died; keep an id while a citer still names it.

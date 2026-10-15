@@ -43,8 +43,16 @@ seeds a misformatted block and demands `gate FAILED: ruff-format`, and
 the tree, so the carve-out under test is the shipped one, with a `doc.md` twin as the positive
 control against an exclusion that swallowed every `.md`.
 
-`spec-lint` runs `.agent/spec-lint` through `sh`, a byte copy of the template's shape check
-(`upstream-sync.md`). Its seed ends a minimal spec on the phase line `MAINTAIN: …`, and
+Each step prints its wall-clock and the run its total; the pytest step runs `--durations=5` and
+`slowest_tests` prints that block on a green run (`-v` and a failure print the whole output).
+`test_a_green_run_prints_each_wall_clock_and_the_slowest_tests` locks all three, proven red by
+neutralization from a `cp` snapshot of `gate.py`: the step clock, the slowest block, the total and
+the `--durations` flag each reddened it, restored green. **Coverage limit: pytest hides durations
+under its 5 ms `--durations-min` floor**, so an all-fast suite prints no block — the seed sleeps
+50 ms for that reason.
+
+`spec-lint` runs `.agent/spec-lint` through `sh`, the template's shape check, a copy each refresh
+replaces whole (`orientation.md`). Its seed ends a minimal spec on the phase line `MAINTAIN: …`, and
 `test_the_spec_lint_step_reads_the_phase_line` demands the finding text, with a clean twin as the
 positive control. Neutralized from a `cp` snapshot of `gate.py`, the step as `true` reddens both
 tests and as `sh -c 'exit 1'` reddens the twin. The pre-refresh `.agent/spec.md` drew 6 findings:
@@ -64,8 +72,8 @@ indented resume note as the positive controls. The two notes, planted from a `cp
 pass; a second, ticked, empty, colon-less or ranked ROUTE row stays red, as do a second resume note
 and a stray open row.
 
-The third, the queue-link lock, is mutation-proven red by restoring the pointer `upstream-sync.md`
-kept at *Maintenance + security pass* after that row closed, from a `cp` snapshot (L-022).
+The third, the queue-link lock, is mutation-proven red by planting a pointer at *Maintenance +
+security pass*, a row closed long before, into a rules file from a `cp` snapshot (L-022).
 
 None of the five locks needs a seeded fixture — the tree itself was the firing input, red on two
 renamed spine titles, three rank references (one already retargeted onto the wrong unit), one
@@ -73,9 +81,12 @@ prose-keyed row whose clause upstream had long dropped, and one pointer at a clo
 fifth fires on a citation of role tags that Intent no longer carries, restored from a `cp` snapshot:
 the lag bullet of `translation-leg.md` as it stood before Intent took the role grammar quotes the
 two pre-role tags, and it reddens naming both. Prose must not restate that example either, this file
-being scanned too. Mutation-proven red for the fourth: a dead anchor, a generic short anchor, curly
-quotes, a changed header cell, a parse that yields no rows, and a row moved below the prose, into a
-pipe-less table or into a second table — each escape in both the spaced and the no-space pipe form.
-Every mutant is restored from a `cp` snapshot (L-022). **Coverage limit: the global half of the
-haystack needs `~/.claude/CLAUDE.md`** — present in every session here, so the check reports absence
-as a failure naming the anchor rather than skipping.
+being scanned too.
+
+The fourth holds the ruling tags. Mutation-proven red, each mutant planted from a `cp` snapshot and
+restored (L-022): a dead anchor, a short anchor (`review`), curly quotes, an unknown verdict, a
+suffixed verdict (`ADAPTED — split`), a missing arrow, a capitalised and a hyphenated opener, a
+keyless bold verdict, the opener restated in prose, an anchor only the user-level file once carried,
+the pre-move capitalisation of the prototype clause, and a rules dir yielding no tags. The
+haystack is the repo's own template copies alone, so no anchor rests on a user-level file that
+changes outside the repo.

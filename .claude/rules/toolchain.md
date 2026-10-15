@@ -7,7 +7,15 @@ shortened, which is how four commits reported a passing gate while its pyright s
 step is fast and hermetic — no weights, no hardware, no network — and clears `PYTHONPATH` itself. A
 green run still reports **one skip**, the whisper NPU replay golden, which needs the prelude below;
 anything more skipping means absent weights or corpus. Each check's mechanics, coverage limits and
-firing record live in `gate.md`, which loads with the check's files.
+firing record live in `gate.md`, which loads with the check's files. Every run prints each step's
+wall-clock and the suite's five slowest tests, since each run blocks the critical path.
+
+**Fast gate (iteration) = the steps + tests the change reaches, launched as parallel calls:**
+`uv run --no-sync python -m pytest -q --ff <test files the change reaches>`
+(`test_law_consistency.py` for law files, `test_gate.py` for `gate.py`) beside
+`uv run --no-sync python gate.py --only <step>` for each other step it reaches — `ruff-check` +
+`ruff-format` for Python or Markdown, `pyright` / `pyright-tests` for production / test code,
+`secrets` for new files, `spec-lint` for `.agent/spec.md`. The full gate runs before every commit.
 
 **Every skip declares itself, because pytest exits 0 on a skipped case.** A resource gate opens its
 reason with `absent: ` and keeps its case live, while a bare `pytest.mark.skip`, an `xfail` or an
@@ -19,11 +27,12 @@ while any new skip rode green.
 **Every step ships the input that fires it, and the gate runs those inputs on itself** (`gate.md`).
 Feature locks prove themselves by neutralization instead (L-022), never by seeding.
 
-**`ruff-format` governs Markdown too, and `CLAUDE.md` is carved out of it.** ruff 0.16 formats python
-blocks inside `.md`, so a bare version bump moved the step from 39 files to 62 — every repo `.md`,
-`CLAUDE.md` included, which `upstream-sync.md` forbids editing. `[tool.ruff] extend-exclude` in
-`pyproject.toml` carves out `CLAUDE.md` + `CLAUDE.local.md`; repo-owned prose keeps the coverage.
-**A `python`-tagged block in repo prose is now gate-governed** — write it formatted, or tag it `sh`.
+**`ruff-format` governs Markdown too, and `CLAUDE.md` is carved out of it.** ruff 0.16 formats
+python blocks inside `.md`, so a bare version bump moved the step from 39 files to 62 — every repo
+`.md`, `CLAUDE.md` included, a template copy the repo never edits (`orientation.md`).
+`[tool.ruff] extend-exclude` in `pyproject.toml` carves out `CLAUDE.md` + `CLAUDE.local.md`;
+repo-owned prose keeps the coverage. **A `python`-tagged block in repo prose is now gate-governed**
+— write it formatted, or tag it `sh`.
 
 `tests/test_law_consistency.py` rides the pytest step and locks the five law invariants a tool can
 decide. Three are the deferral queue's: `.agent/spec.md`'s `Tasks` pairs every `.agent/deferred.md`
@@ -36,21 +45,23 @@ The third is the same hole in the other direction: **law may name a queue row, a
 close while the pointer at it does not.** Every reference in the scanned files that names
 `.agent/deferred.md` and then italicises a row title must resolve to a live row, matched on
 whitespace-squashed text since prose wrapping splits one across a line. `_QUEUE_LINK` in the test
-owns the exact form, and prose must not restate it — this paragraph would match its own example. A rank retargets onto the wrong unit; a title survives its unit and reads as
-live law describing queued work that no longer exists, which is what `upstream-sync.md` did to
-*Maintenance + security pass* for a whole phase.
+owns the exact form, and prose must not restate it — this paragraph would match its own example. A
+rank retargets onto the wrong unit; a title survives its unit and reads as live law describing
+queued work that no longer exists.
 
-The fourth locks `upstream-sync.md`'s override table, which a refresh re-reads against the template.
-Three things hold: the table opens on its exact header and every row sits in that one contiguous
-block, so a row below the prose or in a second table fails instead of going unchecked; every key
-quotes a phrase of at least 12 characters; and every such anchor occurs verbatim in `CLAUDE.md` or in
-the global `CLAUDE.md`. Any pipe outside the block counts as that escape, because GFM builds a table
-out of `a|b` with no spaces too ⇒ a pipe wanted in that file's prose fails loudly rather than quietly
-reopening the hole. An unquoted prose key cannot be rechecked at all, and a reworded or deleted
-clause leaves its row overriding nothing while still reading as live law — both silent in prose.
-**It does not decide that an anchor is still its own row's clause**: membership is literal, so a
-phrase surviving elsewhere in the template reads as live. The 12-character floor is what keeps a key
-off a word like `review`, which occurs everywhere and identifies nothing; the rest is a reader's call.
+The fourth locks the ruling tags (`orientation.md`), which a refresh re-reads against the template
+before acting on its words. `_RULING_TAG` owns the form, and prose must not restate the tag's opener
+— a scanned paragraph would parse as a broken tag. Three things hold in every `.claude/rules/`
+file, on whitespace-squashed text since wrapping splits a quote across lines: each opener parses in
+full, so a near-miss (curly quotes, a missing arrow, an unknown verdict) fails by name instead of
+escaping; each bold verdict sits inside a parsed tag, so a ruling written without its key fails; and
+every quoted anchor runs at least 12 characters and occurs in `CLAUDE.md` or a `.claude/agents/`
+role — the repo's own template copies, so the lock runs in a fresh clone. An unquoted prose key
+cannot be rechecked at all, and a reworded or deleted clause leaves its tag overriding nothing while
+still reading as live law — both silent in prose. **It does not decide that an anchor is still its
+own tag's clause**: membership is literal, so a phrase surviving elsewhere in the template reads as
+live. The 12-character floor is what keeps a key off a word like `review`, which occurs everywhere
+and identifies nothing; the rest is a reader's call.
 
 The fifth locks what law quotes out of `.agent/spec.md`'s `Intent`: **a unit renames the thing
 quoted, rewrites its own prose with the new name, and leaves `Intent` behind** —
@@ -81,6 +92,14 @@ uv run python replay.py WAV [--engine E] [--json]  # replay a WAV through the li
 uvx pyright@1.1.414 --project . live_stt.py replay.py cer.py streaming.py   # typecheck
 ```
 
+Template ruling: "gates + CI from its first commit" + "security scanning + update automation in
+gate + CI" → **ADAPTED** (user rulings) — CI is RETIRED: the `.githooks/` pre-commit hook (D-007)
+runs the suite on every commit of a single-user repo, so CI adds ≈ zero catch, and the one novel
+hazard here, moved-dir venv shebangs, cannot occur in CI's fresh clone (L-019); `.agent/spec.md`
+rules CI mirroring the hook out of scope. Update automation = `.github/dependabot.yml`
+(`package-ecosystem: uv`, weekly, grouped), the only file under `.github/`, since an advisory feed
+between commits is the one thing a local hook cannot watch. Security scanning splits as below.
+
 **Security scanning is split by hermeticity.** Static analysis rides the existing `ruff-check` step
 (ruff's `S` / flake8-bandit ruleset). The `secrets` step runs `detect-secrets` over a tree walk
 `gate.py` owns — both offline, so the gate keeps its no-network contract. `pip-audit` needs an
@@ -96,14 +115,16 @@ GitHub credential trips. **Coverage limit: a bare hex credential is invisible, a
 `tests/*.json`.** A deliberate fake credential in a fixture carries `# pragma: allowlist secret`.
 
 `ruff` is not on `PATH` — the module form (`python -m ruff`) works from any environment that has it.
-`uvx` is self-contained; the `~/.local` pyright is dangling. Keep test files pyright-clean too (the
-LSP and a `--project . tests/` run flag them); the house idiom for a fake→typed-attr assignment is
-`# type: ignore[assignment]`, and unused-param hints (`time_info`, `_ja`) are tolerated.
+`uvx` is self-contained and version-pinned, so pyright needs no install of its own. Keep test files
+pyright-clean too (the LSP and a `--project . tests/` run flag them); the house idiom for a
+fake→typed-attr assignment is `# type: ignore[assignment]`, and unused-param hints (`time_info`,
+`_ja`) are tolerated.
 
-**Whisper, NPU or GPU work needs BOTH prelude halves, every time, in order:**
-`source /var/home/eturkes/.local/app/intel-accel/env.sh` **then** `source .envrc` from the repo root
-(unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`). `uv run live-stt` alone cleans
-its own session child (`_session_env`), so there only `env.sh` matters, container-side. Failure
+**Whisper, NPU or GPU work needs BOTH prelude halves, every time, in order:** source the
+accelerator's `env.sh` (its path = machine-specific, in `CLAUDE.local.md`) **then** `source .envrc`
+from the repo root (unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`).
+`uv run live-stt` alone cleans its own session child (`_session_env`), so there only `env.sh`
+matters, container-side. Failure
 modes + the accelerator's shape: `openvino-accel.md`.
 
 **Never run two whisper processes against one cache while either is compiling.** Two processes

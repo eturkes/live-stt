@@ -32,11 +32,13 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import takewhile
 
 PROD_FILES = ["live_stt.py", "replay.py", "cer.py", "streaming.py", "session_report.py"]
-# uvx is self-contained and version-pinned; the ~/.local pyright is dangling.
+# uvx is self-contained and version-pinned, so pyright needs no install of its own.
 PYRIGHT = ["uvx", "pyright@1.1.414", "--project", "."]
 # `ruff` is not on PATH; the module form works from any environment that has it.
 RUFF = [sys.executable, "-m", "ruff"]
@@ -89,6 +91,8 @@ SKIP_DECLARATION = "absent: "
 _SKIPPED = re.compile(r"^SKIPPED \[(\d+)\] .+?:\d+: (.*)$")
 # The closing tally, which survives everything that suppresses the detail above.
 _TALLY = re.compile(r"\b(\d+) (?:skipped|xfailed|xpassed)\b")
+# Every gate run blocks the critical path, so the suite names where its time goes.
+SLOWEST = 5
 
 
 def scan_files() -> list[str]:
@@ -136,6 +140,16 @@ def undeclared_demotions(out: str) -> str | None:
     return "undeclared demotion (assurance-posture.md):\n" + "\n".join(bad) if bad else None
 
 
+def slowest_tests(out: str) -> str | None:
+    """pytest's `--durations` block, which a green run would otherwise swallow."""
+    lines = out.splitlines()
+    head = next((i for i, s in enumerate(lines) if "slowest" in s and "durations" in s), None)
+    if head is None:
+        return None
+    block = list(takewhile(lambda s: s.strip() and not s.startswith(("=", "(")), lines[head + 1 :]))
+    return "\n".join(f"  {s}" for s in block) or None
+
+
 @dataclass(frozen=True)
 class Step:
     name: str
@@ -143,6 +157,8 @@ class Step:
     argv: list[str]
     # Reads the step's stdout for a defect its exit code passes over.
     check: Callable[[str], str | None] | None = None
+    # Reads the step's stdout for what a green run prints beside its wall-clock.
+    report: Callable[[str], str | None] | None = None
 
 
 def steps() -> list[Step]:
@@ -152,8 +168,18 @@ def steps() -> list[Step]:
         Step(
             "pytest",
             True,
-            [sys.executable, "-m", "pytest", "-q", "-rsxX", "-o", "addopts="],
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-rsxX",
+                "-o",
+                "addopts=",
+                f"--durations={SLOWEST}",
+            ],
             undeclared_demotions,
+            slowest_tests,
         ),
         Step("ruff-check", True, [*RUFF, "check", "."]),
         Step("ruff-format", True, [*RUFF, "format", "--check", "."]),
@@ -168,18 +194,22 @@ def steps() -> list[Step]:
 
 
 def run(step: Step, verbose: bool) -> bool:
+    start = time.perf_counter()
     done = subprocess.run(step.argv, capture_output=True, text=True, env=ENV, check=False)
+    elapsed = time.perf_counter() - start
     complaint = step.check(done.stdout) if step.check and done.returncode == 0 else None
     ok = done.returncode == 0 and complaint is None
     label = "pass" if ok else "FAIL"
     if not step.blocking:
         label += " (non-blocking)"
-    print(f"{label} {step.name}", flush=True)
+    print(f"{label} {step.name} {elapsed:.1f}s", flush=True)
     if complaint:
         print(complaint, flush=True)
     if verbose or not ok:
         sys.stdout.write(done.stdout)
         sys.stderr.write(done.stderr)
+    elif step.report and (report := step.report(done.stdout)):
+        print(report, flush=True)
     return ok
 
 
@@ -191,11 +221,13 @@ def main() -> int:
     args = ap.parse_args()
 
     selected = [s for s in steps() if args.only is None or s.name == args.only]
+    start = time.perf_counter()
     failed = [s.name for s in selected if not run(s, args.verbose) and s.blocking]
+    total = f"{time.perf_counter() - start:.1f}s"
     if failed:
-        print(f"gate FAILED: {', '.join(failed)}", flush=True)
+        print(f"gate FAILED: {', '.join(failed)} ({total})", flush=True)
         return 1
-    print(f"gate passed: {len(selected)} steps", flush=True)
+    print(f"gate passed: {len(selected)} steps ({total})", flush=True)
     return 0
 
 

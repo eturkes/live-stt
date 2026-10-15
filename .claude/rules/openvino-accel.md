@@ -17,13 +17,13 @@ Device-selection law (exact names, static shapes, `EXECUTION_DEVICES` readback) 
 ## The whisper prelude — both halves, every time, in this order
 
 ```sh
-source /var/home/eturkes/.local/app/intel-accel/env.sh   # NPU driver farm
-source .envrc                                             # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
+source <intel-accel>/env.sh  # NPU driver farm; <intel-accel> = the farm dir CLAUDE.local.md names
+source .envrc                # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
 ```
 
 - **Without `env.sh` the NPU aborts**: `Cannot load library ".../libopenvino_intel_npu_compiler_loader.so"`.
   The PyPI wheel does not carry the NPU compiler loader; the farm does.
-- **The `PYTHONPATH` half has two sources, either alone fatal**: the host `~/.profile` sources the
+- **The `PYTHONPATH` half has two sources, either alone fatal**: the host login profile sources the
   GenAI tarball's `setupvars.sh`, and `env.sh` itself prepends `openvino_genai_container/python`. Both
   trees ship `py_openvino_genai` for CPython 3.10-3.13 and none for this project's 3.14 ⇒
   `ModuleNotFoundError: No module named 'openvino_genai.py_openvino_genai'`.
@@ -58,9 +58,9 @@ source .envrc                                             # from the repo root: 
 
 - Core Ultra 7 268V: Arc 140V iGPU (`8086:64a0`, `xe`, `/dev/dri/renderD128`) + AI Boost NPU 4
   (`8086:643e`, `intel_vpu`, `/dev/accel/accel0`).
-- Two GenAI trees exist and only one loads in the container: `~/.local/app/openvino_genai` is the HOST
-  build and needs `GLIBC_2.43` against the container's 2.41; `~/.local/app/openvino_genai_container` is
-  what `env.sh` selects. Never confuse the unusable tarball with the deployment path.
+- Two GenAI trees exist and only one loads in the container (paths → `CLAUDE.local.md`): the HOST
+  build `openvino_genai` needs `GLIBC_2.43` against the container's 2.41; `openvino_genai_container`
+  is what `env.sh` selects. Never confuse the unusable tarball with the deployment path.
 - **The deployment path is the PyPI wheels.** `openvino` / `openvino-genai` publish cp314
   manylinux_2_28 wheels, so the project's own py3.14 `.venv` enumerates `['CPU','GPU','NPU']` and
   compiles + infers on each. Only `LD_LIBRARY_PATH` / `OCL_ICD_VENDORS` / `ZE_ENABLE_ALT_DRIVERS`
@@ -69,11 +69,12 @@ source .envrc                                             # from the repo root: 
   `libze_intel_npu.so.1`, `libze_intel_gpu.so.1` and `libOpenCL.so.1` system-wide with glibc 2.43, so
   **on the host OpenVINO is an ordinary `pyproject.toml` dependency installed by plain `uv sync`** —
   no farm, no `env.sh`, no second environment; `.envrc` keeps the host tarball off its library path.
-- `intel-accel/` is a reversible container-only symlink farm over the host Intel drivers, with a pinned
-  Ubuntu IGC that avoids the host IGC's newer-glibc requirement and a pinned NPU compiler pair. Its
-  `/run/host/...` targets dangle harmlessly on the host and stay outside project repos. After a host
-  Intel-driver update, rebuild with `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`,
-  then rerun the self-test AND the whisper golden on an empty cache (`## Model cache`).
+- `intel-accel/` is a reversible container-only symlink farm over the host Intel drivers, with a
+  pinned Ubuntu IGC that avoids the host IGC's newer-glibc requirement and a pinned NPU compiler
+  pair. Its targets on the container's host mount dangle harmlessly on the host and stay outside
+  project repos. After a host Intel-driver update, rebuild with the farm's `make_farm.py`
+  (`CLAUDE.local.md`), then rerun the self-test AND the whisper golden on an empty cache
+  (`## Model cache`).
 - **The NPU compiler pair must be the UMD release's own.** UMD 1.38 dlopens
   `libopenvino_intel_npu_compiler_loader.so` from its own dir, and that loader loads the compiler
   beside it. Driver 1.38 validates compiler rev `d8047fb` (its `intel-driver-compiler-npu` .deb);
@@ -125,8 +126,8 @@ session published its first caption 17 s after start, on the 10-01 container-com
 
 - **Exit 139 usually means SIGSEGV (128 + 11), a native crash: Python prints no traceback, and
   buffered output can die with it.** Confirm the signal and read the stack in the host coredump from
-  the container: `journalctl -D /run/host/var/log/journal -o cat --since …` (`ptrace_scope`=1 rules
-  out py-spy on host processes).
+  the container: `journalctl -D <host mount>/var/log/journal -o cat --since …`
+  (`ptrace_scope`=1 rules out py-spy on host processes).
 - The host ocl-icd loader crashes in `clGetPlatformIDs` (`readdir64`) on this host's layout — an ICD
   under `/usr/share/OpenCL/vendors`, no `/etc/OpenCL/vendors` — whenever a process starts the GPU
   plugin, and `Core().available_devices` starts every plugin. **`check_device` therefore asks the

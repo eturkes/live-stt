@@ -95,8 +95,8 @@ line-length = 100
 target-version = "py311"
 # ruff 0.16 formats python blocks inside Markdown, which pulled every repo .md
 # into the `ruff-format` step on a bare version bump (39 -> 62 files). CLAUDE.md
-# is refreshed byte-for-byte from upstream (`upstream-sync.md`), so a block it
-# carries must never redden a gate the repo is forbidden to fix.
+# is a template copy each refresh overwrites whole (`orientation.md`), so a block
+# it carries must never redden a gate the repo is forbidden to fix.
 extend-exclude = ["CLAUDE.md", "CLAUDE.local.md"]
 
 [tool.ruff.lint]

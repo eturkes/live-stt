@@ -1,5 +1,5 @@
 # Dependency update automation. This is the ONLY thing under .github/: CI stays
-# rejected (upstream-sync.md, L-019) because the .githooks/ pre-commit hook (D-007)
+# rejected (toolchain.md, L-019) because the .githooks/ pre-commit hook (D-007)
 # already runs the same gate on every commit. Dependabot is here because it does
 # the one thing a local hook structurally cannot -- watch an advisory feed between
 # commits -- which is also why `gate.py` stays hermetic and pip-audit runs in the

@@ -6,7 +6,7 @@ paths:
 
 # Human-facing documentation
 
-**L-021 — global `CLAUDE.md`'s human register (`Authoring`) applies to human-facing surfaces
+**L-021 — `CLAUDE.md`'s human register (`Authoring`, Human-facing) applies to human-facing surfaces
 ALONE.** Those surfaces are `README.md`, `models/README.md`, and the user-facing CLI strings in
 `live_stt.py`. Everything else —
 `.agent/*`, `.claude/rules/`, code comments — stays agent-dense, em-dashes

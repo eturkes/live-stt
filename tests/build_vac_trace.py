@@ -17,9 +17,10 @@ inside the coroutine draining `audio_q`, so what the capture headroom is
 actually spent against is the MAXIMUM contiguous decode, and that needs the
 per-update series.
 
-Needs the gitignored whisper weights and the accelerator env:
+Needs the gitignored whisper weights and the accelerator env (`<intel-accel>` =
+the NPU driver farm dir `CLAUDE.local.md` names):
 
-    source /var/home/eturkes/.local/app/intel-accel/env.sh && source .envrc
+    source <intel-accel>/env.sh && source .envrc
     uv run python tests/build_vac_trace.py
 """
 

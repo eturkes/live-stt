@@ -31,8 +31,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
   `-v`). Green = 8 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
   prelude).
-- `.agent/spec-lint` — this file's shape check, a byte copy of `~/.local/app/agents/claude/spec-lint`
-  that a refresh replaces whole; the gate's `spec-lint` step runs it.
+- `.agent/spec-lint` — this file's shape check, a template copy that a refresh replaces whole; the
+  gate's `spec-lint` step runs it.
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
@@ -90,8 +90,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-007** pre-commit via `.githooks/` + `core.hooksPath`, not the `pre-commit` framework.
 - **D-017** security scanning splits by hermeticity: ruff `S` (in `ruff-check`) + a `detect-secrets`
   `secrets` step run offline in the gate; `pip-audit` stays in the L-018 recipe. Update automation =
-  `.github/dependabot.yml` (`uv`, weekly, grouped), the only `.github/` file — CI stays REJECTED
-  (`upstream-sync.md`). Scan scoping + its coverage limit → `toolchain.md`.
+  `.github/dependabot.yml` (`uv`, weekly, grouped), the only `.github/` file — CI stays REJECTED.
+  The CI ruling, scan scoping + its coverage limit → `toolchain.md`.
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
 - **The published line grammar is `SRC n:` / `TGT n:`, in every mode** (user ruling) — `SRC` names
@@ -191,8 +191,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   names its language explicitly and each `StreamingProcessor` decodes under the token it was built
   with; the session fallback is `ASR_LANGUAGE` in every mode, so one-way `--source-lang en` decodes
   under `"<|en|>"` rather than a literal Japanese token.
-- Personal-tool posture: `.claude/rules/assurance-posture.md` binds over the
-  `CLAUDE.md` template, and `upstream-sync.md` names every override a refresh must not reinstate.
+- Personal-tool posture: `.claude/rules/` binds over the template copies (`CLAUDE.md`,
+  `.claude/agents/`): each override is a ruling tag in the rules file owning its subject, keyed on
+  the clause it overrides, which a refresh re-reads before acting on the template's words
+  (`orientation.md`); `assurance-posture.md` owns the assurance ones.
 - MAINTAIN has no phase close ⇒ each request session is its own (user ruling): the commit closing a
   funded row deletes it from `.agent/deferred.md` and from `Tasks` together, and a `- [x] <sha>` row
   lives only between the commits of one session. Every open `Tasks` row is one queue row, rank and
@@ -236,6 +238,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **6** Name the shipped recogniser in two evaluator docstrings
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Name the shipped recogniser in two
     evaluator docstrings*.
+- [ ] **7** Speed the pytest gate step
+  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the pytest gate step*.
+- [ ] **8** Speed the secrets gate step
+  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the secrets gate step*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

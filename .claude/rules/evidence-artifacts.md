@@ -236,10 +236,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   first.
 - **The goldens and traces ARE contract-owned expected output, not a table smuggled past a contract.**
   `replay_goldens.json` is D-014's characterization snapshot and the committed traces are recorded
-  measurements, so both answer "did the output change" for a contract that owns them. What the
-  global `Engineering` verification-integrity clause forbids is the opposite direction: an implementation that
-  returns a fixture's expected value, detects the gate, or is graded against a table written to match
-  whatever it already emits.
+  measurements, so both answer "did the output change" for a contract that owns them. What
+  `CLAUDE.md`'s verification-integrity clause (`Engineering`) forbids is the opposite direction: an
+  implementation that returns a fixture's expected value, detects the gate, or is graded against a
+  table written to match whatever it already emits.
 
 - **D-014 — deterministic WAV replay is the regression harness.** `replay.py` drives the real
   `live_stt.worker` through an optional observation-only `on_segment` hook, chosen over

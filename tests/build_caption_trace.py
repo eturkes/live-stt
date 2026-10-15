@@ -25,8 +25,9 @@ the first).
 
 On-demand, never a gate step: it needs the gitignored weights, the gitignored
 narration WAVs, and ~14 min of accelerator time for the whole story.
+`<intel-accel>` = the NPU driver farm dir `CLAUDE.local.md` names.
 
-    source /var/home/eturkes/.local/app/intel-accel/env.sh && source .envrc && \
+    source <intel-accel>/env.sh && source .envrc && \
         uv run python tests/build_caption_trace.py [--device NPU]
 
 Every WAV is content-checked against `long_form.json` before ANY of them is

@@ -7,11 +7,11 @@ every `rank N` reference onto a different unit without touching the referring li
 Rank and title are checked as ORDERED PAIRS, not as two independent sets — set membership passes a
 swap of two titles between their ranks, which is the drift most likely to survive a reading.
 
-`upstream-sync.md`'s override table is re-read against the template after every refresh, which is
-only executable if every row sits in that one table and keys on bytes a reader can match: a row that
-drifts out of the block goes unchecked, an unquoted prose key cannot be rechecked at all, and a
-reworded or deleted clause leaves a quoted key overriding nothing while still reading as live law.
-All three are silent in prose and decidable here.
+A repo ruling on a template clause is re-read against the template after every refresh, which is
+only executable if every ruling keys on bytes a reader can match: a ruling written without its key
+goes unchecked, an unquoted prose key cannot be rechecked at all, and a reworded or deleted clause
+leaves a quoted key overriding nothing while still reading as live law. All three are silent in
+prose and decidable here.
 
 `.agent/spec.md`'s `Intent` outranks the rest, so law that quotes it must quote what it carries: a
 unit that renames the thing quoted and leaves `Intent` behind turns the quote false while the
@@ -19,23 +19,21 @@ sentence around it still reads as the ask. Both texts sit in the tree, so the co
 here.
 
 Membership is LITERAL, so this decides that an anchor still occurs, never that it is still its own
-row's clause — a phrase surviving elsewhere in the template reads as live, and the length floor only
-keeps a key off a word that identifies nothing. The global half of the haystack needs
-`~/.claude/CLAUDE.md`, which every session on this machine holds.
+ruling's clause — a phrase surviving elsewhere in the template reads as live, and the length floor
+only keeps a key off a word that identifies nothing.
 """
 
 from __future__ import annotations
 
 import re
-from itertools import takewhile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE = ROOT / ".agent" / "deferred.md"
 SPEC = ROOT / ".agent" / "spec.md"
-SYNC = ROOT / ".claude" / "rules" / "upstream-sync.md"
-TEMPLATE = ROOT / "CLAUDE.md"
-GLOBAL_TEMPLATE = Path.home() / ".claude" / "CLAUDE.md"
+RULES = ROOT / ".claude" / "rules"
+# The template copies a refresh overwrites whole: rulings key on these alone ⇒ the lock is hermetic.
+TEMPLATE_FILES = [ROOT / "CLAUDE.md", *sorted((ROOT / ".claude" / "agents").glob("*.md"))]
 
 _QUEUE_ROW = re.compile(r"^(\d+)\. \*\*(.+?)\*\*", re.MULTILINE)
 # How law names a queue row: ``.agent/deferred.md` → *Title*`, which prose wrapping can split across
@@ -56,8 +54,15 @@ _TICKED_ROW = re.compile(r"- \[x\] [0-9a-f]{7,40} \S.*")
 # pairs.
 _NOTE_ROW = re.compile(r"[ \t]*- \[ \] (RESUME|ROUTE): \S.*")
 _RANK_REFERENCE = re.compile(r"\branks?\s+\d", re.IGNORECASE)
-_OVERRIDE_HEADER = "| template clause | repo ruling |"
-_OVERRIDE_SEPARATOR = "| --- | --- |"
+# A ruling = its tag, the quoted clauses it keys on, its verdict. The opener is found loosely and
+# parsed strictly, so a near-miss (curly quotes, a missing arrow, an unknown verdict) fails by name
+# instead of escaping the check; prose must not restate the opener, since it would parse as one.
+_RULING_OPENER = re.compile(r"template[\s-]*ruling", re.IGNORECASE)
+_RULING_TAG = re.compile(
+    r'Template ruling: ("[^"]+"(?: \+ "[^"]+")*) → \*\*(RETIRED|ADAPTED|INAPPLICABLE)\*\*'
+)
+# A verdict outside a tag is a ruling with no key.
+_VERDICT = re.compile(r"\*\*(?:RETIRED|ADAPTED|INAPPLICABLE)\b[^*]*\*\*")
 _ANCHOR = re.compile(r'"([^"]+)"')
 # How law cites the section that outranks it: a backticked `Intent`. A bare one listing the five
 # section names attributes no wording and is not a citation. Everything backticked AFTER the
@@ -119,40 +124,41 @@ def test_open_tasks_pair_every_queue_row_with_its_rank():
         )
 
 
-def test_every_override_row_keys_on_a_live_template_anchor():
-    lines = SYNC.read_text(encoding="utf-8").splitlines()
-    assert _OVERRIDE_HEADER in lines, f"override table must open on {_OVERRIDE_HEADER!r}"
-    head = lines.index(_OVERRIDE_HEADER)
-    assert lines[head + 1] == _OVERRIDE_SEPARATOR
-    rows = list(takewhile(lambda line: line.startswith("|"), lines[head + 2 :]))
-    assert rows, "override table parsed no rows"
-
-    # Scoped to the contiguous block: a row below the prose or in a second table escapes both this
-    # check and the re-read the file asks for. ANY pipe outside the block counts, since GFM builds a
-    # table out of `a|b` with no spaces too ⇒ matching row SHAPE alone leaves that form a hole. This
-    # file is prose plus one table, so a pipe wanted in prose later fails loudly instead.
-    block = range(head, head + 2 + len(rows))
-    strays = [line for i, line in enumerate(lines) if "|" in line and i not in block]
-    assert not strays, f"every override row belongs in the one table: {strays}"
-
-    haystack = TEMPLATE.read_text(encoding="utf-8")
-    if GLOBAL_TEMPLATE.exists():
-        haystack += GLOBAL_TEMPLATE.read_text(encoding="utf-8")
-    for row in rows:
-        key = row.split("|")[1].strip()
-        anchors = [a for a in _ANCHOR.findall(key) if len(a) >= _ANCHOR_MIN]
-        assert anchors, f"key needs a quoted anchor of {_ANCHOR_MIN}+ chars, not prose: {key!r}"
-        for anchor in anchors:
-            assert anchor in haystack, f"override row keys on a dead clause: {anchor!r}"
+def test_every_template_ruling_keys_on_a_live_template_anchor():
+    haystack = re.sub(r"\s+", " ", "\n".join(p.read_text(encoding="utf-8") for p in TEMPLATE_FILES))
+    parsed = 0
+    for path in sorted(RULES.glob("*.md")):
+        name = path.relative_to(ROOT)
+        # Squashed: prose wrapping splits a tag, and a quoted clause, across lines.
+        text = re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
+        rulings = list(_RULING_TAG.finditer(text))
+        starts = {m.start() for m in rulings}
+        broken = [
+            text[m.start() : m.start() + 80]
+            for m in _RULING_OPENER.finditer(text)
+            if m.start() not in starts
+        ]
+        assert not broken, f"{name}: a ruling tag must parse in full: {broken}"
+        verdicts = {m.start(2) - 2 for m in rulings}
+        strays = [v.group() for v in _VERDICT.finditer(text) if v.start() not in verdicts]
+        assert not strays, f"{name}: a verdict outside a ruling tag keys on nothing: {strays}"
+        for m in rulings:
+            for anchor in _ANCHOR.findall(m.group(1)):
+                assert len(anchor) >= _ANCHOR_MIN, (
+                    f"{name}: key needs a quoted anchor of {_ANCHOR_MIN}+ chars: {anchor!r}"
+                )
+                assert anchor in haystack, f"{name}: ruling keys on a dead clause: {anchor!r}"
+        parsed += len(rulings)
+    assert parsed, "no ruling tags parsed out of .claude/rules/"
 
 
 def test_every_queue_link_resolves_to_a_live_row():
     """A row dies at its close; a pointer at it does not, and still reads as live law.
 
     Naming by rank is already banned (below) because a rank retargets. A TITLE cannot retarget, so
-    it fails the other way: `upstream-sync.md` spent this phase naming *Maintenance + security pass*
-    after that row closed, describing queued work that no longer existed. Rank references and dead
-    titles are the same hole in two directions, and both are decidable.
+    it fails the other way: a pointer naming a closed row describes queued work that no longer
+    exists. Rank references and dead titles are the same hole in two directions, and both are
+    decidable.
     """
     rows = _QUEUE_ROW.findall(QUEUE.read_text(encoding="utf-8"))
     live = {_squash(title).rstrip(".") for _, title in rows}

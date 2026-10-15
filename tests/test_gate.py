@@ -11,6 +11,7 @@ suite and recurse.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -189,6 +190,23 @@ def test_blocking_step_failure_fails_the_gate(step, tmp_path):
     assert done.returncode != 0, done.stdout + done.stderr
     assert f"FAIL {step}" in done.stdout
     assert f"gate FAILED: {step}" in done.stdout
+
+
+def test_a_green_run_prints_each_wall_clock_and_the_slowest_tests(tmp_path):
+    """Every run blocks the critical path, so a green run still says where its time went."""
+    (tmp_path / "pyproject.toml").write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_seed.py").write_text(
+        "import time\n\n\ndef test_slow():\n    time.sleep(0.05)\n"
+    )
+    done = gate(tmp_path, "--only", "pytest")
+    assert done.returncode == 0, done.stdout + done.stderr
+    for line in (
+        r"pass pytest \d+\.\ds",
+        r"  \d+\.\d+s call +tests/test_seed\.py::test_slow",
+        r"gate passed: 1 steps \(\d+\.\ds\)",
+    ):
+        assert re.search(f"^{line}$", done.stdout, re.MULTILINE), done.stdout
 
 
 def _skipping_tree(tmp: Path, marker: str, addopts: str = "", subdir: str = "tests") -> None:

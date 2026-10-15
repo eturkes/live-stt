@@ -31,14 +31,11 @@ transcripts/
 models/*
 !models/README.md
 
-# Claude Code per-user overrides (committed counterparts: CLAUDE.md, .claude/rules/)
+# Claude Code per-user overrides (committed counterparts: CLAUDE.md, .claude/agents/, .claude/rules/)
 .claude/settings.local.json
 CLAUDE.local.md
 
-# Headroom live-wrap state (ephemeral marker, owners + settings lock; written per live session)
-.claude/.headroom_wrap_*
-
-# Session workspace: teammate roster/reports + per-teammate git worktrees (global CLAUDE.md "Subagents"); nothing durable
+# Session workspace: teammate roster/reports + per-teammate git worktrees (`CLAUDE.md`'s `Teammates`); nothing durable
 .scratch/
 
 # Environment / secrets
