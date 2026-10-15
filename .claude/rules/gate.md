@@ -22,7 +22,7 @@ would pass the seed. A path holding `": "` is locked too, since the location end
 number. One scope hole that seeding cannot see gets its own lock — the seeded tree holds a single
 root-level file, so an over-grown exclusion would still catch it while the real tree went unscanned
 ⇒ `test_secret_scan_reaches_the_real_tree` pins production, a nested file, a dotdir file and, of
-`models/`, the tracked README alone. **The scan reads git's list (tracked + untracked-unignored)
+`models/`, the tracked README alone (user ruling 10-16). **The scan reads git's list (tracked + untracked-unignored)
 only at a repository's top level** (`git rev-parse --show-prefix` empty) and walks minus
 `SCAN_SKIP_DIRS` anywhere else: below the top level git lists nothing ignored, so a seed tree under
 `.scratch/` would scan nothing and its seed would go vacuous. Three locks hold that split — a

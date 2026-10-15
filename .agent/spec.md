@@ -132,8 +132,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
   `retention_probe` p50 13.15 → 5.67 s, max 33.46 → 10.29 s (`eval_latency.py`, whisper-ja-760M;
   turbo's trace read 13.08 → 5.55, 33.20 → 11.98). The screen judges each segment a trim or the
-  final decode released, then the surviving line whole; the learner observes once per utterance;
-  mechanics → `asr-pipeline.md`.
+  final decode released, latin rule included (user ruling), then the surviving line whole; the
+  learner observes once per utterance; mechanics → `asr-pipeline.md`.
   A decode re-telling what a trim just moved out loses that head, the retained text (what the
   trimming decode heard past the cut) being the evidence; a trimming decode that spelled the phrase
   twice across its last segment boundary keeps the first copy only where a decode of the audio
