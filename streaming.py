@@ -167,6 +167,9 @@ class StreamingProcessor:
     heard: str = ""  # what the decode that published `shown`'s end heard after it
     cut_text: str = ""  # what the last trim moved out; the audio it kept may re-tell its end
     retained: str = ""  # what the trimming decode heard past that cut
+    # Characters per segment each trim moved out, oldest first; the caller drains it. A
+    # forced cut names no segment, so it releases its whole emitted text as one.
+    released: list[int] = field(default_factory=list)
     forced_trims: int = 0
     trims: int = 0
 
@@ -458,15 +461,18 @@ class StreamingProcessor:
         covered = 0
         cut_s = 0.0
         cut_chars = 0
-        for segment in segments:
+        cut_segments = 0
+        for i, segment in enumerate(segments, 1):
             covered += len(segment.text)
             if covered > len(self.emitted):
                 break
             if segment.end_s > 0:
                 cut_s = segment.end_s
                 cut_chars = covered
+                cut_segments = i
         if cut_s <= 0 or cut_s * SAMPLE_RATE >= len(self.audio):
             return
+        self.released += [len(segment.text) for segment in segments[:cut_segments] if segment.text]
         self.cut_text = self.emitted[:cut_chars]
         self.emitted = self.emitted[cut_chars:]
         kept = len(self.shown) - len(self.emitted)
@@ -487,6 +493,8 @@ class StreamingProcessor:
         keep = int(self.buffer_trim_s * SAMPLE_RATE)
         self.offset_s += (len(self.audio) - keep) / SAMPLE_RATE
         self.audio = self.audio[-keep:]
+        if self.emitted:
+            self.released.append(len(self.emitted))
         self.emitted = ""
         self.shown = ""
         self.heard = ""

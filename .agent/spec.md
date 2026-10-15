@@ -132,12 +132,14 @@ Detail → `.claude/rules/`, which each `D-###` names.
   the remainder at speech end; no length cap exists. Voice → `SRC` per character on
   `retention_probe` p50 13.15 → 5.67 s, max 33.46 → 10.29 s (`eval_latency.py`, whisper-ja-760M;
   turbo's trace read 13.08 → 5.55, 33.20 → 11.98). The screen judges
-  each piece, the learner observes once per utterance; mechanics → `asr-pipeline.md`.
+  each segment a trim released, then the surviving line whole; the learner observes once per
+  utterance; mechanics → `asr-pipeline.md`.
   A decode re-telling what a trim just moved out loses that head, the retained text (what the
   trimming decode heard past the cut) being the evidence; a trimming decode that spelled the phrase
   twice across its last segment boundary keeps the first copy only where a decode of the audio
   before that boundary hears it (`_echo`, user ruling: audio-verified).
-- A runaway caption (each published piece is one) is **DROPPED whole**, never collapsed or truncated; the screen sits at
+- A runaway caption (each published piece is one, and so is each segment a trim releases inside
+  it) is **DROPPED whole**, never collapsed or truncated; the screen sits at
   PUBLICATION, upstream of every consumer. `repetition_penalty`=1.2 ships despite retention CER
   0.0583 → 0.0609 (measured on turbo). `CAPTION_REPEAT_UNIT_CHARS`=13; `CAPTION_REPEAT_MAX_CHARS`=40 is CLOSED —
   adjudicated over 1409 live captions and REFUSED, the tripling invariant flooring it at 40 and
@@ -227,19 +229,20 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Screen each segment inside a released piece
-  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment inside a released piece*.
-- [ ] **3** Session report reads two-way transcripts
+- [ ] **2** Session report reads two-way transcripts
   - Data tier, unfunded; accept → `.agent/deferred.md` → *Session report reads two-way transcripts*.
-- [ ] **4** Re-measure the fresh-session baseline
+- [ ] **3** Re-measure the fresh-session baseline
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*.
-- [ ] **5** Name the shipped recogniser in two evaluator docstrings
+- [ ] **4** Name the shipped recogniser in two evaluator docstrings
   - Docs tier, unfunded; accept → `.agent/deferred.md` → *Name the shipped recogniser in two
     evaluator docstrings*.
-- [ ] **6** Speed the pytest gate step
+- [ ] **5** Speed the pytest gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the pytest gate step*.
-- [ ] **7** Speed the secrets gate step
+- [ ] **6** Speed the secrets gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the secrets gate step*.
+- [ ] **7** Screen each segment of the speech-end remainder
+  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment of the speech-end
+    remainder*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

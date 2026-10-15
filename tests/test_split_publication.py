@@ -553,6 +553,183 @@ def test_a_repetitive_piece_does_not_drop_the_clean_remainder(
     assert run.state.dropped_captions == 1
 
 
+LOOP = "繰り返し" * 12
+
+
+@pytest.mark.parametrize("released", [(LOOP, GOOD), (GOOD, LOOP)], ids=["loop-first", "loop-last"])
+def test_a_loop_segment_drops_alone_and_its_clean_neighbour_publishes(
+    monkeypatch: pytest.MonkeyPatch, released: tuple[str, str]
+) -> None:
+    """Queue: Screen each segment inside a released piece (tester-1's trace)."""
+    labels = (*released, "次の話です。", "終わります。", "また明日。")
+    run = _drive(monkeypatch, labels)
+
+    assert run.trimmed[0] == LOOP + GOOD or run.trimmed[0] == GOOD + LOOP, (
+        "one trim did not release the loop and its neighbour together"
+    )
+    assert _texts(run) == [GOOD, "次の話です。終わります。", "また明日。"]
+    assert run.state.dropped_captions == 1
+    assert run.observed == [("".join(_texts(run)), len(labels) + 1)]
+    assert [(seq, text) for seq, text, _ in run.submitted] == [
+        (line.seq, line.text) for line in run.lines
+    ]
+
+
+def test_the_clean_segments_of_one_trim_publish_as_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = (GOOD, LOOP, "次の話です。", "終わります。", "また明日。", "以上です。")
+    run = _drive(monkeypatch, labels, trim_s=1.5)
+
+    assert run.trimmed[0] == GOOD + LOOP + "次の話です。"
+    assert _texts(run) == [GOOD + "次の話です。", "終わります。また明日。以上です。"]
+    assert run.state.dropped_captions == 1
+
+
+def test_a_loop_split_across_segments_still_drops_its_piece(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each half passes alone; the published line must pass the screen whole."""
+    half = "繰り返し" * 6
+    assert live_stt.caption_defect(half) is None
+    labels = (half, half, GOOD, "次の話です。", "終わります。")
+    run = _drive(monkeypatch, labels, trim_s=1.5)
+
+    assert run.trimmed[0] == half + half + GOOD
+    assert _texts(run) == ["次の話です。終わります。"]
+    assert run.state.dropped_captions == 1
+
+
+def test_punctuation_left_by_a_dropped_segment_does_not_publish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = (LOOP, "。", "次の話です。", "終わります。", "また明日。")
+    run = _drive(monkeypatch, labels)
+
+    assert run.trimmed[0] == LOOP + "。"
+    assert _texts(run) == ["次の話です。終わります。", "また明日。"]
+
+
+def test_a_never_accepted_utterance_screens_each_trimmed_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = (LOOP, GOOD, "次の話です。", "終わります。", "また明日。")
+    run = _drive(monkeypatch, labels, outcomes=[None] * len(labels))
+
+    assert run.trimmed[0] == LOOP + GOOD
+    assert [(line.text, line.held) for line in run.lines] == [("".join(labels[1:]), True)]
+    assert run.state.dropped_captions == 1
+
+
+def test_segment_ends_do_not_outlive_their_utterance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale end inside the next utterance's loop splits it under the screen's reach."""
+    first = ("次の話です。", "終わります。", "また明日。", "以上です。")
+    second = (LOOP, GOOD, "次の話です。", "終わります。", "また明日。")
+    run = _drive(monkeypatch, (*first, "", *second), script=[True] * 4 + [False] + [True] * 5)
+
+    assert run.trimmed[:2] == ["次の話です。終わります。", LOOP + GOOD]
+    assert _texts(run)[2:] == [GOOD, "次の話です。終わります。", "また明日。"]
+
+
+def test_segment_ends_do_not_outlive_a_token_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
+    loop = "again " * 10
+    assert live_stt.caption_defect(loop, "en")
+    english = (loop, "We moved the meeting to Friday. ", "Thanks. ", "Bye. ", "See you. ", "Done. ")
+    labels = ("次の話です。", "終わります。", "また明日。", "以上です。", "はい。", "いいえ。")
+    run = _drive(monkeypatch, labels, outcomes=[None, "en"], reverse=english)
+
+    assert run.trimmed[0] == "次の話です。終わります。", "no segment ended before the rebuild"
+    assert _texts(run) == ["We moved the meeting to Friday. Thanks. Bye. ", "See you. Done. "]
+    assert run.state.dropped_captions == 1
+
+
+class _RespelledRetained(_Recognizer):
+    """Re-spells retained text once a trim moved the first two blocks out (reviewer-1)."""
+
+    def __init__(self, labels: Sequence[str], respell) -> None:
+        super().__init__(labels)
+        self.respell = respell
+
+    def decode_segments(
+        self, samples: np.ndarray, language: str | None = None
+    ) -> tuple[str, list[Segment]]:
+        text, spans = super().decode_segments(samples, language)
+        if samples.min() < 3:
+            return text, spans
+        return self.respell(samples, text, spans)
+
+
+def test_a_later_trim_never_splits_a_segment_an_earlier_one_released(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drift that grows `emitted` past the raw stream placed the next end inside the loop."""
+
+    def respell(samples: np.ndarray, text: str, spans: list[Segment]):
+        if samples.max() <= 5:
+            return text, []  # two decodes without spans, a supported decoder outcome
+        if len(spans) >= 2:
+            spans[1].text = "、、、" + spans[1].text
+            text = "".join(span.text for span in spans)
+        return text, spans
+
+    labels = (GOOD, LOOP, "え", "続きの話。", "最後です。", "ありがとうございます。")
+    rec = _RespelledRetained(labels, respell)
+    run = _drive(monkeypatch, labels, outcomes=[None] * len(labels), recognizer=rec)
+
+    assert run.trimmed[0] == GOOD + LOOP
+    assert _texts(run) == [GOOD + "".join(labels[2:])]
+    assert run.state.dropped_captions == 1
+
+
+def test_each_trim_places_its_segment_ends_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A re-placed old span moves with later drift; one inside the loop leaked its tail."""
+
+    def respell(samples: np.ndarray, text: str, spans: list[Segment]):
+        if samples.max() >= 5 and spans:
+            spans[0].text = "、" + spans[0].text
+            text = "、" + text
+        return text, spans
+
+    labels = (LOOP, GOOD, "続きの話。", "別の話。", "最後です。", "ありがとうございます。")
+    rec = _RespelledRetained(labels, respell)
+    run = _drive(monkeypatch, labels, outcomes=[None] * len(labels), recognizer=rec)
+
+    assert run.trimmed[0] == LOOP + GOOD
+    assert _texts(run) == ["".join(labels[1:])]
+    assert run.state.dropped_captions == 1
+
+
+def test_a_never_accepted_utterance_screens_a_later_trims_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """While marked nothing publishes, so `published` stays 0 and cannot place a later end."""
+    labels = (GOOD, "次の話です。", LOOP, "終わります。", "また明日。", "以上です。", "どうも。")
+    run = _drive(monkeypatch, labels, outcomes=[None] * len(labels))
+
+    assert run.trimmed[:2] == [GOOD + "次の話です。", LOOP + "終わります。"]
+    assert [(line.text, line.held) for line in run.lines] == [
+        ("".join(label for label in labels if label != LOOP), True)
+    ]
+
+
+def test_a_retained_deletion_adds_no_segment_end(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-placing an old trim's spans after the boundary moved splits a sliver off a piece."""
+
+    def respell(samples: np.ndarray, text: str, spans: list[Segment]):
+        if samples.max() >= 5 and spans and len(spans[0].text) > 2:
+            spans[0].text = spans[0].text[0] + spans[0].text[2:]
+            text = "".join(span.text for span in spans)
+        return text, spans
+
+    labels = (LOOP, GOOD, "Aさんが来ました。", "別の話。", "最後です。", "ありがとうございます。")
+    rec = _RespelledRetained(labels, respell)
+    run = _drive(monkeypatch, labels, recognizer=rec)
+
+    assert run.trimmed[0] == LOOP + GOOD
+    assert _texts(run) == [GOOD, "Aさんが来ました。別の話。", "最後です。ありがとうございます。"]
+    assert run.state.dropped_captions == 1
+
+
 def test_an_anchored_deletion_does_not_publish_before_a_trim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

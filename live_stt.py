@@ -13,6 +13,7 @@ the utterance ends; its `TGT n:` line follows when that translation turn complet
 
 import argparse
 import asyncio
+import itertools
 import json
 import logging
 import os
@@ -2072,6 +2073,7 @@ async def _vac_segments(
     utterance = ""  # raw committed text of the open utterance, append-only
     published = 0  # characters of `utterance` already out as SRC lines
     cut_mark = 0  # processor trims (normal + forced) already turned into lines
+    ends: list[int] = []  # offsets in `utterance` where a trim-released segment ends
     shown: list[str] = []  # this utterance's pieces that passed the screen
     utterance_start = 0
     utterance_decode_s = 0.0
@@ -2094,15 +2096,29 @@ async def _vac_segments(
 
         return decode
 
-    def publish(text: str) -> None:
-        """One piece: the screen, one number, one transcript line, one turn."""
+    def publish(start: int, stop: int) -> None:
+        """One piece: the screen per released segment, one number, one line, one turn."""
         nonlocal seq
-        defect = caption_defect(text, token)
+        # One trim can release several whisper segments, and a loop in one of them
+        # took its clean neighbours down with it when the piece was screened whole.
+        # Dropped text never reaches anything downstream, so the reader's terminal,
+        # the transcript, the numbering, the term learner and the translator are all
+        # untouched by construction (P-018). A piece already published stays
+        # published: settled text is never recalled.
+        bounds = [start, *(end for end in ends if start < end < stop), stop]
+        kept = []
+        for a, b in itertools.pairwise(bounds):
+            if defect := caption_defect(utterance[a:b], token):
+                drop_caption(state, utterance[a:b], defect)
+            else:
+                kept.append(utterance[a:b])
+        text = "".join(kept)
+        if len(kept) < len(bounds) - 1 and not _WORD_CHAR.search(text):
+            return  # the survivors of a drop are punctuation alone
+        # The line must pass the screen whole: a loop split across segments passes each
+        # one, and session_report.py + submit's backstop re-screen the published line.
+        defect = caption_defect(text, token) if len(kept) > 1 else None
         if defect:
-            # Dropped before anything downstream sees it, so the reader's terminal,
-            # the transcript, the numbering, the term learner and the translator
-            # are all untouched by construction (P-018). A piece already published
-            # stays published: settled text is never recalled.
             drop_caption(state, text, defect)
             return
         seq += 1
@@ -2143,6 +2159,7 @@ async def _vac_segments(
                     utterance = ""
                     published = 0
                     cut_mark = 0
+                    ends.clear()
                     state.partial = ""
                     state.provisional = ""
         marked = detector is not None and label is None
@@ -2153,11 +2170,23 @@ async def _vac_segments(
         started = time.perf_counter()
         commit, commit_audio_s = await loop.run_in_executor(None, processor.process)
         decode_s = time.perf_counter() - started
+        utterance += commit
+        if processor.released:
+            # Placed back from the settled boundary, the count settled_boundary cuts at,
+            # so re-spelling drift lands at the front of the piece -- past the last end
+            # already placed, or a drift that grew `emitted` splits a segment an earlier
+            # trim released and leaks part of its loop (reviewer-1).
+            floor = ends[-1] if ends else 0
+            start = len(utterance) - len(processor.emitted) - sum(processor.released)
+            ends.extend(
+                end for n in itertools.accumulate(processor.released) if (end := start + n) > floor
+            )
+            processor.released.clear()
         if final:
-            commit += processor.finish()
+            flushed = processor.finish()
+            commit += flushed
+            utterance += flushed
         utterance_decode_s += decode_s
-        if commit:
-            utterance += commit
         # Before LID acceptance the script itself is unsettled, so nothing leaves the
         # buffer as a line; acceptance releases everything settled so far at once. Only
         # a trim moves the boundary: spans whose join outruns the stripped text (' 会議',
@@ -2167,7 +2196,7 @@ async def _vac_segments(
             cut_mark = cuts
             boundary = settled_boundary(utterance, published, processor.emitted)
             if boundary > published:
-                publish(utterance[published:boundary])
+                publish(published, boundary)
                 published = boundary
         # This decode already produced the text LocalAgreement-2 is still
         # withholding, so showing it costs no compute and no accuracy: measured
@@ -2193,7 +2222,7 @@ async def _vac_segments(
         # A punctuation-only remainder would print as a line of its own; an utterance
         # that published nothing yet keeps the one-line rule whatever it holds.
         if rest and (not published or _WORD_CHAR.search(rest)):
-            publish(rest)
+            publish(published, len(utterance))
         # Once per utterance over the text that reached the screen: support and lease
         # count utterances, and a runaway the screen dropped must not promote a decode
         # artifact into the term list (P-018).
@@ -2208,6 +2237,7 @@ async def _vac_segments(
         pending = 0
         published = 0
         cut_mark = 0
+        ends.clear()
         shown.clear()
         label = None
         token = held

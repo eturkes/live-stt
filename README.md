@@ -139,7 +139,7 @@ Speech of other people is in the file too. Get their consent before you save aud
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture collects in an 8 s queue meanwhile. Two rules keep that queue from overflowing. First, when a decode takes longer than the 1 s update interval, the next update waits until the queue holds 0.5 s or less (`VAC_BACKLOG_S`). That update then decodes all the audio that arrived, so a slow machine updates the caption less often instead of falling behind. Second, the 8 s queue outlasts the longest single wait: an update followed at once by the final decode, or a runaway decode. On a laptop running on battery in low-power mode, these waits took up to 1.4 s per update and 3.5 s for one runaway. With the old 2 s queue and no catch-up rule, that session lost about 10 s of speech. Measured on the NPU in normal conditions, the longest single wait was 1.107 s over 182 s of pause-free speech. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 
    To record the evidence of a drop, run every session as `live-stt 2> stt.log`. Keep the log. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing, so the redirect does not hide it. Then run `uv run python session_report.py --log stt.log`. It shows each drop with the captions around it, and any caption the screen refused in that gap.
-5. **Screen.** A caption the recognizer invented is dropped whole, before anything else sees it. See the next section.
+5. **Screen.** A caption the recognizer invented is dropped before anything else sees it. See the next section.
 6. **Emit.** `SRC n:` prints immediately; the text is queued for translation.
 
 ### Captions the recognizer invented
@@ -151,7 +151,7 @@ The first shape is a loop: one short unit, repeated until the model reaches its 
 Two defences apply, in order:
 
 - **Decode.** Every decode carries `ASR_REPETITION_PENALTY`. This is the only repetition control that the NPU honors. It accepts `no_repeat_ngram_size` and then ignores it silently. On an English clip the penalty cuts a 528-character loop to zero, and it costs 3 substitutions in 1166 characters of the retention corpus.
-- **Publication.** A caption that still shows a defect is dropped whole. The tool does not print it, save it, number it, or translate it. It keeps its line numbers dense, so `SRC 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
+- **Publication.** A caption that still shows a defect is dropped whole. When one trim releases several recognizer segments at once, live-stt checks each segment alone. It drops a defective segment and publishes the clean segments around it as one line, and that line must also pass the check as a whole. The tool does not print a dropped caption, save it, number it, or translate it. It keeps its line numbers dense, so `SRC 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
 
 A caption is dropped when either rule matches:
 

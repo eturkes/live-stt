@@ -156,6 +156,34 @@ def test_trim_is_lossless_across_repeated_cuts():
     assert p.forced_trims == 0
 
 
+def test_a_trim_releases_the_length_of_each_segment_it_moved_out():
+    """The worker screens a released piece per segment, so the counts come from the decode."""
+    p = corpus_processor(buffer_trim_s=8.0)
+    p.insert_audio(audio(9.0))
+    p.process()
+    assert p.released == [4, 4]
+
+
+def test_released_lengths_account_for_every_trimmed_character():
+    p = corpus_processor(buffer_trim_s=8.0)
+    committed = ""
+    for _ in range(len(TRANSCRIPT)):
+        p.insert_audio(audio(1.0))
+        committed += p.process()[0]
+    assert p.trims > 1
+    assert sum(p.released) == len(committed) - len(p.emitted)
+
+
+def test_a_forced_trim_releases_its_emitted_text_as_one_piece():
+    p = StreamingProcessor(decode=scripted(("あいう", [])), buffer_trim_s=8.0)
+    p.insert_audio(audio(1.0))
+    p.process()
+    p.insert_audio(audio(28.0))
+    assert p.process()[0] == "あいう"
+    assert p.forced_trims == 1
+    assert p.released == [3]
+
+
 def test_force_trim_past_hard_limit_counts_and_shrinks():
     p = StreamingProcessor(decode=scripted(("あ", segs((0.0, 1.0, "あ")))), buffer_trim_s=8.0)
     p.insert_audio(audio(29.0))
