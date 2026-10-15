@@ -229,13 +229,14 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Speed the pytest gate step
-  - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the pytest gate step*.
-- [ ] **3** Speed the secrets gate step
+- [ ] **2** Speed the secrets gate step
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Speed the secrets gate step*.
-- [ ] **4** Screen each segment of the speech-end remainder
+- [ ] **3** Screen each segment of the speech-end remainder
   - Kernel tier, unfunded; accept → `.agent/deferred.md` → *Screen each segment of the speech-end
     remainder*.
+- [ ] **4** Run the pre-commit hook's suite in parallel
+  - Data tier, unfunded; accept → `.agent/deferred.md` → *Run the pre-commit hook's suite in
+    parallel*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

@@ -93,6 +93,10 @@ _SKIPPED = re.compile(r"^SKIPPED \[(\d+)\] .+?:\d+: (.*)$")
 _TALLY = re.compile(r"\b(\d+) (?:skipped|xfailed|xpassed)\b")
 # Every gate run blocks the critical path, so the suite names where its time goes.
 SLOWEST = 5
+# pytest-xdist workers. Serial, the suite took ~39 s on this 8-core host; 3/4/6 workers read
+# 23-30 / 23-27 / 22-23 s interleaved under load 8, and 8 workers stretched the LID census lock
+# (4 ONNX threads of its own, the suite's floor) from 5 s to 15 s.
+PYTEST_WORKERS = 6
 
 
 def scan_files() -> list[str]:
@@ -177,6 +181,8 @@ def steps() -> list[Step]:
                 "-o",
                 "addopts=",
                 f"--durations={SLOWEST}",
+                "-n",
+                str(PYTEST_WORKERS),
             ],
             undeclared_demotions,
             slowest_tests,

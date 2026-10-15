@@ -14,16 +14,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **Speed the pytest gate step** — the gate's slowest step: 48.7 s of ≈ 96 s sequential on this
-   host (`gate.py --only` per step), the suite running serially; the gate's slowest-tests report
-   leads with `test_lid_census.py::test_bounded_views_match_regeneration` at 10.4 s, then replay
-   goldens + backpressure arms at 1.4-2.0 s each. Kernel tier: a speedup that drops a check leaves
-   no downstream re-check.
-   **Accept:** the step's wall-clock on this host before → after in the commit body (`gate.py`
-   prints both), the same tests passing, and every `test_gate.py` seed still reddening its step
-   (`gate FAILED: <step>`); the full gate stays green.
-
-3. **Speed the secrets gate step** — 36.5 s, the gate's second-slowest step: `scan_files()` walks
+2. **Speed the secrets gate step** — 36.5 s, the gate's second-slowest step: `scan_files()` walks
    the filesystem, so gitignored live-session logs at the repo root (`screen-*.log`, 16.5 MB of the
    18.5 MB scanned) dominate, though no commit can carry them. Kernel tier.
    **Accept:** the step's wall-clock before → after in the commit body; the scan still reads every
@@ -31,7 +22,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    (`gate FAILED: secrets`) and `test_secret_scan_reaches_the_real_tree` still pins a production, a
    nested and a dotdir file; the full gate stays green.
 
-4. **Screen each segment of the speech-end remainder** — a trim-released piece is screened per
+3. **Screen each segment of the speech-end remainder** — a trim-released piece is screened per
    segment, but the remainder `finalize()` publishes at speech end — every utterance shorter than
    the trim threshold, plus each long one's last piece — is still screened whole, so a loop in the
    final decode's last segment (where a runaway ends, at the token cap) takes the clean segments
@@ -41,3 +32,10 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    line whole; a decode whose segments do not partition its text screens whole; a lock with an
    untrimmed utterance `[clean, loop]` publishes the clean segment, red on the unfixed worker; the
    gate stays green.
+
+4. **Run the pre-commit hook's suite in parallel** — the gate's pytest step runs 6 pytest-xdist
+   workers (≈23 s), while the D-007 hook still runs `uv run pytest -q` serially (≈39 s), on the
+   critical path of every commit. Data tier: the gate re-checks every commit.
+   **Accept:** the hook stays one line and runs the suite on the gate's worker count; its
+   wall-clock before → after in the commit body; a seeded failing test still blocks a commit
+   (hook exit ≠ 0); the same tests pass; the gate stays green.

@@ -24,7 +24,10 @@ root-level file, so an over-grown `SCAN_SKIP_DIRS` or `tests/` exclusion would s
 the real tree went unscanned ⇒ `test_secret_scan_reaches_the_real_tree` pins the walk to production,
 a nested file and a dotdir file.
 
-The pytest step runs `-rsxX` and `gate.py`'s `undeclared_demotions` reads the summary. **The step
+The pytest step runs on `PYTEST_WORKERS`=6 pytest-xdist workers (serial ≈39 s → ≈24 s on this host;
+per-test outcomes compared as junit maps, identical: 1229 pass + 1 skip) — seed trees included, so
+every seed fires through the parallel runner. It runs `-rsxX` and `gate.py`'s
+`undeclared_demotions` reads the summary. **The step
 owns its effective options, because `--no-summary` and `--runxfail` each empty that input in
 silence:** `-o addopts=` drops project-configured ones, `PYTEST_ADDOPTS` is stripped from the step
 env, and the closing tally is cross-checked against what the summary named, so whatever else
