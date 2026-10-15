@@ -21,6 +21,7 @@ import pytest
 
 from gate import (
     PROD_FILES,
+    PYTEST_WORKERS,
     SKIP_DECLARATION,
     Step,
     run,
@@ -55,6 +56,12 @@ def gate(tmp: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def test_inventory_is_the_contract():
     assert [(s.name, s.blocking) for s in steps()] == INVENTORY
+
+
+def test_the_pre_commit_hook_runs_the_gates_worker_count():
+    """The hook stays one line (D-007) and runs the suite as the gate's pytest step does."""
+    lines = (ROOT / ".githooks" / "pre-commit").read_text().splitlines()
+    assert lines[-1] == f"exec uv run pytest -q -n {PYTEST_WORKERS}"
 
 
 def test_production_pyright_file_list():

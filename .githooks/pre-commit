@@ -2,4 +2,4 @@
 # Run pure-function tests before each commit; abort on failure.
 # Bypass with `git commit --no-verify` only in an emergency; see .claude/rules/packaging-deps.md D-007.
 set -e
-exec uv run pytest -q
+exec uv run pytest -q -n 6
