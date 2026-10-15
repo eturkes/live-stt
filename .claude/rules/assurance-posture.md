@@ -131,10 +131,13 @@ analogs = the last three closed M-series units: **106K / 121K / 130K** of work (
 / 205K less a ≈75K baseline that carried 182 KB attached) against bottom-up estimates of 92K / 100K
 / 40K ⇒ ratios 1.15 / 1.21 / 3.25, the outlier being the SMALLEST unit by estimate, where the small
 denominator makes the ratio noise and the absolute 130K is the signal. Size a new unit bottom-up
-against those work figures, never against a literal written here. **A fresh MAIN session opened at
-47K** over 89 KB attached — the user-level instruction file 27.0 KB, `CLAUDE.md` 14.4 KB,
-`CLAUDE.local.md` 5.1 KB, `.agent/spec.md` 14.2 KB, the three bare rules files 28.7 KB — a literal
-the template refresh outdated (`.agent/deferred.md` → *Re-measure the fresh-session baseline*).
+against those work figures, never against a literal written here. **A fresh MAIN session opens at
+≈51K** (51,124 = 51,118 cache-create + 2 input + 4 output) over 109.1 KB attached — the user-level
+instruction file 23.6 KB, `CLAUDE.md` 29.2 KB, `CLAUDE.local.md` 5.0 KB, `.agent/spec.md` 20.4 KB,
+the three bare rules files 30.8 KB. Re-measure whenever that set moves: on a clean tree at the repo
+root, `claude -p "Reply with the single word OK." --output-format stream-json --verbose` → sum the
+assistant `usage` fields, plus `wc -c` over the set; a print-mode session, so an interactive one's
+extra harness text is unmeasured.
 MAIN's trigger sits far past any unit here, so the budget that binds is a teammate's: a brief's
 bottom-up work plus that teammate's own opening baseline (unmeasured here) must land under that
 teammate's context hand-off point.
