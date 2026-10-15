@@ -184,6 +184,34 @@ def test_a_forced_trim_releases_its_emitted_text_as_one_piece():
     assert p.released == [3]
 
 
+def test_finish_releases_the_final_decodes_segments():
+    p = StreamingProcessor(
+        decode=scripted(("あいうえお", segs((0.0, 0.5, "あい"), (0.5, 1.0, "うえお"))))
+    )
+    for _ in range(2):
+        p.insert_audio(audio(1.0))
+        p.process()
+    p.finish()
+    assert p.released == [2, 3]
+
+
+def test_finish_after_a_trim_releases_the_segments_the_trim_kept():
+    p = corpus_processor(buffer_trim_s=8.0)
+    p.insert_audio(audio(9.0))
+    p.process()
+    p.finish()
+    assert p.released == [4, 4, 1]
+
+
+def test_finish_releases_text_its_segments_do_not_partition_as_one():
+    p = StreamingProcessor(decode=scripted(("あいうえお", segs((0.0, 1.0, "あいうえ")))))
+    for _ in range(2):
+        p.insert_audio(audio(1.0))
+        p.process()
+    p.finish()
+    assert p.released == [5]
+
+
 def test_force_trim_past_hard_limit_counts_and_shrinks():
     p = StreamingProcessor(decode=scripted(("あ", segs((0.0, 1.0, "あ")))), buffer_trim_s=8.0)
     p.insert_audio(audio(29.0))

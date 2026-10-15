@@ -586,30 +586,35 @@ paths:
   concatenate to it). Two-way publishes nothing while the label is unaccepted, releases everything
   settled at acceptance, discards it on a token rebuild, and publishes a never-accepted utterance
   whole under `<!>`.
-- **A piece is screened per segment a trim released, then as one line.** Screened whole, one trim
-  releasing a loop segment and a clean one dropped both (tester-1: `繰り返し`×12 + a sentence). `_trim`
-  appends each moved-out segment's character count to `StreamingProcessor.released` (a forced cut:
-  its whole emitted text as one); the worker drains it into `ends`, placed BACK from the settled
-  boundary — the count `settled_boundary` cuts at, so re-spelling drift lands at the piece's front —
-  past the last end already placed (a drift growing `emitted` put the next end inside an earlier
-  trim's loop and leaked `返し`, reviewer-1), and clears `ends` wherever `utterance` resets (finalize,
-  token rebuild). Segment counts come from the trimming decode, never from hypothesis text. Each
-  segment gets `caption_defect`; a defective one drops alone (one `caption dropped` line + one
-  `skip=` each), the survivors join, and a join of two or more is screened again — a loop split
-  across segments passes each one, while `session_report.py` and `submit`'s backstop re-screen the
-  published line ⇒ every published line passes the screen whole. Survivors of a drop holding no word
-  character do not publish. Nothing dropped ⇒ the line is byte-identical to the whole-piece rule.
-  Census over the 10-08 session's logged decodes (`.scratch/s1008/probe-u2.jsonl`): 123 of its 124
-  trims (one cut matches no segment end and is skipped), 92 releasing 2+ segments, 0 verdicts
-  changed; no logged session mixes English in, so the latin rule's per-segment reach is unmeasured
-  (a short latin-only segment such as `OK。` drops at any count). **Residuals:** a loop and clean
-  text inside ONE segment still drop together (live 09-15: `そして、この3つの効果Dの3Dの3D…`, 435 of 446
-  characters), and the speech-end remainder is screened whole (`.agent/deferred.md` → *Screen each
-  segment of the speech-end remainder*). Locks: `tests/test_split_publication.py` (the loop either
-  side of a clean segment, three segments → one line, the split-loop and punctuation controls, the
-  never-accepted path incl. a later trim, `ends` across utterances + rebuilds, reviewer-1's drift
-  witnesses + a retained deletion) and `tests/test_streaming.py` (`released` per trim, its sum, the
-  forced cut).
+- **A piece is screened per released segment, then as one line.** Screened whole, one trim releasing
+  a loop segment and a clean one dropped both (tester-1: `繰り返し`×12 + a sentence), and so did the
+  speech-end remainder of a final decode ending in a loop at the token cap. `_trim` appends each
+  moved-out segment's character count to `StreamingProcessor.released` (a forced cut: its whole
+  emitted text as one); `finish()` appends the final decode's `spans` — the segments `previous`
+  still holds, or its whole text as one where the decode's segments do not partition it. The worker
+  drains them into `ends` (`place`), placed BACK from where the release ends — after a trim the
+  settled boundary, the count `settled_boundary` cuts at, so re-spelling drift lands at the piece's
+  front; after `finish()` the utterance's end — past the last end already placed (a drift growing
+  `emitted` put the next end inside an earlier trim's loop and leaked `返し`, reviewer-1), and clears
+  `ends` wherever `utterance` resets (finalize, token rebuild). Segment counts come from the
+  releasing decode, never from hypothesis text. Each segment gets `caption_defect`; a defective one
+  drops alone (one `caption dropped` line + one `skip=` each), the survivors join, and a join of two
+  or more is screened again — a loop split across segments passes each one, while
+  `session_report.py` and `submit`'s backstop re-screen the published line ⇒ every published line
+  passes the screen whole. Survivors of a drop holding no word character do not publish. Nothing
+  dropped ⇒ the line is byte-identical to the whole-piece rule. Census over the 10-08 session's
+  logged decodes (`.scratch/s1008/probe-u2.jsonl`, a prior processor revision): 123 of its 124 trims
+  (one cut matches no segment end and is skipped), 92 releasing 2+ segments, and 290 speech-end
+  pieces, 107 of 2+ segments — 0 verdicts changed; no logged session mixes English in, so the latin
+  rule's per-segment reach is unmeasured (a short latin-only segment such as `OK。` drops at any
+  count). **Residual:** a loop and clean text inside ONE segment still drop together (live 09-15:
+  `そして、この3つの効果Dの3Dの3D…`, 435 of 446 characters). Locks: `tests/test_split_publication.py` (the loop
+  either side of a clean segment, three segments → one line, the split-loop and punctuation
+  controls, the never-accepted path incl. a later trim, `ends` across utterances + rebuilds,
+  reviewer-1's drift witnesses + a retained deletion; the speech-end remainder untrimmed, as a long
+  utterance's last piece and never accepted, plus the non-partitioning control) and
+  `tests/test_streaming.py` (`released` per trim, its sum, the forced cut, `finish()`'s spans before
+  and after a trim and as one).
 
 ## Sherpa fallback path (D-010)
 

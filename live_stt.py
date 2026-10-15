@@ -2134,6 +2134,19 @@ async def _vac_segments(
             # from its already-conditioned text would discard the audio evidence.
             translator.submit(seq, text, token)
 
+    def place(released: list[int], stop: int) -> None:
+        """Record where each released segment ends: back from `stop`, past the last end placed.
+
+        `stop` ends the release in `utterance` -- after a trim the settled boundary, the
+        count settled_boundary cuts at, so re-spelling drift lands at the front of the
+        piece. An end at or before one already placed would split a segment an earlier
+        trim released: a drift that grew `emitted` leaked part of its loop (reviewer-1).
+        """
+        floor = ends[-1] if ends else 0
+        start = stop - sum(released)
+        ends.extend(end for n in itertools.accumulate(released) if (end := start + n) > floor)
+        released.clear()
+
     async def update(final: bool) -> None:
         nonlocal processor, utterance, utterance_decode_s, held, label, token, marked
         nonlocal published, cut_mark
@@ -2171,21 +2184,12 @@ async def _vac_segments(
         commit, commit_audio_s = await loop.run_in_executor(None, processor.process)
         decode_s = time.perf_counter() - started
         utterance += commit
-        if processor.released:
-            # Placed back from the settled boundary, the count settled_boundary cuts at,
-            # so re-spelling drift lands at the front of the piece -- past the last end
-            # already placed, or a drift that grew `emitted` splits a segment an earlier
-            # trim released and leaks part of its loop (reviewer-1).
-            floor = ends[-1] if ends else 0
-            start = len(utterance) - len(processor.emitted) - sum(processor.released)
-            ends.extend(
-                end for n in itertools.accumulate(processor.released) if (end := start + n) > floor
-            )
-            processor.released.clear()
+        place(processor.released, len(utterance) - len(processor.emitted))
         if final:
             flushed = processor.finish()
             commit += flushed
             utterance += flushed
+            place(processor.released, len(utterance))  # the speech-end piece
         utterance_decode_s += decode_s
         # Before LID acceptance the script itself is unsettled, so nothing leaves the
         # buffer as a line; acceptance releases everything settled so far at once. Only

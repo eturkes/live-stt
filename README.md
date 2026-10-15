@@ -151,7 +151,7 @@ The first shape is a loop: one short unit, repeated until the model reaches its 
 Two defences apply, in order:
 
 - **Decode.** Every decode carries `ASR_REPETITION_PENALTY`. This is the only repetition control that the NPU honors. It accepts `no_repeat_ngram_size` and then ignores it silently. On an English clip the penalty cuts a 528-character loop to zero, and it costs 3 substitutions in 1166 characters of the retention corpus.
-- **Publication.** A caption that still shows a defect is dropped whole. When one trim releases several recognizer segments at once, live-stt checks each segment alone. It drops a defective segment and publishes the clean segments around it as one line, and that line must also pass the check as a whole. The tool does not print a dropped caption, save it, number it, or translate it. It keeps its line numbers dense, so `SRC 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
+- **Publication.** A caption that still shows a defect is dropped whole. When a trim or the end of an utterance releases several recognizer segments at once, live-stt checks each segment alone. It drops a defective segment and publishes the clean segments around it as one line, and that line must also pass the check as a whole. The tool does not print a dropped caption, save it, number it, or translate it. It keeps its line numbers dense, so `SRC 7` is always the seventh caption you spoke. One warning names the reason, and the meter counts the caption as `skip=`.
 
 A caption is dropped when either rule matches:
 

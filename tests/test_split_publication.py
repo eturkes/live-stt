@@ -730,6 +730,56 @@ def test_a_retained_deletion_adds_no_segment_end(monkeypatch: pytest.MonkeyPatch
     assert run.state.dropped_captions == 1
 
 
+@pytest.mark.parametrize("decoded", [(GOOD, LOOP), (LOOP, GOOD)], ids=["loop-last", "loop-first"])
+def test_the_speech_end_remainder_screens_each_segment(
+    monkeypatch: pytest.MonkeyPatch, decoded: tuple[str, str]
+) -> None:
+    """Queue: Screen each segment of the speech-end remainder (an untrimmed utterance)."""
+    run = _drive(monkeypatch, decoded, trim_s=60.0)
+
+    assert not run.trimmed
+    assert _texts(run) == [GOOD]
+    assert run.state.dropped_captions == 1
+    assert run.observed == [(GOOD, len(decoded) + 1)]
+
+
+def test_a_long_utterances_last_piece_screens_each_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = ("次の話です。", "終わります。", "また明日。", "以上です。", GOOD, LOOP)
+    run = _drive(monkeypatch, labels, trim_s=2.0)
+
+    assert run.trimmed == ["".join(labels[:4])]
+    assert _texts(run) == ["".join(labels[:4]), GOOD]
+    assert run.state.dropped_captions == 1
+
+
+def test_a_never_accepted_short_utterance_screens_each_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _drive(monkeypatch, (GOOD, LOOP), trim_s=60.0, outcomes=[None, None])
+
+    assert [(line.text, line.held) for line in run.lines] == [(GOOD, True)]
+
+
+def test_a_final_decode_its_segments_do_not_partition_screens_whole(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Counts that miss part of the text name no boundary inside it."""
+
+    class Unspanned(_Recognizer):
+        def decode_segments(
+            self, samples: np.ndarray, language: str | None = None
+        ) -> tuple[str, list[Segment]]:
+            text, spans = super().decode_segments(samples, language)
+            return (text + "。" if text else text), spans
+
+    run = _drive(monkeypatch, (GOOD, LOOP), trim_s=60.0, recognizer=Unspanned((GOOD, LOOP)))
+
+    assert _texts(run) == []
+    assert run.state.dropped_captions == 1
+
+
 def test_an_anchored_deletion_does_not_publish_before_a_trim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

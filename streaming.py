@@ -170,6 +170,9 @@ class StreamingProcessor:
     # Characters per segment each trim moved out, oldest first; the caller drains it. A
     # forced cut names no segment, so it releases its whole emitted text as one.
     released: list[int] = field(default_factory=list)
+    # Characters per segment of `previous`, or [] where the decode's segments do not
+    # partition its text; finish() releases them.
+    spans: list[int] = field(default_factory=list)
     forced_trims: int = 0
     trims: int = 0
 
@@ -206,6 +209,8 @@ class StreamingProcessor:
         if found:
             anchor = self._past_retelling(text, anchor)
         self.previous = text
+        lengths = [len(segment.text) for segment in segments if segment.text]
+        self.spans = lengths if sum(lengths) == len(text) else []
         stable = max(agreed, anchor)
         final_s = 0
         if buffered_s > self.buffer_trim_s and len(segments) >= 2:
@@ -473,6 +478,8 @@ class StreamingProcessor:
         if cut_s <= 0 or cut_s * SAMPLE_RATE >= len(self.audio):
             return
         self.released += [len(segment.text) for segment in segments[:cut_segments] if segment.text]
+        if self.spans:
+            self.spans = [len(segment.text) for segment in segments[cut_segments:] if segment.text]
         self.cut_text = self.emitted[:cut_chars]
         self.emitted = self.emitted[cut_chars:]
         kept = len(self.shown) - len(self.emitted)
@@ -512,4 +519,8 @@ class StreamingProcessor:
             end = self._past_retelling(self.previous, end)
         tail = self.previous[end:]
         self.emitted = self.previous
+        # The whole buffer leaves as the speech-end piece; segments that do not partition it
+        # leave as one.
+        if self.previous:
+            self.released += self.spans or [len(self.previous)]
         return tail

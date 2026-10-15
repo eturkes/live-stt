@@ -14,18 +14,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **Screen each segment of the speech-end remainder** — a trim-released piece is screened per
-   segment, but the remainder `finalize()` publishes at speech end — every utterance shorter than
-   the trim threshold, plus each long one's last piece — is still screened whole, so a loop in the
-   final decode's last segment (where a runaway ends, at the token cap) takes the clean segments
-   before it. `finish()` holds no segments today. Kernel.
-   **Accept:** the remainder splits at the final decode's segment counts (the decode `finish()`
-   releases; never hypothesis text) and screens like a trim piece — per segment, then the surviving
-   line whole; a decode whose segments do not partition its text screens whole; a lock with an
-   untrimmed utterance `[clean, loop]` publishes the clean segment, red on the unfixed worker; the
-   gate stays green.
-
-3. **Run the pre-commit hook's suite in parallel** — the gate's pytest step runs 6 pytest-xdist
+2. **Run the pre-commit hook's suite in parallel** — the gate's pytest step runs 6 pytest-xdist
    workers (≈23 s), while the D-007 hook still runs `uv run pytest -q` serially (≈39 s), on the
    critical path of every commit. Data tier: the gate re-checks every commit.
    **Accept:** the hook stays one line and runs the suite on the gate's worker count; its
