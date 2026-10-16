@@ -26,7 +26,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
   `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` · `--asr-device` ·
-  `--save-audio`.
+  `--save-audio` · `--save-log`.
 - `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
 - `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
   `-v`). Green = 8 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
@@ -36,8 +36,9 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
-- `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + a redirected
-  stderr log (`live-stt 2> stt.log`, which keeps the status line); no hardware, weights or network,
+- `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + the stderr
+  log (`--save-log` → `transcripts/<start>.log`, or `2> stt.log`; both keep the status line, and a
+  bare run reads `transcripts/*.log` + `stt.log`); no hardware, weights or network,
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
   [--source-lang L | --two-way]`.
@@ -171,6 +172,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
   regenerate), 0 false routes at 2 s. A quiet empty room is unmeasured (`live-smoke.md` item 9).
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out. `--save-audio` (opt-in)
   adds the capture WAV `transcripts/<start>.wav` (~115 MB/h), the real-audio input `replay.py` reads.
+  `--save-log` (opt-in) = the user's `2> transcripts/<start>.log` built in: fd 2 moves to
+  `transcripts/<start>.log` at the session stamp, the `.txt`/`.wav` stem; log-only, never a tee;
+  preflight errors stay on the terminal, and the redirect holds until exit (`asr-pipeline.md`). A bare
+  `session_report.py` run reads `transcripts/*.log` (user ruling).
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock
   (L-010). This contains kernel audio hangs; it does not patch the SoundWire driver. Capture and the
   SRC/TGT drain remain in the session, validated by regression tests and the user-run live check.

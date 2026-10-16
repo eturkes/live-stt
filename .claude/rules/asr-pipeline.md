@@ -657,10 +657,11 @@ paths:
   positive control the lock pairs with. The screen shares the collapsed string, so the transcript
   and the terminal cannot diverge.
 - **L-006 — TTY-gate the cursor-clear (`\r\x1b[2K`) protocol per stream, evaluated once.** Both halves
-  are module-level constants: `_STDOUT_TTY` gates the meter status line and `emit_line`, so redirected
-  stdout stays ANSI-clean and the meter DRAWS nothing off-TTY, and `_STDERR_TTY` gates the
-  `logging.Formatter` prefix, the rare ~10-line subclass that beats inlining. Any new stdout status
-  writer gates the same way. Gating the writer is not gating the information — the meter's counters
+  are module-level globals read at import, `_STDERR_TTY` re-bound once by `--save-log` (below):
+  `_STDOUT_TTY` gates the meter status line and `emit_line`, so redirected stdout stays ANSI-clean
+  and the meter DRAWS nothing off-TTY, and `_STDERR_TTY` gates the `logging.Formatter` prefix, the
+  rare ~10-line subclass that beats inlining. Any new stdout status writer gates the same way.
+  Gating the writer is not gating the information — the meter's counters
   exist only on that status line, so wherever it is not the reader's they move to stderr as
   high-water marks (`backlog peak: …`, logged only when a peak moves, sampled every
   `METER_INTERVAL`=0.1 s while a status line is drawn and `METER_LOG_INTERVAL`=1 s otherwise).
@@ -668,9 +669,19 @@ paths:
   A log record does not corrupt the status line: the formatter's `_LINE_CLEAR` erases it in place and
   the meter redraws below. It DUPLICATES it, and a moving peak would push ten lines a second through
   the caption scrollback the status line exists to protect. Off a shared terminal neither cost
-  applies ⇒ **`2> stt.log` keeps the live captions AND the drop timeline**, where the old
-  stdout-only gate made those exclusive and charged every capture run its whole status line.
-  `live-smoke.md` item 2 reads the one-redirect form.
+  applies ⇒ **`--save-log` (or `2> stt.log`) keeps the live captions AND the drop timeline**, where
+  the old stdout-only gate made those exclusive and charged every capture run its whole status line.
+  `live-smoke.md` item 2 reads the `--save-log` form.
+- **`--save-log` = `2>` from inside the process (`redirect_stderr`).** At the session stamp,
+  `run_session` `dup2`s `transcripts/<stamp>.log` onto fd 2 (the `.txt`/`.wav` stem, whatever `-o`
+  or `--no-save` say) and clears `_STDERR_TTY`, THEN logs the `session:` marker — the clear is what
+  opens the pair gate on a shared terminal, so the marker and the `backlog peak:` lines land in the
+  file. fd 2, never a logging handler: native writes (sherpa's overflow line, PortAudio) and an
+  uncaught traceback bypass `logging`, and the shell redirect kept them. Started at the stamp ⇒
+  preflight errors (models, device, the session lock) stay on the terminal; never restored ⇒ a crash
+  after the stamp lands in the log whole, like every other session message. Log-only, never a tee
+  (user's `2>` workflow). Locks: `tests/test_audio.py` `test_save_log_*` (fake mic through
+  `run_session`) + `test_the_redirect_takes_*` (subprocess: handler, native write, traceback).
 - **L-010 — keep device-backend imports at device entry points.** PortAudio probes host audio controls
   during `sounddevice` import, so an eager app-module import can hang model-only evaluators on an
   unhealthy device; `run_session` + `--list-devices` own those imports and offline replay/test stays
@@ -875,8 +886,9 @@ trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248
 - `drop=` counts backend-sized callback BLOCKS, never samples or speech ⇒ quote blocks, converting
   only with a measured block size. `session_report.py`'s `attribute_drops` places every `backlog
   peak:` drop increase against its bracketing captions, publication gap and screened captions, and
-  the peak log's pair gate (L-006 above) lets `2> stt.log` record that timeline with the status line
-  kept; the run's own `session: <path>` marker places an increase that precedes the first caption.
+  the peak log's pair gate (L-006 above) lets `--save-log` (or `2> stt.log`) record that timeline
+  with the status line kept; the run's own `session: <path>` marker places an increase that
+  precedes the first caption.
   The blocking spans themselves are read off the status line's `q=` sawtooth in a `script -T`
   typescript: `q` rising at 1 s/s is the drain stalled on a decode.
 

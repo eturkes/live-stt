@@ -80,6 +80,30 @@ def test_no_transcripts_exits_clean(tmp_path, monkeypatch, capsys):
     assert "no transcripts found" in capsys.readouterr().err
 
 
+def test_a_bare_run_reads_saved_logs_and_the_redirect_log(tmp_path, monkeypatch, capsys):
+    """`--save-log` writes `transcripts/<stamp>.log`; `2> stt.log` stays the other default."""
+    monkeypatch.chdir(tmp_path)
+    saved = tmp_path / "transcripts"
+    saved.mkdir()
+    for name, ts, peak, log in (
+        ("2026-09-04T10-00-00", "10", "q=0.25s", saved / "2026-09-04T10-00-00.log"),
+        ("2026-09-04T11-00-00", "11", "q=0.50s", tmp_path / "stt.log"),
+    ):
+        path = write(saved, name, [event(f"{ts}:00:20", "SRC", 1, CLEAN)])
+        log.write_text(
+            f"{log_event(f'{ts}:00:00', f'session: {path}')}\n"
+            f"{log_event(f'{ts}:00:05', f'backlog peak: {peak}')}\n",
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(sys, "argv", ["session_report.py", "--json"])
+    assert sr.main() == 0
+    sessions = json.loads(capsys.readouterr().out)["sessions"]
+    assert [s["backlog_peak"] for s in sessions] == [
+        "backlog peak: q=0.25s",
+        "backlog peak: q=0.50s",
+    ]
+
+
 def test_declined_captions_name_their_own_defect(tmp_path):
     path = write(
         tmp_path,

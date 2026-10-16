@@ -6,13 +6,17 @@ import argparse
 import asyncio
 import errno
 import io
+import logging
+import os
 import subprocess
 import sys
 import types
 import wave
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
+import pytest
 
 import live_stt
 from live_stt import (
@@ -31,6 +35,7 @@ from live_stt import (
     audio_path,
     emit_line,
     linear_resample,
+    log_path,
     resample,
     session_stamp,
     submit_audio_sentinel,
@@ -510,6 +515,106 @@ def test_a_session_without_the_flag_writes_no_audio(monkeypatch, tmp_path):
     blocks = [np.full(160, 0.25, dtype=np.float32)]
     _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=False)
     assert list(tmp_path.glob("*.wav")) == []
+
+
+# --- opt-in session log (--save-log) ---
+
+
+def test_log_path_is_off_unless_asked_for():
+    assert log_path(_save_args(), session_stamp()) is None
+
+
+def test_the_log_stays_in_the_session_directory_whatever_the_transcript_flags(tmp_path):
+    stamp = session_stamp()
+    for flags in ({}, {"output": str(tmp_path / "x.txt")}, {"no_save": True}):
+        assert log_path(_save_args(save_log=True, **flags), stamp) == (
+            TRANSCRIPT_DIR / f"{stamp}.log"
+        )
+
+
+@pytest.fixture
+def stderr_redirectable(monkeypatch):
+    """A shared terminal whose fd 2 a session may move: --save-log never moves it back,
+    so the fixture returns it to the worker and monkeypatch restores the re-bound gate."""
+    monkeypatch.setattr(live_stt, "_STDOUT_TTY", True)
+    monkeypatch.setattr(live_stt, "_STDERR_TTY", True)
+    terminal = os.dup(2)
+    yield
+    os.dup2(terminal, 2)
+    os.close(terminal)
+
+
+class _Fd2Handler(logging.Handler):
+    """Writes wherever fd 2 points at emit time, as the CLI's stderr handler does."""
+
+    def emit(self, record):
+        os.write(2, f"{record.getMessage()}\n".encode())
+
+
+@pytest.mark.usefixtures("stderr_redirectable")
+def test_save_log_moves_the_session_stderr_beside_its_audio(monkeypatch, tmp_path, capsys):
+    logger = logging.Logger("save-log", level=logging.INFO)
+    logger.addHandler(_Fd2Handler())
+    monkeypatch.setattr(live_stt, "logger", logger)
+    blocks = [np.full(160, 0.25, dtype=np.float32)]
+    _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=True, save_log=True)
+    os.write(2, b"after the session\n")
+    (wav,) = tmp_path.glob("*.wav")
+    (log,) = tmp_path.glob("*.log")
+    assert log.stem == wav.stem
+    assert f"Log: {log}" in capsys.readouterr().out.splitlines()
+    assert live_stt._STDERR_TTY is False
+    lines = log.read_text().splitlines()
+    # On a shared terminal the marker logs only once the redirect has cleared the gate.
+    assert lines[0] == "session: not saved (--no-save)"
+    assert lines[-1] == "after the session"
+
+
+@pytest.mark.usefixtures("stderr_redirectable")
+def test_a_session_without_the_flag_keeps_stderr_on_the_terminal(monkeypatch, tmp_path, capsys):
+    blocks = [np.full(160, 0.25, dtype=np.float32)]
+    _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_log=False)
+    assert list(tmp_path.glob("*.log")) == []
+    assert "Log:" not in capsys.readouterr().out
+    assert live_stt._STDERR_TTY is True
+
+
+REDIRECT_RUNNER = """
+import os, sys
+from pathlib import Path
+import live_stt
+live_stt._configure_logging()
+live_stt._STDOUT_TTY = live_stt._STDERR_TTY = True  # one shared terminal
+live_stt.logger.warning("before")
+live_stt.redirect_stderr(Path(sys.argv[1]))
+live_stt.log_session_marker("session.txt")
+live_stt.logger.warning("after")
+os.write(2, b"native\\n")
+raise RuntimeError("crashed after the redirect")
+"""
+
+
+def test_the_redirect_takes_logging_native_writes_and_a_crash_off_the_terminal(tmp_path):
+    """fd 2 itself moves, as `2>` did: a handler bound to the terminal follows it."""
+    log = tmp_path / "nested" / "session.log"
+    proc = subprocess.run(
+        [sys.executable, "-c", REDIRECT_RUNNER, str(log)],
+        cwd=Path(live_stt.__file__).parent,
+        capture_output=True,
+        timeout=60,
+    )
+    assert proc.returncode == 1
+    # Bytes: text mode would read _LINE_CLEAR's carriage return as a line break.
+    assert proc.stderr.startswith(live_stt._LINE_CLEAR.encode()) and proc.stderr.count(b"\n") == 1
+    assert proc.stderr.endswith(b"WARNING before\n")
+    lines = log.read_text().splitlines()
+    # The pair gate opened: the marker a shared terminal never logs is the first line.
+    assert lines[0].endswith("INFO session: session.txt")
+    assert lines[1].endswith("WARNING after") and lines[1].startswith("[")
+    assert lines[2] == "native"
+    assert lines[3] == "Traceback (most recent call last):"
+    assert lines[-1] == "RuntimeError: crashed after the redirect"
+    assert "\x1b" not in log.read_text()
 
 
 def test_transcript_file_defers_creation_to_first_line(tmp_path):

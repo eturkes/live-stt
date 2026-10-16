@@ -159,8 +159,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   measures the harness, never `_trim`: the `live` arm's one forced trim on `retention_probe` vanishes
   with the real NPU recogniser in the same virtual-clock run.
 - `session_report.py` + `test_session_report.py` — what a LIVE session did, re-derived from the two
-  files that session already wrote (`transcripts/*.txt` + redirected stderr). No hardware, no
-  weights, no network, and it imports the shipped `repeat_span`/`caption_defect` rather than
+  files that session already wrote (`transcripts/*.txt` + its stderr log, `--save-log`'s
+  `transcripts/<start>.log` or a `2>` file; a bare run reads `transcripts/*.log` + `stt.log`, user
+  ruling). No hardware, no weights, no network, and it imports the shipped
+  `repeat_span`/`caption_defect` rather than
   restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
   names: captions with no TGT and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
   degrade + restore markers with timestamps, `backlog peak:` high-water lines and **drop
@@ -169,10 +171,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
   line inside that gap with its defect, which is the only record a screened caption leaves — caption
   length + repetition distributions, TGT-behind-SRC lag, and slow turns tagged with whether they sit on
   a `TRANSLATE_ROTATE_TURNS` boundary. `drop=` counts callback BLOCKS, so every drop figure here is
-  blocks. Feeding it a drop timeline costs one redirect: the peak log gates on the stream PAIR, so
-  `2> stt.log` keeps the status line too (L-006, `asr-pipeline.md`). **A transcript records captions, not the flags that produced
-  them**, so the session's language rides `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE`
-  before anything is derived: re-running the shipped screen is the point, and an `en` session read
+  blocks. Feeding it a drop timeline costs one flag: the peak log gates on the stream PAIR, so
+  `--save-log` (or `2> stt.log`) keeps the status line too (L-006, `asr-pipeline.md`). **A
+  transcript records captions, not the flags that produced them**, so the session's language rides
+  `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE` before anything is derived: re-running
+  the shipped screen is the point, and an `en` session read
   under the default reported a latin screen the live run never applied. **`--two-way` (exclusive
   with `--source-lang`) re-screens with the loop rule alone** (`screen()`): no line records its
   decode language, an English line was decoded under `<|en|>` where the latin rule never runs, and a

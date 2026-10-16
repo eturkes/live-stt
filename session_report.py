@@ -2,7 +2,8 @@
 """Re-derive what a live session did, from the files that session already wrote.
 
 A live run leaves two artifacts: `transcripts/<start>.txt` (numbered source/target lines
-plus `--` markers) and whatever stderr was redirected to. Everything else --
+plus `--` markers) and its stderr log (`--save-log` → `transcripts/<start>.log`, or
+whatever `2>` named). Everything else --
 the meter, the scrollback, the counters -- dies with the terminal. So the
 questions a soak actually has to answer (`live-smoke.md`) were answerable only by
 hand-reading, which is how a 47-turn source-only tail sat in one session for weeks
@@ -679,7 +680,12 @@ def render(rep: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Re-derive a live session from its saved files.")
     ap.add_argument("transcripts", nargs="*", help="Transcript files (default: transcripts/*.txt).")
-    ap.add_argument("--log", action="append", default=[], help="Redirected stderr log; repeatable.")
+    ap.add_argument(
+        "--log",
+        action="append",
+        default=[],
+        help="Stderr log; repeatable (default: transcripts/*.log + stt.log).",
+    )
     ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
     lang = ap.add_mutually_exclusive_group()
     lang.add_argument(
@@ -711,7 +717,8 @@ def main() -> int:
         return 0
 
     sessions = sorted((read_session(p) for p in paths), key=lambda s: s.name)
-    logs = args.log or [p for p in ["stt.log"] if glob.glob(p)]
+    # `--save-log` writes beside the transcripts; stt.log is the `2>` recipe's name.
+    logs = args.log or sorted(glob.glob("transcripts/*.log")) + glob.glob("stt.log")
     events: list[LogEvent] = []
     for p in logs:
         events += read_log(p)

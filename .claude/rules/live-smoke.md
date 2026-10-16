@@ -33,22 +33,26 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 
 1. **Devices** — `uv run live-stt --list-devices` prints the `sd.query_devices()` table and exits. Pass:
    your mic shows with input channels.
-2. **Capture + backlog** — `uv run live-stt 2> stt.log`, speak, and KEEP the log. Pass: `SRC n:` lines
-   print; `q=` / `seg=` are absent or brief and clear after each utterance; any `drop=N` fails. The
+2. **Capture + backlog** — `uv run live-stt --save-log`, speak, and KEEP the log
+   (`transcripts/<start>.log`). Pass: `SRC n:` lines print; `q=` / `seg=` are absent or brief and
+   clear after each utterance; any `drop=N` fails. The
    drops the 09-24 session logged have a measured mechanism and a fix (catch-up rule + 8 s headroom,
    `asr-pipeline.md` `## Real-time cost`) that has NOT met a mic: on a slow machine state (battery,
    `low-power`) `q=` may now climb past 2 s during a long utterance or a runaway caption and must
-   clear once it ends, partial captions updating less often meanwhile. **One redirect captures the whole timeline
+   clear once it ends, partial captions updating less often meanwhile. **The log captures the whole
+   timeline
    without hiding the status line** — the peak log gates on the stream PAIR (L-006,
    `asr-pipeline.md`), so the status line stays on screen while `backlog peak:` and
    `caption dropped (…)` lines land in the file. What it is NOT is free: the peak re-logs whenever
    the rendered string moves, so a moving peak can format+write+flush up to 1/`METER_INTERVAL` = 10
-   lines/s synchronously in the meter thread, unmeasured under a real drop storm. Then
-   `uv run python session_report.py --log stt.log` attributes every drop increase to the captions
-   bracketing it and to any screened caption inside that gap. Capture from the start: a drop that
-   reproduces only once is lost if the first run kept no log. Several runs can share one log file.
-   Each run stamps `session: <transcript path>` when it starts, so the report separates them and a
-   startup drop stays with the run that made it, `-o PATH` included.
+   lines/s synchronously in the meter thread, unmeasured under a real drop storm. Then a bare
+   `uv run python session_report.py` (it reads `transcripts/*.log` + `stt.log`) attributes every drop
+   increase to the captions bracketing it and to any screened caption inside that gap. Capture from
+   the start: a drop that reproduces only once is lost if the first run kept no log. `2> stt.log`
+   records the same lines (`--save-log` = that redirect from the session stamp on, named like the
+   transcript), and several runs can share that one file. Each run stamps
+   `session: <transcript path>` when it starts, so the report separates them and a startup drop
+   stays with the run that made it, `-o PATH` included.
 3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; capture
    works as in (2).
 4. **Latency + endpointing (VAC cadence, NOT the old 0.6 s VAD-segment rule)** — one sentence, then stop.
@@ -82,7 +86,7 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    `Transcript: not saved (--no-save)` and writes no file; start-then-immediate-Ctrl+C with no speech
    leaves no file (lazy creation).
 9. **Quiet speech + an empty room (`LeveledVad`, never met a mic)** — `uv run live-stt --save-audio
-   2> stt.log` through a meeting whose speakers sit far from the mic, then ≥5 min of the empty room.
+   --save-log` through a meeting whose speakers sit far from the mic, then ≥5 min of the empty room.
    Pass: the far speech publishes `SRC` lines from the first seconds on; the empty room publishes
    nothing — no `ご視聴ありがとうございました`-family caption, no `caption dropped` burst. The leveled
    copy boosts room tone up to 16× once speech stops, while the two saved sessions hold only 48 s and
@@ -103,15 +107,15 @@ carry it are the ones the detector had under 2 s of audio to judge.
   default engine one blocking span exhausted what the queue had left (≤ `VAC_BACKLOG_S` of backlog
   plus the span reaching 8 s) or the catch-up rule stopped holding updates back
   (`asr-pipeline.md` `## Real-time cost`), on sherpa the decode stage backing up past `seg=` — so keep
-  `stt.log` and the `script -T` typescript whose `q=` sawtooth times each span;
+  the session log and the `script -T` typescript whose `q=` sawtooth times each span;
   `tdrop=N` means translation fell behind. **`tskip=N` is a CONTENT decision, never backpressure** —
   reading it as backlog corrupts the soak result. Wherever the status line is not the reader's, the same
   counters ride stderr as `backlog peak:` HIGH-WATER marks, logged only when a peak moves (a clean run
-  logs nothing), which is what makes `2> stt.log` a usable soak record while the status line keeps
+  logs nothing), which is what makes `--save-log` a usable soak record while the status line keeps
   drawing. A peak never clears ⇒ read the LAST such line as the session's worst backlog and its
   timestamp as when that worst arrived.
 - **Stale skips (never met a mic, L-004)** — after any degrade, read the transcript for
-  `-- translation skipped (stale): <n>` lines and `stt.log` for their
+  `-- translation skipped (stale): <n>` lines and the session log for their
   `caption <n> not translated: queued <N> s, over TRANSLATE_MAX_STALENESS_S` twins. They are the
   bound working, not a fault: the leg came back, and captions that waited over
   `TRANSLATE_MAX_STALENESS_S`=15 s went source-only rather than publishing a translation beside
@@ -125,10 +129,10 @@ carry it are the ones the detector had under 2 s of audio to judge.
 - **Memory** (external `ps`/`top`): RSS flat — ring, audio headroom and segment queue are bounded,
   one soxr stream per session, codex `_notes`/`_pending` drain per turn. Steady growth signals a leak.
 
-**Run `uv run python session_report.py --log stt.log` after any soak** — it answers every question in
-this section mechanically off the saved transcript and the redirected stderr, so a session stays
-diagnosable once the scrollback is gone; pass `--two-way` for a `--two-way` session, or its English
-lines read as `declined` captions. Redirect stderr (`2> stt.log`) to give it the counters; the
+**Run `uv run python session_report.py` after any soak** — it answers every question in this
+section mechanically off the saved transcript and the saved log, so a session stays diagnosable once
+the scrollback is gone; pass `--two-way` for a `--two-way` session, or its English lines read as
+`declined` captions. Run the soak with `--save-log` to give it the counters; the
 status line keeps drawing, so the record costs the soak no screen output — not zero work, which no
 live run has measured (item 2).
 

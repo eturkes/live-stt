@@ -72,6 +72,7 @@ Startup prints the translation status: `Translation: gpt-6-luna via codex app-se
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
 | `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
 | `--save-audio` | off | Also save the microphone audio as a WAV file in `transcripts/`. See [Saved audio](#saved-audio). |
+| `--save-log` | off | Write warnings and diagnostics to a log file in `transcripts/` instead of to the terminal. See [Saved log](#saved-log). |
 | `--device N` | system default | Input device index (see `--list-devices`) |
 | `--list-devices` | off | Print audio devices and exit |
 
@@ -127,6 +128,20 @@ The replay does not reproduce the live captions exactly, because the live run ti
 
 Speech of other people is in the file too. Get their consent before you save audio of a meeting.
 
+### Saved log
+
+Use `--save-log` to keep the warnings and diagnostics of a session. live-stt then writes a log file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
+
+```
+Log: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.log
+```
+
+The log starts when the session starts. From that point until live-stt exits, warnings go to the log and not to the terminal. The status line and the captions stay on the terminal. An error that occurs before the session starts, for example a missing model, still goes to the terminal. If live-stt stops because of an error during the session, the error is at the end of the log.
+
+The log holds the backlog counters (`backlog peak:`), each caption that the screen refused, and the reason when translation stops. `session_report.py` reads it. See [Session report](#session-report). The log always goes to `transcripts/`, also with `-o` or `--no-save`.
+
+`--save-log` replaces `live-stt 2> FILE`. The redirect still works, but only `--save-log` gives the log the same name as the transcript and the audio.
+
 ## How it works
 
 ### Audio → JA pipeline (all local)
@@ -138,7 +153,7 @@ Speech of other people is in the file too. Get their consent before you save aud
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture collects in an 8 s queue meanwhile. Two rules keep that queue from overflowing. First, when a decode takes longer than the 1 s update interval, the next update waits until the queue holds 0.5 s or less (`VAC_BACKLOG_S`). That update then decodes all the audio that arrived, so a slow machine updates the caption less often instead of falling behind. Second, the 8 s queue outlasts the longest single wait: an update followed at once by the final decode, or a runaway decode. On a laptop running on battery in low-power mode, these waits took up to 1.4 s per update and 3.5 s for one runaway. With the old 2 s queue and no catch-up rule, that session lost about 10 s of speech. Measured on the NPU in normal conditions, the longest single wait was 1.107 s over 182 s of pause-free speech. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 
-   To record the evidence of a drop, run every session as `live-stt 2> stt.log`. Keep the log. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing, so the redirect does not hide it. Then run `uv run python session_report.py --log stt.log`. It shows each drop with the captions around it, and any caption the screen refused in that gap.
+   To record the evidence of a drop, run every session with `--save-log`. Keep the log. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing, so the log does not hide it. Then run `uv run python session_report.py`. It shows each drop with the captions around it, and any caption the screen refused in that gap.
 5. **Screen.** A caption the recognizer invented is dropped before anything else sees it. See the next section.
 6. **Emit.** `SRC n:` prints immediately; the text is queued for translation.
 
@@ -217,17 +232,18 @@ live-stt rejects two invocations at parse time:
 
 ### Diagnostics
 
-Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the meter line in place; with stderr redirected (`live-stt 2> errors.log`) the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
+Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the meter line in place. With `--save-log`, or with stderr redirected (`live-stt 2> errors.log`), the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
 
 ### Session report
 
-To review a finished session, run `session_report.py`. It reads the saved transcript and the redirected log. It needs no microphone, no weights and no network. Give it `--source-lang en` if the session ran with `--source-lang en`. A transcript does not record that flag, and the report must apply the same caption screen the session did.
+To review a finished session, run `session_report.py`. It reads the saved transcript and the saved log. It needs no microphone, no weights and no network. Give it `--source-lang en` if the session ran with `--source-lang en`. A transcript does not record that flag, and the report must apply the same caption screen the session did.
 
-Redirect stderr. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing at the same time.
+Run the session with `--save-log`. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing at the same time.
 
 ```sh
-live-stt 2> stt.log                              # counters in the log, status line on screen
-uv run python session_report.py --log stt.log    # defaults to transcripts/*.txt
+live-stt --save-log                              # counters in the log, status line on screen
+uv run python session_report.py                  # reads transcripts/*.txt, transcripts/*.log and stt.log
+uv run python session_report.py --log FILE       # reads only this log, for example from live-stt 2> FILE
 ```
 
 The report shows:

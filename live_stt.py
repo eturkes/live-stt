@@ -333,6 +333,7 @@ _DIM, _UNDIM = "\x1b[2m", "\x1b[22m"
 _STDOUT_TTY = sys.stdout.isatty()
 # The other half of the same gate: stderr decides whether a log record erases the
 # status line in place, and whether the meter may log at all (see `meter`).
+# `redirect_stderr` (--save-log) re-binds it once fd 2 leaves the terminal.
 _STDERR_TTY = sys.stderr.isatty()
 
 logger = logging.getLogger("live_stt")
@@ -952,6 +953,31 @@ def audio_path(args, stamp):
     """`--save-audio` lands beside the default transcript whatever `-o` says: `-o`
     APPENDS across runs, and a WAV cannot, so a shared name would overwrite."""
     return TRANSCRIPT_DIR / f"{stamp}.wav" if getattr(args, "save_audio", False) else None
+
+
+def log_path(args, stamp):
+    """`--save-log` joins the WAV in the session directory: its `session:` marker
+    names the transcript, so `-o` costs the report nothing."""
+    return TRANSCRIPT_DIR / f"{stamp}.log" if getattr(args, "save_log", False) else None
+
+
+def redirect_stderr(path: Path) -> None:
+    """`2> path` from inside the process, for the rest of its life.
+
+    fd 2 rather than a logging handler: sherpa's buffer-overflow line, PortAudio and
+    an uncaught traceback write the descriptor directly, and the shell redirect this
+    replaces kept them. Started at the session stamp, so a preflight error (models,
+    device) still reaches the terminal, and never restored, so a crash's traceback
+    lands in the log like every other session message. Clearing `_STDERR_TTY` is
+    what the shell redirect did at import: no _LINE_CLEAR prefix, and the stream-pair
+    gate opens, so the `session:` marker and `backlog peak:` timeline land here.
+    """
+    global _STDERR_TTY
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sys.stderr.flush()
+    with open(path, "a", encoding="utf-8") as f:
+        os.dup2(f.fileno(), 2)
+    _STDERR_TTY = False
 
 
 class TranscriptFile:
@@ -2726,6 +2752,10 @@ async def run_session(args):
     recording = AudioRecording(recording_path) if recording_path else None
     if recording_path:
         print(f"Audio: {recording_path}")
+    session_log = log_path(args, stamp)
+    if session_log:
+        print(f"Log: {session_log}")
+        redirect_stderr(session_log)
     log_session_marker(output_path)
 
     context = SessionContext(getattr(args, "context", "") or "")
@@ -2943,6 +2973,15 @@ def main():
         help=(
             f"Also save the microphone audio as a WAV file in {TRANSCRIPT_DIR.name}/, "
             "named like the default transcript. It uses about 115 MB per hour."
+        ),
+    )
+    parser.add_argument(
+        "--save-log",
+        action="store_true",
+        help=(
+            f"Write warnings and diagnostics to a log file in {TRANSCRIPT_DIR.name}/, "
+            "named like the default transcript, instead of to the terminal. "
+            "The log starts when the session starts."
         ),
     )
     parser.add_argument(
