@@ -9,6 +9,9 @@ settle; every run saves a transcript.
 
 - STT stays fully local, no API keys, no cloud fallback ever: silero VAD → VAC controller → whisper
   int8 on the Intel NPU via OpenVINO — whisper-ja-760M for Japanese, large-v3-turbo for English.
+  The NPU setup stays the default and the multitasking mode; `--asr-device GPU` switches to the most
+  powerful, performant and accurate setup this machine supports, for sessions where live-stt has the
+  machine to itself and may use nearly all of its memory.
 - Translation rides my ChatGPT/Codex subscription through a persistent `codex app-server` (zero
   marginal cost). Absent or failing codex degrades to JA-only — a hard requirement.
 - The CLI's UX is settled and approved. Remaining work = make the shipped path as robust and as
@@ -25,16 +28,17 @@ settle; every run saves a transcript.
 Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
-  `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` · `--asr-device` ·
-  `--save-audio` · `--save-log`.
+  `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` ·
+  `--asr-device NPU|GPU` · `--save-audio` · `--save-log`.
 - `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
 - `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
-  `-v`). Green = 8 pass + exactly 1 skip (the whisper NPU replay golden, which needs the accel
-  prelude).
+  `-v`). Green = 8 pass, the pytest step skipping exactly the 2 whisper replay goldens (NPU + GPU
+  mode), which need the accel prelude.
 - `.agent/spec-lint` — this file's shape check, a template copy that a refresh replaces whole; the
   gate's `spec-lint` step runs it.
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
-  `uv run python replay.py WAV [--engine E] [--json]`; goldens in `tests/replay_goldens.json`.
+  `uv run python replay.py WAV [--engine E] [--asr-device D] [--json]`; goldens in
+  `tests/replay_goldens.json`.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
 - `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + the stderr
   log (`--save-log` → `transcripts/<start>.log`, or `2> stt.log`; both keep the status line, and a
@@ -78,6 +82,16 @@ Detail → `.claude/rules/`, which each `D-###` names.
   re-derive (`asr-pipeline.md`). **D-010** sherpa k2v2/parakeet stay as the `--engine` CPU fallback
   (VAD-segment decode, no partials). Domain-term misrecognition (症例数 heard as 小レース) rides `--context`
   into the translator glossary alone (user ruling 10-07; the GPU measurement confirmed it).
+- **GPU mode = `--asr-device GPU`** (user request + rulings 10-18/10-19; NPU stays default): the
+  NPU's models — whisper-ja-760M, turbo for English — on the GPU, recogniser unbiased, cadence
+  unchanged. The screen behind it found no larger model better on the live path — Japanese:
+  whisper-ja-1.5B, large-v3, Qwen3-ASR-1.7B, Cohere Transcribe (wins short read clips, loses
+  continuous speech; no timestamps), fp16 weights; English: large-v3 (whole-clip gain gone through
+  the VAC path, 0.0900 vs turbo 0.0882) — and refused beam search (not implemented on GPU), a 0.5 s
+  cadence and term biasing on measured losses (`asr-pipeline.md` `## GPU mode`). What the GPU buys is
+  speed at equal accuracy: decode 0.667 → 0.293 s p50, first glimpse 1.237 → 0.822 s, settled
+  2.353 → 1.969 s (`tests/vac_decode_trace_gpu.json`). `check_device` names the host's OpenCL vendor
+  dir before the GPU probe.
 - **JA-tuned checkpoint** (user rulings): decided AFTER the
   boundary-artifact fix, re-measured under the fixed policy; `whisper-ja-760M` won every JA leg and
   is ADOPTED: it decodes Japanese and turbo stays resident for English (`--two-way`, `--source-lang
@@ -237,6 +251,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
 - [ ] **2** Recogniser term channel is dead plumbing
   - `docs`-tier refactor; accept → `.agent/deferred.md` → *Recogniser term channel is dead plumbing*.
+- [ ] **3** GPU-mode screen lives in scratch
+  - `data`-tier port; accept → `.agent/deferred.md` → *GPU-mode screen lives in scratch*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

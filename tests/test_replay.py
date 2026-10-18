@@ -9,11 +9,12 @@ Two tiers:
   under `gate.py`, which sources no accel farm. Decode latency is never
   asserted — it is CPU-variable.
 
-The whisper row is an `ASR_DEVICE` artifact rather than a portable one, so it
-records the device it was produced on. That record is compared BEFORE any
-readiness probe: a golden that disagrees with the shipped constant is a stale
-committed artifact, which must fail on every box rather than skip on the ones
-without the hardware to notice.
+The whisper rows are device artifacts rather than portable ones, so each records
+the device it was produced on: `whisper` = the shipped `ASR_DEVICE`, `whisper@GPU`
+= GPU mode (`--asr-device GPU`). That record is compared BEFORE any readiness
+probe: a golden that disagrees with its key's device is a stale committed
+artifact, which must fail on every box rather than skip on the ones without the
+hardware to notice.
 
 Regenerate the goldens after an intentional pipeline change:
     uv run python tests/gen_replay_goldens.py
@@ -35,7 +36,7 @@ from live_stt import ASR_DEVICE, WHISPER_ENGINES, check_device, check_models
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDENS = json.loads((ROOT / "tests" / "replay_goldens.json").read_text(encoding="utf-8"))
-# Flatten the engine-keyed goldens to (engine, clip_id) cases for parametrization.
+# Flatten the engine-keyed goldens to (key, clip_id) cases for parametrization.
 GOLDEN_CASES = sorted((engine, clip_id) for engine, clips in GOLDENS.items() for clip_id in clips)
 CACHE = ROOT / "spike" / "backends" / "cache"
 # 0.1 s: guards against segmentation-boundary drift without flaking on the
@@ -127,7 +128,7 @@ def test_the_cli_preflights_the_accelerator_before_loading_an_engine(monkeypatch
     wav = tmp_path / "clip.wav"
     _write_wav(wav, np.zeros(16000), 16000)
     monkeypatch.setattr(replay, "check_models", lambda engine: None)
-    monkeypatch.setattr(replay, "check_device", lambda engine: f"{engine}: device unavailable")
+    monkeypatch.setattr(replay, "check_device", lambda engine, *_a: f"{engine}: device unavailable")
     monkeypatch.setattr(replay, "replay_wav", unreachable)
     monkeypatch.setattr("sys.argv", ["replay.py", str(wav), "--engine", "whisper"])
 
@@ -161,43 +162,52 @@ def test_the_cli_reports_a_missing_wav_without_probing_the_accelerator(
 # ---- models + cached corpus gated: golden regression ----
 
 
-def _stale_device(engine: str, golden: dict) -> str | None:
+def _engine_device(key: str) -> tuple[str, str]:
+    """Golden key -> (engine, device): `whisper@GPU`, or a bare engine on ASR_DEVICE."""
+    engine, _, device = key.partition("@")
+    return engine, device or ASR_DEVICE
+
+
+def _stale_device(key: str, golden: dict) -> str | None:
     """Why this golden no longer describes what the engine would run, else None.
 
     Hardware-free on purpose: a missing, null or foreign `device` means the
     committed row was produced against a different target, which is wrong
     everywhere and must not hide behind a skip on a box without the accelerator.
     """
+    engine, device = _engine_device(key)
     if engine not in WHISPER_ENGINES:
         return None
     stored = golden.get("device")
-    if stored != ASR_DEVICE:
+    if stored != device:
         return (
-            f"golden device {stored!r} != live_stt.ASR_DEVICE {ASR_DEVICE!r}: "
+            f"golden device {stored!r} != {key}'s device {device!r}: "
             "regenerate with tests/gen_replay_goldens.py"
         )
     return None
 
 
-def _not_ready(engine: str, clip_id: str) -> str | None:
+def _not_ready(key: str, clip_id: str) -> str | None:
     """Why this case cannot run here, else None."""
+    engine, device = _engine_device(key)
     if err := check_models(engine):
         return err.splitlines()[0]
-    if err := check_device(engine):
+    if err := check_device(engine, device):
         return err
     if not (CACHE / f"{clip_id}.wav").exists():
         return f"cached WAV for {clip_id!r} absent"
     return None
 
 
-@pytest.mark.parametrize("engine,clip_id", GOLDEN_CASES)
-def test_replay_golden(engine, clip_id):
-    golden = GOLDENS[engine][clip_id]
-    stale = _stale_device(engine, golden)
+@pytest.mark.parametrize("key,clip_id", GOLDEN_CASES)
+def test_replay_golden(key, clip_id):
+    golden = GOLDENS[key][clip_id]
+    stale = _stale_device(key, golden)
     assert stale is None, stale
-    if reason := _not_ready(engine, clip_id):
+    if reason := _not_ready(key, clip_id):
         pytest.skip(f"absent: {reason}")
-    report = replay.replay_wav(CACHE / f"{clip_id}.wav", engine)
+    engine, device = _engine_device(key)
+    report = replay.replay_wav(CACHE / f"{clip_id}.wav", engine, device)
     assert report["n_segments"] == golden["n_segments"]
     got, exp = report["segments"], golden["segments"]
     assert len(got) == len(exp)

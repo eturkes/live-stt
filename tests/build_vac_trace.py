@@ -179,7 +179,7 @@ def main() -> None:
             f"max_buffer={row['max_buffer_s']:.3f}s trims={row['trims']} "
             f"forced_trims={row['forced_trims']} wall={row['wall_s']:.1f}s"
         )
-    print(f"wrote {args.out.relative_to(ROOT)}")
+    print(f"wrote {args.out.resolve().relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

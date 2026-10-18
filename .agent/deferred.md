@@ -23,3 +23,16 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    over `tests/caption_trace.json`, `eval_term_census.py` and `eval_en_pairing.py` verdicts unchanged
    — or a recogniser is measured where term biasing lowers reading-level CER on the long-form
    one-session arm, and the gate admits that device for it.
+
+3. **GPU-mode screen lives in scratch** — the GPU-mode decisions (`asr-pipeline.md` `## GPU mode`:
+   760M device parity, the 1.5B / large-v3 / Qwen3-ASR / Cohere refusals for Japanese, large-v3's
+   VAC-path English refusal, the 0.5 s cadence and term-biasing refusals) rest on `.scratch/gpu/`
+   harnesses (`eval.py`, `kana_cer.py`, `vadseg.py`, `hot_eval.py`, `cohere_eval.py`,
+   `cap_time.py`) and the `.scratch/quality-manifest.json` + `.scratch/gpu/cv300/` inputs, all
+   gitignored. Tier `data`.
+   **Accept:** one committed `tests/eval_*.py` reproduces the table's whisper rows (char + reading
+   level CER, FLEURS-ja / retention / long-form / CV300, plus the English VAC arm) on a named device
+   from committed manifests (`short_corpus.json`, `real_clips.json`, `en_clips.json`,
+   `long_form.json`, `retention_probe.json`) within ±0.002, plus the term-biasing arm, documented in
+   `evidence-artifacts.md`; reading-level scoring's dependency rides `--with`, never the project
+   deps.

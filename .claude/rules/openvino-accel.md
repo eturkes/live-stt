@@ -140,6 +140,13 @@ session published its first caption 17 s after start, on the 10-01 container-com
   cost is unmoved: 6 interleaved pairs, `check_device` paired median −14 ms, process start →
   `load_recognizer` returned −7 ms (3 of 6 faster).
 - `--asr-device GPU` still starts that loader on the host by design ⇒ it needs
-  `OCL_ICD_VENDORS=/usr/share/OpenCL/vendors`, proven over one full live session, or the host-side
-  fix of the loader or its vendor layout, which is the user's. An empty `/etc/OpenCL/vendors` avoids
-  the crash in the container repro; its effect on the host GPU platform is untested.
+  `OCL_ICD_VENDORS=/usr/share/OpenCL/vendors`, proven over one full live session (set by hand).
+  **`check_device` now sets it itself** (`name_opencl_vendors`, before the GPU probe): unset variable +
+  no `/etc/OpenCL/vendors` + a `/usr/share/OpenCL/vendors` dir ⇒ name the latter; an explicit value
+  (the container farm's) wins. In-process is early enough — ocl-icd reads it at its first call:
+  container, host loader preloaded, variable unset → `GPU` unavailable; set in-process before the
+  probe → `check_device` passes. Every GPU entry point probes first (CLI, `replay.py`, the trace and
+  golden builders, `test_replay`'s readiness check), so a host pytest run no longer starts the
+  crashing loader through the GPU golden. The host session itself is unverified (L-004,
+  `live-smoke.md` item 10). An empty `/etc/OpenCL/vendors` avoids the crash in the container repro;
+  its effect on the host GPU platform is untested.

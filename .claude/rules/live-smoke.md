@@ -74,7 +74,7 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    regression. **M14's `start_new_session=True` fix is VALIDATED on a real mic** over a 26-minute
    143-caption session: `SRC 143` then `TGT 143` six seconds later, drain order SRC 142 → SRC 143 →
    TGT 142 → TGT 143, zero `-- translation` markers, `Stopped.`, no hang, process fully exited. That
-   retires this item's L-004 debt; items 1, 3, 4, 5, 7, 8 and 9 stay outstanding.
+   retires this item's L-004 debt; items 1, 3, 4, 5, 7, 8, 9 and 10 stay outstanding.
 7. **Ctrl+C mid-decode** — `uv run live-stt --engine parakeet`, speak continuously for >20 s, pause, then
    Ctrl+C while the slower long-block decode runs. Pass: that block's `SRC n:` still lands, its `TGT n:`
    follows if Codex is up, then `Stopped.` with no hang — VAD feeder and sequential decoder both drain
@@ -91,6 +91,13 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    nothing — no `ご視聴ありがとうございました`-family caption, no `caption dropped` burst. The leveled
    copy boosts room tone up to 16× once speech stops, while the two saved sessions hold only 48 s and
    25 s of whisper-silent gaps; keep the WAV, `replay.py` re-derives either half.
+10. **GPU mode (`--asr-device GPU`, never met a mic or the host)** — on the host, with no
+   `OCL_ICD_VENDORS` exported, `uv run live-stt --asr-device GPU --save-log`, speak Japanese, then
+   English under `--two-way`. Pass: startup prints `Engine: whisper (local OpenVINO GPU; …)` and no
+   process dies at the model load (the host OpenCL loader crashed GPU starts before `check_device`
+   named its vendor dir, `openvino-accel.md`); partial text appears sooner than in NPU mode (agent
+   trace: first dim character ~0.8 s vs ~1.2 s); English captions under `--two-way` publish as
+   they do in NPU mode. A first GPU run compiles in seconds, not minutes.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

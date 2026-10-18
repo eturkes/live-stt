@@ -2,7 +2,7 @@
 
 Real-time Japanese speech-to-text + English translation. **No API keys.**
 
-- **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) on the Intel NPU through OpenVINO: the Japanese-tuned whisper-ja-760M (INT8) for Japanese, and large-v3-turbo (INT8) for English. Japanese appears while you are still speaking, about 2.4 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
+- **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) on the Intel NPU through OpenVINO: the Japanese-tuned whisper-ja-760M (INT8) for Japanese, and large-v3-turbo (INT8) for English. [GPU mode](#gpu-mode) runs the same models on the Intel GPU, faster. Japanese appears while you are still speaking, about 2.4 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
 - **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to source-only.
 
 On the default engine, Japanese builds on the status line while you speak, about 1.2 s behind your voice. The numbered `SRC n:` line lands when you stop, and its `TGT n:` line follows. In live sessions the translation took a median of 2 to 3 s. When you speak for longer than about 8 s, live-stt does not wait for you to stop. It publishes each settled part of the speech as its own numbered line, with its own translation. The cause is not known: only 13 of 143 captions in the measured session were waiting behind an earlier translation. The sherpa engines show no partial text: they wait for the pause, then print `SRC n:` about 0.6 s after you stop.
@@ -13,8 +13,8 @@ On the default engine, Japanese builds on the status line while you speak, about
   (currently CPython 3.14.5).
 - Working microphone
 - An OpenVINO device for the default Whisper engine. `uv sync` installs
-  OpenVINO as a hard dependency. The default device is the Intel NPU; pass
-  `--asr-device GPU` or `--asr-device CPU` to use another one. OpenVINO ships
+  OpenVINO as a hard dependency. The default device is the Intel NPU. To use
+  the Intel GPU, pass `--asr-device GPU` (see [GPU mode](#gpu-mode)). OpenVINO ships
   wheels only for CPython 3.11 to 3.14 on macOS arm64, Linux x86_64 and
   aarch64, and Windows amd64. If `PYTHONPATH` names a different OpenVINO
   build, that entry hides the installed package. The OpenVINO import then fails
@@ -64,7 +64,7 @@ Startup prints the translation status: `Translation: gpt-6-luna via codex app-se
 | Flag | Default | Description |
 |---|---|---|
 | `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.claude/rules/asr-pipeline.md` D-016 (default), D-010 (sherpa pair) |
-| `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. |
+| `--asr-device {NPU,GPU}` | `NPU` | Device for speech recognition. `GPU` is faster and uses more power. Use it when live-stt is the only task on the computer. See [GPU mode](#gpu-mode). |
 | `--context TEXT` | empty | Japanese topic line for this session. Name anything that must be spelled correctly. The tool trusts these terms at once and keeps them for the whole run. It also learns recurring terms from its own captions, and gives both to the translator. Everything is forgotten when the session ends. |
 | `--two-way` | off | Translate in both directions, Japanese to English and English to Japanese. live-stt detects the language of each utterance. Do not use `--source-lang` or a sherpa engine with this option. See [Two-way translation](#two-way-translation-ja-and-en). |
 | `--source-lang {ja,en}` | `ja` | Spoken language. `en` transcribes English directly and retires the Japanese-only caption screen. `en` is transcribe-only, because the translation leg goes from Japanese to English. |
@@ -149,7 +149,7 @@ The log holds the backlog counters (`backlog peak:`), each caption that the scre
 1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz by a band-limited streaming resampler (`soxr`) that keeps its filter state from block to block, and enters a queue capped at 8 seconds of PCM, independent of callback block size.
 2. **Endpoint.** Capture drains into silero VAD, which splits speech on ≥0.5 s silences. silero misses quiet speech that Whisper still transcribes, so silero hears a boosted copy of each window. The gain lifts the loud part of the last 10 s toward -25 dBFS, with a limit of 16x. Loud input keeps a gain of 1. A quiet 44-minute meeting, replayed through live-stt, published 11,292 characters instead of 753. Whisper alone hears about 12,300 characters in that audio. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing. The ring, the recognizer and saved audio get the raw samples, never the boosted copy.
 3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables. Both engine paths re-slice from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) to recover the lead-in. The sherpa path then copies each closed segment into an 8-segment queue; the whisper path has no such queue.
-4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. When a later decode spells already settled text differently, live-stt aligns the two, which removes most repeated or skipped settled characters. If a decode rewrites most of the last 24 settled characters, live-stt moves the boundary only after the next decode agrees, or when the utterance ends. When a later decode repeats the end of the settled text, live-stt skips that repeat. It keeps the repeat if the decode writes it twice, or if the decode that settled the text heard it next. A few ambiguous or heavy rewrites can still repeat or skip some characters. Showing it cut the wait to SEE a character from 2.353 s to 1.237 s (median) and from 6.402 s to 2.476 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 90 of 180 decodes rewrote part of it. The numbered `SRC n:` lines carry the committed text only. Once the buffer passes 8 s, each trim releases settled text, and live-stt publishes that text at once as its own line and translation turn. The rest follows when the utterance ends. Whisper sometimes writes the phrase before a trim twice, once on each side of the cut. live-stt then decodes the audio before the cut once more and keeps the first copy only if that audio holds the phrase. On 182 s of pause-free speech, this cut the median wait from a spoken character to its numbered line from 13.2 s to 5.7 s, and the maximum from 33.5 s to 10.3 s. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 9.3 s on the measured clips. Decode RTF is 0.56-0.69 on the NPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
+4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. When a later decode spells already settled text differently, live-stt aligns the two, which removes most repeated or skipped settled characters. If a decode rewrites most of the last 24 settled characters, live-stt moves the boundary only after the next decode agrees, or when the utterance ends. When a later decode repeats the end of the settled text, live-stt skips that repeat. It keeps the repeat if the decode writes it twice, or if the decode that settled the text heard it next. A few ambiguous or heavy rewrites can still repeat or skip some characters. Showing it cut the wait to SEE a character from 2.353 s to 1.237 s (median) and from 6.402 s to 2.476 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 90 of 180 decodes rewrote part of it. The numbered `SRC n:` lines carry the committed text only. Once the buffer passes 8 s, each trim releases settled text, and live-stt publishes that text at once as its own line and translation turn. The rest follows when the utterance ends. Whisper sometimes writes the phrase before a trim twice, once on each side of the cut. live-stt then decodes the audio before the cut once more and keeps the first copy only if that audio holds the phrase. On 182 s of pause-free speech, this cut the median wait from a spoken character to its numbered line from 13.2 s to 5.7 s, and the maximum from 33.5 s to 10.3 s. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 9.3 s on the measured clips. Decode RTF is 0.56-0.69 on the NPU and about 0.29 on the GPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.
 
    The two paths hold the real-time line differently. On the sherpa engines a separate feeder keeps capture and VAD running through each decode. The whisper path has no such feeder: it waits for every decode, and capture collects in an 8 s queue meanwhile. Two rules keep that queue from overflowing. First, when a decode takes longer than the 1 s update interval, the next update waits until the queue holds 0.5 s or less (`VAC_BACKLOG_S`). That update then decodes all the audio that arrived, so a slow machine updates the caption less often instead of falling behind. Second, the 8 s queue outlasts the longest single wait: an update followed at once by the final decode, or a runaway decode. On a laptop running on battery in low-power mode, these waits took up to 1.4 s per update and 3.5 s for one runaway. With the old 2 s queue and no catch-up rule, that session lost about 10 s of speech. Measured on the NPU in normal conditions, the longest single wait was 1.107 s over 182 s of pause-free speech. Sustained overload shows as `seg=` (sherpa only), then `q=` and `drop=` on the meter.
 
@@ -210,7 +210,7 @@ Degradation, in order:
 
 `--two-way` translates in both directions. The flag is off by default. The one-way Japanese-to-English path does not change.
 
-A standalone ECAPA language detector scores each utterance while you speak it. It runs on the CPU through ONNX Runtime, beside whisper on the NPU. The detector gives the settled label to whisper as an explicit language token, and the same label picks the translation direction. live-stt never reads the direction off the text. Whisper decodes fluent text in the language you give it, so a wrong token erases the evidence.
+A standalone ECAPA language detector scores each utterance while you speak it. It runs on the CPU through ONNX Runtime, beside whisper on the NPU or the GPU. The detector gives the settled label to whisper as an explicit language token, and the same label picks the translation direction. live-stt never reads the direction off the text. Whisper decodes fluent text in the language you give it, so a wrong token erases the evidence.
 
 Under the flag, a caption stays wholly dim until the detector accepts a label. The tool commits nothing before that point. No caption is ever withheld. An utterance that never accepts publishes under the label the run holds, and its source line carries a marker:
 
@@ -229,6 +229,25 @@ live-stt rejects two invocations at parse time:
 
 - `--two-way` with `--source-lang`: `--source-lang` pins every utterance, and `--two-way` decides per utterance.
 - `--two-way` with `--engine k2v2` or `--engine parakeet`: both sherpa models are Japanese-only.
+
+### GPU mode
+
+`--asr-device GPU` runs speech recognition on the Intel GPU instead of the NPU. Use it when live-stt is the only task on the computer. While you speak, the GPU decodes for about 30 % of each second. Expect more power use than in the NPU mode. Power use was not measured. When you expect to do other work at the same time, use the NPU mode.
+
+Both modes use the same models: whisper-ja-760M for Japanese and large-v3-turbo for English. They are equally accurate in both modes. The GPU decodes about 2.3 times faster. Measured on 182 s of pause-free speech (median, GPU against NPU):
+
+| Stage | GPU | NPU |
+|---|---|---|
+| One streaming decode | 0.29 s | 0.67 s |
+| Voice to the first dim character | 0.82 s | 1.24 s |
+| Voice to the settled character | 1.97 s | 2.35 s |
+| End of speech to the last `SRC n:` line | 0.80 s | 1.22 s |
+
+Larger models were tested on this computer and did not improve Japanese: whisper-ja-1.5B, large-v3, Qwen3-ASR-1.7B and Cohere Transcribe. Cohere Transcribe was more accurate on short read sentences, but less accurate on continuous speech, and it gives no timestamps for the streaming decode. For English, large-v3 was more accurate than turbo on whole clips, but not through the streaming decode, where it was also twice as slow. Beam search is not available on the GPU in this OpenVINO release, and more frequent decodes made the captions less accurate. The measurements are in `.claude/rules/asr-pipeline.md`.
+
+The session terms from `--context` and from the learned glossary go to the translator only, in both modes. On the GPU, the recognizer can take them too, but they made the Japanese captions less accurate.
+
+On some Linux hosts the OpenCL loader crashes when the GPU starts, because the system keeps its OpenCL driver list in `/usr/share/OpenCL/vendors` and has no `/etc/OpenCL/vendors`. On such a host, live-stt sets `OCL_ICD_VENDORS` to `/usr/share/OpenCL/vendors` before it starts the GPU. A value that you set yourself stays unchanged.
 
 ### Diagnostics
 
@@ -320,6 +339,7 @@ uv run --with soundfile python tests/eval_long_form.py  # build the pinned 14:08
 uv run python tests/eval_backpressure.py      # paced replay: bounded queues, drop-free
 uv run python tests/eval_retention.py         # shipped path over 182 s of pause-free speech
 uv run python tests/eval_latency.py           # per-stage end-to-end latency budget, from traces
+uv run python tests/eval_latency.py --trace tests/vac_decode_trace_gpu.json  # the same, GPU mode
 uv run python tests/eval_term_census.py       # what the recognizer gives session context as a key
 ```
 
@@ -334,12 +354,13 @@ The pre-commit hook (`.githooks/pre-commit`) runs `uv run pytest -q` and blocks 
 ```sh
 uv run python replay.py path/to.wav                 # human-readable report
 uv run python replay.py path/to.wav --engine whisper  # the shipped streaming path
+uv run python replay.py path/to.wav --engine whisper --asr-device GPU  # GPU mode
 uv run python replay.py path/to.wav --json          # machine-readable
 ```
 
 Note that `replay.py` defaults to `--engine k2v2`, which is **not** live-stt's default. The goldens key on the deterministic CPU engines, so that is the default the tool inherits.
 
-`tests/test_replay.py` replays the cached corpus and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline), currently 25 rows. Most rows cover the sherpa engines, which reproduce on any CPU. One row covers the whisper path and records the device it was produced on (`NPU`), because that path reproduces per device rather than everywhere. Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights, the accelerator, or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`.
+`tests/test_replay.py` replays the cached corpus and asserts segment count + per-segment transcript + boundary against `tests/replay_goldens.json` (a characterization snapshot of the real pipeline), currently 26 rows. Most rows cover the sherpa engines, which reproduce on any CPU. Two rows cover the whisper path, one for each mode, and each records the device it was produced on (`NPU` or `GPU`), because that path reproduces per device rather than everywhere. Decode latency is reported but never asserted, since it is CPU-variable. The golden test skips cleanly when model weights, the accelerator, or the gitignored clips are absent. After an intentional pipeline change (VAD tuning, engine swap), regenerate the snapshot and review the JSON diff: `uv run python tests/gen_replay_goldens.py`.
 
 `tests/fetch_real_clips.py` also builds the complete pinned Japanese evaluation corpus: all 4,483 Common Voice 8 test recordings (CC0-1.0) and all 650 FLEURS test recordings (CC-BY-4.0). Verified sources, 16 kHz PCM, and the detailed index stay in the gitignored cache; `tests/short_corpus.json` commits only provenance, distributions, and fingerprints. The command is exact because decoder drift must produce an explicit corpus requalification:
 
@@ -362,7 +383,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAD_MAX_SPEECH_S` | 20 s | Soft endpointing hint; dip-less speech may exceed it |
 | `VAD_PRE_PAD_S` | 0.4 s | Lead-in re-sliced from the ring (silero onset clipping fix) |
 | `VAD_TARGET_DBFS` / `VAD_MAX_GAIN` | -25 dBFS / 16 | Speech level that the VAD's copy is boosted toward, and the largest boost |
-| `ASR_DEVICE` | `NPU` | OpenVINO device for the default engine (`--asr-device` overrides) |
+| `ASR_DEVICE` | `NPU` | Device for the default engine (`--asr-device NPU` or `GPU` overrides) |
 | `ASR_REPETITION_PENALTY` | 1.2 | Decode-side loop brake; the only repetition knob the NPU honors |
 | `LID_MIN_SECONDS` | 2 s | Voiced audio the language detector needs before it decides (`--two-way`) |
 | `LID_MIN_SCORE` / `_MIN_MARGIN` | 0.35 / 0.35 | Accept a label at this score, and this far above the other language |

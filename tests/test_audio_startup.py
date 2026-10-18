@@ -291,7 +291,7 @@ def test_supervisor_forwards_terminal_signals_and_preserves_the_drain(tmp_path, 
     transcript = tmp_path / "transcript.txt"
     (tmp_path / "sitecustomize.py").write_text(
         "import asyncio\nfrom pathlib import Path\nimport live_stt\n"
-        "live_stt.check_models = lambda engine: None\n"
+        "live_stt.check_models = lambda *args: None\n"
         "live_stt.check_device = lambda *args: None\n"
         "async def session(args):\n"
         "    state = live_stt.State()\n"

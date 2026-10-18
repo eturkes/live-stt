@@ -12,8 +12,9 @@ Run when the pipeline's segmentation/decode behavior intentionally changes
     uv run python tests/gen_replay_goldens.py
 
 MATRIX, not a product: the sherpa engines take every clip because their decode is
-CPU-deterministic and costs milliseconds, while whisper takes ONE clip because each
-of its rows is an accelerator-bound decode. `long` is that clip on measured VAC
+CPU-deterministic and costs milliseconds, while whisper takes ONE clip per device
+(`whisper` = the shipped ASR_DEVICE, `whisper@GPU` = GPU mode) because each of its
+rows is an accelerator-bound decode. `long` is that clip on measured VAC
 depth -- it drives 13 StreamingProcessor.process calls and commits 51 characters
 through LocalAgreement-2, where the shorter `greet` commits 0 and exercises the
 speech-end flush alone.
@@ -42,7 +43,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import replay  # noqa: E402  (after sys.path injection)
-from live_stt import ASR_DEVICE, WHISPER_ENGINES, check_device, check_models  # noqa: E402
+from live_stt import (  # noqa: E402
+    ASR_DEVICE,
+    ASR_DEVICES,
+    WHISPER_ENGINES,
+    check_device,
+    check_models,
+)
 
 CACHE = ROOT / "spike" / "backends" / "cache"
 GOLDENS = ROOT / "tests" / "replay_goldens.json"
@@ -95,6 +102,7 @@ def matrix() -> dict[str, list[str]]:
     """
     every = [cid for cid, _ref, _purpose in all_clips()]
     cells = {"k2v2": every, "parakeet": every, "whisper": WHISPER_CLIPS}
+    cells |= {f"whisper@{d}": WHISPER_CLIPS for d in ASR_DEVICES if d != ASR_DEVICE}
     for engine, cids in cells.items():
         if unknown := [c for c in cids if c not in every]:
             raise ValueError(f"matrix[{engine}]: unknown clip id(s) {unknown}; known: {every}")
@@ -115,8 +123,10 @@ def main():
             if cid not in cells.get(engine, ()):
                 print(f"drop {engine}/{cid}: outside the matrix", file=sys.stderr)
     out: dict[str, dict] = {}
-    for engine, cids in cells.items():
-        blocked = check_models(engine) or check_device(engine)
+    for key, cids in cells.items():
+        engine, _, device = key.partition("@")
+        device = device or ASR_DEVICE
+        blocked = check_models(engine) or check_device(engine, device)
         rows = {}
         for cid in cids:
             wav = CACHE / f"{cid}.wav"
@@ -124,28 +134,26 @@ def main():
             if why:
                 # Carry the committed row forward: a whisper regeneration on a box
                 # with no NPU must not silently delete the committed whisper row.
-                kept = prior.get(engine, {}).get(cid)
+                kept = prior.get(key, {}).get(cid)
                 verb = "omit" if kept is None else "keep"
-                print(f"{verb} {engine}/{cid}: {why.splitlines()[0]}", file=sys.stderr)
+                print(f"{verb} {key}/{cid}: {why.splitlines()[0]}", file=sys.stderr)
                 if kept is not None:
                     rows[cid] = kept
                 continue
-            rep = replay.replay_wav(wav, engine)
+            rep = replay.replay_wav(wav, engine, device)
             ja_ref, purpose = meta[cid]
             row: dict[str, object] = {"ja_ref": ja_ref, "purpose": purpose}
             if engine in WHISPER_ENGINES:
-                row["device"] = ASR_DEVICE
+                row["device"] = device
             row["n_segments"] = rep["n_segments"]
             row["segments"] = [
                 {"start": s["start"], "n": s["n"], "text": s["text"]} for s in rep["segments"]
             ]
             rows[cid] = row
             texts = " | ".join(s["text"] for s in rep["segments"] if s["text"])
-            print(
-                f"{engine}/{cid}: {rep['n_segments']} seg, rtf {rep['overall_rtf']:.3f} :: {texts}"
-            )
+            print(f"{key}/{cid}: {rep['n_segments']} seg, rtf {rep['overall_rtf']:.3f} :: {texts}")
         if rows:
-            out[engine] = rows
+            out[key] = rows
     GOLDENS.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     n_rows = sum(len(r) for r in out.values())
     print(f"wrote {GOLDENS.relative_to(ROOT)} ({len(out)} engines, {n_rows} rows)")

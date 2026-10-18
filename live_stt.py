@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live Japanese speech-to-text with English translation. STT is fully local
-(silero VAD + OpenVINO Whisper on the NPU, or a sherpa-onnx engine; no API
-keys); translation rides the Codex subscription via a persistent
+(silero VAD + OpenVINO Whisper on the NPU or the GPU, or a sherpa-onnx engine;
+no API keys); translation rides the Codex subscription via a persistent
 `codex app-server` (D-011), degrading to source-only when unavailable.
 
 Japanese appears on the status line while the speaker is still talking, as the
@@ -26,7 +26,7 @@ import time
 import unicodedata
 import wave
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -73,7 +73,11 @@ VAD_MODEL = MODELS_DIR / "silero_vad.onnx"
 # whisper-ja-760M (efwkjn, turbo depth, Japanese-tuned) decodes Japanese: over one NPU harness
 # under the shipped VAC path it beat turbo on FLEURS-ja 0.0499 -> 0.0469, retention 0.0592 ->
 # 0.0532 and long-form 0.2486 -> 0.2153, and decodes ~10 % faster. It roughly doubles English
-# CER (0.0255 -> 0.0482), so turbo stays the English decoder (user ruling).
+# CER (0.0255 -> 0.0482), so turbo stays the English decoder (user ruling). Both devices run
+# this same pair: on the GPU no larger model beat 760M on Japanese (large-v3, whisper-ja-1.5B,
+# Qwen3-ASR-1.7B, Cohere Transcribe, fp16 weights), and large-v3's whole-clip English gain
+# (FLEURS-en 0.0211 vs 0.0247) vanished through the VAC path (0.0900 vs 0.0882 over 150
+# clips) at twice the decode cost (asr-pipeline.md, user ruling).
 WHISPER_EN_DIR = MODELS_DIR / "openvino/whisper-large-v3-turbo-int8-ov"
 ENGINE_DIRS = {
     "k2v2": MODELS_DIR / "sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01",
@@ -91,8 +95,11 @@ WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa
 # themselves heard worse (兵十 34 -> 25 of 38). So no device takes the list, and
 # session terms reach the translator alone.
 ASR_DEVICE = "NPU"
+# GPU = the dedicated-machine mode: the same models, decoded 2.3x faster at equal accuracy.
+ASR_DEVICES = ("NPU", "GPU")
 ASR_HOTWORDS_DEVICES: frozenset[str] = frozenset()
 OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
+OPENCL_VENDOR_DIRS = (Path("/etc/OpenCL/vendors"), Path("/usr/share/OpenCL/vendors"))
 # Audio the JA pin cannot account for -- English speech, room tone -- makes the
 # decoder emit one unit until it hits the model's 448-token max_length: 13 s of
 # English replays as a 528-character loop at RTF 1.106, above real time. 1.2 is
@@ -823,6 +830,21 @@ def check_models(engine: str, two_way: bool = False) -> str | None:
     )
 
 
+def name_opencl_vendors(environ: MutableMapping[str, str]) -> None:
+    """Point the OpenCL ICD loader at the vendor dir this host actually ships.
+
+    The host's ocl-icd SIGSEGVs in clGetPlatformIDs when its default vendor dir is
+    missing and the ICD sits under /usr/share, and the GPU plugin calls it at load,
+    so a GPU run died with no traceback. The loader reads the variable at its first
+    call, so setting it in-process ahead of the GPU plugin is enough; naming that dir
+    is the fix one full live GPU session proved. An explicit value (the container
+    farm's) wins, and the NPU never starts the loader.
+    """
+    default, shipped = OPENCL_VENDOR_DIRS
+    if "OCL_ICD_VENDORS" not in environ and not default.is_dir() and shipped.is_dir():
+        environ["OCL_ICD_VENDORS"] = str(shipped)
+
+
 def check_device(engine: str, device: str = ASR_DEVICE) -> str | None:
     """Returns an error message if `engine` cannot reach its accelerator, else None.
 
@@ -841,6 +863,8 @@ def check_device(engine: str, device: str = ASR_DEVICE) -> str | None:
         return None
     if device.split(":")[0].split(".")[0] in ("AUTO", "HETERO", "MULTI", "BATCH"):
         return f"OpenVINO device {device!r} is virtual. Give an exact device name, such as NPU."
+    if device == "GPU":
+        name_opencl_vendors(os.environ)
     try:
         import openvino  # noqa: PLC0415  -- only the OpenVINO engines pay this import
     except ImportError as exc:  # pragma: no cover - the wheel is a hard dependency
@@ -2913,8 +2937,13 @@ def main():
     )
     parser.add_argument(
         "--asr-device",
+        choices=ASR_DEVICES,
         default=ASR_DEVICE,
-        help=(f"OpenVINO device for --engine whisper (default: {ASR_DEVICE})."),
+        help=(
+            f"Device for speech recognition (default: {ASR_DEVICE}). "
+            "GPU is faster and uses more power. "
+            "Use it when live-stt is the only task on this computer."
+        ),
     )
     parser.add_argument(
         "--no-translate",
@@ -3025,8 +3054,7 @@ def _run_cli(args):
             print(sd.query_devices())
         return
 
-    # One-way keeps the one-argument call: nine locks stub check_models with a 1-arg lambda.
-    model_error = check_models(args.engine, True) if args.two_way else check_models(args.engine)
+    model_error = check_models(args.engine, args.two_way)
     err = model_error or check_device(args.engine, args.asr_device)
     if err:
         print(f"Error: {err}", file=sys.stderr)

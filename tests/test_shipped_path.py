@@ -1316,7 +1316,7 @@ def run_cli(monkeypatch, *argv):
     seen = {}
     monkeypatch.setattr(sys, "argv", ["live-stt", *argv])
 
-    def check_models(engine):
+    def check_models(engine, two_way=False):
         seen["preflight"] = engine
         return None
 
@@ -1353,6 +1353,15 @@ def test_the_asr_device_flag_reaches_the_session_and_the_banner(monkeypatch, cap
     # The preflight must be asked about the REQUESTED device, or a run on an
     # absent accelerator clears a check aimed at the default one.
     assert seen["device_preflight"] == ("whisper", "GPU")
+
+
+@pytest.mark.parametrize("device", ["CPU", "AUTO", "gpu"])
+def test_the_asr_device_flag_admits_the_two_modes_alone(monkeypatch, capsys, device):
+    with pytest.raises(SystemExit) as exit_info:
+        run_cli(monkeypatch, "--asr-device", device)
+
+    assert exit_info.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_a_sherpa_engine_is_announced_as_sherpa_not_openvino(monkeypatch, capsys):
@@ -1407,7 +1416,7 @@ def test_saving_to_a_path_and_not_saving_at_all_cannot_be_asked_for_together(mon
 def test_a_missing_model_stops_the_run_before_the_session_starts(monkeypatch, capsys):
     started = []
     monkeypatch.setattr(sys, "argv", ["live-stt"])
-    monkeypatch.setattr(live_stt, "check_models", lambda engine: "Missing model files")
+    monkeypatch.setattr(live_stt, "check_models", lambda *_args: "Missing model files")
 
     async def run_session(args):
         started.append(args)

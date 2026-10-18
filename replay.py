@@ -42,6 +42,8 @@ from pathlib import Path
 import numpy as np
 
 from live_stt import (
+    ASR_DEVICE,
+    ASR_DEVICES,
     ENGINE_DIRS,
     SAMPLE_RATE,
     State,
@@ -54,16 +56,16 @@ from live_stt import (
 )
 
 # Model load is seconds; the regression test replays several clips per process,
-# so cache one recognizer per engine. The VAD is stateful and must stay fresh
-# per replay, so it is NOT cached.
-_RECS: dict[str, object] = {}
+# so cache one recognizer per engine and device. The VAD is stateful and must stay
+# fresh per replay, so it is NOT cached.
+_RECS: dict[tuple[str, str], object] = {}
 
 
-def _recognizer(engine: str):
-    rec = _RECS.get(engine)
+def _recognizer(engine: str, device: str = ASR_DEVICE):
+    rec = _RECS.get((engine, device))
     if rec is None:
-        rec = load_recognizer(engine)
-        _RECS[engine] = rec
+        rec = load_recognizer(engine, device)
+        _RECS[engine, device] = rec
     return rec
 
 
@@ -172,13 +174,13 @@ def replay_recognizer(path, rec, engine: str, on_update=None) -> dict:
     return build_report(engine, str(path), samples, rows)
 
 
-def replay_wav(path, engine: str = "k2v2") -> dict:
+def replay_wav(path, engine: str = "k2v2", device: str = ASR_DEVICE) -> dict:
     """Load a WAV and replay it through the engine-keyed production pipeline.
 
     Default matches the CLI's, not live-stt's: the goldens key on the
     deterministic CPU engines.
     """
-    return replay_recognizer(path, _recognizer(engine), engine)
+    return replay_recognizer(path, _recognizer(engine, device), engine)
 
 
 def render(report: dict) -> str:
@@ -214,6 +216,12 @@ def main():
             "Pass --engine whisper to replay the shipped VAC path."
         ),
     )
+    ap.add_argument(
+        "--asr-device",
+        choices=ASR_DEVICES,
+        default=ASR_DEVICE,
+        help=f"OpenVINO device for --engine whisper (default: {ASR_DEVICE}), as in live-stt.",
+    )
     ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
     args = ap.parse_args()
 
@@ -226,12 +234,12 @@ def main():
     # ten-line native traceback about a missing NPU compiler loader. The
     # argument check runs first: it costs nothing, while check_device imports
     # OpenVINO and probes the requested device.
-    err = check_models(args.engine) or check_device(args.engine)
+    err = check_models(args.engine) or check_device(args.engine, args.asr_device)
     if err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
 
-    report = replay_wav(path, args.engine)
+    report = replay_wav(path, args.engine, args.asr_device)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

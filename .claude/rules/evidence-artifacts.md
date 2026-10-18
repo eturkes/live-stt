@@ -18,7 +18,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   asserting segment count + per-segment text + boundary (±0.1 s); CPU-variable decode latency is
   reported only. A cell the local machine cannot run (absent weights, WAV or accelerator) carries its
   committed row forward instead of vanishing, so a whisper regeneration on a box with no NPU cannot
-  silently delete the committed whisper row.
+  silently delete the committed whisper row. Whisper rows key per device: `whisper` = the shipped
+  `ASR_DEVICE`, `whisper@GPU` = GPU mode; each row's `device` must equal its key's, checked before any
+  readiness probe.
 - `short_corpus.json` + `fetch_real_clips.py` + `real_clips.json` + `test_corpus.py` — pinned Common
   Voice / FLEURS PCM corpus, compact evidence plus fail-closed locks. The real-recorded clips expose
   engine divergence the synthetic TTS corpus could not: 松井/松居, バック/パック, 午後七時/午後7時.
@@ -86,7 +88,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   (`asr-pipeline.md`), so a nonzero count is a number to compare, not a failure. ~7 s, no
   weights. **Synthetic by construction: it ranks two processors, and its rates describe no live
   session.**
-- `vac_decode_trace.json` + `build_vac_trace.py` + `eval_latency.py` — per-update `(buffer_s, decode_s)`
+- `vac_decode_trace.json` (NPU) + `vac_decode_trace_gpu.json` (GPU mode, `--device GPU --out …`;
+  `eval_latency.py --trace` reads it; nothing else consumes it) + `build_vac_trace.py` +
+  `eval_latency.py` — per-update `(buffer_s, decode_s)`
   **plus the hypothesis that produced each one**. Storing the hypotheses is what makes the trace
   replayable: `StreamingProcessor` is a pure function of decode outputs + buffer lengths, so replaying
   them reproduces the measured TRIM trajectory with no model, and `divergences == 0` certifies each

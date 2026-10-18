@@ -287,7 +287,9 @@ paths:
   SenseVoice lack current JA evidence, Moonshine-JA's license is unclear, and ReazonSpeech-k2-v2 adds
   PyTorch/Transformers + remote custom model code. Re-open only if the shipped path FAILS and the
   added runtime surface buys a materially different hypothesis — a re-open condition, never queued
-  work. Tournament record → `.agent/archive/m10-asr-tournament.md`.
+  work. Tournament record → `.agent/archive/m10-asr-tournament.md`. The GPU-mode request (user,
+  10-18) re-ran a screen for the GPU with no memory limit: no candidate beats whisper-ja-760M on the
+  live path's speech (`## GPU mode`).
 - **Policy.** Waiting for silero to close a segment bounds the first character's latency by the last:
   pause-free audio yields 8 segments of 20-33 s, lag median 15.5 s / max 36.6 s. VAC measured 2.5 s /
   8.1 s on the same audio and won CER on both corpora and both devices. Pure streaming without the
@@ -300,7 +302,8 @@ paths:
   supported on NPU device`, and the same for `hotwords`. Probed prompt lengths 1/2/4/8/16/32/64/128/
   200 all raise and 0 passes ⇒ a capability gap, not a length budget. The GPU takes the list, and it
   HURTS there (next bullet) ⇒ `ASR_HOTWORDS_DEVICES` is empty and `WhisperEngine.set_hotwords` drops
-  the list on every device. The NPU default is the user's efficiency choice.
+  the list on every device. The NPU default is the user's efficiency choice; `--asr-device GPU` is
+  the user's dedicated-machine mode (`## GPU mode`).
 - **Never feed prose back to the recogniser.** Recent transcript as prev-text measured CER **1.8919**
   against 0.1278 unconditioned on the pause-free clip — 2,126 insertions on 1,166 reference
   characters, the tail repeating one clause 7× — the third reproduction of prompt-induced looping.
@@ -525,6 +528,66 @@ paths:
   record. It has not been repeated ⇒ read it as ONE observation consistent with the synthetic result
   above, not as a guarantee that a quiet room costs the pipeline nothing. What it does not license: a claim
   about loudness, about rooms in general, or about any ambience richer than the one sampled.
+
+## GPU mode (`--asr-device GPU`, user request 10-18)
+
+**Shape (user rulings):** the existing `--asr-device`, choices `NPU|GPU` (CPU dropped: 4.4 s per
+whole-clip decode, unusable live). **GPU = the NPU's models on the GPU**: whisper-ja-760M int8 for
+Japanese, turbo for English (user ruling 10-19, reversing large-v3 on the VAC-path English result
+below); VAC cadence, trims, screens and the unbiased recogniser identical. The user grants GPU
+mode nearly all RAM (machine dedicated; NPU mode = the multitasking mode); no measured candidate
+turns that memory into accuracy, so the grant buys nothing today.
+
+**Accuracy, one harness** (`.scratch/gpu/eval.py` = the shipped VAC path via `replay._run_recognizer`,
+same inputs as the 760M adoption; `kana_cer.py` = pykakasi reading-level CER, which strips the
+kanji/kana style the char metric mostly measures on the Aozora narration). Char | kana CER, GPU
+unless named:
+
+| setup | FLEURS-ja 150 (whole clip) | retention (VAC) | long-form §01+§03 (VAC) | CV8 300 (whole clip) |
+| --- | --- | --- | --- | --- |
+| NPU 760M int8 (shipped) | 0.0469 / 0.0333 | 0.0532 / 0.0143 | 0.2153 / 0.0500 | — |
+| 760M int8 | 0.0471 / 0.0336 | 0.0523 / 0.0137 | 0.2203 / 0.0500 | 0.0852 / 0.0407 |
+| whisper-ja-1.5B int8 | 0.0566 / 0.0436 | 0.0429 / 0.0072 | 0.1839 / 0.0520 | (VAC 0.0932 / 0.0449 vs 760M VAC 0.0930 / 0.0468) |
+| large-v3 int8 | 0.0482 / 0.0337 | 0.0669 / 0.0104 | 0.2468 / 0.0743 | 0.0963 / 0.0465 |
+| Qwen3-ASR-1.7B int8 (`ASRPipeline`) | 0.0676 / 0.0462 | no timestamps | — | — |
+| Cohere Transcribe 03-2026 fp16 IR | 0.0437 / 0.0289 | no timestamps | — | 0.0553 / 0.0280 |
+
+- **760M is device-neutral**: GPU ≡ NPU at reading level on every shared leg; 2.3× faster decode.
+- **whisper-ja-1.5B buys nothing measurable at 2.8× decode**: its long-form char win is
+  orthography (reading level ties), its retention win is 760M's one 11-char hallucination, it loses
+  FLEURS (digit-free too, 0.0410 vs 0.0351; it writes kanji numerals 一九四〇年) and ties CV; update
+  decode p50 0.82-0.86 / p90 1.26 / max 1.52 s; a capped runaway takes 7.4-8.3 s, at the 8 s
+  headroom's edge.
+  fp16 = int8 to the error (retention S19 D31 I0 both) and slower.
+- **Cohere wins short read clips and loses the live domain.** Whole-utterance decodes of the shipped
+  silero cuts (+0.4 s pre-pad, `vadseg.py`), kana: retention 0.1081 vs 760M 0.0182 (148 deletions;
+  a 25.6 s cut → 80 characters, identical at 256 and 600 token caps), long-form §01-§06 0.0852 vs
+  0.0547 (兵十 → 氷獣/教授/標準). Community IR = official PyTorch text on 5/5 clips. No timestamps ⇒
+  a VAC port needs an aligner as well. **Refused; no route.** Qwen3-ASR-1.7B: worse everywhere
+  measured, no timestamps, 1.24 s per 11 s buffer.
+- **Refused levers, measured:** beam search on the GPU raises `iremote_tensor.hpp:32 Not
+  Implemented` (timestamps on or off; 2026.4.1 = latest PyPI; `repetition_penalty` is also
+  forbidden with beams); `VAC_CHUNK_S`=0.5 costs reading-level CER on long-form 0.0500 → 0.0608 and
+  CV 0.0468 → 0.0525 (retention gains one event); term biasing (`hotwords`) costs accuracy (Device
+  bullet above). Re-open only on a new model release or a genai release that changes one of these.
+- **English: large-v3's whole-clip gain does not survive the live path.** FLEURS-en 150 whole
+  clip, char CER: large-v3 0.0211 (0.73 s p50) · turbo 0.0247 (0.30 s) · Qwen 0.0198 (no
+  timestamps) · 1.5B 0.0261 · Cohere 0.0292. Through the VAC path (`eval.py --arms envac`, same 150
+  clips): large-v3 capped at 224 tokens **0.0900** (update p50 0.514 / max 1.46 s) vs turbo
+  **0.0882** (0.260 / 0.62 s), deletions ~990 on both ⇒ large-v3 REFUSED (user ruling 10-19).
+- **Runaway budget** = a decode forced to its cap (`min_new_tokens`, 11 s retention buffer, GPU;
+  `.scratch/gpu/runaway_probe.log`, `cap_time.log`): 760M 448 tokens 1.4-1.5 s · turbo 4.5 s · 1.5B
+  7.4-8.3 s · large-v3 7.6-8.4 s (224 tokens 3.7-4.3 s) ⇒ GPU mode's two models stay inside the
+  8 s headroom uncapped.
+- **Latency** = `tests/vac_decode_trace_gpu.json` (`build_vac_trace.py --device GPU --out …`;
+  `eval_latency.py --trace tests/vac_decode_trace_gpu.json`), `retention_probe`, GPU vs the NPU
+  table below: decode 0.293 / 0.371 / 0.414 · commit lag 1.969 / 3.071 / 6.146 · provisional
+  0.822 / 1.235 / 1.945 · publication 0.804 · voice → SRC 5.087 / 8.052 / 9.581; carry ≤ −0.53 s on
+  every update (decode < real time throughout); 0 divergences, 0 forced trims. `eval_backpressure.py`
+  replays the NPU trace alone; the GPU's max decode (0.47 s) sits inside the NPU arm's envelope.
+- Regression lock: the `whisper@GPU` replay golden (`long`, device-tagged `GPU`), beside the NPU's.
+- **Not verified (L-004):** a live GPU session on the host (`live-smoke.md` item 10), power and
+  thermals (RAPL unreadable), the LID's CPU cost beside GPU decode.
 
 ## Publication screen — `caption_defect()`
 

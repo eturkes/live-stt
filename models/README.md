@@ -110,8 +110,9 @@ the SHA-256 sums above instead. They cover all three files.
 
 `models/openvino/cache/` holds compiled OpenVINO blobs. live-stt creates it and
 fills it on the first run of each engine and device. It is safe to delete. An
-empty cache costs about 130 seconds of compile time on the next Whisper run. A
-warm run takes about 7 seconds. The cache grows to about 2 GB for the default
+empty cache costs about 130 seconds of compile time on the next Whisper run on
+the NPU. A warm run takes about 7 seconds. With `--asr-device GPU`, the models
+compile in seconds. The cache grows to about 2 GB for the default
 model.
 After an OpenVINO upgrade, the first run can recompile part of the cache.
 
