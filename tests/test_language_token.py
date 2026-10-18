@@ -281,6 +281,7 @@ def test_source_lang_en_decodes_every_buffer_under_the_english_token(
 def test_the_generate_call_keeps_task_penalty_and_timestamps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(live_stt, "ASR_HOTWORDS_DEVICES", frozenset({"CPU"}))
     engine, pipeline = _whisper(monkeypatch, tmp_path)
     engine.set_hotwords("東京、タワー")
 

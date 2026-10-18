@@ -298,16 +298,21 @@ paths:
 - **Device.** The NPU costs nothing in accuracy (VAC CER 0.2321/0.0686 vs GPU 0.2292/0.0695) and
   forfeits exactly one feature: `StaticWhisperPipeline` raises `'initial_prompt' parameter is not
   supported on NPU device`, and the same for `hotwords`. Probed prompt lengths 1/2/4/8/16/32/64/128/
-  200 all raise and 0 passes ⇒ a capability gap, not a length budget. `WhisperEngine.set_hotwords`
-  drops the list per device; `--asr-device GPU` unlocks it. The NPU default is the user's efficiency
-  choice.
+  200 all raise and 0 passes ⇒ a capability gap, not a length budget. The GPU takes the list, and it
+  HURTS there (next bullet) ⇒ `ASR_HOTWORDS_DEVICES` is empty and `WhisperEngine.set_hotwords` drops
+  the list on every device. The NPU default is the user's efficiency choice.
 - **Never feed prose back to the recogniser.** Recent transcript as prev-text measured CER **1.8919**
   against 0.1278 unconditioned on the pause-free clip — 2,126 insertions on 1,166 reference
   characters, the tail repeating one clause 7× — the third reproduction of prompt-induced looping.
-  `CONTEXT_PREV_CHARS` and the carry buffer are deleted. A bounded TERM LIST on the same slot is
-  loop-free (0.2408→0.1873), so terms ride `hotwords`; under the NPU default session context reaches
-  the model through the translator glossary alone (`translation-leg.md`). Hotword figures used an
-  ORACLE list drawn from the reference = an upper bound.
+  `CONTEXT_PREV_CHARS` and the carry buffer are deleted. A bounded TERM LIST on the same slot was
+  loop-free on turbo (0.2408→0.1873, an ORACLE list drawn from the reference = an upper bound), and
+  **it COSTS whisper-ja-760M accuracy on the GPU**: long-form §01-§06 as one session through the real
+  worker + `SessionContext`, reading-level CER (kana, pykakasi) 0.0596 unbiased → 0.0679 with the
+  learner's terms (it learns and then reinforces misrecognitions: カスケ for 加助, ゴム) → **0.0791**
+  with a user `--context` naming the story and its characters; the seeded names themselves land worse
+  (兵十 34 → 25 of 38, ごん → 権 ×13) and §02 grew a 16-character repeat
+  (`.scratch/gpu/hot_eval.py`, `hot-760m-*.json`). So no device takes the list: session context reaches
+  the model through the translator glossary alone (`translation-leg.md`), in both modes.
 - **`repetition_penalty` is the ONLY repetition knob that reaches this build.**
   `no_repeat_ngram_size` is accepted and silently ignored (sizes 2/3/4/5/8 return byte-identical text
   on a clip repeating a 5-char unit ~140×); `num_beams=2` raises (`zero_remote_tensor.cpp:259`). The

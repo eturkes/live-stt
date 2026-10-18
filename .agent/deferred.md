@@ -14,3 +14,12 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
+2. **Recogniser term channel is dead plumbing** — no device takes the term list since the GPU
+   measurement (`asr-pipeline.md`: reading-level CER 0.0596 → 0.0791 with a user `--context` on
+   whisper-ja-760M), so `ASR_HOTWORDS_DEVICES`, `WhisperEngine.set_hotwords`/`hotwords`, the
+   worker's `biased` handoff and `SessionContext.asr_hotwords` + the `prompted` exclusion carry no
+   live path. Tier `docs` (behaviour-preserving: `prompted` is always empty today).
+   **Accept:** either the channel is deleted — suite green, `translator_brief` output byte-identical
+   over `tests/caption_trace.json`, `eval_term_census.py` and `eval_en_pairing.py` verdicts unchanged
+   — or a recogniser is measured where term biasing lowers reading-level CER on the long-form
+   one-session arm, and the gate admits that device for it.

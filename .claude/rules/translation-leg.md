@@ -315,9 +315,10 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   excluded from support accounting, and listed ONCE — repetition is what makes a `<|startofprev|>`
   payload loop.
 - Two consumers. `asr_hotwords()` returns the term list **and** the terms it carries, which the caller
-  must hand back to `observe_ja` or the guard is defeated (unreachable on the NPU default —
-  `asr-pipeline.md`). `translator_brief()` rides the thread's `developerInstructions`, never turn text,
-  because turn text is declared translatable input; a changed glossary rotates the thread. Under
+  must hand back to `observe_ja` or the guard is defeated (unreachable: no device takes the list,
+  which cost whisper-ja-760M accuracy on the GPU — `asr-pipeline.md`). `translator_brief()` rides
+  the thread's `developerInstructions`, never turn text, because turn text is declared translatable
+  input; a changed glossary rotates the thread. Under
   two-way, `translator_brief(source)` renders the SAME canonical glossary in the direction asked for
   — `term = rendering` toward English, `rendering = term` toward Japanese — and the reverse brief
   carries PAIRED terms ONLY, the raw `--context` topic line included in that exclusion, an unpaired

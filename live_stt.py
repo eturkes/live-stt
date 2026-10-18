@@ -83,11 +83,15 @@ ENGINE_DIRS = {
 WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa-onnx
 # NPU is the default accelerator: unconditioned CER ties the GPU (long_form
 # 0.2321 vs 0.2292, retention 0.0686 vs 0.0695) at 1.7-2.1x real-time headroom.
-# Its one cost is that openvino.genai's StaticWhisperPipeline rejects BOTH text
-# conditioning parameters -- prompts of 1..200 chars all raise, 0 passes -- so
-# ASR_HOTWORDS_DEVICES gates the biasing channel rather than the device.
+# openvino.genai's StaticWhisperPipeline rejects BOTH text conditioning
+# parameters on the NPU -- prompts of 1..200 chars all raise, 0 passes. The GPU
+# takes them, but term biasing COSTS whisper-ja-760M accuracy there: long-form
+# sections 01-06 as one session, reading-level (kana) CER 0.0596 unbiased ->
+# 0.0679 with learned terms -> 0.0791 with a user --context, the seeded names
+# themselves heard worse (兵十 34 -> 25 of 38). So no device takes the list, and
+# session terms reach the translator alone.
 ASR_DEVICE = "NPU"
-ASR_HOTWORDS_DEVICES = frozenset({"GPU", "CPU"})
+ASR_HOTWORDS_DEVICES: frozenset[str] = frozenset()
 OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
 # Audio the JA pin cannot account for -- English speech, room tone -- makes the
 # decoder emit one unit until it hits the model's 448-token max_length: 13 s of
@@ -2910,10 +2914,7 @@ def main():
     parser.add_argument(
         "--asr-device",
         default=ASR_DEVICE,
-        help=(
-            f"OpenVINO device for --engine whisper (default: {ASR_DEVICE}). "
-            "GPU or CPU additionally enable session term biasing."
-        ),
+        help=(f"OpenVINO device for --engine whisper (default: {ASR_DEVICE})."),
     )
     parser.add_argument(
         "--no-translate",

@@ -69,14 +69,15 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
   cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
 - **D-016** Whisper int8 on OpenVINO **NPU** is the shipped recogniser — whisper-ja-760M for
-  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open); `hotwords`
-  forfeited with the NPU. Engine selection
+  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open). `hotwords`
+  reach no device: the NPU rejects them, and on the GPU term biasing cost whisper-ja-760M accuracy
+  (reading-level CER 0.0596 → 0.0791 with a user `--context`, `asr-pipeline.md`). Engine selection
   stays closed, and
   so are its two constructor properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
   `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
   re-derive (`asr-pipeline.md`). **D-010** sherpa k2v2/parakeet stay as the `--engine` CPU fallback
-  (VAD-segment decode, no partials). Domain-term misrecognition (症例数 heard as 小レース) rides `--context` on the
-  NPU; GPU hotwords are not pursued (user ruling 10-07).
+  (VAD-segment decode, no partials). Domain-term misrecognition (症例数 heard as 小レース) rides `--context`
+  into the translator glossary alone (user ruling 10-07; the GPU measurement confirmed it).
 - **JA-tuned checkpoint** (user rulings): decided AFTER the
   boundary-artifact fix, re-measured under the fixed policy; `whisper-ja-760M` won every JA leg and
   is ADOPTED: it decodes Japanese and turbo stays resident for English (`--two-way`, `--source-lang
@@ -234,6 +235,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
+- [ ] **2** Recogniser term channel is dead plumbing
+  - `docs`-tier refactor; accept → `.agent/deferred.md` → *Recogniser term channel is dead plumbing*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

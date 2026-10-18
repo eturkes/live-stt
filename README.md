@@ -64,8 +64,8 @@ Startup prints the translation status: `Translation: gpt-6-luna via codex app-se
 | Flag | Default | Description |
 |---|---|---|
 | `--engine {k2v2,parakeet,whisper}` | `whisper` | STT model (see `models/README.md`). `whisper` streams partial text; the sherpa engines decode each closed utterance. Rationale: `.claude/rules/asr-pipeline.md` D-016 (default), D-010 (sherpa pair) |
-| `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. `GPU` or `CPU` also enable session term biasing, which the NPU rejects. |
-| `--context TEXT` | empty | Japanese topic line for this session. Name anything that must be spelled correctly. The tool trusts these terms at once and keeps them for the whole run. It also learns recurring terms from its own captions, and gives both to the recognizer and to the translator. Everything is forgotten when the session ends. |
+| `--asr-device DEV` | `NPU` | OpenVINO device for `--engine whisper`. |
+| `--context TEXT` | empty | Japanese topic line for this session. Name anything that must be spelled correctly. The tool trusts these terms at once and keeps them for the whole run. It also learns recurring terms from its own captions, and gives both to the translator. Everything is forgotten when the session ends. |
 | `--two-way` | off | Translate in both directions, Japanese to English and English to Japanese. live-stt detects the language of each utterance. Do not use `--source-lang` or a sherpa engine with this option. See [Two-way translation](#two-way-translation-ja-and-en). |
 | `--source-lang {ja,en}` | `ja` | Spoken language. `en` transcribes English directly and retires the Japanese-only caption screen. `en` is transcribe-only, because the translation leg goes from Japanese to English. |
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
