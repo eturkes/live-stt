@@ -583,7 +583,9 @@ unless named:
   `eval_latency.py --trace tests/vac_decode_trace_gpu.json`), `retention_probe`, GPU vs the NPU
   table below: decode 0.293 / 0.371 / 0.414 · commit lag 1.969 / 3.071 / 6.146 · provisional
   0.822 / 1.235 / 1.945 · publication 0.804 · voice → SRC 5.087 / 8.052 / 9.581; carry ≤ −0.53 s on
-  every update (decode < real time throughout); 0 divergences, 0 forced trims. `eval_backpressure.py`
+  every update (decode < real time throughout); 0 divergences, 0 forced trims; decode = 0.161 s
+  fixed + 3.82 ms/char (`stress_long` 0.196 + 2.91). Recorded at load average ~4: decode cost moves
+  ~20 % with machine state, inside the 2.3× gap. `eval_backpressure.py`
   replays the NPU trace alone; the GPU's max decode (0.47 s) sits inside the NPU arm's envelope.
 - Regression lock: the `whisper@GPU` replay golden (`long`, device-tagged `GPU`), beside the NPU's.
 - **Not verified (L-004):** a live GPU session on the host (`live-smoke.md` item 10), power and
@@ -801,7 +803,9 @@ pause-free) is the demanding clip; `stress_long` (44.7 s) reads within ~0.1 s on
 - **`VAC_CHUNK_S` is floored by decode cost, not by taste.** Work rate = `decode_s / VAC_CHUNK_S`:
   0.667 today, 0.89 at 0.75 s, **1.33 at 0.5 s** — past real time, where the catch-up rule stretches
   the cadence to the decode (~0.67 s) and every update runs back to back (unmeasured).
-  Every candidate below 0.75 s needs the fixed 0.35 s term cut first.
+  Every candidate below 0.75 s needs the fixed 0.35 s term cut first — on the NPU. On the GPU the
+  fixed term is 0.16-0.20 s and 0.5 s runs at work rate ~0.6, yet it is REFUSED on accuracy
+  (`## GPU mode`): the cadence question there is settled by CER, not by decode cost.
 - Translation is **2.170 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
   bare turn, this one is production order over 215 captions.
 - **The rotation tax is CUT.** `translator_brief()` renders the glossary in content order

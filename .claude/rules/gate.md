@@ -33,7 +33,7 @@ or ignored files kept, untracked dropped, evidence JSON kept). **Coverage limit 
 an ignored file holding a key is out of scope by design — a commit cannot carry it.**
 
 The pytest step runs on `PYTEST_WORKERS`=6 pytest-xdist workers (serial ≈39 s → ≈24 s on this host;
-per-test outcomes compared as junit maps, identical: 1229 pass + 1 skip) — seed trees included, so
+per-test outcomes compared as junit maps, identical: 1229 pass + 1 skip, before the GPU golden) — seed trees included, so
 every seed fires through the parallel runner. It runs `-rsxX` and `gate.py`'s
 `undeclared_demotions` reads the summary. **The step
 owns its effective options, because `--no-summary` and `--runxfail` each empty that input in

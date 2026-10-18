@@ -33,6 +33,9 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** one committed `tests/eval_*.py` reproduces the table's whisper rows (char + reading
    level CER, FLEURS-ja / retention / long-form / CV300, plus the English VAC arm) on a named device
    from committed manifests (`short_corpus.json`, `real_clips.json`, `en_clips.json`,
-   `long_form.json`, `retention_probe.json`) within ±0.002, plus the term-biasing arm, documented in
+   `long_form.json`, `retention_probe.json`; the FLEURS legs = the 150 + 150 clips
+   `.scratch/build_quality_manifest.py` draws from the first two indexes, `Random(20260916)`, and the
+   CV300 leg = `.scratch/gpu/prep_cv.py`'s seed-20261001 sample of the CV8 test parquet) within
+   ±0.002, plus the term-biasing arm, documented in
    `evidence-artifacts.md`; reading-level scoring's dependency rides `--with`, never the project
    deps.

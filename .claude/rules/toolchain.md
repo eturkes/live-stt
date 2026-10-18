@@ -6,7 +6,9 @@ inventory, so read the script instead of restating it: a gate that lives in pros
 shortened, which is how four commits reported a passing gate while its pyright step stayed red. Every
 step is fast and hermetic — no weights, no hardware, no network — and clears `PYTHONPATH` itself. A
 green run still reports **two skips**, the whisper replay goldens of the NPU and GPU modes, which
-need the prelude below; anything more skipping means absent weights or corpus. Each check's mechanics, coverage limits and
+need the prelude below — and **zero** from a shell holding the prelude, where both goldens compile
+and run on the NPU and GPU inside the pytest step (it clears `PYTHONPATH` alone); anything more
+skipping means absent weights or corpus. Each check's mechanics, coverage limits and
 firing record live in `gate.md`, which loads with the check's files. Every run prints each step's
 wall-clock and the suite's five slowest tests, since each run blocks the critical path.
 
