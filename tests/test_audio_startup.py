@@ -26,6 +26,15 @@ live_stt.SESSION_KILL_WAIT_S = 0.2
 sys.argv = ['live-stt', '--list-devices']
 live_stt.main()
 """
+# The CLI's own bounds, for cases whose CLI must NOT time out. A contended box can
+# hold a healthy child past 0.5 s in a phase, which reads as the hang under test.
+PATIENT = RUNNER.replace("TIMEOUT_S = 0.5", "TIMEOUT_S = 20.0").replace(
+    "SESSION_STOP_TIMEOUT_S = 1.0", "SESSION_STOP_TIMEOUT_S = 20.0"
+)
+# How long a case waits on a child before calling it hung. A hang never ends, so a
+# generous bound costs a green run nothing; 5 s and 8 s failed 2 of 14 cases on one
+# CPU shared by the gate's six workers and six busy loops.
+HANG_S = 60.0
 
 
 def launch(tmp_path, backend, *, runner=RUNNER, uv=False, files=False, env_extra=None):
@@ -65,7 +74,7 @@ def cleanup(proc, tmp_path):
 
 def finish(proc, tmp_path):
     try:
-        return proc.communicate(timeout=8)
+        return proc.communicate(timeout=HANG_S)
     except subprocess.TimeoutExpired:
         cleanup(proc, tmp_path)
         proc.communicate(timeout=2)
@@ -90,7 +99,7 @@ def test_hung_audio_import_releases_cli_and_names_phase(tmp_path, uv):
 
 
 def test_device_listing_still_prints_the_backend_result(tmp_path):
-    proc = launch(tmp_path, "def query_devices(): return 'test microphone'\n")
+    proc = launch(tmp_path, "def query_devices(): return 'test microphone'\n", runner=PATIENT)
     out, err = finish(proc, tmp_path)
     assert proc.returncode == 0, err
     assert "test microphone" in out
@@ -147,6 +156,7 @@ def test_the_session_child_resolves_openvino_from_the_venv_alone(tmp_path):
     proc = launch(
         tmp_path,
         backend,
+        runner=PATIENT,
         env_extra={
             "PYTHONPATH": os.pathsep.join([str(tarball_py), str(tmp_path), str(ROOT)]),
             "LD_LIBRARY_PATH": os.pathsep.join([str(tarball_lib), str(farm)]),
@@ -180,9 +190,9 @@ def test_second_launch_is_refused_before_audio_initialization(tmp_path):
         f"with Path({str(marker)!r}).open('a') as f: f.write('entered\\n')\n"
         "while True: time.sleep(1)\n"
     )
-    first = launch(tmp_path, backend, runner=RUNNER.replace("TIMEOUT_S = 0.5", "TIMEOUT_S = 20.0"))
+    first = launch(tmp_path, backend, runner=PATIENT)
     try:
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + HANG_S
         while not marker.exists() and time.monotonic() < deadline:
             time.sleep(0.02)
         assert marker.exists()
@@ -204,9 +214,9 @@ def test_interrupt_during_audio_import_returns_without_waiting_for_its_timeout(t
         "signal.signal(signal.SIGINT, signal.SIG_IGN)\n"
         "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
         f"Path({str(marker)!r}).touch()\nwhile True: time.sleep(1)\n",
-        runner=RUNNER.replace("TIMEOUT_S = 0.5", "TIMEOUT_S = 20.0"),
+        runner=PATIENT,
     )
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + HANG_S
     while not marker.exists() and time.monotonic() < deadline:
         time.sleep(0.02)
     assert marker.exists()
@@ -243,7 +253,7 @@ def test_surviving_child_keeps_the_lock_after_the_supervisor_exits(tmp_path):
     backend = "import time\nwhile True: time.sleep(1)\n"
     proc = launch(tmp_path, backend, runner=runner, files=True)
     try:
-        proc.wait(timeout=8)
+        proc.wait(timeout=HANG_S)
         assert proc.returncode != 0
         assert "still present after SIGKILL" in (tmp_path / "stderr").read_text()
         second = launch(tmp_path, backend)
@@ -310,14 +320,14 @@ def test_supervisor_forwards_terminal_signals_and_preserves_the_drain(tmp_path, 
         sys.executable,
         "-u",
         "-c",
-        RUNNER.replace("['live-stt', '--list-devices']", "['live-stt']"),
+        PATIENT.replace("['live-stt', '--list-devices']", "['live-stt']"),
     ]
     pid, master = pty.fork()
     if pid == 0:  # pragma: no cover - immediately replaced by the real CLI
         os.execve(sys.executable, argv, env)
     status = None
     try:
-        deadline = time.monotonic() + 8
+        deadline = time.monotonic() + HANG_S
         while not transcript.exists() and time.monotonic() < deadline:
             time.sleep(0.02)
         assert transcript.exists(), "session never reached its signal handlers"
