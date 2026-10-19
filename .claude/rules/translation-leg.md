@@ -302,22 +302,17 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   same 81 caption lines, unrestricted n-grams produced 9,613 candidates against 100 for script runs,
   nearly all of the excess being grammar fragments. Cost 4.46 µs/line ⇒ runs inline, never a
   background pass.
-- **Promotion + lease are one safety property with two halves.** A candidate is promoted after
-  `CONTEXT_TERM_SUPPORT`=3 sightings in distinct segments **whose recogniser prompt did not already
-  contain it**, and trust is a lease (`CONTEXT_TERM_LEASE`=60 segments) that only an un-prompted
-  sighting renews. Conditioning on a mis-recognition reproduces it, so without the exclusion an error
-  promotes itself on evidence it manufactured; without the lease a term the prompt keeps producing
-  renews its own trust forever.
-- Bounds: `CONTEXT_MAX_TERMS`=12 · `CONTEXT_TERM_MEMORY`=40 segments of candidate patience ·
-  `CONTEXT_PROMPT_MAX_CHARS`=160, sized against Whisper's 223-token prev-text budget, terms ordered
-  longest-first because length is the cheap proxy for what a recogniser gets wrong.
+- **Promotion + lease.** A candidate is promoted after `CONTEXT_TERM_SUPPORT`=3 sightings in distinct
+  segments, and trust is a lease (`CONTEXT_TERM_LEASE`=60 segments) each sighting renews, so a term
+  the session stops saying leaves the glossary. Every sighting counts as evidence only because
+  nothing feeds terms back to the recogniser (`asr-pipeline.md`). A channel that did must discount
+  the terms it supplied, or a mis-recognition promotes itself on evidence it manufactured and a term
+  the prompt keeps producing renews its own trust forever.
+- Bounds: `CONTEXT_MAX_TERMS`=12 · `CONTEXT_TERM_MEMORY`=40 segments of candidate patience. The 12
+  was sized for Whisper's 223-token prev-text budget and never re-tuned for the glossary.
 - `--context TEXT` is the user's correction channel: NFKC-normalized, trusted at once, never evicted,
-  excluded from support accounting, and listed ONCE — repetition is what makes a `<|startofprev|>`
-  payload loop.
-- Two consumers. `asr_hotwords()` returns the term list **and** the terms it carries, which the caller
-  must hand back to `observe_ja` or the guard is defeated (unreachable: no device takes the list,
-  which cost whisper-ja-760M accuracy on the GPU — `asr-pipeline.md`). `translator_brief()` rides
-  the thread's `developerInstructions`, never turn text, because turn text is declared translatable
+  excluded from support accounting, and listed once.
+- One consumer: `translator_brief()` rides the thread's `developerInstructions`, never turn text, because turn text is declared translatable
   input; a changed glossary rotates the thread. Under
   two-way, `translator_brief(source)` renders the SAME canonical glossary in the direction asked for
   — `term = rendering` toward English, `rendering = term` toward Japanese — and the reverse brief
@@ -367,9 +362,8 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   `CONTEXT_TERM_SUPPORT`, not the floor, is what rejects vocabulary. **Honest limit:** one
   katakana-sparse corpus — in a loanword-dense domain (ドア, バス, ケア, メモ) short vocabulary would
   reach support and the support threshold alone stands against it.
-- **Honest limits, all measured.** A persistent ASR error recurring 3× un-prompted IS learned: the
-  guard prevents amplification, not initial learning, and `--context` is the correction channel. The
-  learner stabilises whatever the recogniser stably produces, which live is often a mis-recognition.
+- **Honest limits, all measured.** A persistent ASR error recurring 3× IS learned, and `--context`
+  is the correction channel. The learner stabilises whatever the recogniser stably produces, which live is often a mis-recognition.
   A hallucinated but genuine proper noun (`Okkawa`, `Anke`) is unreachable by any lexical or
   positional rule; `CONTEXT_EN_SUPPORT` is the only lever there.
 - **Simulation is the learner's best case; check a claim against the live arm.** An offline screen

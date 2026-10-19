@@ -15,13 +15,12 @@ lives downstream in `eval_term_census.py`, which reads `captions` as the one
 stream its `idx` numbers. That is what makes `CONTEXT_TERM_LEASE`=60 segments
 reachable at all -- one section yields ~67 captions, the whole story ~200.
 
-The trace is what makes M12 affordable. `ASR_DEVICE` is "NPU" and
-`ASR_HOTWORDS_DEVICES` excludes it, so `WhisperEngine.set_hotwords` drops the
-term list unconditionally and `generate` passes no `hotwords` keyword: session
-context cannot reach the recogniser on the shipped device. The caption stream is
-therefore arm-independent, one NPU pass serves every downstream arm, and each of
-those arms is a CPU-only offline replay of this file (`eval_term_census.py` is
-the first).
+The trace is what makes M12 affordable. Session context never reaches the
+recogniser (`live_stt.ASR_DEVICE`'s comment), so the caption stream is
+arm-independent, one NPU pass serves every downstream arm, and each of those arms
+is a CPU-only offline replay of this file (`eval_term_census.py` is the first).
+Traces recorded while that channel existed carry `run.hotwords_reachable`, false
+in every committed one; nothing reads it.
 
 On-demand, never a gate step: it needs the gitignored weights, the gitignored
 narration WAVs, and ~14 min of accelerator time for the whole story.
@@ -54,7 +53,6 @@ from build_stressor import sha256_file  # noqa: E402
 import replay  # noqa: E402  (after sys.path injection)
 from live_stt import (  # noqa: E402
     ASR_DEVICE,
-    WhisperEngine,
     check_device,
     check_models,
     load_recognizer,
@@ -148,10 +146,6 @@ def build(device: str) -> dict:
                 f"{device!r} decoded successfully; WhisperPipeline exposes no compiled "
                 f"model, so EXECUTION_DEVICES is unreadable"
             ),
-            # Recorded because it is the premise the whole milestone rests on: with
-            # no term list reaching the model, every downstream arm may replay these
-            # captions instead of paying for its own accelerator run.
-            "hotwords_reachable": isinstance(rec, WhisperEngine) and rec.supports_hotwords,
             "n_captions": len(captions),
             "n_nonempty": sum(1 for c in captions if c["text"]),
             "total_decode_s": decode_s,
@@ -174,8 +168,7 @@ def main() -> None:
         f"wrote {OUT.relative_to(ROOT)}: {run['n_captions']} captions "
         f"({run['n_nonempty']} non-empty) over {len(trace['sections'])} sections on "
         f"{run['requested_device']}, audio={trace['source']['audio_s']:.3f}s "
-        f"decode={run['total_decode_s']:.1f}s rtf={run['overall_rtf']:.3f} "
-        f"hotwords_reachable={run['hotwords_reachable']}"
+        f"decode={run['total_decode_s']:.1f}s rtf={run['overall_rtf']:.3f}"
     )
 
 

@@ -10,7 +10,7 @@ Contract, in the order the cases sit below:
   decode and falls back to the module default when the caller names none;
   `Recognizer.decode_segments()` forwards it, being the callable `StreamingProcessor` holds.
   The rest of the `generate()` call is untouched: `task="transcribe"`,
-  `repetition_penalty`, `hotwords` and `return_timestamps` keep today's values.
+  `repetition_penalty` and `return_timestamps` keep today's values.
 - **`held` is the SOURCE LANGUAGE at startup, not the literal `ja`.** One-way
   `--source-lang en` constructs no detector, so `token` stays `held` for the whole run --
   a literal would decode English under `<|ja|>` and silently break transcribe-only mode.
@@ -281,9 +281,7 @@ def test_source_lang_en_decodes_every_buffer_under_the_english_token(
 def test_the_generate_call_keeps_task_penalty_and_timestamps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(live_stt, "ASR_HOTWORDS_DEVICES", frozenset({"CPU"}))
     engine, pipeline = _whisper(monkeypatch, tmp_path)
-    engine.set_hotwords("東京、タワー")
 
     _call_with_language(
         engine.generate,
@@ -296,8 +294,8 @@ def test_the_generate_call_keeps_task_penalty_and_timestamps(
     assert call["language"] == "<|en|>"
     assert call["task"] == "transcribe"
     assert call["repetition_penalty"] == live_stt.ASR_REPETITION_PENALTY
-    assert call["hotwords"] == "東京、タワー"
     assert call["return_timestamps"] is True
+    assert "hotwords" not in call
 
 
 def test_decode_segments_forwards_the_language_it_was_given(

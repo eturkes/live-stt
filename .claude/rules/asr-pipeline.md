@@ -301,8 +301,9 @@ paths:
   forfeits exactly one feature: `StaticWhisperPipeline` raises `'initial_prompt' parameter is not
   supported on NPU device`, and the same for `hotwords`. Probed prompt lengths 1/2/4/8/16/32/64/128/
   200 all raise and 0 passes ⇒ a capability gap, not a length budget. The GPU takes the list, and it
-  HURTS there (next bullet) ⇒ `ASR_HOTWORDS_DEVICES` is empty and `WhisperEngine.set_hotwords` drops
-  the list on every device. The NPU default is the user's efficiency choice; `--asr-device GPU` is
+  HURTS there (next bullet) ⇒ the recogniser takes no term list on any device and the channel is
+  deleted; re-adding it also re-adds the learner's exclusion of the terms it supplied
+  (`translation-leg.md`). The NPU default is the user's efficiency choice; `--asr-device GPU` is
   the user's dedicated-machine mode (`## GPU mode`).
 - **Never feed prose back to the recogniser.** Recent transcript as prev-text measured CER **1.8919**
   against 0.1278 unconditioned on the pause-free clip — 2,126 insertions on 1,166 reference

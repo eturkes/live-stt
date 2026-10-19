@@ -7,10 +7,10 @@ over a fake OpenVINO pipeline -> `worker`'s duck dispatch -> the VAC loop's
 publication and status-line contracts.
 
 Running the real engine class against a fake pipeline is the point. The device
-rules that D-016 shipped -- NPU by default, hotwords dropped on every device rather
-than sent -- are then decided by the production constants at every call, so widening
-`ASR_HOTWORDS_DEVICES` or changing `ASR_DEVICE` breaks a test instead of quietly
-sending a parameter the NPU raises on.
+rules that D-016 shipped -- NPU by default, no term list sent to any device -- are
+then decided by production code at every call, so changing `ASR_DEVICE` or sending
+`hotwords` again breaks a test instead of quietly sending a parameter the NPU raises
+on.
 
 No test here needs a microphone, a downloaded model, or a usable OpenVINO
 install: `openvino_genai` is replaced in `sys.modules` before the engine's
@@ -235,42 +235,20 @@ def test_engine_creates_its_compilation_cache_and_passes_it_to_the_pipeline(open
     assert openvino[0].kwargs == {"CACHE_DIR": str(cache)}
 
 
+def test_a_warm_cache_survives_the_next_engine(openvino, tmp_path):
+    """Every run after the first finds the cache directory already there."""
+    live_stt.WhisperEngine(tmp_path / "model", "CPU")
+    live_stt.WhisperEngine(tmp_path / "model", "CPU")
+
+    assert len(openvino) == 2
+
+
 @pytest.mark.parametrize("device", ["NPU", "GPU"])
 def test_no_shipped_device_sends_the_term_list(openvino, tmp_path, device):
     """Term biasing cost whisper-ja-760M accuracy on the GPU, so no device takes it."""
     engine = live_stt.WhisperEngine(tmp_path / "model", device)
-    engine.set_hotwords("東京、タワー")
     engine.decode(np.zeros(SAMPLE_RATE, dtype=np.float32))
 
-    assert not engine.supports_hotwords
-    assert engine.hotwords == ""
-    assert "hotwords" not in openvino[0].calls[0]
-
-
-def test_a_biasing_capable_device_keeps_the_term_list(monkeypatch, openvino, tmp_path):
-    """The channel itself still works for a device the gate admits."""
-    monkeypatch.setattr(live_stt, "ASR_HOTWORDS_DEVICES", frozenset({"GPU"}))
-    engine = live_stt.WhisperEngine(tmp_path / "model", "GPU")
-    engine.decode(np.zeros(SAMPLE_RATE, dtype=np.float32))
-    # An unset list is omitted, never sent as "": the keyword itself is the switch.
-    assert "hotwords" not in openvino[0].calls[0]
-
-    engine.set_hotwords("東京、タワー")
-    engine.decode(np.zeros(SAMPLE_RATE, dtype=np.float32))
-
-    assert engine.supports_hotwords
-    assert engine.hotwords == "東京、タワー"
-    assert openvino[0].calls[1]["hotwords"] == "東京、タワー"
-
-
-def test_the_default_device_drops_the_term_list_instead_of_sending_it(openvino, tmp_path):
-    """The NPU raises on `hotwords`; the setter is what keeps the call site safe."""
-    engine = live_stt.WhisperEngine(tmp_path / "model", live_stt.ASR_DEVICE)
-    engine.set_hotwords("東京、タワー")
-
-    assert not engine.supports_hotwords
-    assert engine.hotwords == ""
-    engine.decode(np.zeros(SAMPLE_RATE, dtype=np.float32))
     assert "hotwords" not in openvino[0].calls[0]
 
 
@@ -330,6 +308,19 @@ def test_decode_segments_returns_spans_the_trim_rule_can_use(openvino, tmp_path)
     assert call["return_timestamps"] is True
     assert call["language"] == "<|ja|>"
     assert call["task"] == "transcribe"
+
+
+def test_decode_segments_joins_every_text_the_pipeline_returns(openvino, tmp_path):
+    """A result split over several texts is one transcript, still matched by its spans."""
+    engine = live_stt.WhisperEngine(tmp_path / "model", "CPU")
+    openvino[0].result = _Result(
+        ["あい", "うえ"], [_Chunk(0.0, 2.0, "あい"), _Chunk(2.0, 4.0, "うえ")]
+    )
+
+    text, segments = engine.decode_segments(np.zeros(SAMPLE_RATE, dtype=np.float32))
+
+    assert text == "あいうえ"
+    assert [s.text for s in segments] == ["あい", "うえ"]
 
 
 def test_spans_are_dropped_when_they_do_not_reconstruct_the_transcript(openvino, tmp_path):
@@ -476,21 +467,17 @@ def test_a_sherpa_recognizer_runs_the_vad_segment_path(monkeypatch):
     assert asyncio.run(_route(monkeypatch, _SherpaShapedEngine())) == ["decode", "feed"]
 
 
-# --- VAC over the real engine: publication + biasing (P3, P7) -----------------
+# --- VAC over the real engine: publication + learning (P3, P7) ----------------
 
 
 class _RecordingContext:
-    """Records what the recognizer was offered and what came back as evidence."""
+    """Records what came back to the learner as evidence."""
 
-    def __init__(self, terms=""):
-        self._offer = (terms, frozenset(terms.split("、")) if terms else frozenset())
-        self.observed: list[tuple[str, frozenset[str]]] = []
+    def __init__(self):
+        self.observed: list[str] = []
 
-    def asr_hotwords(self):
-        return self._offer
-
-    def observe_ja(self, text, prompted=frozenset()):
-        self.observed.append((text, prompted))
+    def observe_ja(self, text):
+        self.observed.append(text)
 
 
 class _RecordingTranslator:
@@ -554,7 +541,7 @@ def test_one_utterance_publishes_exactly_once_through_every_consumer(
     assert line[1] == 1
     assert line[2]
     assert translator.submitted == [(1, line[2])]
-    assert [text for text, _ in context.observed] == [line[2]]
+    assert context.observed == [line[2]]
     assert len(run.segments) == 1
 
 
@@ -746,30 +733,6 @@ def test_the_sherpa_path_drops_the_same_captions(monkeypatch):
     assert context.observed == []
 
 
-def test_the_default_device_reports_no_biasing_so_captions_stay_evidence(
-    monkeypatch, openvino, tmp_path
-):
-    """Nothing reached the model, so the caption is un-prompted support (D-015)."""
-    engine = whisper_engine(openvino, tmp_path)
-    context = _RecordingContext("東京、タワー")
-
-    run = run_vac(monkeypatch, engine, ONE_UTTERANCE, context=context)
-
-    assert engine.hotwords == ""
-    assert context.observed == [(run.lines[0][2], frozenset())]
-
-
-def test_a_biasing_capable_device_discounts_the_terms_it_supplied(monkeypatch, openvino, tmp_path):
-    monkeypatch.setattr(live_stt, "ASR_HOTWORDS_DEVICES", frozenset({"GPU"}))
-    engine = whisper_engine(openvino, tmp_path, device="GPU")
-    context = _RecordingContext("東京、タワー")
-
-    run = run_vac(monkeypatch, engine, ONE_UTTERANCE, context=context)
-
-    assert engine.hotwords == "東京、タワー"
-    assert context.observed == [(run.lines[0][2], frozenset({"東京", "タワー"}))]
-
-
 @pytest.mark.parametrize("device", ["NPU", "GPU"])
 def test_a_session_term_survives_to_the_translator_but_never_to_the_recognizer(
     monkeypatch, openvino, tmp_path, device
@@ -781,7 +744,6 @@ def test_a_session_term_survives_to_the_translator_but_never_to_the_recognizer(
     run_vac(monkeypatch, engine, ONE_UTTERANCE, context=context)
 
     assert "東京タワー" in context.translator_brief()
-    assert engine.hotwords == ""
     assert all("hotwords" not in call for call in openvino[0].calls)
 
 

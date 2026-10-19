@@ -14,17 +14,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **Recogniser term channel is dead plumbing** — no device takes the term list since the GPU
-   measurement (`asr-pipeline.md`: reading-level CER 0.0596 → 0.0791 with a user `--context` on
-   whisper-ja-760M), so `ASR_HOTWORDS_DEVICES`, `WhisperEngine.set_hotwords`/`hotwords`, the
-   worker's `biased` handoff and `SessionContext.asr_hotwords` + the `prompted` exclusion carry no
-   live path. Tier `docs` (behaviour-preserving: `prompted` is always empty today).
-   **Accept:** either the channel is deleted — suite green, `translator_brief` output byte-identical
-   over `tests/caption_trace.json`, `eval_term_census.py` and `eval_en_pairing.py` verdicts unchanged
-   — or a recogniser is measured where term biasing lowers reading-level CER on the long-form
-   one-session arm, and the gate admits that device for it.
-
-3. **GPU-mode screen lives in scratch** — the GPU-mode decisions (`asr-pipeline.md` `## GPU mode`:
+2. **GPU-mode screen lives in scratch** — the GPU-mode decisions (`asr-pipeline.md` `## GPU mode`:
    760M device parity, the 1.5B / large-v3 / Qwen3-ASR / Cohere refusals for Japanese, large-v3's
    VAC-path English refusal, the 0.5 s cadence and term-biasing refusals) rest on `.scratch/gpu/`
    harnesses (`eval.py`, `kana_cer.py`, `vadseg.py`, `hot_eval.py`, `cohere_eval.py`,
@@ -39,3 +29,12 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    ±0.002, plus the term-biasing arm, documented in
    `evidence-artifacts.md`; reading-level scoring's dependency rides `--with`, never the project
    deps.
+
+3. **Candidate-window law misstates the learner** — `translation-leg.md`'s simulation bullet says
+   support "needs three sightings inside one `CONTEXT_TERM_MEMORY` window", while `observe_ja` keeps
+   every earlier sighting of a candidate while its LATEST is under 40 segments old: sightings at
+   segments 1 / 40 / 79 promote ゴン though no 40-segment window holds three. The constant's own comment and the Bounds bullet ("candidate patience")
+   already describe the implemented rule. Tier `docs` (behaviour-preserving).
+   **Accept:** the bullet states the implemented rule, and a `tests/test_context.py` lock pins the
+   1 / 40 / 79 promotion — or, on a user ruling for a true sliding window, the implementation changes
+   with `eval_term_census.py` + `eval_en_pairing.py` verdicts re-derived before and after.

@@ -288,19 +288,6 @@ def test_a_turn_trace_that_is_not_this_caption_stream_is_refused(turns: list[dic
         replay(_captions("兵十がきた。", "兵十がくる。"), turns)
 
 
-def test_a_prompted_trace_is_refused(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """An empty `prompted` set is only faithful where nothing was ever biased."""
-    from tests import eval_en_pairing
-
-    trace = json.loads(eval_en_pairing.TRACE.read_text(encoding="utf-8"))
-    trace["run"]["hotwords_reachable"] = True
-    forged = tmp_path / "caption_trace.json"
-    forged.write_text(json.dumps(trace, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setattr(eval_en_pairing, "TRACE", forged)
-    with pytest.raises(SystemExit):
-        eval_en_pairing.caption_stream()
-
-
 def test_the_committed_run_learns_every_real_name_and_no_pronoun():
     """P-019 + P-020's acceptance, re-derived from the run that measured both.
 

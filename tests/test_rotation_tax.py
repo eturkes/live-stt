@@ -9,8 +9,8 @@ reordered copy of the same glossary, at 3.900 s against 2.085 s steady.
 
 Both halves are locked here: the brief is a pure function of glossary CONTENT, and
 every real change -- a new term, a changed rendering, a dropped term -- still
-rotates. Recency keeps its two real jobs, ordering the recogniser's bounded prompt
-and driving eviction, and the turn cadence arm is untouched.
+rotates. Recency keeps ordering `terms()` and driving eviction, and the turn cadence
+arm is untouched.
 """
 
 from __future__ import annotations
@@ -114,18 +114,16 @@ def test_the_committed_trace_replays_under_fifteen_brief_changes():
     assert changes < 15
 
 
-def test_recency_still_orders_terms_and_hotwords():
+def test_recency_still_orders_terms():
     context = live_stt.SessionContext()
     _promote(context, "兵十", "加助")  # equal length, so recency alone breaks the tie
     brief = context.translator_brief()
 
     assert context.terms() == ["加助", "兵十"]
-    assert context.asr_hotwords() == ("加助、兵十", frozenset({"加助", "兵十"}))
 
-    context.observe_ja("兵十")  # an un-prompted sighting renews trust and reorders
+    context.observe_ja("兵十")  # a sighting renews trust and reorders
 
     assert context.terms() == ["兵十", "加助"]
-    assert context.asr_hotwords()[0] == "兵十、加助"
     assert context.translator_brief() == brief  # the thread it is on survives it
 
 

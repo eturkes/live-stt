@@ -300,11 +300,7 @@ class _StubVad:
 
 class _StubRec:
     def __init__(self):
-        self.hotwords = ""
         self.seen = []
-
-    def set_hotwords(self, terms):
-        self.hotwords = terms
 
     def decode_segments(self, samples, language=None):
         seconds = max(1, int(round(len(samples) / SAMPLE_RATE)))

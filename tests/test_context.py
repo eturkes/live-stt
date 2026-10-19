@@ -1,14 +1,13 @@
 """Regression locks for SessionContext's within-session learning contract (D-015).
 
 The property worth protecting is not "it learns terms" but the two bounds that
-keep learning from poisoning the recognizer it conditions:
+keep the translator glossary to what this session keeps saying:
 
-1. Support must come from segments the prompt did not already contain the term
-   in. Conditioning on a mis-recognition reproduces it, so without that
-   exclusion an error promotes itself on evidence it manufactured.
-2. Trust is a lease that only an un-prompted sighting renews. A trusted term is
-   normally in the prompt, so it expires on schedule and has to re-earn support
-   unaided; without expiry a term the prompt keeps producing is never dislodged.
+1. Support must come from CONTEXT_TERM_SUPPORT distinct segments, and a candidate
+   is forgotten once CONTEXT_TERM_MEMORY segments pass without a sighting, so one
+   caption or a stale sighting promotes nothing.
+2. Trust is a lease each sighting renews. A term the session stops saying expires
+   on schedule and has to re-earn support; without expiry it holds a slot forever.
 
 Both are invisible in ordinary use and easy to delete during a refactor. The
 session boundary is locked here too: the picture lives in the object, so a new
@@ -22,7 +21,6 @@ import pytest
 from live_stt import (
     CONTEXT_EN_SUPPORT,
     CONTEXT_MAX_TERMS,
-    CONTEXT_PROMPT_MAX_CHARS,
     CONTEXT_TERM_LEASE,
     CONTEXT_TERM_MEMORY,
     CONTEXT_TERM_SUPPORT,
@@ -33,6 +31,7 @@ DRUG = "プレドニン"
 DEPT = "神経内科"
 ONLY_DRUG = f"{DRUG}です"  # one trusted term; "投与" in _see's sentence is a second
 RENDERED = "The nurse gave Predonine at eight."
+FILLER = "それではこちらをごらんください"  # hiragana alone: no candidate, no renewal
 
 
 def _pair(ctx: SessionContext, times: int, en: str = RENDERED) -> None:
@@ -46,11 +45,9 @@ def _see(ctx: SessionContext, term: str, times: int) -> None:
         ctx.observe_ja(f"{term}を投与しました")
 
 
-def _see_prompted(ctx: SessionContext, term: str, times: int) -> None:
-    """Sight a term the way a biased recognizer would: hotwords, then caption."""
+def _pass(ctx: SessionContext, times: int) -> None:
     for _ in range(times):
-        _, prompted = ctx.asr_hotwords()
-        ctx.observe_ja(f"{term}を投与しました", prompted)
+        ctx.observe_ja(FILLER)
 
 
 def test_promotes_only_at_the_support_threshold():
@@ -68,27 +65,28 @@ def test_one_caption_cannot_support_itself():
     assert DRUG not in ctx.terms()
 
 
-def test_prompted_sightings_are_not_evidence():
-    """The anti-feedback bound: a term the prompt supplied proves nothing."""
-    ctx = SessionContext()
-    prompted = frozenset({DRUG})
-    for _ in range(CONTEXT_TERM_SUPPORT * 3):
-        ctx.observe_ja(f"{DRUG}を投与しました", prompted)
-    assert DRUG not in ctx.terms()
-
-
-def test_trust_expires_without_unprompted_proof():
+def test_trust_expires_without_a_fresh_sighting():
     ctx = SessionContext()
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pass(ctx, CONTEXT_TERM_LEASE - 1)
     assert DRUG in ctx.terms()
-    _see_prompted(ctx, DRUG, CONTEXT_TERM_LEASE)
+    _pass(ctx, 1)
     assert DRUG not in ctx.terms()
 
 
-def test_expired_term_can_be_re_earned_unaided():
+def test_a_sighting_renews_the_lease():
     ctx = SessionContext()
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
-    _see_prompted(ctx, DRUG, CONTEXT_TERM_LEASE)
+    _pass(ctx, CONTEXT_TERM_LEASE - 1)
+    _see(ctx, DRUG, 1)
+    _pass(ctx, CONTEXT_TERM_LEASE - 1)
+    assert DRUG in ctx.terms()
+
+
+def test_expired_term_can_be_re_earned():
+    ctx = SessionContext()
+    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
+    _pass(ctx, CONTEXT_TERM_LEASE)
     assert DRUG not in ctx.terms()
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
     assert DRUG in ctx.terms()
@@ -102,6 +100,24 @@ def test_stale_partial_support_is_forgotten():
         ctx.observe_ja("今日はいい天気です")
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT - 1)
     assert DRUG not in ctx.terms()
+
+
+def test_partial_support_dies_exactly_at_the_memory_boundary():
+    """CONTEXT_TERM_MEMORY segments without a sighting forget a candidate; one fewer does not."""
+    for gap, trusted in ((CONTEXT_TERM_MEMORY - 1, True), (CONTEXT_TERM_MEMORY, False)):
+        ctx = SessionContext()
+        _see(ctx, DRUG, CONTEXT_TERM_SUPPORT - 1)
+        _pass(ctx, gap)
+        _see(ctx, DRUG, 1)
+        assert (DRUG in ctx.terms()) is trusted, gap
+
+
+def test_a_seed_term_leaves_the_rest_of_its_caption_as_evidence():
+    """The seed is excluded from support accounting; the caption around it is not."""
+    ctx = SessionContext(DEPT)
+    for _ in range(CONTEXT_TERM_SUPPORT):
+        ctx.observe_ja(f"{DEPT}で{DRUG}を投与しました")
+    assert DRUG in ctx.terms()
 
 
 def test_seed_is_trusted_at_once_and_never_evicted():
@@ -129,30 +145,21 @@ def test_learned_pool_is_bounded_and_keeps_the_recent():
     assert "Term000" not in learned
 
 
-def test_hotwords_stay_within_budget():
-    ctx = SessionContext("これは" + "長い前置き" * 20)
-    for i in range(CONTEXT_MAX_TERMS):
-        _see(ctx, f"Candidate{i:03d}", CONTEXT_TERM_SUPPORT)
-    terms, _ = ctx.asr_hotwords()
-    assert len(terms) <= CONTEXT_PROMPT_MAX_CHARS
+def test_overflow_evicts_the_least_recently_proved_term():
+    """Recency, not spelling: terms learned in reverse order catch a key that sorts names."""
+    ctx = SessionContext()
+    for i in range(CONTEXT_MAX_TERMS, -1, -1):  # Term012 first, Term000 last
+        _see(ctx, f"Term{i:03d}", CONTEXT_TERM_SUPPORT)
+    assert f"Term{CONTEXT_MAX_TERMS:03d}" not in ctx.terms()
+    assert "Term000" in ctx.terms()
 
 
-def test_hotwords_list_each_term_once():
-    """Repetition is what makes a <|startofprev|> payload loop, so spend budget once."""
-    ctx = SessionContext(f"{DEPT}の申し送り")
-    _see(ctx, DEPT, CONTEXT_TERM_SUPPORT)
-    terms, _ = ctx.asr_hotwords()
-    assert terms.count(DEPT) == 1
-
-
-def test_hotwords_report_the_terms_they_carry():
-    """The returned set is what observe_ja needs to discount; it must be exact."""
+def test_learned_terms_list_longest_first_after_the_seed():
     ctx = SessionContext(DEPT)
-    _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
-    terms, biased = ctx.asr_hotwords()
-    assert biased == frozenset(ctx.terms())  # nothing trusted is left undeclared
-    assert DEPT in biased and DRUG in biased
-    assert all(term in terms for term in biased)
+    for term in ("ゴン", DRUG):  # the shorter one learned first, so recency cannot pass for length
+        for _ in range(CONTEXT_TERM_SUPPORT):
+            ctx.observe_ja(term)
+    assert ctx.terms() == [DEPT, DRUG, "ゴン"]
 
 
 def test_seed_is_nfkc_normalized():
@@ -163,7 +170,6 @@ def test_seed_is_nfkc_normalized():
 def test_empty_context_produces_nothing():
     ctx = SessionContext()
     assert ctx.terms() == []
-    assert ctx.asr_hotwords() == ("", frozenset())
     assert ctx.translator_brief() == ""
 
 
@@ -332,7 +338,7 @@ def test_a_rendering_expires_with_the_term_that_carries_it():
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)
     _pair(ctx, CONTEXT_EN_SUPPORT)
     assert DRUG in ctx.renderings
-    _see_prompted(ctx, DRUG, CONTEXT_TERM_LEASE)
+    _pass(ctx, CONTEXT_TERM_LEASE)
     assert DRUG not in ctx.terms()
     assert ctx.renderings == {}
 

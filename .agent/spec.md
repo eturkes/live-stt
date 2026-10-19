@@ -73,9 +73,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
   cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
 - **D-016** Whisper int8 on OpenVINO **NPU** is the shipped recogniser — whisper-ja-760M for
-  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open). `hotwords`
-  reach no device: the NPU rejects them, and on the GPU term biasing cost whisper-ja-760M accuracy
-  (reading-level CER 0.0596 → 0.0791 with a user `--context`, `asr-pipeline.md`). Engine selection
+  Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open). The recogniser
+  takes no term list and the channel is deleted: the NPU rejects `hotwords`, and on the GPU term
+  biasing cost whisper-ja-760M accuracy (reading-level CER 0.0596 → 0.0791 with a user `--context`,
+  `asr-pipeline.md`). Engine selection
   stays closed, and
   so are its two constructor properties: `NPU_TURBO` buys a paired −2.3 ms per update for a ~126 s cold recompile and
   `NPUW_LLM_GENERATE_HINT="BEST_PERF"` SIGSEGVs loading its own cached blob — both REFUSED, never
@@ -249,10 +250,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** Recogniser term channel is dead plumbing
-  - `docs`-tier refactor; accept → `.agent/deferred.md` → *Recogniser term channel is dead plumbing*.
-- [ ] **3** GPU-mode screen lives in scratch
+- [ ] **2** GPU-mode screen lives in scratch
   - `data`-tier port; accept → `.agent/deferred.md` → *GPU-mode screen lives in scratch*.
+- [ ] **3** Candidate-window law misstates the learner
+  - `docs`-tier fix; accept → `.agent/deferred.md` → *Candidate-window law misstates the learner*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

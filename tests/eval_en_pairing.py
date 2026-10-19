@@ -85,11 +85,6 @@ def caption_stream() -> list[dict]:
     trace = json.loads(TRACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     pinned_sections(manifest, trace)  # refuses a trace decoded from another WAV
-    if trace["run"]["hotwords_reachable"]:
-        raise SystemExit(
-            "this trace reached the recogniser with hotwords, so a replay with an empty "
-            "`prompted` set would credit prompted sightings as evidence (D-015)"
-        )
     return trace["captions"]
 
 
@@ -290,7 +285,7 @@ async def live_turns(captions: list[dict]) -> dict:
         ja = caption["text"]
         if not ja:
             continue  # production publishes -- and so observes -- nothing else
-        context.observe_ja(ja)  # `prompted` is empty on the NPU: nothing is ever biased
+        context.observe_ja(ja)
         span = live_stt.repeat_span(ja)
         if span >= live_stt.CAPTION_REPEAT_MAX_CHARS:
             declined += 1  # M13.1's screen, which lives in submit ahead of the queue

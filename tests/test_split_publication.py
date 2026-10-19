@@ -50,10 +50,6 @@ class _Recognizer:
         self.labels = {i + 1: text for i, text in enumerate(labels)}
         self.reverse = None if reverse is None else dict(enumerate(reverse, 1))
         self.languages: list[str | None] = []
-        self.hotwords = ""
-
-    def set_hotwords(self, terms: str) -> None:
-        self.hotwords = terms
 
     def decode_segments(
         self, samples: np.ndarray, language: str | None = None
@@ -140,10 +136,7 @@ class _Context:
     def __init__(self, run: _Run):
         self.run = run
 
-    def asr_hotwords(self) -> tuple[str, frozenset[str]]:
-        return "", frozenset()
-
-    def observe_ja(self, text: str, prompted: frozenset[str] = frozenset()) -> None:
+    def observe_ja(self, text: str) -> None:
         self.run.observed.append((text, self.run.vad.calls))
 
 
@@ -793,8 +786,6 @@ def test_an_anchored_deletion_does_not_publish_before_a_trim(
     )
 
     class Rec:
-        hotwords = ""
-
         def decode_segments(self, samples, language=None):
             return next(script, "あいえおかきくけ"), []
 

@@ -30,8 +30,8 @@ third keeps re-spelled hypotheses from moving the published boundary.
 Nothing here prompts the model. Feeding recent transcript back as prev-text made
 the recogniser loop: CER 1.8919 on the pause-free clip, 2,126 insertions against
 1,166 reference characters, with the tail repeating one clause seven times.
-Session terms reach the model through `hotwords` instead, which the NPU rejects
-outright, so on the default device this policy runs unconditioned.
+Session terms do not reach the model either -- the NPU rejects them and on the GPU
+they cost accuracy -- so this policy runs unconditioned on every device.
 
 AlignAtt would be the stronger policy (SimulStreaming, best of IWSLT 2025): it
 stops decoding when the last token's most-attended mel frame comes within

@@ -87,17 +87,16 @@ ENGINE_DIRS = {
 WHISPER_ENGINES = frozenset({"whisper"})  # OpenVINO-backed; the rest are sherpa-onnx
 # NPU is the default accelerator: unconditioned CER ties the GPU (long_form
 # 0.2321 vs 0.2292, retention 0.0686 vs 0.0695) at 1.7-2.1x real-time headroom.
-# openvino.genai's StaticWhisperPipeline rejects BOTH text conditioning
-# parameters on the NPU -- prompts of 1..200 chars all raise, 0 passes. The GPU
-# takes them, but term biasing COSTS whisper-ja-760M accuracy there: long-form
-# sections 01-06 as one session, reading-level (kana) CER 0.0596 unbiased ->
-# 0.0679 with learned terms -> 0.0791 with a user --context, the seeded names
-# themselves heard worse (兵十 34 -> 25 of 38). So no device takes the list, and
+# The recogniser is never text-conditioned. openvino.genai's StaticWhisperPipeline
+# rejects BOTH conditioning parameters on the NPU -- prompts of 1..200 chars all
+# raise, 0 passes. The GPU takes them, but term biasing COSTS whisper-ja-760M
+# accuracy there: long-form sections 01-06 as one session, reading-level (kana)
+# CER 0.0596 unbiased -> 0.0679 with learned terms -> 0.0791 with a user
+# --context, the seeded names themselves heard worse (兵十 34 -> 25 of 38). So
 # session terms reach the translator alone.
 ASR_DEVICE = "NPU"
 # GPU = the dedicated-machine mode: the same models, decoded 2.3x faster at equal accuracy.
 ASR_DEVICES = ("NPU", "GPU")
-ASR_HOTWORDS_DEVICES: frozenset[str] = frozenset()
 OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
 OPENCL_VENDOR_DIRS = (Path("/etc/OpenCL/vendors"), Path("/usr/share/OpenCL/vendors"))
 # Audio the JA pin cannot account for -- English speech, room tone -- makes the
@@ -202,14 +201,12 @@ DECODE_CHUNK_OVERLAP_S = 0.18
 _DECODE_MERGE_MAX_CHARS = 8
 
 # Within-session context (D-015). The session's own captions teach it what is
-# being talked about; that picture conditions the recognizer prompt and the
-# translator, then dies with the process. Nothing is written to disk and nothing
-# carries into the next run.
-CONTEXT_TERM_SUPPORT = 3  # distinct un-prompted segments before a term is trusted
-CONTEXT_MAX_TERMS = 12  # Whisper keeps 223 prev-text tokens; spend them on the top terms
+# being talked about; that picture briefs the translator, then dies with the
+# process. Nothing is written to disk and nothing carries into the next run.
+CONTEXT_TERM_SUPPORT = 3  # distinct segments before a term is trusted
+CONTEXT_MAX_TERMS = 12  # trusted terms the translator glossary holds at once
 CONTEXT_TERM_MEMORY = 40  # segments a candidate may wait for support before it is forgotten
-CONTEXT_TERM_LEASE = 60  # segments a trusted term keeps trust without un-prompted proof
-CONTEXT_PROMPT_MAX_CHARS = 160
+CONTEXT_TERM_LEASE = 60  # segments a trusted term keeps trust without a fresh sighting
 CONTEXT_EN_SUPPORT = 2  # agreeing turns before a learned English rendering is briefed
 
 # Translation leg (D-011): Luna+low won a 12-config × 1,110-turn tournament on
@@ -532,20 +529,12 @@ class RingBuffer:
 
 
 class WhisperEngine:
-    """OpenVINO Whisper behind the same `decode(samples) -> str` contract as sherpa.
-
-    Owns `hotwords` because the term list rides the model's <|startofprev|> slot on
-    every 30 s window, so it is a decode argument rather than pipeline state. The
-    setter drops it on devices that reject conditioning, keeping the call site
-    device-agnostic.
-    """
+    """OpenVINO Whisper behind the same `decode(samples) -> str` contract as sherpa."""
 
     def __init__(self, model_dir: Path, device: str = ASR_DEVICE, english_dir: Path | None = None):
         import openvino_genai  # noqa: PLC0415  -- optional dep; sherpa engines skip it
 
         self.device = device
-        self.supports_hotwords = device in ASR_HOTWORDS_DEVICES
-        self.hotwords = ""
         OPENVINO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         self._pipeline = openvino_genai.WhisperPipeline(
             str(model_dir), device, CACHE_DIR=str(OPENVINO_CACHE_DIR)
@@ -561,9 +550,6 @@ class WhisperEngine:
             )
         )
 
-    def set_hotwords(self, terms: str) -> None:
-        self.hotwords = terms if self.supports_hotwords else ""
-
     def generate(
         self,
         samples: np.ndarray,
@@ -572,9 +558,6 @@ class WhisperEngine:
         language: str | None = None,
     ):
         language = ASR_LANGUAGE if language is None else language
-        keywords: dict[str, object] = {"repetition_penalty": ASR_REPETITION_PENALTY}
-        if self.hotwords:
-            keywords["hotwords"] = self.hotwords
         pipeline = (
             self._english if language == "en" and self._english is not None else self._pipeline
         )
@@ -586,7 +569,7 @@ class WhisperEngine:
             language=f"<|{language}|>",
             task="transcribe",
             return_timestamps=timestamps,
-            **keywords,
+            repetition_penalty=ASR_REPETITION_PENALTY,
         )
 
     def decode(self, samples: np.ndarray) -> str:
@@ -1227,10 +1210,11 @@ def _en_names(text: str) -> list[str]:
 class SessionContext:
     """What this session is about, learned from its own captions (D-015).
 
-    A term becomes trusted after it recurs in CONTEXT_TERM_SUPPORT segments
-    whose recognizer prompt did not already contain it. That exclusion is the
-    whole safety property: conditioning on a mis-recognition reproduces it, and
-    without it the error would keep promoting itself on evidence it created.
+    A term becomes trusted after it recurs in CONTEXT_TERM_SUPPORT segments. Every
+    sighting counts as evidence only because nothing feeds terms back to the
+    recognizer: conditioning on a mis-recognition reproduces it, so a channel that
+    did would have to discount what it supplied, or an error would keep promoting
+    itself on evidence it created.
     """
 
     def __init__(self, seed: str = ""):
@@ -1244,14 +1228,12 @@ class SessionContext:
         self.renderings: dict[str, str] = {}  # trusted term -> its English spelling
         self._seq = 0
 
-    def observe_ja(self, text: str, prompted: frozenset[str] = frozenset()) -> None:
+    def observe_ja(self, text: str) -> None:
         """Fold one accepted caption into the session picture."""
         self._seq += 1
         for term in dict.fromkeys(_TERM_RUN.findall(text)):
             if term in self.seed_terms:
                 continue
-            if term in prompted:
-                continue  # the prompt could have produced it, so it is not evidence
             if term in self._learned:
                 self._learned[term] = self._seq
             else:
@@ -1260,10 +1242,8 @@ class SessionContext:
                 if len(seen) >= CONTEXT_TERM_SUPPORT:
                     del self._support[term]
                     self._learned[term] = self._seq
-        # Trust is a lease, and only an un-prompted sighting renews it. A trusted
-        # term is normally in the prompt, so it expires on schedule and has to
-        # re-earn support unaided; without that, a term the prompt itself keeps
-        # producing would renew its own trust forever and never be dislodged.
+        # Trust is a lease each sighting renews, so a term the session stops saying
+        # leaves the glossary instead of holding a slot for the rest of the run.
         self._learned = {
             t: s for t, s in self._learned.items() if s > self._seq - CONTEXT_TERM_LEASE
         }
@@ -1302,34 +1282,10 @@ class SessionContext:
     def terms(self) -> list[str]:
         """Trusted terms, seed first, then learned ones longest-first.
 
-        Length is the cheap proxy for the words a recognizer actually gets
-        wrong — loanwords, names, technical compounds — so a bounded prompt
-        spends its budget on those before ordinary vocabulary that happens to
-        recur. Recency breaks ties and drives eviction.
+        Recency breaks ties here and drives eviction in observe_ja.
         """
         learned = sorted(self._learned, key=lambda t: (-len(t), -self._learned[t]))
         return [*self.seed_terms, *learned]
-
-    def asr_hotwords(self) -> tuple[str, frozenset[str]]:
-        """Recognizer term list, plus every term it could have supplied.
-
-        The caller hands those terms back to observe_ja, which is how a biased
-        term is stopped from counting as fresh evidence for itself.
-
-        A TERM LIST, never running transcript. Both ride Whisper's <|startofprev|>
-        slot, but carrying recent captions there made the recogniser loop: CER
-        1.8919 on the pause-free clip against 0.1278 unconditioned, 2,126
-        insertions on 1,166 reference characters. The bounded list measured
-        0.2408 -> 0.1873 on the narration with no loop (I=53).
-        """
-        budget = CONTEXT_PROMPT_MAX_CHARS
-        used = []
-        for term in self.terms():
-            if budget < len(term) + 1:
-                continue
-            used.append(term)
-            budget -= len(term) + 1
-        return "、".join(used), frozenset(used)
 
     def translator_brief(self, source: str | None = None) -> str:
         """Session context rendered toward the selected target language.
@@ -1343,8 +1299,6 @@ class SessionContext:
         _translate compares this string against the live thread's own brief, so a
         reorder of an unchanged glossary opened a fresh codex thread on 26 of the
         39 rotations over the 215-caption trace, at 3.900 s against 2.085 s steady.
-        Recency still orders terms() itself, where it spends the recogniser's
-        bounded prompt budget and drives eviction.
         """
         source = source or ASR_LANGUAGE
         if source not in _LEG_INSTRUCTIONS:
@@ -2131,7 +2085,6 @@ async def _vac_segments(
     shown: list[str] = []  # this utterance's pieces that passed the screen
     utterance_start = 0
     utterance_decode_s = 0.0
-    biased: frozenset[str] = frozenset()  # terms the model was actually given
     # The corpus has no bilingual ordering to validate abstention fallback, so a
     # run starts on the source language and holds its last accepted label
     # (asr-pipeline.md).
@@ -2285,7 +2238,7 @@ async def _vac_segments(
         # count utterances, and a runaway the screen dropped must not promote a decode
         # artifact into the term list (P-018).
         if context is not None and shown:
-            context.observe_ja("".join(shown), biased)
+            context.observe_ja("".join(shown))
         if on_segment is not None:
             n = consumed - utterance_start
             on_segment(utterance_start, n, n, utterance_decode_s, utterance)
@@ -2322,14 +2275,6 @@ async def _vac_segments(
             consumed += len(block)
             detected = vad.is_speech_detected() and not flush
             if detected and processor is None:
-                # Bias this utterance toward what the session already recurs on.
-                # set_hotwords drops the list on devices that reject conditioning,
-                # so `biased` is whatever actually reached the model -- observe_ja
-                # discounts exactly those, and on the NPU discounts nothing.
-                if context is not None and hasattr(rec, "set_hotwords"):
-                    terms, offered = context.asr_hotwords()
-                    rec.set_hotwords(terms)
-                    biased = offered if rec.hotwords else frozenset()
                 utterance_start = max(0, consumed - len(block) - pad)
                 label = None
                 token = held

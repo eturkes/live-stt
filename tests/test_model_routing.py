@@ -90,7 +90,6 @@ def test_routed_generate_keeps_audio_and_generation_options(
     engine = _engine(tmp_path, device, english=True)
     primary, english = openvino
     primary.result, english.result = _Result(["日本語"]), _Result(["English"])
-    engine.set_hotwords("東京、タワー")
     samples = np.linspace(-0.75, 0.75, 53, dtype=np.float32)
     selected, unused = (english, primary) if language == "en" else (primary, english)
 
@@ -104,10 +103,7 @@ def test_routed_generate_keeps_audio_and_generation_options(
     assert call["task"] == "transcribe"
     assert call["return_timestamps"] is timestamps
     assert call["repetition_penalty"] == live_stt.ASR_REPETITION_PENALTY
-    if device in live_stt.ASR_HOTWORDS_DEVICES:
-        assert call["hotwords"] == "東京、タワー"
-    else:
-        assert "hotwords" not in call
+    assert "hotwords" not in call
 
 
 @pytest.mark.parametrize("language", ["ja", "en", "fr"])

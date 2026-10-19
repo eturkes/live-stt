@@ -33,10 +33,9 @@ spelling it was already told. Whether a key stops recurring is a property of the
 caption stream alone, so the screen below finds every candidate offline and a
 translator arm is needed only to confirm one.
 
-Support is counted by replaying the captions through a real `SessionContext`
-with an empty `prompted` set. That set is empty in production too on the shipped
-device: `ASR_HOTWORDS_DEVICES` excludes "NPU", so no sighting is ever prompted
-and D-015's anti-feedback exclusion discounts nothing.
+Support is counted by replaying the captions through a real `SessionContext`,
+which is production's whole learner: nothing feeds terms back to the recogniser,
+so every sighting the trace holds is evidence there too.
 """
 
 from __future__ import annotations
@@ -430,7 +429,6 @@ def run(term: str, floor: int | None = None) -> dict:
         "trace": {
             "sections": [key for key, _, _ in sections],
             "requested_device": trace["run"]["requested_device"],
-            "hotwords_reachable": trace["run"]["hotwords_reachable"],
             "audio_s": trace["source"]["audio_s"],
             "n_captions": len(captions),
         },
@@ -466,8 +464,7 @@ def main() -> None:
     print(
         f"census of {result['term']} over {trace['n_captions']} captions "
         f"({lea['n_published']} published) from {len(trace['sections'])} sections, "
-        f"{trace['audio_s']:.1f}s on {trace['requested_device']}, "
-        f"hotwords_reachable={trace['hotwords_reachable']}"
+        f"{trace['audio_s']:.1f}s on {trace['requested_device']}"
     )
     print(
         f"  reference occurrences={result['n_occurrences']}  "
