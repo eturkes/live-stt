@@ -98,9 +98,9 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    named its vendor dir, `openvino-accel.md`); partial text appears sooner than in NPU mode (agent
    trace: first dim character ~0.8 s vs ~1.2 s); English captions under `--two-way` publish as
    they do in NPU mode. A first GPU run compiles in seconds, not minutes. Run it with no other GPU
-   workload on the box: beside another process's GPU benchmark the agent's forced decodes ran 2-7×
-   their quiet-box time, turbo's runaway span past the 8 s capture headroom (`asr-pipeline.md`
-   `## GPU mode`), so a slow or dropping GPU session is first a contention question.
+   workload on the box: a concurrent GPU benchmark stretches forced decodes 2-7×, turbo's runaway
+   span past the 8 s capture headroom (`asr-pipeline.md` `## GPU mode`), so a slow or dropping GPU
+   session is first a contention question.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

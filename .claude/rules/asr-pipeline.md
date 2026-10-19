@@ -579,9 +579,8 @@ Char | kana CER, GPU unless named:
 - **Runaway budget** = a decode forced to its cap (`min_new_tokens`, 11 s retention buffer, GPU,
   quiet box; `--arms runaway`): 760M 448 tokens 1.4-1.5 s · turbo 4.5 s · 1.5B 7.4-8.3 s · large-v3
   7.6-8.4 s (224 tokens 3.7-4.3 s) ⇒ GPU mode's two models stay inside the 8 s headroom uncapped
-  on a GPU live-stt has to itself. Beside another process's GPU benchmark the same spans ran
-  2-7× longer — turbo 12.2 s, past the headroom — which is why GPU mode is the dedicated-machine
-  mode.
+  on a GPU live-stt has to itself; beside another process's GPU benchmark the same spans ran 2-7×
+  longer (turbo 12.2 s, past the headroom).
 - **Latency** = `tests/vac_decode_trace_gpu.json` (`build_vac_trace.py --device GPU --out …`;
   `eval_latency.py --trace tests/vac_decode_trace_gpu.json`), `retention_probe`, GPU vs the NPU
   table below: decode 0.293 / 0.371 / 0.414 · commit lag 1.969 / 3.071 / 6.146 · provisional

@@ -174,29 +174,17 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `default_rng(20261001)`'s 300 rows of the pinned CV8 parquet, soxr VHQ to 16 kHz, 0.5 s pads, a
   −60 dBFS dither, PCM16 (`CV_SHA256` over PCM + reference), so a soxr, numpy or libsndfile drift
   refuses rather than moving a number; `cv`/`cvw` add `--with soundfile==0.14.0 --with
-  pyarrow==25.0.0`. Both derivations reproduce the inputs the screen measured byte for byte.
+  pyarrow==25.0.0`. Both derivations equal the screen's inputs byte for byte.
   **`terms` carries the channel the live path deleted** — a pipeline wrapper hands `hotwords` (the
   trusted terms within 160 characters, `、`-joined) to every decode of an utterance from its first
   decode on, and `_BiasedContext` keeps the supplied terms out of support and lease as the deleted
   `observe_ja(prompted)` did; it runs alone (a context would bias any other arm) and never on the
-  NPU, which rejects `hotwords`. Its off / learner / seed arms return all six sections
-  byte-identical to the harness that drove the live channel, so a new model re-asks the term
-  question by one command. Every other whisper CER cell of the `## GPU mode` table and its bullets
-  reproduces to the fourth decimal (record = rerun), and the 760M hypotheses byte-identically where
-  the record kept them (FLEURS 300/300, retention, long-form, terms 18/18 sections):
-
-  | setup | FLEURS-ja / -en | retention | long-form §01+§03 | CV300 |
-  | --- | --- | --- | --- | --- |
-  | NPU 760M | 0.0469 / 0.0333 · 0.0482 | 0.0532 / 0.0143 | 0.2153 / 0.0500 | — |
-  | GPU 760M | 0.0471 / 0.0336 · 0.0470 | 0.0523 / 0.0137 | 0.2203 / 0.0500 | whole 0.0852 / 0.0407 · VAC 0.0930 / 0.0468 |
-  | GPU 760M, `--vac-chunk 0.5` | — | 0.0463 / 0.0091 | 0.2235 / 0.0608 | VAC 0.1007 / 0.0525 |
-  | GPU 1.5B | 0.0566 / 0.0436 · 0.0261 | 0.0429 / 0.0072 | 0.1839 / 0.0520 | VAC 0.0932 / 0.0449 |
-  | GPU large-v3 | 0.0482 / 0.0337 · 0.0211 | 0.0669 / 0.0104 | 0.2468 / 0.0743 | whole 0.0963 / 0.0465 |
-  | GPU turbo | 0.0491 / 0.0342 · 0.0247 | — | — | — |
-
-  English VAC (`envac`): large-v3 `--max-new-tokens 224` 0.0900, turbo 0.0882. `terms` on GPU
-  760M, char / kana: off 0.2070 / 0.0596 · learner 0.2174 / 0.0679 · seed 0.2204 / 0.0791; 兵十
-  heard 34 → 28 → 25 of 38, ごん as 権 ×13 under the seed.
+  NPU, which rejects `hotwords`. Its off / learner / seed arms equal the live channel's output on
+  all six sections, so a new model re-asks the term question by one command. Every other whisper
+  CER cell of `## GPU mode` re-derives from it to the fourth decimal, the 760M hypotheses
+  byte-identically to the screen's: `--device NPU` gives the shipped row, `cvw` the CV300 column, `cv` the 1.5B row's VAC pair, `--vac-chunk 0.5` the cadence
+  refusal, `envac` (+ `--max-new-tokens 224` for large-v3) the English refusal, `fleurs`' English
+  half the whole-clip English line, `terms --terms off|learner|seed` the term-biasing bullet.
   **Not covered:** the Qwen3-ASR and Cohere rows and Cohere's VAD-utterance arm (non-whisper
   pipelines) stay records with no committed harness. Decode times and `runaway` spans are
   wall-clock and only the CER cells are pinned: beside another process's GPU benchmark every span
