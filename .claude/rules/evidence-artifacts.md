@@ -186,10 +186,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   refusal, `envac` (+ `--max-new-tokens 224` for large-v3) the English refusal, `fleurs`' English
   half the whole-clip English line, `terms --terms off|learner|seed` the term-biasing bullet.
   **Not covered:** the Qwen3-ASR and Cohere rows and Cohere's VAD-utterance arm (non-whisper
-  pipelines) stay records with no committed harness. Decode times and `runaway` spans are
-  wall-clock and only the CER cells are pinned: beside another process's GPU benchmark every span
-  ran 2-7× its quiet-box record (760M 3.9 s, turbo 12.2 s), so time a model on a GPU live-stt
-  has to itself.
+  pipelines) stay records with no committed harness, a port unqueued (user ruling). Decode times
+  and `runaway` spans are wall-clock and only the CER cells are pinned: beside another process's
+  GPU benchmark every span ran 2-7× its quiet-box record (760M 3.9 s, turbo 12.2 s), so time a
+  model on a GPU live-stt has to itself.
   **Screen-only weights** live in gitignored `models/openvino/screen/`:
 
   ```sh

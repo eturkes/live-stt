@@ -563,9 +563,10 @@ Char | kana CER, GPU unless named:
 - **Cohere wins short read clips and loses the live domain.** Whole-utterance decodes of the shipped
   silero cuts (+0.4 s pre-pad; a record, no committed harness), kana: retention 0.1081 vs 760M
   0.0182 (148 deletions; a 25.6 s cut → 80 characters, identical at 256 and 600 token caps),
-  long-form §01-§06 0.0852 vs 0.0547 (兵十 → 氷獣/教授/標準). Community IR = official PyTorch text on 5/5 clips. No timestamps ⇒
-  a VAC port needs an aligner as well. **Refused; no route.** Qwen3-ASR-1.7B: worse everywhere
-  measured, no timestamps, 1.24 s per 11 s buffer.
+  long-form §01-§06 0.0852 vs 0.0547 (兵十 → 氷獣/教授/標準). Community IR = official PyTorch
+  text on 5/5 clips. No timestamps ⇒ a VAC port needs an aligner as well. **Refused; no route.**
+  Qwen3-ASR-1.7B: worse everywhere measured, no timestamps, 1.24 s per 11 s buffer. Both refusals
+  stand on these numbers as records; porting their harnesses stays unqueued (user ruling).
 - **Refused levers, measured:** beam search on the GPU raises `iremote_tensor.hpp:32 Not
   Implemented` (timestamps on or off; 2026.4.1 = latest PyPI; `repetition_penalty` is also
   forbidden with beams); `VAC_CHUNK_S`=0.5 (`--vac-chunk 0.5`) costs reading-level CER on long-form 0.0500 → 0.0608 and
