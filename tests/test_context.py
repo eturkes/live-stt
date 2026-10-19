@@ -112,6 +112,19 @@ def test_partial_support_dies_exactly_at_the_memory_boundary():
         assert (DRUG in ctx.terms()) is trusted, gap
 
 
+def test_support_chains_on_the_latest_sighting():
+    """A candidate lives on its latest sighting, so segments 1 / 40 / 79 promote.
+
+    No window of CONTEXT_TERM_MEMORY segments holds all three of them.
+    """
+    ctx = SessionContext()
+    ctx.observe_ja("ゴン")  # segment 1
+    for _ in range(2):
+        _pass(ctx, 38)
+        ctx.observe_ja("ゴン")  # segments 40, then 79
+    assert "ゴン" in ctx.terms()
+
+
 def test_a_seed_term_leaves_the_rest_of_its_caption_as_evidence():
     """The seed is excluded from support accounting; the caption around it is not."""
     ctx = SessionContext(DEPT)

@@ -373,5 +373,6 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   exposes: a term the English never pairs never leaves the gate, so it opens on every later sighting
   AND keeps closing its neighbours' openings; and the JA side is arm-independent, since `observe_ja`
   never reads `renderings`. Read a replay's `trusted`, never a raw sighting count — support also needs
-  three sightings inside one `CONTEXT_TERM_MEMORY` window, and openings saturate at
-  `CONTEXT_EN_SUPPORT` because a paired term leaves the gate.
+  three sightings, each within `CONTEXT_TERM_MEMORY` segments of the one before (the candidate
+  lives on its LATEST sighting, so segments 1 / 40 / 79 promote though no 40-segment window holds
+  three), and openings saturate at `CONTEXT_EN_SUPPORT` because a paired term leaves the gate.

@@ -14,16 +14,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **Candidate-window law misstates the learner** — `translation-leg.md`'s simulation bullet says
-   support "needs three sightings inside one `CONTEXT_TERM_MEMORY` window", while `observe_ja` keeps
-   every earlier sighting of a candidate while its LATEST is under 40 segments old: sightings at
-   segments 1 / 40 / 79 promote ゴン though no 40-segment window holds three. The constant's own comment and the Bounds bullet ("candidate patience")
-   already describe the implemented rule. Tier `docs` (behaviour-preserving).
-   **Accept:** the bullet states the implemented rule, and a `tests/test_context.py` lock pins the
-   1 / 40 / 79 promotion — or, on a user ruling for a true sliding window, the implementation changes
-   with `eval_term_census.py` + `eval_en_pairing.py` verdicts re-derived before and after.
-
-3. **Startup locks time out under host load** — `tests/test_audio_startup.py` drives real child
+2. **Startup locks time out under host load** — `tests/test_audio_startup.py` drives real child
    processes inside fixed wall-clock deadlines (5 s marker polls, 8 s `communicate`). With the box
    at load ≈ 20 on 8 cores (other sessions' suites beside a GPU screen run), the D-007 hook failed
    `test_the_session_child_resolves_openvino_from_the_venv_alone`,
