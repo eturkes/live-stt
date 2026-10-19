@@ -6,7 +6,7 @@ paths:
 
 # Evidence artifacts — corpora, traces, evaluators
 
-Fast locks run in the gate. **The eleven `eval_*.py` scripts are ON-DEMAND and never gate steps**: five
+Fast locks run in the gate. **The twelve `eval_*.py` scripts are ON-DEMAND and never gate steps**: six
 need gitignored weights, a corpus or the real translator plus minutes of compute, so run one when a
 decode change raises an accuracy question. `eval_latency.py`, `eval_two_way_settled.py`,
 `eval_term_census.py`, `eval_en_pairing.py` (default mode) and `eval_lag.py` need none of that,
@@ -162,6 +162,61 @@ because they replay committed traces — a fresh clone runs them in under a seco
   hypotheses by call order against buffers they were not decoded from, so a `forced_trims` count there
   measures the harness, never `_trim`: the `live` arm's one forced trim on `retention_probe` vanishes
   with the real NPU recogniser in the same virtual-clock run.
+- `eval_asr_screen.py` — the recogniser screen behind GPU mode (`asr-pipeline.md` `## GPU mode`):
+  one whisper model dir × one exact device through the shipped decode path (`decode_segments` for a
+  whole clip, `replay._run_recognizer` = the real worker for VAC), char CER by `cer.py` plus
+  READING-level CER, both sides to hiragana by pykakasi — `--with pykakasi==2.3.0`, never a project
+  dep. Arms `fleurs` (150 ja + 150 en whole clip), `retention`, `long_form` (§01 + §03), `cv` (VAC) +
+  `cvw` (whole clip) over 300 Common Voice clips, `envac` (the 150 English clips through VAC),
+  `runaway` (11 s of the probe forced to the token cap), `terms`. **Inputs fail closed on a
+  fingerprint**: FLEURS = `Random(20260916)`'s first 150 of each pinned FLEURS index, read through
+  `fetch_real_clips`' hash-validating loaders (`FLEURS_SHA256` over the 300 corpus ids); CV =
+  `default_rng(20261001)`'s 300 rows of the pinned CV8 parquet, soxr VHQ to 16 kHz, 0.5 s pads, a
+  −60 dBFS dither, PCM16 (`CV_SHA256` over PCM + reference), so a soxr, numpy or libsndfile drift
+  refuses rather than moving a number; `cv`/`cvw` add `--with soundfile==0.14.0 --with
+  pyarrow==25.0.0`. Both derivations reproduce the inputs the screen measured byte for byte.
+  **`terms` carries the channel the live path deleted** — a pipeline wrapper hands `hotwords` (the
+  trusted terms within 160 characters, `、`-joined) to every decode of an utterance from its first
+  decode on, and `_BiasedContext` keeps the supplied terms out of support and lease as the deleted
+  `observe_ja(prompted)` did; it runs alone (a context would bias any other arm) and never on the
+  NPU, which rejects `hotwords`. Its off / learner / seed arms return all six sections
+  byte-identical to the harness that drove the live channel, so a new model re-asks the term
+  question by one command. Every other whisper CER cell of the `## GPU mode` table and its bullets
+  reproduces to the fourth decimal (record = rerun), and the 760M hypotheses byte-identically where
+  the record kept them (FLEURS 300/300, retention, long-form, terms 18/18 sections):
+
+  | setup | FLEURS-ja / -en | retention | long-form §01+§03 | CV300 |
+  | --- | --- | --- | --- | --- |
+  | NPU 760M | 0.0469 / 0.0333 · 0.0482 | 0.0532 / 0.0143 | 0.2153 / 0.0500 | — |
+  | GPU 760M | 0.0471 / 0.0336 · 0.0470 | 0.0523 / 0.0137 | 0.2203 / 0.0500 | whole 0.0852 / 0.0407 · VAC 0.0930 / 0.0468 |
+  | GPU 760M, `--vac-chunk 0.5` | — | 0.0463 / 0.0091 | 0.2235 / 0.0608 | VAC 0.1007 / 0.0525 |
+  | GPU 1.5B | 0.0566 / 0.0436 · 0.0261 | 0.0429 / 0.0072 | 0.1839 / 0.0520 | VAC 0.0932 / 0.0449 |
+  | GPU large-v3 | 0.0482 / 0.0337 · 0.0211 | 0.0669 / 0.0104 | 0.2468 / 0.0743 | whole 0.0963 / 0.0465 |
+  | GPU turbo | 0.0491 / 0.0342 · 0.0247 | — | — | — |
+
+  English VAC (`envac`): large-v3 `--max-new-tokens 224` 0.0900, turbo 0.0882. `terms` on GPU
+  760M, char / kana: off 0.2070 / 0.0596 · learner 0.2174 / 0.0679 · seed 0.2204 / 0.0791; 兵十
+  heard 34 → 28 → 25 of 38, ごん as 権 ×13 under the seed.
+  **Not covered:** the Qwen3-ASR and Cohere rows and Cohere's VAD-utterance arm (non-whisper
+  pipelines) stay records with no committed harness. Decode times and `runaway` spans are
+  wall-clock and only the CER cells are pinned: beside another process's GPU benchmark every span
+  ran 2-7× its quiet-box record (760M 3.9 s, turbo 12.2 s), so time a model on a GPU live-stt
+  has to itself.
+  **Screen-only weights** live in gitignored `models/openvino/screen/`:
+
+  ```sh
+  uvx --from 'huggingface_hub[cli]' hf download OpenVINO/whisper-large-v3-int8-ov \
+    --revision e197310d1fe6d5b40d0ce84c2614a547de21cb62 \
+    --local-dir models/openvino/screen/whisper-large-v3-int8-ov
+  uvx --from 'huggingface_hub[cli]' hf download efwkjn/whisper-ja-1.5B \
+    --revision 72c13fb7b6cc2a831780cdd79cd1a829e77bab02 --local-dir .scratch/whisper-ja-1.5B
+  # models/README.md's export venv at openvino==2026.4.1 + openvino-tokenizers==2026.4.1.0
+  # (resolved: optimum-intel 2.2.0, nncf 3.4.0, torch 2.14.1+cpu); the int8 export stages an
+  # fp32 copy, so TMPDIR must sit on disk, never on a 16 GB /tmp tmpfs
+  TMPDIR=.scratch/tmp optimum-cli export openvino --model .scratch/whisper-ja-1.5B \
+    --task automatic-speech-recognition-with-past --weight-format int8 \
+    models/openvino/screen/whisper-ja-1.5b-int8-ov
+  ```
 - `session_report.py` + `test_session_report.py` — what a LIVE session did, re-derived from the two
   files that session already wrote (`transcripts/*.txt` + its stderr log, `--save-log`'s
   `transcripts/<start>.log` or a `2>` file; a bare run reads `transcripts/*.log` + `stt.log`, user
@@ -358,6 +413,7 @@ uv run python tests/build_lag_trace.py [--check]        # rebuild that trace fro
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)
 uv run python tests/eval_cer.py                         # 2-engine CER + RTF baseline (models + corpus)
 uv run python tests/eval_retention.py [--device D]      # retention CER on the shipped NPU/VAC path
+uv run --with pykakasi==2.3.0 python tests/eval_asr_screen.py --model DIR --device D [--arms A]  # GPU screen
 uv run python tests/build_caption_trace.py              # caption stream over all six sections, ~8 min
 uv run python tests/build_retention_probe.py            # rebuild the pause-free retention probe
 uv run python tests/gen_replay_goldens.py               # regenerate goldens after a pipeline change

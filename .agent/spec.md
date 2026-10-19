@@ -46,9 +46,10 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
   [--source-lang L | --two-way]`.
-- `tests/` — fast locks (`uv run pytest -q`) + eleven on-demand evaluators, inventory and per-file
+- `tests/` — fast locks (`uv run pytest -q`) + twelve on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
-  `eval_retention.py`, `eval_translate_repeat.py` need weights, a corpus or the real translator;
+  `eval_retention.py`, `eval_asr_screen.py` (the GPU-mode recogniser screen),
+  `eval_translate_repeat.py` need weights, a corpus or the real translator;
   `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py`, `eval_en_pairing.py` and
   `eval_lag.py` replay committed traces and run in under a second in a fresh clone;
   `eval_anchor_scenarios.py` scripts decode runs over committed caption text in ~7 s. Each runs as
@@ -250,10 +251,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
     every agent-side claim about the live path stays provisional until the user runs
     `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
     2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
-- [ ] **2** GPU-mode screen lives in scratch
-  - `data`-tier port; accept → `.agent/deferred.md` → *GPU-mode screen lives in scratch*.
-- [ ] **3** Candidate-window law misstates the learner
+- [ ] **2** Candidate-window law misstates the learner
   - `docs`-tier fix; accept → `.agent/deferred.md` → *Candidate-window law misstates the learner*.
+- [ ] **3** Startup locks time out under host load
+  - `data`-tier fix; accept → `.agent/deferred.md` → *Startup locks time out under host load*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

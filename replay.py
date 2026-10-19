@@ -94,11 +94,11 @@ def load_wav_f32_16k(path: Path) -> np.ndarray:
     return np.ascontiguousarray(data, dtype=np.float32)
 
 
-async def _run_recognizer(samples: np.ndarray, rec, on_update=None) -> list[dict]:
+async def _run_recognizer(samples: np.ndarray, rec, on_update=None, context=None) -> list[dict]:
     """Drive the real worker() with an already-loaded offline recognizer.
 
-    ``on_update`` is forwarded untouched to `worker`; it fires per streaming
-    update on the VAC engines and never on the sherpa path.
+    ``on_update`` and ``context`` are forwarded untouched to `worker`; the first
+    fires per streaming update on the VAC engines and never on the sherpa path.
     """
     vad, window = make_vad()
     audio_q: asyncio.Queue = asyncio.Queue()
@@ -116,7 +116,7 @@ async def _run_recognizer(samples: np.ndarray, rec, on_update=None) -> list[dict
             {"start": start, "n": n, "seg_len": seg_len, "decode_s": decode_s, "text": text}
         )
 
-    await worker(rec, vad, window, audio_q, state, None, None, on_segment, None, on_update)
+    await worker(rec, vad, window, audio_q, state, None, None, on_segment, context, on_update)
     # worker() intentionally converts a stage exception into session shutdown
     # for the live app. Replay is an evaluator, so turn that signal back into a
     # hard failure rather than committing a partial/empty transcript as golden.

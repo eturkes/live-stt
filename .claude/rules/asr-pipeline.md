@@ -315,7 +315,7 @@ paths:
   learner's terms (it learns and then reinforces misrecognitions: カスケ for 加助, ゴム) → **0.0791**
   with a user `--context` naming the story and its characters; the seeded names themselves land worse
   (兵十 34 → 25 of 38, ごん → 権 ×13) and §02 grew a 16-character repeat
-  (`.scratch/gpu/hot_eval.py`, `hot-760m-*.json`). So no device takes the list: session context reaches
+  (`tests/eval_asr_screen.py --arms terms`). So no device takes the list: session context reaches
   the model through the translator glossary alone (`translation-leg.md`), in both modes.
 - **`repetition_penalty` is the ONLY repetition knob that reaches this build.**
   `no_repeat_ngram_size` is accepted and silently ignored (sizes 2/3/4/5/8 return byte-identical text
@@ -539,10 +539,10 @@ below); VAC cadence, trims, screens and the unbiased recogniser identical. The u
 mode nearly all RAM (machine dedicated; NPU mode = the multitasking mode); no measured candidate
 turns that memory into accuracy, so the grant buys nothing today.
 
-**Accuracy, one harness** (`.scratch/gpu/eval.py` = the shipped VAC path via `replay._run_recognizer`,
-same inputs as the 760M adoption; `kana_cer.py` = pykakasi reading-level CER, which strips the
-kanji/kana style the char metric mostly measures on the Aozora narration). Char | kana CER, GPU
-unless named:
+**Accuracy, one harness** = `tests/eval_asr_screen.py` (`evidence-artifacts.md`): the shipped decode
+path, the 760M adoption's inputs, char CER + pykakasi reading-level CER, which strips the kanji/kana
+style the char metric mostly measures on the Aozora narration. Every whisper cell re-derives from it.
+Char | kana CER, GPU unless named:
 
 | setup | FLEURS-ja 150 (whole clip) | retention (VAC) | long-form §01+§03 (VAC) | CV8 300 (whole clip) |
 | --- | --- | --- | --- | --- |
@@ -561,25 +561,27 @@ unless named:
   headroom's edge.
   fp16 = int8 to the error (retention S19 D31 I0 both) and slower.
 - **Cohere wins short read clips and loses the live domain.** Whole-utterance decodes of the shipped
-  silero cuts (+0.4 s pre-pad, `vadseg.py`), kana: retention 0.1081 vs 760M 0.0182 (148 deletions;
-  a 25.6 s cut → 80 characters, identical at 256 and 600 token caps), long-form §01-§06 0.0852 vs
-  0.0547 (兵十 → 氷獣/教授/標準). Community IR = official PyTorch text on 5/5 clips. No timestamps ⇒
+  silero cuts (+0.4 s pre-pad; a record, no committed harness), kana: retention 0.1081 vs 760M
+  0.0182 (148 deletions; a 25.6 s cut → 80 characters, identical at 256 and 600 token caps),
+  long-form §01-§06 0.0852 vs 0.0547 (兵十 → 氷獣/教授/標準). Community IR = official PyTorch text on 5/5 clips. No timestamps ⇒
   a VAC port needs an aligner as well. **Refused; no route.** Qwen3-ASR-1.7B: worse everywhere
   measured, no timestamps, 1.24 s per 11 s buffer.
 - **Refused levers, measured:** beam search on the GPU raises `iremote_tensor.hpp:32 Not
   Implemented` (timestamps on or off; 2026.4.1 = latest PyPI; `repetition_penalty` is also
-  forbidden with beams); `VAC_CHUNK_S`=0.5 costs reading-level CER on long-form 0.0500 → 0.0608 and
+  forbidden with beams); `VAC_CHUNK_S`=0.5 (`--vac-chunk 0.5`) costs reading-level CER on long-form 0.0500 → 0.0608 and
   CV 0.0468 → 0.0525 (retention gains one event); term biasing (`hotwords`) costs accuracy (Device
   bullet above). Re-open only on a new model release or a genai release that changes one of these.
 - **English: large-v3's whole-clip gain does not survive the live path.** FLEURS-en 150 whole
   clip, char CER: large-v3 0.0211 (0.73 s p50) · turbo 0.0247 (0.30 s) · Qwen 0.0198 (no
-  timestamps) · 1.5B 0.0261 · Cohere 0.0292. Through the VAC path (`eval.py --arms envac`, same 150
+  timestamps) · 1.5B 0.0261 · Cohere 0.0292. Through the VAC path (`--arms envac`, same 150
   clips): large-v3 capped at 224 tokens **0.0900** (update p50 0.514 / max 1.46 s) vs turbo
   **0.0882** (0.260 / 0.62 s), deletions ~990 on both ⇒ large-v3 REFUSED (user ruling 10-19).
-- **Runaway budget** = a decode forced to its cap (`min_new_tokens`, 11 s retention buffer, GPU;
-  `.scratch/gpu/runaway_probe.log`, `cap_time.log`): 760M 448 tokens 1.4-1.5 s · turbo 4.5 s · 1.5B
-  7.4-8.3 s · large-v3 7.6-8.4 s (224 tokens 3.7-4.3 s) ⇒ GPU mode's two models stay inside the
-  8 s headroom uncapped.
+- **Runaway budget** = a decode forced to its cap (`min_new_tokens`, 11 s retention buffer, GPU,
+  quiet box; `--arms runaway`): 760M 448 tokens 1.4-1.5 s · turbo 4.5 s · 1.5B 7.4-8.3 s · large-v3
+  7.6-8.4 s (224 tokens 3.7-4.3 s) ⇒ GPU mode's two models stay inside the 8 s headroom uncapped
+  on a GPU live-stt has to itself. Beside another process's GPU benchmark the same spans ran
+  2-7× longer — turbo 12.2 s, past the headroom — which is why GPU mode is the dedicated-machine
+  mode.
 - **Latency** = `tests/vac_decode_trace_gpu.json` (`build_vac_trace.py --device GPU --out …`;
   `eval_latency.py --trace tests/vac_decode_trace_gpu.json`), `retention_probe`, GPU vs the NPU
   table below: decode 0.293 / 0.371 / 0.414 · commit lag 1.969 / 3.071 / 6.146 · provisional

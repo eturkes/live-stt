@@ -14,23 +14,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    debt = latency feel, `-o`, soak, sustained cadence, Ctrl+C-mid-decode, VAC partial cadence.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **GPU-mode screen lives in scratch** — the GPU-mode decisions (`asr-pipeline.md` `## GPU mode`:
-   760M device parity, the 1.5B / large-v3 / Qwen3-ASR / Cohere refusals for Japanese, large-v3's
-   VAC-path English refusal, the 0.5 s cadence and term-biasing refusals) rest on `.scratch/gpu/`
-   harnesses (`eval.py`, `kana_cer.py`, `vadseg.py`, `hot_eval.py`, `cohere_eval.py`,
-   `cap_time.py`) and the `.scratch/quality-manifest.json` + `.scratch/gpu/cv300/` inputs, all
-   gitignored. Tier `data`.
-   **Accept:** one committed `tests/eval_*.py` reproduces the table's whisper rows (char + reading
-   level CER, FLEURS-ja / retention / long-form / CV300, plus the English VAC arm) on a named device
-   from committed manifests (`short_corpus.json`, `real_clips.json`, `en_clips.json`,
-   `long_form.json`, `retention_probe.json`; the FLEURS legs = the 150 + 150 clips
-   `.scratch/build_quality_manifest.py` draws from the first two indexes, `Random(20260916)`, and the
-   CV300 leg = `.scratch/gpu/prep_cv.py`'s seed-20261001 sample of the CV8 test parquet) within
-   ±0.002, plus the term-biasing arm, documented in
-   `evidence-artifacts.md`; reading-level scoring's dependency rides `--with`, never the project
-   deps.
-
-3. **Candidate-window law misstates the learner** — `translation-leg.md`'s simulation bullet says
+2. **Candidate-window law misstates the learner** — `translation-leg.md`'s simulation bullet says
    support "needs three sightings inside one `CONTEXT_TERM_MEMORY` window", while `observe_ja` keeps
    every earlier sighting of a candidate while its LATEST is under 40 segments old: sightings at
    segments 1 / 40 / 79 promote ゴン though no 40-segment window holds three. The constant's own comment and the Bounds bullet ("candidate patience")
@@ -38,3 +22,16 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** the bullet states the implemented rule, and a `tests/test_context.py` lock pins the
    1 / 40 / 79 promotion — or, on a user ruling for a true sliding window, the implementation changes
    with `eval_term_census.py` + `eval_en_pairing.py` verdicts re-derived before and after.
+
+3. **Startup locks time out under host load** — `tests/test_audio_startup.py` drives real child
+   processes inside fixed wall-clock deadlines (5 s marker polls, 8 s `communicate`). With the box
+   at load ≈ 20 on 8 cores (other sessions' suites beside a GPU screen run), the D-007 hook failed
+   `test_the_session_child_resolves_openvino_from_the_venv_alone`,
+   `test_second_launch_is_refused_before_audio_initialization` and
+   `test_interrupt_during_audio_import_returns_without_waiting_for_its_timeout`, then
+   `test_supervisor_forwards_terminal_signals_and_preserves_the_drain[ctrl_c]` on the retry, while
+   the file passes alone (14 passed) and on a quiet box. Reproducer that loads no other core:
+   `taskset -c 0 uv run --no-sync python -m pytest -q -n 6 -p no:randomly tests/test_audio_startup.py`
+   (one CPU under the gate's worker count) failed 11, then 1, of 14. Tier `data`.
+   **Accept:** that reproducer passes 5 consecutive runs, and every changed deadline still reddens
+   its case on the hang that case exists to catch (L-022), the original deadline's firing recorded.
