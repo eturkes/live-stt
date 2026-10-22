@@ -37,8 +37,8 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    (`transcripts/<start>.log`). Pass: `SRC n:` lines print; `q=` / `seg=` are absent or brief and
    clear after each utterance; any `drop=N` fails. The
    drops the 09-24 session logged have a measured mechanism and a fix (catch-up rule + 8 s headroom,
-   `asr-pipeline.md` `## Real-time cost`) that has NOT met a mic: on a slow machine state (battery,
-   `low-power`) `q=` may now climb past 2 s during a long utterance or a runaway caption and must
+   `asr-pipeline.md` `## Real-time cost`): on a slow machine state (battery,
+   `low-power`) `q=` may climb past 2 s during a long utterance or a runaway caption and must
    clear once it ends, partial captions updating less often meanwhile. **The log captures the whole
    timeline
    without hiding the status line** — the peak log gates on the stream PAIR (L-006,
@@ -53,6 +53,9 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    transcript), and several runs can share that one file. Each run stamps
    `session: <transcript path>` when it starts, so the report separates them and a startup drop
    stays with the run that made it, `-o PATH` included.
+   **VALIDATED on a real mic in the slow machine state** (60 min, battery + `low-power`, 534
+   captions): no `drop=`, `q=` peak 1.18 s, cleared after each utterance; the `backlog peak:` lines
+   landed in the `--save-log` file while the status line kept drawing (`script -T` typescript).
 3. **Device select** — `uv run live-stt --device N`. Pass: prints `Mic: #N <name> @ <rate> Hz`; capture
    works as in (2).
 4. **Latency + endpointing (VAC cadence, NOT the old 0.6 s VAD-segment rule)** — one sentence, then stop.
@@ -63,8 +66,15 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    its own `TGT`; a brief mid-sentence pause does not split it; committed characters are never
    rewritten or duplicated once shown, across piece lines included. On
    `--engine k2v2|parakeet` the old rule still applies: no partials, `SRC n:` ~0.6 s after you stop.
+   Cadence measured on the item-2 session's typescript (1,541 distinct partial renders): partial text
+   changes every 1.01 s p50 / 1.83 s p90 / 2.94 s max — the 1 s cadence stretched by catch-up on
+   `low-power` decodes — and the first partial leads its `SRC` line by 4.46 s p50. Latency feel and
+   the never-rewritten criterion stay the user's.
 5. **Translation cadence** — Codex up. Pass: each `TGT n:` trails its `SRC n:` by ~2-3 s, shared `n` keeps
-   pairs matched; `--no-translate` suppresses every TGT line.
+   pairs matched; `--no-translate` suppresses every TGT line. **Cadence VALIDATED** on the item-2
+   session (codex 0.163.0): 533 of 534 translated, p50 2 s / p90 3 s / max 8 s; the one miss was a
+   DNS lookup failure in codex's websocket connect at a thread rotation (host
+   `~/.codex/logs_2.sqlite`), the leg translating the next caption. `--no-translate` unrun.
 6. **Ctrl+C mid-utterance** — start speaking, Ctrl+C while still talking. Pass: the in-progress `SRC n:`
    still prints (the worker flushes the VAD in `finally`), its `TGT n:` still lands if Codex is up (the
    translator drains last), then `Stopped.` with no hang. **The last `TGT` is the load-bearing half** —
@@ -74,7 +84,7 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    regression. **M14's `start_new_session=True` fix is VALIDATED on a real mic** over a 26-minute
    143-caption session: `SRC 143` then `TGT 143` six seconds later, drain order SRC 142 → SRC 143 →
    TGT 142 → TGT 143, zero `-- translation` markers, `Stopped.`, no hang, process fully exited. That
-   retires this item's L-004 debt; items 1, 3, 4, 5, 7, 8, 9 and 10 stay outstanding.
+   retires this item's L-004 debt; items 1, 3, 4, 7, 8, 9 and 10 stay outstanding (2 + 5 VALIDATED).
 7. **Ctrl+C mid-decode** — `uv run live-stt --engine parakeet`, speak continuously for >20 s, pause, then
    Ctrl+C while the slower long-block decode runs. Pass: that block's `SRC n:` still lands, its `TGT n:`
    follows if Codex is up, then `Stopped.` with no hang — VAD feeder and sequential decoder both drain
@@ -85,12 +95,15 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    appended there and nothing new in `transcripts/`; `--no-save` → prints
    `Transcript: not saved (--no-save)` and writes no file; start-then-immediate-Ctrl+C with no speech
    leaves no file (lazy creation).
-9. **Quiet speech + an empty room (`LeveledVad`, never met a mic)** — `uv run live-stt --save-audio
+9. **Quiet speech + an empty room (`LeveledVad`)** — `uv run live-stt --save-audio
    --save-log` through a meeting whose speakers sit far from the mic, then ≥5 min of the empty room.
    Pass: the far speech publishes `SRC` lines from the first seconds on; the empty room publishes
    nothing — no `ご視聴ありがとうございました`-family caption, no `caption dropped` burst. The leveled
    copy boosts room tone up to 16× once speech stops, while the two saved sessions hold only 48 s and
    25 s of whisper-silent gaps; keep the WAV, `replay.py` re-derives either half.
+   The item-2 meeting covers the far-speech half at the 10-08 level alone — p90 −34.7 dBFS against
+   10-09's −43.8 (512-sample window RMS over windows above −70 dBFS, which reproduces both recorded
+   p90s): `SRC 1` 9 s after start. The quiet −44 dBFS shape and the empty room stay unrun.
 10. **GPU mode (`--asr-device GPU`, never met a mic or the host)** — on the host, with no
    `OCL_ICD_VENDORS` exported, `uv run live-stt --asr-device GPU --save-log`, speak Japanese, then
    English under `--two-way`. Pass: startup prints `Engine: whisper (local OpenVINO GPU; …)` and no
@@ -138,6 +151,8 @@ carry it are the ones the detector had under 2 s of audio to judge.
 - **Quota** — out of band via `account/rateLimits/read`; expect ≈0 % primary-window movement.
 - **Memory** (external `ps`/`top`): RSS flat — ring, audio headroom and segment queue are bounded,
   one soxr stream per session, codex `_notes`/`_pending` drain per turn. Steady growth signals a leak.
+  Held live over the item-2 session: session child 1,951 → 1,957 MB across 60 min, where an
+  undrained VAD segment queue grows ~3.8 MB per speech-minute (`asr-pipeline.md`).
 
 **Run `uv run python session_report.py` after any soak** — it answers every question in this
 section mechanically off the saved transcript and the saved log, so a session stays diagnosable once

@@ -247,10 +247,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **1** Live-mic validation pass
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
-  - Blocks the rest: M13.2, the four polish fixes and M14's `_respawn` arm have never met a mic, so
-    every agent-side claim about the live path stays provisional until the user runs
-    `live-smoke.md`. M14's `_probe` arm is now the one exception: it fired on a real mic on
-    2026-09-18 and recovered the leg on attempt 1 (`translation-leg.md`).
+  - Never met a mic: M14's `_respawn` arm, the `-- translation disabled` marker, the SIGHUP shutdown,
+    `LeveledVad` on quiet (−44 dBFS) far speech + an empty room, GPU mode. Live-validated: `_probe`,
+    `live-smoke.md` items 2, 5 + 6, the publication screen's latin arm, the VAD segment drain and
+    the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9 + 10 stay the user's to run.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 
