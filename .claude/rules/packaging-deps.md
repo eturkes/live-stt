@@ -33,7 +33,11 @@ suite stays.
 showed 1 of 12 bumps) plus the pins outside the lock: `gate.py`'s pyright, `.python-version`, the
 evaluators' `--with` pins, `models/README.md`'s export recipe, the codex CLI → CVE-scan with
 `uv export --format requirements-txt --all-groups --no-emit-project >/tmp/reqs.txt && uvx pip-audit -r
-/tmp/reqs.txt` (pip-audit scans its own environment, so feed it the export) → apply lock-only bumps
+/tmp/reqs.txt` (pip-audit scans its own environment, so feed it the export), the `--with` pins
+fed the same way → history secret scan `gitleaks git --redact --no-banner .` (the repo is public
+and `detect-secrets` reads the tree alone; gitleaks = its GitHub release binary,
+checksum-verified), credited only beside a throwaway repo holding one planted fake key that must
+report 1 → apply lock-only bumps
 (`uv lock --upgrade-package NAME`) unless the older declared floor is unsupported or security-blocked,
 in which case raise it deliberately → run the full gate → re-verify the codex leg, which pytest does not
 cover, with a synthetic `CodexTranslator` turn (`start()` warm-up + `_translate`). Keep package versions
@@ -61,6 +65,7 @@ rather than the new codex: rerun it against the previous codex release before bl
 
 `pip-audit` lives HERE and not in `gate.py` because it needs an advisory feed and the gate is
 hermetic (`toolchain.md`). The offline half of the scan already runs on every commit — ruff `S`
-inside `ruff-check`, plus the `secrets` step — so this recipe owns the dependency-CVE arm alone.
+inside `ruff-check`, plus the `secrets` step — so this recipe owns the dependency-CVE arm and the
+history scan alone.
 Dependabot (`.github/dependabot.yml`) raises the same bumps between passes; a grouped PR it opens is
 this recipe's input, never a substitute for running it.

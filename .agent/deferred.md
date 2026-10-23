@@ -47,3 +47,23 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `tests/eval_asr_screen.py --arms fleurs,retention --device NPU` (private `OPENVINO_CACHE_DIR`),
    decodes every hypothesis byte-identically to the shipped weights; any differing hypothesis → a
    re-export ruling for the user with the D-016 JA legs re-measured.
+
+5. **Owner-only modes on session files** — `TranscriptFile`, `AudioRecording` and
+   `redirect_stderr` create `transcripts/*.txt|.wav|.log` at the umask default (0644) inside a
+   0755 `transcripts/`, while they hold the user's speech, clinical sessions included. The 0700
+   home and the sole login UID confine them today ⇒ informational.
+   **Accept:** a session creates `transcripts/` 0700 and each new `.txt`/`.wav`/`.log` 0600, a
+   `-o PATH` file included when the session creates it (an existing file keeps its mode); a lock
+   reading `stat` after a fake-mic `run_session`, seen red on the prior revision; the gate stays
+   green.
+
+6. **Export recipe index isolation** — `models/README.md`'s whisper-ja-760M export installs
+   `optimum-intel[openvino]`, `nncf` and `torch` unpinned under `--index-strategy
+   unsafe-best-match` beside the PyTorch CPU index, so the highest version of a name on EITHER
+   index wins — the dependency-confusion shape uv's default `first-index` exists to refuse.
+   One-time and user-run ⇒ informational.
+   **Accept:** torch resolves from the PyTorch index alone and every other package from PyPI
+   alone, `unsafe-best-match` gone, the export stack pinned exact; the moved recipe re-qualifies by
+   decode as row *Export recipe at the latest transformers and Python* does — export into scratch,
+   `tests/eval_asr_screen.py --arms fleurs,retention --device NPU` with a private
+   `OPENVINO_CACHE_DIR` decoding every hypothesis byte-identically to the shipped weights.

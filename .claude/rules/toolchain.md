@@ -112,7 +112,7 @@ weights, corpora or an accelerator skips `absent:` there.
 (ruff's `S` / flake8-bandit ruleset). The `secrets` step runs `detect-secrets` over every file a
 commit can carry, git's tracked + untracked-unignored list (`scan_files`) — both offline, so the
 gate keeps its no-network contract. `pip-audit` needs an advisory feed and stays in the L-018 recipe
-(`packaging-deps.md`); Dependabot (`.github/dependabot.yml`, `package-ecosystem: uv`) watches
+(`packaging-deps.md`), beside the `gitleaks` history scan the tree-only `secrets` step cannot do; Dependabot (`.github/dependabot.yml`, `package-ecosystem: uv`) watches
 between commits.
 
 **The secret scan runs with `HexHighEntropyString` off and skips `tests/*.json`.** This repo's

@@ -108,9 +108,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
   English rendering keyed on the JA string the recogniser produced.
 - **D-007** pre-commit via `.githooks/` + `core.hooksPath`, not the `pre-commit` framework.
 - **D-017** security scanning splits by hermeticity: ruff `S` (in `ruff-check`) + a `detect-secrets`
-  `secrets` step run offline in the gate; `pip-audit` stays in the L-018 recipe. Update automation =
-  `.github/dependabot.yml` (`uv`, weekly, grouped), the only `.github/` file — CI stays REJECTED.
-  The CI ruling, scan scoping + its coverage limit → `toolchain.md`.
+  `secrets` step run offline in the gate; `pip-audit` + a `gitleaks` history scan stay in the L-018
+  recipe. Update automation = `.github/dependabot.yml` (`uv`, weekly, grouped), the only
+  `.github/` file — CI stays REJECTED. The CI ruling, scan scoping + its coverage limit →
+  `toolchain.md`. Room audio is the untrusted input: a translator thread holds no tool that reads
+  the machine and a turn starting any tool item fails (`translation-leg.md`), and no C0/DEL/C1
+  control in recogniser or translator text reaches the terminal or the transcript
+  (`asr-pipeline.md`).
 - **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
   session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
 - **The published line grammar is `SRC n:` / `TGT n:`, in every mode** (user ruling) — `SRC` names
@@ -262,6 +266,12 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.
+- [ ] **5** Owner-only modes on session files
+  - Informational; accept → `.agent/deferred.md` → *Owner-only modes on session files*: new
+    `transcripts/` 0700 and session files 0600, a `stat` lock red on the prior revision.
+- [ ] **6** Export recipe index isolation
+  - Informational; accept → `.agent/deferred.md` → *Export recipe index isolation*: one index per
+    package, the export stack pinned exact, re-qualified by decode.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 
