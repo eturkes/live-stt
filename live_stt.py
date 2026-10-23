@@ -351,6 +351,11 @@ _LINE_CLEAR = "\r\x1b[2K"
 # ANSI: faint, then back to normal intensity. 22 rather than 0 because 0 would
 # also reset any colour the user's terminal applied around us.
 _DIM, _UNDIM = "\x1b[2m", "\x1b[22m"
+# C0, DEL and C1: what a terminal executes as cursor moves, screen clears, title and
+# OSC 52 clipboard writes. Recogniser and translator text are steered by room audio and
+# whisper's byte-level vocabulary decodes any of them, so each sink carrying that text
+# strips them; the transcript is one too, since `cat` replays it.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 # Gate stdout's status-line rewrites on a TTY so redirected stdout stays ANSI-clean.
 _STDOUT_TTY = sys.stdout.isatty()
 # The other half of the same gate: stderr decides whether a log record erases the
@@ -1114,7 +1119,7 @@ def emit_line(tag, seq, text, output_file, *, held=False):
     # Japanese captions carry; single-line text passes through untouched.
     parts = text.splitlines()
     body = text if len(parts) <= 1 else " ".join(p for p in (s.strip() for s in parts) if p)
-    line = f"{tag} {seq}{marker}: {body}"
+    line = f"{tag} {seq}{marker}: {_CONTROL_CHARS.sub('', body)}"
     if output_file:
         ts = datetime.now().astimezone().isoformat(timespec="seconds")
         output_file.write(f"[{ts}] {line}\n")
@@ -1147,7 +1152,7 @@ def drop_caption(state, text, defect):
     a redirected log still says what was heard.
     """
     state.dropped_captions += 1
-    logger.warning("caption dropped (%s): %.24s…", defect, text)
+    logger.warning("caption dropped (%s): %.24s…", defect, _CONTROL_CHARS.sub("", text))
 
 
 # Japanese is unsegmented, so term candidates are script runs rather than words:
@@ -2435,6 +2440,7 @@ def caption_body(settled: str, provisional: str, room: int) -> str:
     rewrite. Nothing is emitted around a body that is entirely settled, so the
     common case stays byte-identical to a plain caption.
     """
+    settled, provisional = _CONTROL_CHARS.sub("", settled), _CONTROL_CHARS.sub("", provisional)
     text = settled + provisional
     width = 0
     cut = len(text)

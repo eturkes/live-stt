@@ -320,3 +320,44 @@ def test_user_facing_degrade_strings_say_source_only() -> None:
     replacements = [(line, text) for line, text in messages if "source-only" in text]
     assert stale == []
     assert len(replacements) >= 6
+
+
+# Room audio steers both texts and whisper's byte-level vocabulary decodes any control, so
+# OSC 52 (clipboard write), OSC 0 (title), CSI (screen clear), C1 CSI and DEL must reach no
+# sink intact. Only the terminal-executed bytes go; the printable rest stays as evidence.
+_HOSTILE = "字幕\x1b]52;c;ZWNobyBwd25lZA==\x07\x1b[2J\x9b31m\x7f終"
+
+
+def test_no_control_character_reaches_the_terminal_or_the_transcript(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "session.txt"
+    monkeypatch.setattr(app, "_STDOUT_TTY", False)
+    transcript = app.TranscriptFile(path)
+    app.emit_line("SRC", 1, _HOSTILE, transcript)
+    app.emit_line("TGT", 1, "Caption\x1b]0;title\x07 end", transcript)
+    transcript.close()
+
+    saved = path.read_text(encoding="utf-8")
+    screen = capsys.readouterr().out
+    for sink in (saved, screen):
+        assert not re.search(r"[\x00-\x09\x0b-\x1f\x7f-\x9f]", sink)
+    assert [line.split("] ", 1)[1] for line in saved.splitlines()] == [
+        "SRC 1: 字幕]52;c;ZWNobyBwd25lZA==[2J31m終",
+        "TGT 1: Caption]0;title end",
+    ]
+
+
+def test_the_status_line_keeps_its_own_dim_and_no_other_control() -> None:
+    body = app.caption_body("字幕\x1b[2J", "終\x1b]52;c;eA==\x07", 80)
+
+    assert body == f"字幕[2J{app._DIM}終]52;c;eA=={app._UNDIM}"
+
+
+def test_a_dropped_caption_logs_a_visible_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    logged: list[str] = []
+    monkeypatch.setattr(app.logger, "warning", lambda msg, *args: logged.append(msg % args))
+
+    app.drop_caption(app.State(), "\x1b]52;c;" + "あ" * 40, "loop")
+
+    assert logged == ["caption dropped (loop): ]52;c;" + "あ" * 18 + "…"]

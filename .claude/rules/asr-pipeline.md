@@ -729,6 +729,16 @@ Char | kana CER, GPU unless named:
   real Japanese captions carry; a break-free caption passes through byte-identical, which is the
   positive control the lock pairs with. The screen shares the collapsed string, so the transcript
   and the terminal cannot diverge.
+- **No C0, DEL or C1 control from recogniser or translator text reaches a sink** (`_CONTROL_CHARS`).
+  Both texts are steered by whoever is audible, and whisper's byte-level vocabulary decodes any
+  byte, so OSC 52 (clipboard write), OSC 0 (title) and CSI (cursor, screen clear) passed byte for
+  byte to stdout, the status line, the transcript (`cat` replays it) and the `caption dropped` head.
+  The three sinks carrying that text strip them: `emit_line` after the break collapse (so line
+  breaks still fold to one space), `caption_body` before its width cut (only `_DIM`/`_UNDIM`
+  survive), `drop_caption` before `%.24s` (the cap counts visible characters). Text with no
+  control passes byte-identical. Decode text itself is untouched upstream — goldens, CER and the
+  translator see what whisper said. Locks: `tests/test_line_grammar.py` (3 cases, each red alone
+  with its own sink neutralized).
 - **L-006 — TTY-gate the cursor-clear (`\r\x1b[2K`) protocol per stream, evaluated once.** Both halves
   are module-level globals read at import, `_STDERR_TTY` re-bound once by `--save-log` (below):
   `_STDOUT_TTY` gates the meter status line and `emit_line`, so redirected stdout stays ANSI-clean
