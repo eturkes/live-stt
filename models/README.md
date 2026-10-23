@@ -56,17 +56,24 @@ EOF
 
 The Japanese model has no published OpenVINO version, so you must convert it once.
 The conversion uses a separate temporary environment with PyTorch, about 2 GB.
-The revision in the command is pinned.
+The revision in the command is pinned. Each package version is pinned too. PyTorch
+and torchvision come from the PyTorch CPU index, as Linux x86-64 files that uv
+checks against their SHA-256 hashes. All other packages come from PyPI only, as
+they were on the `--exclude-newer` date. The conversion runs with `PYTHONPATH` and
+`LD_LIBRARY_PATH` removed. If an OpenVINO archive is on these paths, the
+conversion can use it instead of the pinned OpenVINO packages.
 
 ```sh
 uv venv /tmp/ov-export --python 3.13
-uv pip install --python /tmp/ov-export/bin/python --index-strategy unsafe-best-match \
-  --extra-index-url https://download.pytorch.org/whl/cpu \
-  'optimum-intel[openvino]' transformers==4.57.6 openvino==2026.4.1 \
-  openvino-tokenizers==2026.4.1.0 nncf torch
+uv pip install --python /tmp/ov-export/bin/python --exclude-newer 2026-10-23T00:00:00Z \
+  'torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl#sha256=331fa474e26e428e2e6af1143b2fdab19cee492d7d21897b8899ce1c14755662' \
+  'torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.29.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl#sha256=7b27accfa545169ad070efb8a6679b25d63acc8513bbc0c05937c3ce94c13ea5' \
+  optimum-intel==2.2.0 optimum==2.3.0 transformers==4.57.6 nncf==3.4.0 \
+  openvino==2026.4.1 openvino-tokenizers==2026.4.1.0
 uvx --from huggingface_hub hf download efwkjn/whisper-ja-760M \
   --revision 00daeaf3b79a85c5c52474147cc80b4370deae7f --local-dir /tmp/whisper-ja-760M
-/tmp/ov-export/bin/optimum-cli export openvino --model /tmp/whisper-ja-760M \
+env -u PYTHONPATH -u LD_LIBRARY_PATH \
+  /tmp/ov-export/bin/optimum-cli export openvino --model /tmp/whisper-ja-760M \
   --task automatic-speech-recognition-with-past --weight-format int8 \
   models/openvino/whisper-ja-760m-int8-ov
 rm -rf /tmp/ov-export /tmp/whisper-ja-760M

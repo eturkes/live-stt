@@ -3,6 +3,7 @@ paths:
   - "pyproject.toml"
   - ".githooks/pre-commit"
   - "uv.lock"
+  - "models/README.md"
 ---
 
 # Packaging + dependency maintenance
@@ -59,7 +60,19 @@ rather than the new codex: rerun it against the previous codex release before bl
 - `models/README.md`'s export recipe re-qualifies by DECODE, never bytes — its decoder `.bin`
   differs between runs of unchanged pins: export into scratch, then `tests/eval_asr_screen.py
   --arms fleurs,retention --device NPU` with a private `OPENVINO_CACHE_DIR` must decode every
-  hypothesis byte-identically to the shipped weights.
+  hypothesis byte-identically to the shipped weights. `OPENVINO_CACHE_DIR` is a module constant,
+  so the private cache = `live_stt.OPENVINO_CACHE_DIR` reassigned before `runpy` runs the screen.
+  **One index per package, every pin exact.** torch + torchvision are direct wheel URLs off the
+  PyTorch CPU index carrying its `#sha256=` (uv refuses a mismatch) and the venv's cp tag ⇒ a
+  version or `--python` move re-picks both from `https://download.pytorch.org/whl/cpu/<name>/`.
+  torchvision rides that index too because PyPI's is a CUDA build (`_C_stable.so` needs
+  `libtorch_cuda.so`) and optimum-intel requires it. Every other name resolves from PyPI alone
+  under `--exclude-newer`, which moves with any bump. Never add `--index`/`--extra-index-url`:
+  any second index serves its own copies of PyPI names (`uv pip compile --emit-index-annotation`
+  shows the source of each). `optimum-cli` runs under `env -u PYTHONPATH -u LD_LIBRARY_PATH`:
+  both layers' login env puts a GenAI tarball's `openvino` there (`openvino-accel.md`), which
+  shadows the pinned wheel — container: `GLIBC_2.43` ImportError; host: its 3.13 bindings load,
+  a silent pin bypass (inferred, unrun).
 - `tests/eval_cer.py` rewrites `tests/cer_baseline.json` on a pass ⇒ attribute a moved cell by
   running it on the old lock too (worktree at the base commit, its own venv).
 

@@ -262,9 +262,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.
-- [ ] **4** Export recipe index isolation
-  - Informational; accept → `.agent/deferred.md` → *Export recipe index isolation*: one index per
-    package, the export stack pinned exact, re-qualified by decode.
+- [ ] **4** Screen compile-cache flag
+  - Data tier; accept → `.agent/deferred.md` → *Screen compile-cache flag*: `--cache-dir DIR`
+    compiles there, the shared cache untouched, a wiring lock red on the prior revision.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

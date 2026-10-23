@@ -198,8 +198,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
     --local-dir models/openvino/screen/whisper-large-v3-int8-ov
   uvx --from huggingface_hub hf download efwkjn/whisper-ja-1.5B \
     --revision 72c13fb7b6cc2a831780cdd79cd1a829e77bab02 --local-dir .scratch/whisper-ja-1.5B
-  # models/README.md's export venv at openvino==2026.4.1 + openvino-tokenizers==2026.4.1.0
-  # (resolved: optimum-intel 2.2.0, nncf 3.4.0, torch 2.14.1+cpu); the int8 export stages an
+  # models/README.md's export venv, its pins as written; the int8 export stages an
   # fp32 copy, so TMPDIR must sit on disk, never on a 16 GB /tmp tmpfs
   TMPDIR=.scratch/tmp optimum-cli export openvino --model .scratch/whisper-ja-1.5B \
     --task automatic-speech-recognition-with-past --weight-format int8 \
