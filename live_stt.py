@@ -323,6 +323,11 @@ _LEG_INSTRUCTIONS = {
 
 # Tool-injecting features each 400 at low/minimal effort and cost ~15K prompt
 # tokens/turn (the difference between 3 s and 1 s turns — D-011).
+# The last four strip what a thread fed room audio must never hold: under
+# approvalPolicy "never" the model ran `cat` through the shell without asking. Each
+# removes its tool from the request codex sends (shell_tool: exec_command +
+# write_stdin; goals; sleep_tool: clock.sleep); unified_exec and multi_agent remove
+# nothing on 0.164.0, so they are absent (translation-leg.md).
 _CODEX_CONFIG = {
     "web_search": '"disabled"',
     "features.image_generation": "false",
@@ -330,7 +335,16 @@ _CODEX_CONFIG = {
     "features.browser_use_external": "false",
     "features.computer_use": "false",
     "features.apps": "false",
+    "features.shell_tool": "false",
+    "features.view_image": "false",
+    "features.goals": "false",
+    "features.sleep_tool": "false",
 }
+# The item kinds a translation turn produces. The model catalog, not config, keeps
+# apply_patch, the MCP readers and multi-agent spawning in every thread, so a turn
+# that starts any other item is speech steering the model into a tool: it fails
+# before its text can publish.
+_TURN_ITEMS = frozenset({"userMessage", "agentMessage", "reasoning"})
 
 # ANSI: carriage-return + erase-line. Lets block output overwrite the status line.
 _LINE_CLEAR = "\r\x1b[2K"
@@ -1901,6 +1915,10 @@ class CodexTranslator:
                 turn is not None and turn_id is not None and turn != turn_id
             ):
                 continue
+            if method in ("item/started", "item/completed"):
+                kind = (params.get("item") or {}).get("type")
+                if kind not in _TURN_ITEMS:
+                    raise RuntimeError(f"translation turn started a {kind} item")
             if method == "item/agentMessage/delta":
                 parts.append(params.get("delta", ""))
             elif method == "item/completed":

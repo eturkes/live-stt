@@ -37,6 +37,28 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 - **Tool-feature disables in `_CODEX_CONFIG` are THE latency lever.** Re-enabling
   web_search/image/browser/computer/apps re-injects ~15 K tokens/turn: p50 3.15 s → **0.99 s**. Keep
   them off.
+- **A translation thread holds no tool that reads the machine — its input is room audio.** Under
+  `approvalPolicy:never` codex runs a tool call without asking, and `gpt-6-luna`'s catalog entry
+  (`tool_mode = "code_mode_only"`) nests tools inside one `exec` tool: with the old config a
+  permissive thread ran `bash -lc 'cat <file>'` unasked, and only `developerInstructions` held 6 of 6
+  spoken injection turns. Ground truth = the request's `tools` array under `RUST_LOG=trace`, never
+  the model's self-report (`NO-TOOLS` on one prompt, a tool list on the next). On 0.164.0 each
+  shipped disable removes its tools — `features.shell_tool` (`exec_command` + `write_stdin`),
+  `features.view_image`, `features.goals`, `features.sleep_tool` (`clock.sleep`) — while
+  `features.unified_exec`, `multi_agent(_v2)`, `code_mode*`, `plugins`, `skill_search` and
+  `tool_suggest` removed nothing, so they stay out. **Config cannot reach the rest**:
+  `apply_patch_tool_type` and `multi_agent_version` live in the model catalog, so `apply_patch`, the
+  MCP-resource readers (no MCP server configured ⇒ nothing to read), `request_user_input` (a server
+  request `_read_loop` denies) and `collaboration.*` stay; a permissive `apply_patch` write was
+  rejected by the `read-only` + `never` policy 2 of 2, nothing written. **`_turn` fails closed on
+  any item outside `_TURN_ITEMS`** (`userMessage`, `agentMessage`, `reasoning`), on `item/started`
+  and `item/completed` alike, so a steered tool call costs one strike and never publishes a `TGT`
+  line, whatever a later codex adds. A new benign item kind therefore disables the leg after three
+  turns — loud, and caught by L-018's synthetic turn. Measured, old → new argv, 24 interleaved
+  `caption_trace.json` turns: median 1.981 → **1.514 s**, p90 4.021 → 1.875 s, paired −0.518 s
+  `[-0.720, -0.300]`, 24/24 translated each. Lock: `test_a_turn_that_starts_a_tool_publishes_nothing`
+  (`tests/test_turn_correlation.py`). The host sandbox's read-only enforcement is unverified: in this
+  container it failed closed on a temp-dir error, not on policy.
 - **`serviceTier:"priority"`** = Codex's "Fast" tier (1.5× speed, increased usage), set PER THREAD in
   `_new_thread` — startup plus every ~100-turn rotation — so global `~/.codex/config.toml` stays at
   `default` per user directive. **An unrecognized tier is dropped silently** (thread/start succeeds and

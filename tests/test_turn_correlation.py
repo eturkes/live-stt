@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -426,5 +427,54 @@ def test_an_interrupt_names_the_turn_on_its_own_thread(source, monkeypatch: pyte
             assert interrupts == [{"threadId": old_thread, "turnId": "old-turn"}] * 2
         finally:
             await _stop_reader(reader_task)
+
+    asyncio.run(scenario())
+
+
+# A tool item in a translation turn is speech steering the model; codex config cannot
+# remove apply_patch, the MCP readers or multi-agent spawning, so the turn must fail
+# before its text reaches a TGT line. `reasoning` is the positive control.
+@pytest.mark.parametrize("event", ["item/started", "item/completed"])
+@pytest.mark.parametrize(
+    "kind",
+    ["commandExecution", "fileChange", "mcpToolCall", "collabAgentToolCall", None, "reasoning"],
+)
+def test_a_turn_that_starts_a_tool_publishes_nothing(event, kind, monkeypatch: pytest.MonkeyPatch):
+    sleep = asyncio.sleep
+
+    async def no_delay(delay, result=None):
+        await sleep(0)
+        return result
+
+    # The turn timeout stays real: a timed-out turn also publishes nothing.
+    monkeypatch.setattr(live_stt.asyncio, "sleep", no_delay)
+    emitted = []
+    monkeypatch.setattr(live_stt, "emit_line", lambda *args, **_: emitted.append(args[:3]))
+
+    async def scenario():
+        t, proc, reader_task = _open()
+        t.queue.put_nowait((1, "自分の発話。", "ja", time.monotonic()))
+        t.queue.put_nowait(None)
+        run = asyncio.create_task(t.run())
+        try:
+            _, thread = await _answer_turn(t, proc, "own-turn")
+            item: dict[str, Any] = {"id": "item-1"}
+            if kind is not None:
+                item["type"] = kind
+            params = {"threadId": thread, "turnId": "own-turn", "item": item}
+            proc.stdout.feed_data(_rpc_note(event, params))
+            proc.stdout.feed_data(_note("item/agentMessage/delta", thread, "own-turn", "read"))
+            proc.stdout.feed_data(_note("turn/completed", thread, "own-turn", ""))
+            await asyncio.wait_for(run, timeout=2)
+        finally:
+            await _stop_reader(reader_task)
+        requests = [json.loads(w) for w in proc.stdin.writes]
+        interrupts = [r["params"] for r in requests if r.get("method") == "turn/interrupt"]
+        if kind == "reasoning":
+            assert (emitted, interrupts, t._failures) == ([("TGT", 1, "read")], [], 0)
+        else:
+            assert emitted == []
+            assert interrupts == [{"threadId": thread, "turnId": "own-turn"}]
+            assert t._failures == 1
 
     asyncio.run(scenario())
