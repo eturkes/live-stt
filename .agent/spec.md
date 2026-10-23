@@ -255,21 +255,17 @@ Detail → `.claude/rules/`, which each `D-###` names.
     `LeveledVad` on quiet (−44 dBFS) far speech + an empty room, GPU mode. Live-validated: `_probe`,
     `live-smoke.md` items 2, 5 + 6, the publication screen's latin arm, the VAD segment drain and
     the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9 + 10 stay the user's to run.
-- [ ] **2** Re-measure the fresh-session baseline
-  - Docs tier; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*: the
-    `assurance-posture.md` recipe re-run on a clean tree, the paragraph naming only files that
-    exist.
-- [ ] **3** Python 3.15 interpreter
+- [ ] **2** Python 3.15 interpreter
   - Blocked upstream: no cp315 wheel for openvino, openvino-genai, onnxruntime, sherpa-onnx;
     accept → `.agent/deferred.md` → *Python 3.15 interpreter*.
-- [ ] **4** Export recipe at the latest transformers and Python
+- [ ] **3** Export recipe at the latest transformers and Python
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.
-- [ ] **5** Owner-only modes on session files
+- [ ] **4** Owner-only modes on session files
   - Informational; accept → `.agent/deferred.md` → *Owner-only modes on session files*: new
     `transcripts/` 0700 and session files 0600, a `stat` lock red on the prior revision.
-- [ ] **6** Export recipe index isolation
+- [ ] **5** Export recipe index isolation
   - Informational; accept → `.agent/deferred.md` → *Export recipe index isolation*: one index per
     package, the export stack pinned exact, re-qualified by decode.
 

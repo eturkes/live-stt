@@ -132,9 +132,10 @@ analogs = the last three closed M-series units: **106K / 121K / 130K** of work (
 / 40K ⇒ ratios 1.15 / 1.21 / 3.25, the outlier being the SMALLEST unit by estimate, where the small
 denominator makes the ratio noise and the absolute 130K is the signal. Size a new unit bottom-up
 against those work figures, never against a literal written here. **A fresh MAIN session opens at
-≈51K** (51,124 = 51,118 cache-create + 2 input + 4 output) over 109.1 KB attached — the user-level
-instruction file 23.6 KB, `CLAUDE.md` 29.2 KB, `CLAUDE.local.md` 5.0 KB, `.agent/spec.md` 20.4 KB,
-the three bare rules files 30.8 KB. Re-measure whenever that set moves: on a clean tree at the repo
+≈46K** (45,522 = 45,516 cache-create + 2 input + 4 output) over 96.0 KB attached — the user-level
+instruction file 10.9 KB, `CLAUDE.md` 29.8 KB, `.agent/spec.md` 23.2 KB, the three bare rules files
+(`orientation.md`, `assurance-posture.md`, `toolchain.md`) 32.1 KB. Re-measure whenever that set
+moves: on a clean tree at the repo
 root, `claude -p "Reply with the single word OK." --output-format stream-json --verbose` → sum the
 assistant `usage` fields, plus `wc -c` over the set; a print-mode session, so an interactive one's
 extra harness text is unmeasured.

@@ -15,17 +15,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    mode) and a multi-hour soak.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **Re-measure the fresh-session baseline** — `assurance-posture.md` states a fresh MAIN session
-   opens at ≈51K over 109.1 KB attached, `CLAUDE.local.md` 5.0 KB among it; that file is gone, its
-   OpenVINO memo now in the user-level instruction file, and the template refresh grew `CLAUDE.md`,
-   so the literal no longer describes the attached set its own paragraph says to re-measure
-   whenever it moves. Docs tier.
-   **Accept:** the paragraph's recipe on a clean tree at the repo root (`claude -p "Reply with the
-   single word OK." --output-format stream-json --verbose` → the assistant `usage` sum, plus `wc -c`
-   over the attached set) → the paragraph carries those numbers and names only files that exist;
-   the gate stays green.
-
-3. **Python 3.15 interpreter** — `.python-version` pins `3.14` while CPython 3.15.1 is the latest
+2. **Python 3.15 interpreter** — `.python-version` pins `3.14` while CPython 3.15.1 is the latest
    release: the wheel-only hard dependencies openvino, openvino-genai, onnxruntime and sherpa-onnx
    publish no cp315 wheel at their latest releases.
    **Accept:** every package in `uv.lock` resolves a cp315 wheel → `.python-version` 3.15, `.venv`
@@ -33,7 +23,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    byte-identical rebuild, the full gate green under the accelerator prelude with zero skips,
    retention CER 0.0532 re-derived on the NPU.
 
-4. **Export recipe at the latest transformers and Python** — `models/README.md`'s whisper-ja-760M
+3. **Export recipe at the latest transformers and Python** — `models/README.md`'s whisper-ja-760M
    export pins `transformers==4.57.6` in a Python 3.13 venv. optimum-intel 2.2.0 caps
    `transformers<5.6`, and the newest it admits, 5.5.4, exports a model whose retention hypothesis
    differs from the shipped weights' by one inserted `。` (CER 0.0532 either way). Under Python 3.14
@@ -48,7 +38,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    decodes every hypothesis byte-identically to the shipped weights; any differing hypothesis → a
    re-export ruling for the user with the D-016 JA legs re-measured.
 
-5. **Owner-only modes on session files** — `TranscriptFile`, `AudioRecording` and
+4. **Owner-only modes on session files** — `TranscriptFile`, `AudioRecording` and
    `redirect_stderr` create `transcripts/*.txt|.wav|.log` at the umask default (0644) inside a
    0755 `transcripts/`, while they hold the user's speech, clinical sessions included. The 0700
    home and the sole login UID confine them today ⇒ informational.
@@ -57,7 +47,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    reading `stat` after a fake-mic `run_session`, seen red on the prior revision; the gate stays
    green.
 
-6. **Export recipe index isolation** — `models/README.md`'s whisper-ja-760M export installs
+5. **Export recipe index isolation** — `models/README.md`'s whisper-ja-760M export installs
    `optimum-intel[openvino]`, `nncf` and `torch` unpinned under `--index-strategy
    unsafe-best-match` beside the PyTorch CPU index, so the highest version of a name on EITHER
    index wins — the dependency-confusion shape uv's default `first-index` exists to refuse.
