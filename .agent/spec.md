@@ -262,10 +262,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.
-- [ ] **4** Owner-only modes on session files
-  - Informational; accept → `.agent/deferred.md` → *Owner-only modes on session files*: new
-    `transcripts/` 0700 and session files 0600, a `stat` lock red on the prior revision.
-- [ ] **5** Export recipe index isolation
+- [ ] **4** Export recipe index isolation
   - Informational; accept → `.agent/deferred.md` → *Export recipe index isolation*: one index per
     package, the export stack pinned exact, re-qualified by decode.
 

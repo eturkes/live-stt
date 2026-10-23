@@ -8,6 +8,7 @@ import errno
 import io
 import logging
 import os
+import stat
 import subprocess
 import sys
 import types
@@ -433,8 +434,13 @@ def test_the_recording_is_readable_before_close_and_round_trips(tmp_path):
     assert np.max(np.abs(loaded - expected)) <= 0.5 / 32768
 
 
-def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, rate=SAMPLE_RATE, **flags):
-    """run_session end to end over an in-process fake mic + worker, no device."""
+def _run_session_with_fake_mic(
+    monkeypatch, tmp_path, blocks, rate=SAMPLE_RATE, caption=None, session_dir=None, **flags
+):
+    """run_session end to end over an in-process fake mic + worker, no device.
+
+    `caption` makes the worker publish one SRC line, the write that creates a transcript.
+    """
     stream_blocks = [b.reshape(-1, 1) for b in blocks]
 
     class InputStream:
@@ -457,28 +463,32 @@ def _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, rate=SAMPLE_RATE, 
     )
     seen = []
 
-    async def worker(_rec, _vad, _window, audio_q, state, *_args, **_kwargs):
+    async def worker(_rec, _vad, _window, audio_q, state, output_file, *_args, **_kwargs):
+        if caption is not None:
+            live_stt.emit_line("SRC", 1, caption, output_file)
         while (chunk := await audio_q.get()) is not None:
             seen.append(chunk)
             if len(seen) == len(blocks):
                 state.request_stop()  # every callback has landed; the drain follows
 
     monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
-    monkeypatch.setattr(live_stt, "TRANSCRIPT_DIR", tmp_path)
+    monkeypatch.setattr(live_stt, "TRANSCRIPT_DIR", session_dir or tmp_path)
     monkeypatch.setattr(live_stt, "load_recognizer", lambda *_a: object())
     monkeypatch.setattr(live_stt, "make_vad", lambda: (None, 512))
     monkeypatch.setattr(live_stt, "worker", worker)
     monkeypatch.setattr(live_stt, "_install_signal_handlers", lambda _state: None)
     args = types.SimpleNamespace(
-        engine="whisper",
-        asr_device="NPU",
-        two_way=False,
-        device=None,
-        output=None,
-        no_save=True,
-        no_translate=True,
-        context="",
-        **flags,
+        **{
+            "engine": "whisper",
+            "asr_device": "NPU",
+            "two_way": False,
+            "device": None,
+            "output": None,
+            "no_save": True,
+            "no_translate": True,
+            "context": "",
+            **flags,
+        }
     )
     asyncio.run(live_stt.run_session(args))
     return seen
@@ -577,6 +587,59 @@ def test_a_session_without_the_flag_keeps_stderr_on_the_terminal(monkeypatch, tm
     assert list(tmp_path.glob("*.log")) == []
     assert "Log:" not in capsys.readouterr().out
     assert live_stt._STDERR_TTY is True
+
+
+# --- owner-only session files ---
+
+
+@pytest.fixture
+def umask_022():
+    """The common login umask, under which the files used to land 0644 in a 0755 dir."""
+    previous = os.umask(0o022)
+    yield
+    os.umask(previous)
+
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+@pytest.mark.usefixtures("stderr_redirectable", "umask_022")
+@pytest.mark.parametrize(
+    ("flags", "suffixes"),
+    [
+        ({"no_save": False, "save_audio": True, "save_log": True}, {".txt", ".wav", ".log"}),
+        # Each writer makes the directory when it is the session's first.
+        ({"save_audio": True}, {".wav"}),
+        ({"save_log": True}, {".log"}),
+    ],
+)
+def test_a_session_creates_its_directory_and_files_owner_only(
+    monkeypatch, tmp_path, flags, suffixes
+):
+    session_dir = tmp_path / "transcripts"
+    blocks = [np.full(160, 0.25, dtype=np.float32)]
+    _run_session_with_fake_mic(
+        monkeypatch, tmp_path, blocks, caption="症例数", session_dir=session_dir, **flags
+    )
+    assert _mode(session_dir) == 0o700
+    assert {p.suffix: _mode(p) for p in session_dir.iterdir()} == dict.fromkeys(suffixes, 0o600)
+
+
+@pytest.mark.usefixtures("umask_022")
+def test_an_o_file_is_owner_only_when_the_session_creates_it(monkeypatch, tmp_path):
+    created = tmp_path / "new" / "o.txt"
+    existing = tmp_path / "existing.txt"
+    existing.write_text("[earlier] SRC 1: 前回\n", encoding="utf-8")
+    existing.chmod(0o644)
+    blocks = [np.full(160, 0.25, dtype=np.float32)]
+    for path in (created, existing):
+        _run_session_with_fake_mic(
+            monkeypatch, tmp_path, blocks, caption="症例数", output=str(path), no_save=False
+        )
+    assert _mode(created) == 0o600
+    assert _mode(existing) == 0o644  # a file the session did not create keeps its mode
+    assert existing.read_text(encoding="utf-8").count("SRC 1:") == 2  # still appended to
 
 
 REDIRECT_RUNNER = """

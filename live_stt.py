@@ -31,7 +31,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import SupportsFloat, cast
+from typing import BinaryIO, SupportsFloat, cast
 
 import numpy as np
 import onnxruntime as ort
@@ -970,6 +970,14 @@ def session_stamp() -> str:
     return f"{datetime.now().astimezone():%Y-%m-%dT%H-%M-%S}"
 
 
+# Session files hold the user's speech, clinical sessions included, so each file a
+# session creates, and the directory it makes to hold one, is owner-only rather than
+# the umask's world-readable default. Both modes apply at creation alone: an existing
+# directory or `-o` file keeps its own.
+SESSION_DIR_MODE = 0o700
+SESSION_FILE_MODE = 0o600
+
+
 def transcript_path(args, stamp):
     """Resolve this session's transcript path; None when saving is off."""
     if args.no_save:
@@ -1003,10 +1011,11 @@ def redirect_stderr(path: Path) -> None:
     gate opens, so the `session:` marker and `backlog peak:` timeline land here.
     """
     global _STDERR_TTY
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=SESSION_DIR_MODE, parents=True, exist_ok=True)
     sys.stderr.flush()
-    with open(path, "a", encoding="utf-8") as f:
-        os.dup2(f.fileno(), 2)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, SESSION_FILE_MODE)
+    os.dup2(fd, 2)
+    os.close(fd)
     _STDERR_TTY = False
 
 
@@ -1022,11 +1031,12 @@ class TranscriptFile:
     def __init__(self, path):
         self.path = path
         self._f = None
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(mode=SESSION_DIR_MODE, parents=True, exist_ok=True)
 
     def write(self, text):
         if self._f is None:
-            self._f = open(self.path, "a", encoding="utf-8")
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, SESSION_FILE_MODE)
+            self._f = os.fdopen(fd, "a", encoding="utf-8")
         self._f.write(text)
 
     def flush(self):
@@ -1049,12 +1059,15 @@ class AudioRecording:
 
     def __init__(self, path: Path):
         self.path = path
+        self._f: BinaryIO | None = None
         self._w: wave.Wave_write | None = None
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(mode=SESSION_DIR_MODE, parents=True, exist_ok=True)
 
     def write(self, pcm: np.ndarray) -> None:
         if self._w is None:
-            self._w = wave.open(str(self.path), "wb")
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, SESSION_FILE_MODE)
+            self._f = os.fdopen(fd, "wb")
+            self._w = wave.open(self._f, "wb")
             self._w.setnchannels(1)
             self._w.setsampwidth(2)
             self._w.setframerate(SAMPLE_RATE)
@@ -1068,7 +1081,9 @@ class AudioRecording:
 
     def close(self) -> None:
         if self._w is not None:
-            self._w.close()
+            self._w.close()  # patches the header; a caller-opened file stays open
+        if self._f is not None:
+            self._f.close()
 
 
 _stdout_live = True

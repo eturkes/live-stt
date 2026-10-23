@@ -108,6 +108,8 @@ The number is the caption number. A late translation is worse than none, because
 
 `transcripts/` is gitignored. To write somewhere else, use `-o FILE`. To keep a session off disk, use `--no-save`.
 
+Only your user account can read the session files. live-stt creates `transcripts/` with mode 0700 and each transcript, audio file and log with mode 0600. A file that already exists, such as an earlier `-o` file, keeps its mode. If you have files from earlier versions, make them private with `chmod -R go= transcripts`.
+
 ### Saved audio
 
 Use `--save-audio` to keep the microphone audio of a session. live-stt then writes a WAV file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
