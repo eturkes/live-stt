@@ -34,13 +34,16 @@ narration sections are hash-checked against their manifests.
 On-demand, never a gate step: gitignored weights, corpora and minutes to an hour
 of accelerator time per model. Both prelude halves first (`openvino-accel.md`);
 `<intel-accel>` = the NPU driver farm dir the user-level instruction file names. Screen-only
-models and their acquisition commands: `evidence-artifacts.md`.
+models and their acquisition commands: `evidence-artifacts.md`. `--cache-dir` gives a
+re-exported model an empty compile cache of its own: a cache hit hides the compiler, and
+the shared one belongs to the shipped weights (`openvino-accel.md`).
 
     source <intel-accel>/env.sh && source .envrc && \\
         uv run --no-sync --with pykakasi==2.3.0 \\
         [--with soundfile==0.14.0 --with pyarrow==26.0.0] \\
         python tests/eval_asr_screen.py --model DIR --device NPU|GPU \\
-        [--arms a,b] [--terms ARM] [--max-new-tokens N] [--vac-chunk S] [--json F]
+        [--arms a,b] [--terms ARM] [--max-new-tokens N] [--vac-chunk S] [--json F] \\
+        [--cache-dir D]
 """
 
 from __future__ import annotations
@@ -416,6 +419,7 @@ def main() -> None:
     ap.add_argument("--max-new-tokens", type=int, help="cap every decode (large-v3's EN arm: 224)")
     ap.add_argument("--vac-chunk", type=float, help=f"VAC cadence in s ({live_stt.VAC_CHUNK_S})")
     ap.add_argument("--json", type=Path, help="write every hypothesis + score here")
+    ap.add_argument("--cache-dir", type=Path, help="compile here, not the shared OpenVINO cache")
     args = ap.parse_args()
 
     arms = args.arms.split(",")
@@ -427,6 +431,8 @@ def main() -> None:
         ap.error("the terms arm needs hotwords, and the NPU rejects them")
     if args.vac_chunk is not None:
         live_stt.VAC_CHUNK_S = args.vac_chunk
+    if args.cache_dir is not None:
+        live_stt.OPENVINO_CACHE_DIR = args.cache_dir
     err = live_stt.check_device("whisper", args.device)
     if err:
         raise SystemExit(f"error: {err.splitlines()[0]}")
@@ -448,6 +454,7 @@ def main() -> None:
         "device": args.device,
         "extra": extra,
         "vac_chunk_s": live_stt.VAC_CHUNK_S,
+        "cache_dir": str(live_stt.OPENVINO_CACHE_DIR),
         "terms": args.terms if "terms" in arms else None,
     }
     # Two processes compiling one OpenVINO cache key corrupt it (toolchain.md).

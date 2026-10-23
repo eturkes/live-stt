@@ -59,9 +59,9 @@ rather than the new codex: rerun it against the previous codex release before bl
   the suite until that script reruns on a fresh cache and rebuilds byte-identically.
 - `models/README.md`'s export recipe re-qualifies by DECODE, never bytes — its decoder `.bin`
   differs between runs of unchanged pins: export into scratch, then `tests/eval_asr_screen.py
-  --arms fleurs,retention --device NPU` with a private `OPENVINO_CACHE_DIR` must decode every
-  hypothesis byte-identically to the shipped weights. `OPENVINO_CACHE_DIR` is a module constant,
-  so the private cache = `live_stt.OPENVINO_CACHE_DIR` reassigned before `runpy` runs the screen.
+  --arms fleurs,retention --device NPU --cache-dir <empty dir> --json F` must decode every
+  hypothesis byte-identically to the shipped weights' `--json` (the private cache keeps the
+  shared one's blobs from hiding the compiler).
   **One index per package, every pin exact.** torch + torchvision are direct wheel URLs off the
   PyTorch CPU index carrying its `#sha256=` (uv refuses a mismatch) and the venv's cp tag ⇒ a
   version or `--python` move re-picks both from `https://download.pytorch.org/whl/cpu/<name>/`.

@@ -37,12 +37,3 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `tests/eval_asr_screen.py --arms fleurs,retention --device NPU` (private `OPENVINO_CACHE_DIR`),
    decodes every hypothesis byte-identically to the shipped weights; any differing hypothesis → a
    re-export ruling for the user with the D-016 JA legs re-measured.
-
-4. **Screen compile-cache flag** — the export recipe re-qualifies through
-   `tests/eval_asr_screen.py` on a private `OPENVINO_CACHE_DIR`, a module constant no committed
-   entry point moves: the index-isolation qualification reassigned it from a gitignored `runpy`
-   wrapper, which `packaging-deps.md` describes — a scratch-local validator. Data tier.
-   **Accept:** `eval_asr_screen.py --cache-dir DIR` compiles into DIR — an NPU run on an empty DIR
-   leaves its blobs there while `models/openvino/cache` keeps its listing and mtime — and a
-   hardware-free lock on the flag's wiring, seen red on the prior revision; `packaging-deps.md`
-   names the flag in place of the wrapper; the gate stays green.
