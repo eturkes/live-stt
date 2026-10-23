@@ -14,3 +14,13 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    3, 4 (latency feel), 7 (Ctrl+C mid-decode), 8 (`-o`), 9 (quiet far speech + empty room), 10 (GPU
    mode) and a multi-hour soak.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
+
+2. **Re-measure the fresh-session baseline** — `assurance-posture.md` states a fresh MAIN session
+   opens at ≈51K over 109.1 KB attached, `CLAUDE.local.md` 5.0 KB among it; that file is gone, its
+   OpenVINO memo now in the user-level instruction file, and the template refresh grew `CLAUDE.md`,
+   so the literal no longer describes the attached set its own paragraph says to re-measure
+   whenever it moves. Docs tier.
+   **Accept:** the paragraph's recipe on a clean tree at the repo root (`claude -p "Reply with the
+   single word OK." --output-format stream-json --verbose` → the assistant `usage` sum, plus `wc -c`
+   over the attached set) → the paragraph carries those numbers and names only files that exist;
+   the gate stays green.

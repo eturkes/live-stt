@@ -24,7 +24,7 @@ in every committed one; nothing reads it.
 
 On-demand, never a gate step: it needs the gitignored weights, the gitignored
 narration WAVs, and ~14 min of accelerator time for the whole story.
-`<intel-accel>` = the NPU driver farm dir `CLAUDE.local.md` names.
+`<intel-accel>` = the NPU driver farm dir the user-level instruction file names.
 
     source <intel-accel>/env.sh && source .envrc && \
         uv run python tests/build_caption_trace.py [--device NPU]

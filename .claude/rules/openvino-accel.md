@@ -12,12 +12,12 @@ paths:
 # OpenVINO accelerator path
 
 Device-selection law (exact names, static shapes, `EXECUTION_DEVICES` readback) is machine-scoped in
-`CLAUDE.local.md`. This file carries what is specific to this repo and this container.
+the user-level instruction file. This file carries what is specific to this repo and this container.
 
 ## The whisper prelude — both halves, every time, in this order
 
 ```sh
-source <intel-accel>/env.sh  # NPU driver farm; <intel-accel> = the farm dir CLAUDE.local.md names
+source <intel-accel>/env.sh  # NPU driver farm; <intel-accel> = farm dir the user-level file names
 source .envrc                # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
 ```
 
@@ -58,9 +58,10 @@ source .envrc                # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
 
 - Core Ultra 7 268V: Arc 140V iGPU (`8086:64a0`, `xe`, `/dev/dri/renderD128`) + AI Boost NPU 4
   (`8086:643e`, `intel_vpu`, `/dev/accel/accel0`).
-- Two GenAI trees exist and only one loads in the container (paths → `CLAUDE.local.md`): the HOST
-  build `openvino_genai` needs `GLIBC_2.43` against the container's 2.41; `openvino_genai_container`
-  is what `env.sh` selects. Never confuse the unusable tarball with the deployment path.
+- Two GenAI trees exist and only one loads in the container (paths → the user-level OpenVINO
+  doc): the HOST build `openvino_genai` needs `GLIBC_2.43` against the container's 2.41;
+  `openvino_genai_container` is what `env.sh` selects. Never confuse the unusable tarball with the
+  deployment path.
 - **The deployment path is the PyPI wheels.** `openvino` / `openvino-genai` publish cp314
   manylinux_2_28 wheels, so the project's own py3.14 `.venv` enumerates `['CPU','GPU','NPU']` and
   compiles + infers on each. Only `LD_LIBRARY_PATH` / `OCL_ICD_VENDORS` / `ZE_ENABLE_ALT_DRIVERS`
@@ -73,7 +74,7 @@ source .envrc                # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
   pinned Ubuntu IGC that avoids the host IGC's newer-glibc requirement and a pinned NPU compiler
   pair. Its targets on the container's host mount dangle harmlessly on the host and stay outside
   project repos. After a host Intel-driver update, rebuild with the farm's `make_farm.py`
-  (`CLAUDE.local.md`), then rerun the self-test AND the whisper golden on an empty cache
+  (the user-level OpenVINO doc), then rerun the self-test AND the whisper golden on an empty cache
   (`## Model cache`).
 - **The NPU compiler pair must be the UMD release's own.** UMD 1.38 dlopens
   `libopenvino_intel_npu_compiler_loader.so` from its own dir, and that loader loads the compiler

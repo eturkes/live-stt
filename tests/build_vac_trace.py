@@ -18,7 +18,7 @@ actually spent against is the MAXIMUM contiguous decode, and that needs the
 per-update series.
 
 Needs the gitignored whisper weights and the accelerator env (`<intel-accel>` =
-the NPU driver farm dir `CLAUDE.local.md` names):
+the NPU driver farm dir the user-level instruction file names):
 
     source <intel-accel>/env.sh && source .envrc
     uv run python tests/build_vac_trace.py

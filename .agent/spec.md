@@ -251,6 +251,10 @@ Detail → `.claude/rules/`, which each `D-###` names.
     `LeveledVad` on quiet (−44 dBFS) far speech + an empty room, GPU mode. Live-validated: `_probe`,
     `live-smoke.md` items 2, 5 + 6, the publication screen's latin arm, the VAD segment drain and
     the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9 + 10 stay the user's to run.
+- [ ] **2** Re-measure the fresh-session baseline
+  - Docs tier; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*: the
+    `assurance-posture.md` recipe re-run on a clean tree, the paragraph naming only files that
+    exist.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

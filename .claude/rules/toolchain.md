@@ -102,6 +102,12 @@ rules CI mirroring the hook out of scope. Update automation = `.github/dependabo
 (`package-ecosystem: uv`, weekly, grouped), the only file under `.github/`, since an advisory feed
 between commits is the one thing a local hook cannot watch. Security scanning splits as below.
 
+Template ruling: "runs its full gate as a parallel CI fan-out" + "`ci/*` pushes" → **INAPPLICABLE**
+(user ruling) — no workflow exists, so the clause's own fallback holds: the full gate runs locally,
+`gate.py` before each commit and the pre-commit hook's suite at it, and no `ci/*` branch is
+pushed. A fresh-clone fan-out would also grade less than the local gate, since every test gated on
+weights, corpora or an accelerator skips `absent:` there.
+
 **Security scanning is split by hermeticity.** Static analysis rides the existing `ruff-check` step
 (ruff's `S` / flake8-bandit ruleset). The `secrets` step runs `detect-secrets` over every file a
 commit can carry, git's tracked + untracked-unignored list (`scan_files`) — both offline, so the
@@ -124,11 +130,14 @@ fake→typed-attr assignment is `# type: ignore[assignment]`, and unused-param h
 `_ja`) are tolerated.
 
 **Whisper, NPU or GPU work needs BOTH prelude halves, every time, in order:** source the
-accelerator's `env.sh` (its path = machine-specific, in `CLAUDE.local.md`) **then** `source .envrc`
-from the repo root (unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`).
+accelerator's `env.sh` (its path = machine-specific, in the user-level instruction file) **then**
+`source .envrc` from the repo root (unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`).
 `uv run live-stt` alone cleans its own session child (`_session_env`), so there only `env.sh`
 matters, container-side. Failure
-modes + the accelerator's shape: `openvino-accel.md`.
+modes + the accelerator's shape: `openvino-accel.md`. **Law cites machine-environment facts by
+scope, never by path** (user ruling): the farm dir, device-selection law, the GenAI builds and the
+farm's upkeep live in the user-level instruction file and the OpenVINO doc it links, so law and
+evaluator docstrings name that file.
 
 **Never run two whisper processes against one cache while either is compiling.** Two processes
 cold-compiling the SAME `OPENVINO_CACHE_DIR` key concurrently write a blob that SIGSEGVs on every
@@ -141,7 +150,7 @@ harness that must hold the NPU takes its lock inside the worker process and re-c
 work after acquiring it. One measured source of that second run: Python 3.14's `forkserver` default
 re-imports an unguarded script as `__mp_main__` in every `multiprocessing` child, and
 `openvino-telemetry` spawned one per compile, so a probe with no `__main__` guard ran top to bottom
-under two PIDs. Telemetry is opted out on both homes (`CLAUDE.local.md`); guard every script that
+under two PIDs. Telemetry is opted out on both homes, a machine state; guard every script that
 compiles regardless.
 
 `sounddevice` dlopens system PortAudio on the live and device entry paths; without it they fail

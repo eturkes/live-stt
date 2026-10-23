@@ -33,7 +33,7 @@ narration sections are hash-checked against their manifests.
 
 On-demand, never a gate step: gitignored weights, corpora and minutes to an hour
 of accelerator time per model. Both prelude halves first (`openvino-accel.md`);
-`<intel-accel>` = the NPU driver farm dir `CLAUDE.local.md` names. Screen-only
+`<intel-accel>` = the NPU driver farm dir the user-level instruction file names. Screen-only
 models and their acquisition commands: `evidence-artifacts.md`.
 
     source <intel-accel>/env.sh && source .envrc && \\
