@@ -18,7 +18,7 @@ compatibility outputs of the same verified Japanese rows.
 
 Run from the repository root:
 
-    uv run --with soundfile==0.14.0 --with pyarrow==25.0.0 \
+    uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 \
       python tests/fetch_real_clips.py
 """
 
@@ -55,8 +55,8 @@ SCHEMA_VERSION = 1
 DOWNLOAD_TIMEOUT_S = 90
 BUILD_DEPENDENCIES = {
     "libsndfile": "1.2.2",
-    "numpy": "2.4.6",
-    "pyarrow": "25.0.0",
+    "numpy": "2.5.4",
+    "pyarrow": "26.0.0",
     "soundfile": "0.14.0",
 }
 EXPECTED_INDEX_SHA256 = "98e0d8a40fbc2d6e819ddd8db22fd23c2d7f050ac2da5773ac207a1bd0a14d36"
@@ -293,7 +293,7 @@ def _check_build_dependencies() -> None:
         import soundfile  # pyright: ignore[reportMissingImports]  (transient dep)
     except ImportError as exc:
         raise RuntimeError(
-            "corpus build needs soundfile==0.14.0 and pyarrow==25.0.0; use the documented command"
+            "corpus build needs soundfile==0.14.0 and pyarrow==26.0.0; use the documented command"
         ) from exc
     actual = {
         "libsndfile": soundfile.__libsndfile_version__,

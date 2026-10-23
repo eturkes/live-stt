@@ -54,12 +54,12 @@ The conversion uses a separate temporary environment with PyTorch, about 2 GB.
 The revision in the command is pinned.
 
 ```sh
-uv venv /tmp/ov-export --python 3.12
+uv venv /tmp/ov-export --python 3.13
 uv pip install --python /tmp/ov-export/bin/python --index-strategy unsafe-best-match \
   --extra-index-url https://download.pytorch.org/whl/cpu \
-  'optimum-intel[openvino]' transformers==4.57.6 openvino==2026.4.0 \
-  openvino-tokenizers==2026.4.0.0 nncf torch
-uvx --from 'huggingface_hub[cli]' hf download efwkjn/whisper-ja-760M \
+  'optimum-intel[openvino]' transformers==4.57.6 openvino==2026.4.1 \
+  openvino-tokenizers==2026.4.1.0 nncf torch
+uvx --from huggingface_hub hf download efwkjn/whisper-ja-760M \
   --revision 00daeaf3b79a85c5c52474147cc80b4370deae7f --local-dir /tmp/whisper-ja-760M
 /tmp/ov-export/bin/optimum-cli export openvino --model /tmp/whisper-ja-760M \
   --task automatic-speech-recognition-with-past --weight-format int8 \
@@ -71,7 +71,7 @@ English decoding needs the large-v3-turbo model too. Download it only if you use
 `--two-way` or `--source-lang en`.
 
 ```sh
-uvx --from 'huggingface_hub[cli]' hf download \
+uvx --from huggingface_hub hf download \
   OpenVINO/whisper-large-v3-turbo-int8-ov \
   --local-dir models/openvino/whisper-large-v3-turbo-int8-ov
 ```

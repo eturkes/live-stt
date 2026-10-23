@@ -2,6 +2,7 @@
 paths:
   - "pyproject.toml"
   - ".githooks/pre-commit"
+  - "uv.lock"
 ---
 
 # Packaging + dependency maintenance
@@ -27,13 +28,36 @@ through `gate.py --only pytest` would close that, at the cost of replacing pytes
 with one line printed after the run — the human at the terminal is who the hook reports to, so the
 suite stays.
 
-**L-018 — maintenance-pass recipe.** Inventory with `uv tree --outdated --depth 1` → CVE-scan with
+**L-018 — maintenance-pass recipe.** Inventory = every `uv.lock` package against its PyPI latest
+(`uv tree --outdated --depth 1` hides transitives and any release `requires-python` excludes — it
+showed 1 of 12 bumps) plus the pins outside the lock: `gate.py`'s pyright, `.python-version`, the
+evaluators' `--with` pins, `models/README.md`'s export recipe, the codex CLI → CVE-scan with
 `uv export --format requirements-txt --all-groups --no-emit-project >/tmp/reqs.txt && uvx pip-audit -r
 /tmp/reqs.txt` (pip-audit scans its own environment, so feed it the export) → apply lock-only bumps
 (`uv lock --upgrade-package NAME`) unless the older declared floor is unsupported or security-blocked,
 in which case raise it deliberately → run the full gate → re-verify the codex leg, which pytest does not
 cover, with a synthetic `CodexTranslator` turn (`start()` warm-up + `_translate`). Keep package versions
-out of durable prose; they drift.
+out of durable prose; they drift. A warm-up `init failed (TimeoutError)` can be backend latency
+rather than the new codex: rerun it against the previous codex release before blaming the upgrade.
+
+**Pins outside `uv.lock` re-qualify by rebuild, never by edit** — each fires on an upgrade:
+
+- `tests/fetch_real_clips.py` `BUILD_DEPENDENCIES` holds numpy + pyarrow (+ soundfile, libsndfile)
+  exact and refuses any other set ⇒ a numpy or pyarrow bump rebuilds the corpora fresh on a cache
+  holding the five source payloads alone — a `git worktree` with the upgraded `uv.lock` copied in,
+  since `uv run --with` resolves its overlay against the worktree's own lock — and credits only
+  pinned index hashes plus every built file byte-identical. Then take the new manifests, the docs'
+  `--with pyarrow==` pins, and re-pin `tests/test_en_corpus.py`'s `short_corpus.json` hash (user
+  ruling: the stamp moved, the content did not).
+- `tests/fetch_fleurs_parallel.py` stamps the interpreter's patch version and
+  `test_fleurs_parallel.py` holds it equal to the running one ⇒ every Python patch upgrade reddens
+  the suite until that script reruns on a fresh cache and rebuilds byte-identically.
+- `models/README.md`'s export recipe re-qualifies by DECODE, never bytes — its decoder `.bin`
+  differs between runs of unchanged pins: export into scratch, then `tests/eval_asr_screen.py
+  --arms fleurs,retention --device NPU` with a private `OPENVINO_CACHE_DIR` must decode every
+  hypothesis byte-identically to the shipped weights.
+- `tests/eval_cer.py` rewrites `tests/cer_baseline.json` on a pass ⇒ attribute a moved cell by
+  running it on the old lock too (worktree at the base commit, its own venv).
 
 `pip-audit` lives HERE and not in `gate.py` because it needs an advisory feed and the gate is
 hermetic (`toolchain.md`). The offline half of the scan already runs on every commit — ruff `S`

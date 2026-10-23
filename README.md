@@ -10,7 +10,7 @@ On the default engine, Japanese builds on the status line while you speak, about
 ## Requirements
 
 - Python ≥ 3.11. `uv sync --locked` reproduces the exact qualified resolution
-  (currently CPython 3.14.5).
+  (currently CPython 3.14.9).
 - Working microphone
 - An OpenVINO device for the default Whisper engine. `uv sync` installs
   OpenVINO as a hard dependency. The default device is the Intel NPU. To use
@@ -365,7 +365,7 @@ Note that `replay.py` defaults to `--engine k2v2`, which is **not** live-stt's d
 `tests/fetch_real_clips.py` also builds the complete pinned Japanese evaluation corpus: all 4,483 Common Voice 8 test recordings (CC0-1.0) and all 650 FLEURS test recordings (CC-BY-4.0). Verified sources, 16 kHz PCM, and the detailed index stay in the gitignored cache; `tests/short_corpus.json` commits only provenance, distributions, and fingerprints. The command is exact because decoder drift must produce an explicit corpus requalification:
 
 ```sh
-uv run --with soundfile==0.14.0 --with pyarrow==25.0.0 python tests/fetch_real_clips.py
+uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 python tests/fetch_real_clips.py
 ```
 
 ## Key constants

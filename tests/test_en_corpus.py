@@ -254,5 +254,5 @@ def test_japanese_corpus_identity_is_unchanged():
         "8ed02f84609ab05ba179d2eeb805f7c802c4262401a987f6a1dfbd4559e043dc"
     )
     assert corpus.file_sha256(corpus.MANIFEST) == (
-        "9f7ca9eb6e180dd97ae682de0ec7f55925c6bf25acac58d937e8cb45a844cfc2"
+        "6408fd5998a8382790308925fb81c6880798ac78519c182413f863c38e3969f5"
     )

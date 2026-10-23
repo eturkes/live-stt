@@ -38,7 +38,7 @@ models and their acquisition commands: `evidence-artifacts.md`.
 
     source <intel-accel>/env.sh && source .envrc && \\
         uv run --no-sync --with pykakasi==2.3.0 \\
-        [--with soundfile==0.14.0 --with pyarrow==25.0.0] \\
+        [--with soundfile==0.14.0 --with pyarrow==26.0.0] \\
         python tests/eval_asr_screen.py --model DIR --device NPU|GPU \\
         [--arms a,b] [--terms ARM] [--max-new-tokens N] [--vac-chunk S] [--json F]
 """

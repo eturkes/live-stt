@@ -255,6 +255,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Docs tier; accept → `.agent/deferred.md` → *Re-measure the fresh-session baseline*: the
     `assurance-posture.md` recipe re-run on a clean tree, the paragraph naming only files that
     exist.
+- [ ] **3** Python 3.15 interpreter
+  - Blocked upstream: no cp315 wheel for openvino, openvino-genai, onnxruntime, sherpa-onnx;
+    accept → `.agent/deferred.md` → *Python 3.15 interpreter*.
+- [ ] **4** Export recipe at the latest transformers and Python
+  - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
+    under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
+    and Python*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

@@ -174,7 +174,7 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `default_rng(20261001)`'s 300 rows of the pinned CV8 parquet, soxr VHQ to 16 kHz, 0.5 s pads, a
   −60 dBFS dither, PCM16 (`CV_SHA256` over PCM + reference), so a soxr, numpy or libsndfile drift
   refuses rather than moving a number; `cv`/`cvw` add `--with soundfile==0.14.0 --with
-  pyarrow==25.0.0`. Both derivations equal the screen's inputs byte for byte.
+  pyarrow==26.0.0`. Both derivations equal the screen's inputs byte for byte.
   **`terms` carries the channel the live path deleted** — a pipeline wrapper hands `hotwords` (the
   trusted terms within 160 characters, `、`-joined) to every decode of an utterance from its first
   decode on, and `_BiasedContext` keeps the supplied terms out of support and lease as the deleted
@@ -193,10 +193,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   **Screen-only weights** live in gitignored `models/openvino/screen/`:
 
   ```sh
-  uvx --from 'huggingface_hub[cli]' hf download OpenVINO/whisper-large-v3-int8-ov \
+  uvx --from huggingface_hub hf download OpenVINO/whisper-large-v3-int8-ov \
     --revision e197310d1fe6d5b40d0ce84c2614a547de21cb62 \
     --local-dir models/openvino/screen/whisper-large-v3-int8-ov
-  uvx --from 'huggingface_hub[cli]' hf download efwkjn/whisper-ja-1.5B \
+  uvx --from huggingface_hub hf download efwkjn/whisper-ja-1.5B \
     --revision 72c13fb7b6cc2a831780cdd79cd1a829e77bab02 --local-dir .scratch/whisper-ja-1.5B
   # models/README.md's export venv at openvino==2026.4.1 + openvino-tokenizers==2026.4.1.0
   # (resolved: optimum-intel 2.2.0, nncf 3.4.0, torch 2.14.1+cpu); the int8 export stages an
@@ -407,7 +407,7 @@ uv run python tests/build_retention_probe.py            # rebuild the pause-free
 uv run python tests/gen_replay_goldens.py               # regenerate goldens after a pipeline change
 uv run python tests/eval_translate_repeat.py [--json F] # what repetition stalls a real turn (~15 min)
 uv run --with soundfile python tests/eval_long_form.py [--sections 1,3] [--score]
-uv run --with soundfile==0.14.0 --with pyarrow==25.0.0 python tests/fetch_real_clips.py
+uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 python tests/fetch_real_clips.py
 ```
 
 Whisper, NPU and GPU runs need the prelude first (`openvino-accel.md`).
