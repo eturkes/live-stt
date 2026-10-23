@@ -42,11 +42,16 @@ models/
 ## Download
 
 The default engine needs the silero VAD and the Japanese Whisper model. Run these
-commands from the repository root.
+commands from the repository root. Each `sha256sum --check` command verifies the
+files that live-stt loads. If a check fails, delete those files and do not use
+them.
 
 ```sh
-curl -Lo models/silero_vad.onnx \
+curl --fail -Lo models/silero_vad.onnx \
   https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+sha256sum --check --strict <<'EOF'
+9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6  models/silero_vad.onnx
+EOF
 ```
 
 The Japanese model has no published OpenVINO version, so you must convert it once.
@@ -68,12 +73,23 @@ rm -rf /tmp/ov-export /tmp/whisper-ja-760M
 ```
 
 English decoding needs the large-v3-turbo model too. Download it only if you use
-`--two-way` or `--source-lang en`.
+`--two-way` or `--source-lang en`. The revision in the command is pinned.
 
 ```sh
 uvx --from huggingface_hub hf download \
   OpenVINO/whisper-large-v3-turbo-int8-ov \
+  --revision b568445dd5dc8c695bde596f8acbb4694fd6ba64 \
   --local-dir models/openvino/whisper-large-v3-turbo-int8-ov
+sha256sum --check --strict <<'EOF'
+60713d4ed3a8ac8ee020e11c4737ec276d14cabc6a082537bddf2c00ba6ce070  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_encoder_model.xml
+0590a8f35f96d57801c55990028d917821ac721026e34b7f3f59d7561fc908e6  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_encoder_model.bin
+aeb09fafbf1c0cbf84baf30f46763436005822faf3b365359b8de0aa04f03047  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_decoder_model.xml
+c064991cbafc4381567d29972b7013dc24026de9c326d03eb1e6e4fc44aa959f  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_decoder_model.bin
+cba304e7bad54773b9d2cbccfbc8501117ecf2e3c0f4f5331742a0a3c9feed93  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_tokenizer.xml
+adfa3d9a2920d0f314121270a960ab331ec0f05838544bb8ecaaa422282a6fd4  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_tokenizer.bin
+6e106a14f14b0771b46b7948a99b1d819ff93b2455b7da8f47761ab9dba9dc56  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_detokenizer.xml
+f2b3c47825a1089525ff65c0c8e49271e1dee69a401a04fc827ac2de5b7766e4  models/openvino/whisper-large-v3-turbo-int8-ov/openvino_detokenizer.bin
+EOF
 ```
 
 The sherpa fallback engines are optional. Download one only if you use
@@ -82,8 +98,29 @@ The sherpa fallback engines are optional. Download one only if you use
 ```sh
 cd models
 base=https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models
-curl -L $base/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01.tar.bz2 | tar xj
-curl -L $base/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8.tar.bz2 | tar xj
+curl --fail -L $base/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01.tar.bz2 | tar xj
+curl --fail -L $base/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8.tar.bz2 | tar xj
+cd ..
+```
+
+Verify the engine that you downloaded. For k2v2:
+
+```sh
+sha256sum --check --strict <<'EOF'
+2c7bd08a8a99f9ddd0d9e458456577b1f6279214e51426f114f9eced44c54e1d  models/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01/encoder-epoch-99-avg-1.int8.onnx
+58b18211ae06265466bfa17172dab574df94f76c8bcb61a3640c28ba860e4124  models/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01/decoder-epoch-99-avg-1.onnx
+d38a81d1191c9ed6de6a1719503692e07e3e973e2364adde0abae5eaaded1174  models/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01/joiner-epoch-99-avg-1.onnx
+2c3ac659818a48a0c04010e0593bbc4d7c8a24a054340b01131499c05fd52def  models/sherpa-onnx-zipformer-ja-reazonspeech-2024-08-01/tokens.txt
+EOF
+```
+
+For parakeet:
+
+```sh
+sha256sum --check --strict <<'EOF'
+3addd00ef5bd1742078389e540b77394e4a508bdf2f4c9ad1b4a76d93e76598e  models/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8/model.int8.onnx
+732f64c53909f2620c713f4106b487d92e6f54a6915b3cd3d1dbd32f9f4f392a  models/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8/tokens.txt
+EOF
 ```
 
 The language detector is optional. Download it only if you use `--two-way`. It
