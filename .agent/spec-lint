@@ -7,6 +7,7 @@
 # Portable awk (gawk, mawk, busybox) ⇒ no interval expressions; LC_ALL=C ⇒ `—` = 3 literal bytes.
 f=${1:-.agent/spec.md}
 [ -r "$f" ] || { echo "spec-lint: cannot read $f" >&2; exit 2; }
+# shellcheck disable=SC2016 # single-quoted = the awk program ⇒ its `$` are awk's; ShellCheck exempts literal `awk`, not `${AWK:-awk}`
 LC_ALL=C ${AWK:-awk} -v f="$f" '
 function bad(n, m) { printf "spec-lint: %s:%d: %s\n", f, n, m; nb++ }
 BEGIN { split("Intent Artifacts Decisions Tasks Phase", W, " ")

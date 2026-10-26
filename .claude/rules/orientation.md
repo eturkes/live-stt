@@ -28,8 +28,9 @@ codex degrades to source-only — a hard requirement, never a cloud fallback.
 - `.agent/spec.md` = Intent · Artifacts · Decisions · Tasks · Phase; the sole attached state,
   imported by `CLAUDE.md` ⇒ it rides every session whole. Every line binds current or future work, so
   each unit prunes what its own close made dead; size is emergent. `.agent/deferred.md` = the
-  deferral queue and `.agent/archive/<record>.md` = closed-milestone detail — both committed, outside
-  that attached set, read on demand.
+  deferral queue, `.agent/review.md` = the review ledger (`CLAUDE.md`), written once a review runs,
+  and `.agent/archive/<record>.md` = closed-milestone detail — all committed, outside that attached
+  set, read on demand.
 - `.claude/rules/` = this law, the sole carrier of what a teammate must hold. `CLAUDE.md`,
   `.claude/agents/` and `.agent/spec-lint` = template copies, overwritten whole at each refresh ⇒
   never write a project delta into them. A repo ruling on a template clause lives in the rules file

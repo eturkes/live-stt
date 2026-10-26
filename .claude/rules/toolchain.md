@@ -133,11 +133,15 @@ fake→typed-attr assignment is `# type: ignore[assignment]`, and unused-param h
 accelerator's `env.sh` (its path = machine-specific, in the user-level instruction file) **then**
 `source .envrc` from the repo root (unsets `PYTHONPATH`, strips tarball libs off `LD_LIBRARY_PATH`).
 `uv run live-stt` alone cleans its own session child (`_session_env`), so there only `env.sh`
-matters, container-side. Failure
-modes + the accelerator's shape: `openvino-accel.md`. **Law cites machine-environment facts by
-scope, never by path** (user ruling): the farm dir, device-selection law, the GenAI builds and the
+matters, container-side. Failure modes + the accelerator's shape: `openvino-accel.md`.
+
+Template ruling: "Project files stay portable: repo-relative paths, nothing machine-specific" →
+**ADAPTED** (user rulings: a personal tool, portability no goal) — **law cites machine-environment
+facts by scope, never by path**: the farm dir, device-selection law, the GenAI builds and the
 farm's upkeep live in the user-level instruction file and the OpenVINO doc it links, so law and
-evaluator docstrings name that file.
+evaluator docstrings name that file. Two pointers outside the repo stand as written: codex's own
+state paths (`~/.codex/…`, where codex keeps them on every machine) and `.envrc`'s `/run/host/*`
+layer test, since a venv path-bakes the tree path it was built at.
 
 **Never run two whisper processes against one cache while either is compiling.** Two processes
 cold-compiling the SAME `OPENVINO_CACHE_DIR` key concurrently write a blob that SIGSEGVs on every

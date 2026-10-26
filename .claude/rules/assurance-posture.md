@@ -27,8 +27,7 @@ things verification integrity fixes locally:
   tool-picked mutants over the files the test imports or calls, scope + command + every survivor in
   the commit body. Hand-picked L-022 mutants never credit such a pin. Each survivor takes a ruling
   against the unit's queue row from someone other than the test's author — a `reviewer` inside the
-  unit, or the user; one still unruled at close becomes a `.agent/deferred.md` row in every phase
-  (D-012 below).
+  unit, or the user.
 - Template ruling: "a threshold, case or gate changes only in a unit I approve" → **ADAPTED** —
   **the grading check is FIXED for the unit running under it.** The funded `.agent/deferred.md` row
   is the approval, so a threshold, case or gate moves only where that row's acceptance names the
@@ -57,14 +56,6 @@ without it. The procedure those items point at is `live-smoke.md`. Template ruli
 driven through `replay.py` (the real `worker` on a WAV, D-014) plus the CLI invocations that need no
 mic (`--list-devices`, parse-time errors); the mic and real-terminal paths go on that list.
 
-**D-012 — judgment review is retired; a unit's check set closes inside the session that implements
-it.** Template ruling: "adversarial review ledgered in `.agent/review.md`" + "its own pass after
-implementation" + "an open `.agent/review.md` row (IMPLEMENT: the closing-diff `reviewer` rules)" →
-**RETIRED** (D-012, L-032; user ruling: personal tool) — no review ledger, no separate review pass,
-no milestone review state; a mutation survivor still unruled at close lands as a
-`.agent/deferred.md` row in every phase. The unit's row in `.agent/deferred.md` is its acceptance
-contract and the commit body is its outcome.
-
 **L-031 — size work by the decisions it forces, not by its line count.** Measured over six closed
 M11 units: Spearman **-0.395** between insertions and context cost, and the extremes invert — the
 smallest unit by lines overran its window, the largest was the cheapest. The predictor is decisions
@@ -83,15 +74,15 @@ a legitimate code change. *A guard that must be escaped every time it fires is n
 deleted 21,038 lines and took the suite from 466 tests / 48 s to 207 / 14.6 s with zero production
 change.
 
+L-032 binds the items retired below alone: the review ledger `.agent/review.md` and the review pass
+it carries bind as `CLAUDE.md` writes them (user ruling).
+
 Retired — never reintroduce:
 
 - Template ruling: "contracts + tiers" → **ADAPTED** — `.agent/contracts/` retired ⇒ a unit writes
   no contract file: **the acceptance contract IS its row in `.agent/deferred.md`**, its tier
-  declared there, its outcome the commit body. Close appends no verdict table and tags no
-  `archive/…` ref; a `tester` or `reviewer` brief cites the queue row as its contract.
-- A separate review pass and `.agent/review*.md` (D-012). **`reviewer` itself is live INSIDE the
-  unit that implements the diff** — what L-032 cut was apparatus, not a second reader. Every other
-  role `.claude/agents/` ships stays live.
+  declared there, its outcome the commit body. Close appends no verdict table to the row and tags
+  no `archive/…` ref; a `tester` or `reviewer` brief cites the queue row as its contract.
 - Contract fingerprints · claim registries · mutation matrices. A mutation-tool run the template
   clause asks for is no matrix: its record is the commit body.
 - A separate project-memory file under `.agent/` ⇒ its law lives in these rules files, which reach
@@ -110,17 +101,14 @@ lens its full attention), one covering every lens elsewhere" + "MAINTAIN's closi
 where needed" → **ADAPTED** — review = a fit per case, never a repo mandate (user ruling): where a
 diff earns it, the `reviewer` runs inside the unit that authored it, at the template's count. The
 lenses = `CLAUDE.md`'s code diff lenses (`Engineering`) for code, plus correctness/spec, claim
-soundness, guarantee-vs-claim gaps, verification integrity and `CLAUDE.md` conformance. D-012
-retired the separate pass and the ledger, never the second reader. Phase close adds no review of its
-own; it is the last unit's.
+soundness, guarantee-vs-claim gaps, verification integrity and `CLAUDE.md` conformance.
 
 Template ruling: "one row per check × target" → **ADAPTED** — each report (`CLAUDE.md`'s
 review-termination rule in `Engineering`, evidence bar in `Teammates`) fixes the check set before
 reading the diff, then folds it into **one table of COMPOUND risk-ranked rows**, each carrying its
 subchecks: adjudicate every subcheck, and route whatever a tool can decide into
 `gate.py` rather than a review row. The table's size follows the check set — a check set too large
-to read as one table means the unit is oversized (L-031) ⇒ report that and let MAIN split it. The
-report is the whole record; no ledger carries rows between sessions.
+to read as one table means the unit is oversized (L-031) ⇒ report that and let MAIN split it.
 
 `<window>` in a recorded gauge reading = the loop's compaction trigger, its occupancy = the latest
 assistant `usage` sum; `/240K` in every gauge M11-M13 recorded, `/273K` in the later ones, and the
@@ -132,11 +120,11 @@ analogs = the last three closed M-series units: **106K / 121K / 130K** of work (
 / 40K ⇒ ratios 1.15 / 1.21 / 3.25, the outlier being the SMALLEST unit by estimate, where the small
 denominator makes the ratio noise and the absolute 130K is the signal. Size a new unit bottom-up
 against those work figures, never against a literal written here. **A fresh MAIN session opens at
-≈46K** (45,522 = 45,516 cache-create + 2 input + 4 output) over 96.0 KB attached — the user-level
-instruction file 10.9 KB, `CLAUDE.md` 29.8 KB, `.agent/spec.md` 23.2 KB, the three bare rules files
-(`orientation.md`, `assurance-posture.md`, `toolchain.md`) 32.1 KB. Re-measure whenever that set
-moves: on a clean tree at the repo
-root, `claude -p "Reply with the single word OK." --output-format stream-json --verbose` → sum the
+≈45K** (45,193 = 38,242 cache-create + 6,945 cache-read + 2 input + 4 output) over 94.9 KB attached
+— the user-level instruction file 10.9 KB, `CLAUDE.md` 30.0 KB, `.agent/spec.md` 22.3 KB, the three
+bare rules files (`orientation.md`, `assurance-posture.md`, `toolchain.md`) 31.6 KB. Re-measure
+whenever that set moves: on a clean tree at the repo root,
+`claude -p "Reply with the single word OK." --output-format stream-json --verbose` → sum the
 assistant `usage` fields, plus `wc -c` over the set; a print-mode session, so an interactive one's
 extra harness text is unmeasured.
 MAIN's trigger sits far past any unit here, so the budget that binds is a teammate's: a brief's

@@ -115,8 +115,6 @@ Detail → `.claude/rules/`, which each `D-###` names.
   the machine and a turn starting any tool item fails (`translation-leg.md`), and no C0/DEL/C1
   control in recogniser or translator text reaches the terminal or the transcript
   (`asr-pipeline.md`).
-- **D-012** judgment-review sessions are retired (L-032): a unit's check set closes inside its own
-  session, no review ledger, no contract fingerprints, no claim registry, no mutation matrix.
 - **The published line grammar is `SRC n:` / `TGT n:`, in every mode** (user ruling) — `SRC` names
   the line that was spoken, `TGT` the line that was translated, screen and transcript alike. Two-way
   makes language tags unstable — an English utterance would publish `EN` first — so the tags name
@@ -232,10 +230,11 @@ Detail → `.claude/rules/`, which each `D-###` names.
   (`pause.md` | `pause-now.md`), deleted at resume close, and a routing session's one
   `- [ ] ROUTE: …` row (`route.md`), deleted before its last commit. `tests/test_law_consistency.py`
   locks the pairing.
-- One session per `maintain.md` body (`auto/` | `steered/`) — Request, Queue, Security review,
-  Dependency upgrade — the body naming the `.agent/deferred.md` rows it funds or the maintenance
-  task it wants, each closing gate-green under `uv run --no-sync python gate.py` with this file
-  current — plus, where the request touches decode quality, a CER number the commit body records.
+- One session per `maintain.md` body (`auto/` | `steered/`) — Request, Queue, Code review,
+  Security review, Dependency upgrade — the body naming the `.agent/deferred.md` rows it funds or
+  the maintenance task it wants, each closing gate-green under `uv run --no-sync python gate.py`
+  with this file current — plus, where the request touches decode quality, a CER number the commit
+  body records.
   The standing MAINTAIN work is the security review and dependency upgrade, whose recipe is L-018
   (`packaging-deps.md`); Dependabot files the advisories between requests.
 - **Live-stt in its current form must stay usable through every unit** (user ruling): a feature
