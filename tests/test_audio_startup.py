@@ -45,7 +45,8 @@ def launch(tmp_path, backend, *, runner=RUNNER, uv=False, files=False, env_extra
     env.update(env_extra or {})
     argv = [sys.executable, "-u", "-c", runner]
     if uv:
-        argv = [shutil.which("uv") or str(Path.home() / ".local/bin/uv"), "run", "--no-sync", *argv]
+        # `uv run` exports its own binary as UV to every child it launches.
+        argv = [os.environ.get("UV") or shutil.which("uv") or "uv", "run", "--no-sync", *argv]
     with (tmp_path / "stdout").open("w") as out, (tmp_path / "stderr").open("w") as err:
         return subprocess.Popen(
             argv,

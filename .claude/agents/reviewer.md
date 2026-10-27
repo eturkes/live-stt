@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: "Adversarial audit of a diff, file set, spec or document against a check set fixed before reading → verdict table + anchored findings. Fit = a kernel-unit diff before its commit, a phase or request closing diff, an artifact needing an audit."
+description: "Adversarial audit of a diff, file set, spec or document against a check set fixed before reading → verdict table + anchored findings. Fit = a code-review lens × slice, a kernel-unit or closing diff (IMPLEMENT: past MAIN's own reach), an artifact needing an audit (data unit, spec, document)."
 color: red
 ---
 

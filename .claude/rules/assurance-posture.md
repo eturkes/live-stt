@@ -22,8 +22,11 @@ things verification integrity fixes locally:
   uncommitted when the lock is written, so "the unfixed revision" is the working tree with the fix
   neutralized and restored from a `cp` snapshot — never `git checkout`, which reverts the fix itself
   and re-runs the un-fixed baseline for every later mutant. The commit body records the mutation and
-  the command that reddened. A test pinning behavior that already passes has no unfixed revision ⇒
-  `CLAUDE.md`'s `Engineering` credits it by the stack's mutation tool, as written (user ruling):
+  the command that reddened. A `tester` suite written before its fix exists counts by its red-first
+  run on the pre-unit revision, the real unfixed code (user ruling); a red against a stub proves
+  only that the test runs, so such a test takes L-022 once the fix lands. A test pinning behavior
+  that already passes has no unfixed revision ⇒ `CLAUDE.md`'s `Engineering` credits it by the
+  stack's mutation tool, as written (user ruling):
   tool-picked mutants over the files the test imports or calls, scope + command + every survivor in
   the commit body. Hand-picked L-022 mutants never credit such a pin. Each survivor takes a ruling
   against the unit's queue row from someone other than the test's author — a `reviewer` inside the
@@ -96,12 +99,12 @@ Retired — never reintroduce:
 `CLAUDE.md`'s `Teammates` + the `.claude/agents/` roles own the fits; this repo adds no teammate
 mandate (user ruling) — `scientist` and `reviewer` included, each dispatched per its fit. A brief
 whose teammate runs whisper names that teammate as the NPU holder (`toolchain.md`: two compiles on
-one cache corrupt it). Template ruling: "Closing-diff `reviewer` → one per lens in IMPLEMENT (each
-lens its full attention), one covering every lens elsewhere" + "MAINTAIN's closing-diff `reviewer` =
-where needed" → **ADAPTED** — review = a fit per case, never a repo mandate (user ruling): where a
-diff earns it, the `reviewer` runs inside the unit that authored it, at the template's count. The
-lenses = `CLAUDE.md`'s code diff lenses (`Engineering`) for code, plus correctness/spec, claim
-soundness, guarantee-vs-claim gaps, verification integrity and `CLAUDE.md` conformance.
+one cache corrupt it). Template ruling: "a MAINTAIN request's closing diff → one `reviewer` covering
+every lens, where needed" → **ADAPTED** — where a diff earns review (a fit per case, never a repo
+mandate; user ruling), the `reviewer` runs inside the unit that authored it rather than over the
+request's closing diff, at the template's count. The lenses = `CLAUDE.md`'s code diff lenses
+(`Engineering`) for code, plus correctness/spec, claim soundness, guarantee-vs-claim gaps,
+verification integrity and `CLAUDE.md` conformance.
 
 Template ruling: "one row per check × target" → **ADAPTED** — each report (`CLAUDE.md`'s
 review-termination rule in `Engineering`, evidence bar in `Teammates`) fixes the check set before
@@ -120,9 +123,9 @@ analogs = the last three closed M-series units: **106K / 121K / 130K** of work (
 / 40K ⇒ ratios 1.15 / 1.21 / 3.25, the outlier being the SMALLEST unit by estimate, where the small
 denominator makes the ratio noise and the absolute 130K is the signal. Size a new unit bottom-up
 against those work figures, never against a literal written here. **A fresh MAIN session opens at
-≈45K** (45,193 = 38,242 cache-create + 6,945 cache-read + 2 input + 4 output) over 94.9 KB attached
-— the user-level instruction file 10.9 KB, `CLAUDE.md` 30.0 KB, `.agent/spec.md` 22.3 KB, the three
-bare rules files (`orientation.md`, `assurance-posture.md`, `toolchain.md`) 31.6 KB. Re-measure
+≈47K** (47,353 = 40,263 cache-create + 7,084 cache-read + 2 input + 4 output) over 99.8 KB attached
+— the user-level instruction file 10.9 KB, `CLAUDE.md` 34.8 KB, `.agent/spec.md` 22.3 KB, the three
+bare rules files (`orientation.md`, `assurance-posture.md`, `toolchain.md`) 31.9 KB. Re-measure
 whenever that set moves: on a clean tree at the repo root,
 `claude -p "Reply with the single word OK." --output-format stream-json --verbose` → sum the
 assistant `usage` fields, plus `wc -c` over the set; a print-mode session, so an interactive one's
