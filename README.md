@@ -417,8 +417,8 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → source-only |
-| `TRANSLATE_MAX_RESPAWNS` | 5 | Respawns of an exited app-server, per session |
-| `TRANSLATE_RESPAWN_WAIT_S` | 5 s | Wait after a failed respawn; doubles each time |
+| `TRANSLATE_MAX_RECOVERIES` | 5 | Recoveries of a disabled translation leg per session, by respawn or by a new probe turn |
+| `TRANSLATE_RECOVERY_WAIT_S` | 5 s | Wait after a failed recovery; doubles each time |
 | `TRANSLATE_ROTATE_TURNS` | 100 | Fresh thread cadence |
 | `TRANSLATE_QUEUE_MAX` | 50 | Translation backlog cap (drop-oldest) |
 | `CAPTION_REPEAT_MAX_CHARS` | 40 | Repetition span that drops a caption before it is published |
@@ -430,7 +430,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 - The startup phrase “speech recognition runs offline” describes local STT. It does not report your network status. Translation still uses the network.
 - On Linux, the app allows one live or device-listing session at a time. Audio setup and cleanup operations have 15-second limits. Forced cleanup waits at most two additional seconds. Model compilation does not use the audio timeout.
 - A normal Linux shutdown gets up to 45 seconds to finish pending work. A second `Ctrl+C` forces cleanup. A kernel fault can leave a process blocked. The app reports its PID and refuses another session while that process holds the audio lock. A reboot may be needed to recover the audio driver.
-- Japanese-only by design; a `--language` flag was considered and deferred (see `.agent/deferred.md`).
+- Japanese is the default spoken language. `--source-lang en` transcribes English, and `--two-way` translates in both directions.
 - `Ctrl+C` stops the stream, flushes VAD, drains pending decodes and translations, and shuts the app-server down cleanly.
 - Closing the terminal runs that same shutdown. The screen is gone, so the last utterance and its translation land in the transcript file only.
 - Translation uses your Codex subscription quota: ~180 uncached input + ~7-60 output tokens per utterance (prompt prefix cached). A long session barely moves the 5 h window. The "Fast" service tier trades quota for speed ("1.5x speed, increased usage"), so it burns that window faster than the per-turn token counts alone suggest; set `TRANSLATE_SERVICE_TIER = "default"` to drop back to the standard tier.

@@ -67,3 +67,21 @@ def test_the_cli_strings_carry_no_en_or_em_dash() -> None:
     literals = _cli_literals()
     assert any("--playback needs PipeWire" in text for _, text in literals)  # the scan reaches them
     assert [f"live_stt.py:{n}: {text}" for n, text in literals if DASH.search(text)] == []
+
+
+def test_the_readme_constant_table_names_live_constants_at_their_values() -> None:
+    """Each `| `NAME` | value |` row of README's table: NAME exists in live_stt.py at that value."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| `([A-Z][A-Z0-9_]+)` \| ([^|]+?) \|", readme, re.MULTILINE)
+    assert len(rows) >= 20  # the table, not an empty match
+    drift = []
+    for name, shown in rows:
+        if not hasattr(live_stt, name):
+            drift.append(f"{name}: absent from live_stt.py")
+            continue
+        value = getattr(live_stt, name)
+        text = shown.strip().strip("`").removesuffix(" s")
+        same = text == value if isinstance(value, str) else float(text) == float(value)
+        if not same:
+            drift.append(f"{name}: README {shown.strip()!r}, code {value!r}")
+    assert drift == []

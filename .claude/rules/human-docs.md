@@ -13,7 +13,7 @@ ALONE.** Those surfaces are `README.md`, `models/README.md`, and the user-facing
 `.agent/*`, `.claude/rules/`, code comments — stays agent-dense, em-dashes
 deliberate. Keep any literal duplicated between code and README in sync.
 
-**The gate decides the dash rule and one literal; the rest of the register is judgment.**
+**The gate decides the dash rule and two literal sets; the rest of the register is judgment.**
 `tests/test_human_docs.py` fails on an en or em dash in either README, in the rendered `--help`,
 and in every string part of `live_stt.py`'s `print(...)` / `.error(...)` calls plus the preflight
 messages `check_models` / `check_device` return (an AST scan, whose reach the playback error
@@ -21,8 +21,12 @@ proves); `test_the_readme_shows_the_playback_banner_the_session_prints` (`tests/
 holds README's `Playback:` example to what `run_session` prints. Firing, each planted alone from a
 `cp` snapshot and restored: an em dash in a README heading, an en dash in `models/README.md`, an en
 dash in a `--help` string, an en dash in the supervisor's lock error, an em dash in `check_models`'
-message, and the banner's decode rate drifted to 16001. **Coverage limit:** a string reaching the
-user any other way, and every other duplicated literal, stay a reader's call.
+message, and the banner's decode rate drifted to 16001.
+`test_the_readme_constant_table_names_live_constants_at_their_values` holds every `| `NAME` |
+value |` row of README's constants table to `live_stt.NAME`: red on the README that still named
+`TRANSLATE_MAX_RESPAWNS` / `TRANSLATE_RESPAWN_WAIT_S` after their rename, and on a planted
+`VAC_CHUNK_S` of 2 s. **Coverage limit:** a string reaching the user any other way, and every
+other duplicated literal, stay a reader's call.
 
 `README.md` is the user doc: it covers install, CLI, behaviour and the coverage boundary.
 `models/README.md` owns the weight-download commands and the engine layouts; engine-selection
