@@ -184,3 +184,14 @@ def test_identity_and_empty_flush() -> None:
         np.testing.assert_array_equal(samples, expected)
         np.testing.assert_array_equal(checked(live_stt.resample(samples, TARGET, TARGET)), expected)
     assert checked(converter.flush()).size == 0
+
+
+@pytest.mark.parametrize("n", [44101, 50000, 12800])
+def test_a_flushed_stream_is_the_one_shot_conversion_exactly(n: int) -> None:
+    """flush() drains the filter and adds no input: 44101 samples convert to 16000, not 16001."""
+    import soxr  # noqa: PLC0415 -- the reference conversion
+
+    x = (np.random.default_rng(n).standard_normal(n) * 0.1).astype(np.float32)
+    stream = live_stt.Resampler(44100)
+    out = np.concatenate([*(stream(x[i : i + 256]) for i in range(0, n, 256)), stream.flush()])
+    assert np.array_equal(out, soxr.resample(x, 44100, 16000, quality="HQ"))
