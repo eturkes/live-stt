@@ -744,3 +744,30 @@ def test_two_way_and_source_lang_are_one_choice(tmp_path, monkeypatch, capsys):
         sr.main()
     assert exit_.value.code == 2
     assert "not allowed with argument" in capsys.readouterr().err
+
+
+def test_a_session_that_never_translated_reads_as_untranslated(tmp_path):
+    """--no-translate (or a leg unavailable at startup) leaves no TGT and, by design, no marker:
+    nothing on record says a leg ran, so no caption reads as its transient failure."""
+    path = write(
+        tmp_path,
+        "2026-09-04T15-00-00",
+        [event("15:00:01", "SRC", 1, CLEAN), event("15:00:05", "SRC", 2, CLEAN),
+         event("15:00:09", "SRC", 3, CLEAN)],
+    )  # fmt: skip
+    s = report([path])["sessions"][0]
+    assert set(reasons(s).values()) == {"untranslated"}
+    assert s["degrade"] is None
+
+
+def test_a_session_without_tgt_but_with_a_degrade_marker_stays_disabled(tmp_path):
+    path = write(
+        tmp_path,
+        "2026-09-04T16-00-00",
+        [
+            event("16:00:01", "SRC", 1, CLEAN),
+            "[2026-09-04T16:00:02+09:00] -- translation disabled: codex app-server exited",
+            event("16:00:05", "SRC", 2, CLEAN),
+        ],
+    )
+    assert set(reasons(report([path])["sessions"][0]).values()) == {sr.DISABLED}

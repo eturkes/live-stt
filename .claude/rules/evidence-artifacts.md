@@ -211,7 +211,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   ruling). No hardware, no weights, no network, and it imports the shipped
   `repeat_span`/`caption_defect` rather than
   restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
-  names: captions with no TGT and **why** (`declined`/`strike`/`disabled`/`shutdown`/`failed`),
+  names: captions with no TGT and **why** (`declined`/`strike`/`disabled`/`untranslated` — no TGT,
+  marker or logged translation event in the whole session/`shutdown`/`failed`),
   degrade + restore markers with timestamps, `backlog peak:` high-water lines and **drop
   attribution** — one row per `backlog peak:` line whose `drop=` grew, carrying the captions that
   bracket it, the publication gap between them, the `skip=` step, and every `caption dropped (…)`

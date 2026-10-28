@@ -264,16 +264,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
     Live-validated: `_probe`, `live-smoke.md` items 2, 5 + 6, the publication screen's latin arm,
     the VAD segment drain and the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9, 10 + 11 stay
     the user's to run.
-- [ ] **2** Untranslated sessions read as transient failures
-  - Agent-fundable; accept → `.agent/deferred.md` → *Untranslated sessions read as transient
-    failures*.
-- [ ] **3** Playback leveling across digital silence
+- [ ] **2** Playback leveling across digital silence
   - Needs the user's ruling (`LeveledVad` is a user ruling); accept → `.agent/deferred.md` →
     *Playback leveling across digital silence*.
-- [ ] **4** Python 3.15 interpreter
+- [ ] **3** Python 3.15 interpreter
   - Blocked upstream: no cp315 wheel for openvino, openvino-genai, onnxruntime, sherpa-onnx;
     accept → `.agent/deferred.md` → *Python 3.15 interpreter*.
-- [ ] **5** Export recipe at the latest transformers and Python
+- [ ] **4** Export recipe at the latest transformers and Python
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.

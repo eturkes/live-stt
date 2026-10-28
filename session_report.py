@@ -69,6 +69,9 @@ STRIKE = "strike"  # a failure inside the run that disabled the leg
 DISABLED = "disabled"  # after a permanent degrade, so source-only by design
 SHUTDOWN = "shutdown"  # last caption of the session; the drain did not finish
 FAILED = "failed"  # isolated transient failure, leg survived
+# No TGT, no translation marker, no logged translation event: nothing records a leg at all
+# (`--no-translate`, or one unavailable at startup, which by design writes no marker).
+UNTRANSLATED = "untranslated"
 
 
 @dataclass
@@ -373,6 +376,8 @@ def explain_missing(s: Session) -> list[dict]:
         (e.at, m.group(1) or "TimeoutError") for e in s.events if (m := _BLOCK_FAIL.match(e.body))
     ]
 
+    untranslated = not (s.tgt or s.notes or stale or logged or failures)
+
     def failure_near(n: int) -> str | None:
         after = s.src[n].at
         nxt = min((s.src[k].at for k in s.src if k > n), default=None)
@@ -397,6 +402,8 @@ def explain_missing(s: Session) -> list[dict]:
             why, detail = STRIKE, f"failure that spent a strike ({cause or 'cause not logged'})"
         elif degrade and n > last_tgt:
             why, detail = DISABLED, str(degrade["reason"])
+        elif untranslated:
+            why, detail = UNTRANSLATED, "no translation on record for the whole session"
         elif defect:
             why, detail = DECLINED, defect
         elif cause:
@@ -483,7 +490,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                 "missing": missing,
                 "missing_by_reason": {
                     w: sum(1 for r in missing if r["why"] == w)
-                    for w in (STALE, DECLINED, STRIKE, DISABLED, SHUTDOWN, FAILED)
+                    for w in (STALE, DECLINED, STRIKE, DISABLED, UNTRANSLATED, SHUTDOWN, FAILED)
                     if any(r["why"] == w for r in missing)
                 },
                 "degrade": (
