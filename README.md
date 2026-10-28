@@ -11,7 +11,7 @@ On the default engine, Japanese builds on the status line while you speak, about
 
 - Python ≥ 3.11. `uv sync --locked` reproduces the exact qualified resolution
   (currently CPython 3.14.9).
-- Working microphone
+- A working microphone. To caption the audio that the computer plays instead, live-stt needs PipeWire with its ALSA plugin. See [Audio playback](#audio-playback).
 - An OpenVINO device for the default Whisper engine. `uv sync` installs
   OpenVINO as a hard dependency. The default device is the Intel NPU. To use
   the Intel GPU, pass `--asr-device GPU` (see [GPU mode](#gpu-mode)). OpenVINO ships
@@ -71,10 +71,29 @@ Startup prints the translation status: `Translation: gpt-6-luna via codex app-se
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
 | `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
-| `--save-audio` | off | Also save the microphone audio as a WAV file in `transcripts/`. See [Saved audio](#saved-audio). |
+| `--save-audio` | off | Also save the captured audio as a WAV file in `transcripts/`. See [Saved audio](#saved-audio). |
 | `--save-log` | off | Write warnings and diagnostics to a log file in `transcripts/` instead of to the terminal. See [Saved log](#saved-log). |
+| `--playback` | off | Caption the audio that this computer plays, for example a Zoom call, instead of the microphone. Do not use `--device` with this option. See [Audio playback](#audio-playback). |
 | `--device N` | system default | Input device index (see `--list-devices`) |
 | `--list-devices` | off | Print audio devices and exit |
+
+### Audio playback
+
+Use `--playback` to caption the audio that the computer plays, for example the other people in a Zoom call. live-stt then records the default output, which is the audio that you hear, instead of the microphone. Startup prints:
+
+```
+Playback: the default output, through pipewire @ 44100 Hz (decoding locally at 16000 Hz)
+```
+
+live-stt follows the default output. When the default output changes during the session, for example when you connect headphones, live-stt records the new output. Set the call application to play through the system default output. In Zoom, select `Same as System` as the speaker. If the application plays through a different output, live-stt records no speech.
+
+A quiet talker can lose a caption, or its first words, after a louder talker. live-stt adapts its speech detection to the level of the last 10 seconds of sound, and complete silence from the computer does not count as sound. Thus the level of the louder talker stays in effect. In a test with recorded speech and 10 s of silence between recordings, 1 of 5 quiet recordings published no caption, 1 lost its first word, and 1 got an extra short caption. All loud recordings were correct. A microphone picks up room noise, which counts as sound, so in a microphone session the level of the louder talker expires after 10 seconds.
+
+Every sound that the computer plays goes to the recognizer, for example notification sounds and music. Your own voice is not in the playback, because the call does not play your voice back to you. Only one live-stt session can run at a time, so a session captions either the microphone or the playback.
+
+`--playback` needs PipeWire and its ALSA plugin (`pipewire-alsa` on most distributions). live-stt opens the PortAudio input device named `pipewire` and tells PipeWire to record the default output. If PortAudio lists no such device, live-stt stops with an error before it loads the model. `--device` selects a microphone, so live-stt rejects `--device` together with `--playback`.
+
+Get the consent of the other people in the call before you save its transcript or its audio.
 
 ### Saved transcripts
 
@@ -112,7 +131,7 @@ Only your user account can read the session files. live-stt creates `transcripts
 
 ### Saved audio
 
-Use `--save-audio` to keep the microphone audio of a session. live-stt then writes a WAV file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
+Use `--save-audio` to keep the captured audio of a session: the microphone, or with `--playback` the audio that the computer plays. live-stt then writes a WAV file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
 
 ```
 Audio: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.wav
@@ -148,7 +167,7 @@ The log holds the backlog counters (`backlog peak:`), each caption that the scre
 
 ### Audio → JA pipeline (all local)
 
-1. **Capture.** `sounddevice` records at the device's native rate; each block is resampled to 16 kHz by a band-limited streaming resampler (`soxr`) that keeps its filter state from block to block, and enters a queue capped at 8 seconds of PCM, independent of callback block size.
+1. **Capture.** `sounddevice` records the microphone, or with `--playback` the default output through PipeWire, at the device's native rate; each block is resampled to 16 kHz by a band-limited streaming resampler (`soxr`) that keeps its filter state from block to block, and enters a queue capped at 8 seconds of PCM, independent of callback block size.
 2. **Endpoint.** Capture drains into silero VAD, which splits speech on ≥0.5 s silences. silero misses quiet speech that Whisper still transcribes, so silero hears a boosted copy of each window. The gain lifts the loud part of the last 10 s toward -25 dBFS, with a limit of 16x. Loud input keeps a gain of 1. A quiet 44-minute meeting, replayed through live-stt, published 11,292 characters instead of 753. Whisper alone hears about 12,300 characters in that audio. Every fed sample also lands in a 60 s `RingBuffer` with absolute indexing. The ring, the recognizer and saved audio get the raw samples, never the boosted copy.
 3. **Re-slice.** silero opens segments 0.2-0.7 s late, clipping leading syllables. Both engine paths re-slice from the ring with 0.4 s pre-pad (`VAD_PRE_PAD_S`) to recover the lead-in. The sherpa path then copies each closed segment into an 8-segment queue; the whisper path has no such queue.
 4. **Decode.** On `--engine whisper`, silero controls one growing buffer instead of closing segments. Speech-start opens the buffer, each further second of audio re-decodes the whole of it, and a character is committed once two consecutive decodes agree on it (LocalAgreement-2, `VAC_CHUNK_S`). The status line shows the whole latest decode: committed text in normal intensity, plus the part LocalAgreement-2 still withholds, dimmed. The dim part can change; the normal part never does. When a later decode spells already settled text differently, live-stt aligns the two, which removes most repeated or skipped settled characters. If a decode rewrites most of the last 24 settled characters, live-stt moves the boundary only after the next decode agrees, or when the utterance ends. When a later decode repeats the end of the settled text, live-stt skips that repeat. It keeps the repeat if the decode writes it twice, or if the decode that settled the text heard it next. A few ambiguous or heavy rewrites can still repeat or skip some characters. Showing it cut the wait to SEE a character from 2.353 s to 1.237 s (median) and from 6.402 s to 2.476 s (maximum). This costs no compute, because the decode had already produced that text. The wait for the settled form of a character does not change. The dim text is a preview: on the measured clip 90 of 180 decodes rewrote part of it. The numbered `SRC n:` lines carry the committed text only. Once the buffer passes 8 s, each trim releases settled text, and live-stt publishes that text at once as its own line and translation turn. The rest follows when the utterance ends. Whisper sometimes writes the phrase before a trim twice, once on each side of the cut. live-stt then decodes the audio before the cut once more and keeps the first copy only if that audio holds the phrase. On 182 s of pause-free speech, this cut the median wait from a spoken character to its numbered line from 13.2 s to 5.7 s, and the maximum from 33.5 s to 10.3 s. The buffer is trimmed against fully-decoded spans (`VAC_TRIM_S`), which capped it at 9.3 s on the measured clips. Decode RTF is 0.56-0.69 on the NPU and about 0.29 on the GPU. The sherpa engines instead decode each closed VAD segment in one pass (RTF ≈ 0.05 on 8 cores) and emit no partial text.

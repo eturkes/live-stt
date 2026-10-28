@@ -23,7 +23,7 @@ agent-covered**: `test_shipped_path.py` forks a real pty, closes the master, and
 0 with both lines in its transcript.
 
 **User-only boundary:** mic capture, device select, latency feel, real Ctrl+C flush, `-o` persistence,
-Codex cadence, multi-hour soak.
+Codex cadence, multi-hour soak, `--playback` against the host's PipeWire and a real call.
 
 **Setup:** models downloaded; `codex` installed on the PATH of the machine running live-stt; `codex
 login` there once for the EN leg (without it: `Translation: unavailable — source-only`, TGT checks N/A). One
@@ -84,7 +84,7 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    regression. **M14's `start_new_session=True` fix is VALIDATED on a real mic** over a 26-minute
    143-caption session: `SRC 143` then `TGT 143` six seconds later, drain order SRC 142 → SRC 143 →
    TGT 142 → TGT 143, zero `-- translation` markers, `Stopped.`, no hang, process fully exited. That
-   retires this item's L-004 debt; items 1, 3, 4, 7, 8, 9 and 10 stay outstanding (2 + 5 VALIDATED).
+   retires this item's L-004 debt; items 1, 3, 4, 7, 8, 9, 10 and 11 stay outstanding (2 + 5 VALIDATED).
 7. **Ctrl+C mid-decode** — `uv run live-stt --engine parakeet`, speak continuously for >20 s, pause, then
    Ctrl+C while the slower long-block decode runs. Pass: that block's `SRC n:` still lands, its `TGT n:`
    follows if Codex is up, then `Stopped.` with no hang — VAD feeder and sequential decoder both drain
@@ -114,6 +114,16 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    workload on the box: a concurrent GPU benchmark stretches forced decodes 2-7×, turbo's runaway
    span past the 8 s capture headroom (`asr-pipeline.md` `## GPU mode`), so a slow or dropping GPU
    session is first a contention question.
+11. **Audio playback (`--playback`, never met the host or a call)** — on the host, in a Zoom call
+   with the speaker set to `Same as System`, `uv run live-stt --playback --save-audio --save-log`.
+   Pass: startup prints `Playback: the default output, through pipewire @ <rate> Hz …`; the other
+   participants' Japanese publishes `SRC n:` lines and `TGT n:` follows; connect headphones (wired:
+   Speaker → Headphones sink; Bluetooth: a bluez sink) mid-call and captions continue; the pauses
+   between talkers publish nothing. A quiet participant after a loud one losing a caption or its
+   head is the measured digital-silence limit (`asr-pipeline.md`), not a capture defect — keep the
+   WAV: exact-zero runs between talkers say that regime is live and `replay.py` re-derives it.
+   Agent-covered on a private PipeWire 1.4.2 stack, no hardware: device listing, the monitor link,
+   the default-output switch, 42 plays through the real NPU session.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

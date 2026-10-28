@@ -29,7 +29,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
   `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` ·
-  `--asr-device NPU|GPU` · `--save-audio` · `--save-log`.
+  `--asr-device NPU|GPU` · `--playback` · `--save-audio` · `--save-log`.
 - `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
 - `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
   `-v`). Green = 8 pass, the pytest step skipping exactly the 2 whisper replay goldens (NPU + GPU
@@ -180,6 +180,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
   ruling): an update due while more than `VAC_BACKLOG_S`=0.5 s of capture is queued waits for the
   drain, so the cadence stretches to the decode. That pair is the mechanism + fix measured on the
   09-24 capture's drops; shapes, numbers and the `live` backpressure arm → `asr-pipeline.md`.
+- **`--playback` captions what the computer plays** (user request 10-28: a Zoom call), default OFF:
+  PortAudio's exact-name `pipewire` input (PipeWire's ALSA plugin) under
+  `PIPEWIRE_ALSA='{ stream.capture.sink=true }'`, no target ⇒ WirePlumber links the default
+  output's monitor and re-links it when the default changes (headphones plugged in mid-call);
+  everything downstream of the callback is the mic path's. libpulse `@DEFAULT_MONITOR@` is REFUSED:
+  it pins the output of the moment. `--device` with it is a parse error; a host without the device
+  fails before any model loads. Mechanism + evidence → `asr-pipeline.md`.
 - Capture resamples through ONE band-limited soxr stream per session (`Resampler`), drained at stop;
   the per-block linear recipe survives as `linear_resample` for the hash-pinned corpora alone. No
   CER change on 300 clean clips (0.1131 → 0.1113, CI spans 0); shipped as the correctness fix
@@ -251,13 +258,17 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - User-only (L-004); accept → `.agent/deferred.md` → *Live-mic validation pass*: the user runs
     `live-smoke.md` and reports, each item landing verified or defective.
   - Never met a mic: M14's `_respawn` arm, the `-- translation disabled` marker, the SIGHUP shutdown,
-    `LeveledVad` on quiet (−44 dBFS) far speech + an empty room, GPU mode. Live-validated: `_probe`,
-    `live-smoke.md` items 2, 5 + 6, the publication screen's latin arm, the VAD segment drain and
-    the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9 + 10 stay the user's to run.
-- [ ] **2** Python 3.15 interpreter
+    `LeveledVad` on quiet (−44 dBFS) far speech + an empty room, GPU mode, `--playback` on the host.
+    Live-validated: `_probe`, `live-smoke.md` items 2, 5 + 6, the publication screen's latin arm,
+    the VAD segment drain and the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9, 10 + 11 stay
+    the user's to run.
+- [ ] **2** Playback leveling across digital silence
+  - Needs the user's ruling (`LeveledVad` is a 10-09 ruling); accept → `.agent/deferred.md` →
+    *Playback leveling across digital silence*.
+- [ ] **3** Python 3.15 interpreter
   - Blocked upstream: no cp315 wheel for openvino, openvino-genai, onnxruntime, sherpa-onnx;
     accept → `.agent/deferred.md` → *Python 3.15 interpreter*.
-- [ ] **3** Export recipe at the latest transformers and Python
+- [ ] **4** Export recipe at the latest transformers and Python
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.

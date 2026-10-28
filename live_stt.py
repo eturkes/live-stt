@@ -60,6 +60,10 @@ AUDIO_HEADROOM_S = 8.0
 # pushes back into the measured audio headroom and surfaces as ``drop=``.
 SEGMENT_QUEUE_MAX = 8
 NUM_THREADS = 4  # onnxruntime intra-op threads (8-core box; decode RTF ~0.05)
+# --playback: PortAudio's name for PipeWire's ALSA plugin PCM, and the stream
+# property that makes WirePlumber capture the default output instead of the mic.
+PLAYBACK_DEVICE = "pipewire"
+PLAYBACK_STREAM_PROPS = "{ stream.capture.sink=true }"
 # Audio calls can sleep in the kernel even with SIGKILL pending. Only a separate
 # process can keep the CLI responsive; neither asyncio cancellation nor a thread
 # timeout can interrupt that sleep. Model compilation is NOT on this deadline.
@@ -2723,12 +2727,48 @@ def _session_child(fd: int, arguments: str):
         _write_session_status(fd, "closing audio backend")
 
 
+def playback_device(devices) -> int | None:
+    """PortAudio's index of PipeWire's ALSA plugin PCM, matched by exact name: the
+    `default` PCM is the same plugin but its description also says PipeWire."""
+    return next(
+        (
+            i
+            for i, d in enumerate(devices)
+            if d["name"] == PLAYBACK_DEVICE and d["max_input_channels"] > 0
+        ),
+        None,
+    )
+
+
 async def run_session(args):
+    playback = getattr(args, "playback", False)
+    source = "playback capture" if playback else "microphone"
+    if playback:
+        # The plugin reads PIPEWIRE_ALSA at every PCM open, so the property is
+        # process-wide (PortAudio's probe opens carry it, harmlessly). With no target
+        # named, WirePlumber links the capture stream to the default output's monitor
+        # and MOVES it when the default changes -- this laptop's Speaker and Headphones
+        # are separate sinks, so plugging headphones in mid-call is that change.
+        # PulseAudio's @DEFAULT_MONITOR@ pins the sink of the moment instead.
+        os.environ["PIPEWIRE_ALSA"] = PLAYBACK_STREAM_PROPS
     # PortAudio probes host audio devices at import. Keep that side effect out of
     # replay/evaluator processes, which import this module but never touch a mic.
     print("Initializing audio...", flush=True)
     with _audio_operation("initializing audio"):
         import sounddevice as sd
+
+    device = args.device
+    if playback:
+        with _audio_operation("selecting the playback capture"):
+            device = playback_device(sd.query_devices())
+        if device is None:
+            print(
+                f"Error: --playback needs PipeWire. PortAudio lists no "
+                f"'{PLAYBACK_DEVICE}' input device. Install the PipeWire ALSA plugin "
+                "(pipewire-alsa), then check with --list-devices.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     print(f"Loading {args.engine} model...")
     rec = load_recognizer(
@@ -2739,14 +2779,16 @@ async def run_session(args):
     if language_detector is not None:
         print("Language detector: ECAPA VoxLingua107 (local ONNX Runtime CPU)")
 
-    with _audio_operation("selecting the microphone"):
-        dev_info = sd.query_devices(args.device, kind="input")
+    with _audio_operation(f"selecting the {source}"):
+        dev_info = sd.query_devices(device, kind="input")
     native_rate = int(dev_info["default_samplerate"])
-    if args.device is not None:
-        dev_label = f"#{args.device} {dev_info['name']}"
+    decoding = f"@ {native_rate} Hz (decoding locally at {SAMPLE_RATE} Hz)"
+    if playback:
+        print(f"Playback: the default output, through {dev_info['name']} {decoding}")
+    elif args.device is not None:
+        print(f"Mic: #{args.device} {dev_info['name']} {decoding}")
     else:
-        dev_label = dev_info["name"]
-    print(f"Mic: {dev_label} @ {native_rate} Hz (decoding locally at {SAMPLE_RATE} Hz)")
+        print(f"Mic: {dev_info['name']} {decoding}")
 
     state = State()
     state.stop_event = asyncio.Event()
@@ -2810,12 +2852,15 @@ async def run_session(args):
 
     _install_signal_handlers(state)
 
-    print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
+    if playback:
+        print("\nListening to the computer's audio... Press Ctrl+C to stop.\n")
+    else:
+        print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
     print("-" * 60)
 
-    with _audio_operation("opening the microphone"):
+    with _audio_operation(f"opening the {source}"):
         stream = sd.InputStream(
-            device=args.device,
+            device=device,
             samplerate=native_rate,
             channels=1,
             dtype="float32",
@@ -2841,7 +2886,7 @@ async def run_session(args):
     translator_task = asyncio.create_task(translator.run()) if translator else None
 
     try:
-        with _audio_operation("starting the microphone"):
+        with _audio_operation(f"starting the {source}"):
             stream.start()
         await state.stop_event.wait()
     finally:
@@ -2850,9 +2895,9 @@ async def run_session(args):
         # still decodes and persists what was already spoken (T1.4 behavior).
         # The translator drains last so flushed tail blocks still get TGT lines.
         try:
-            with _audio_operation("stopping the microphone"):
+            with _audio_operation(f"stopping the {source}"):
                 stream.stop()
-            with _audio_operation("closing the microphone"):
+            with _audio_operation(f"closing the {source}"):
                 stream.close()
         except Exception:  # noqa: S110 -- PortAudio may already be gone at exit
             pass
@@ -2985,7 +3030,7 @@ def main():
         "--save-audio",
         action="store_true",
         help=(
-            f"Also save the microphone audio as a WAV file in {TRANSCRIPT_DIR.name}/, "
+            f"Also save the captured audio as a WAV file in {TRANSCRIPT_DIR.name}/, "
             "named like the default transcript. It uses about 115 MB per hour."
         ),
     )
@@ -2996,6 +3041,16 @@ def main():
             f"Write warnings and diagnostics to a log file in {TRANSCRIPT_DIR.name}/, "
             "named like the default transcript, instead of to the terminal. "
             "The log starts when the session starts."
+        ),
+    )
+    parser.add_argument(
+        "--playback",
+        action="store_true",
+        help=(
+            "Caption the audio that this computer plays, for example a Zoom call, "
+            "instead of the microphone. live-stt follows the default output, also when "
+            "it changes during the session. This option needs PipeWire. "
+            "Do not use --device with this option."
         ),
     )
     parser.add_argument(
@@ -3014,6 +3069,8 @@ def main():
         parser.error("--two-way cannot be used with --source-lang")
     if args.two_way and args.engine not in WHISPER_ENGINES:
         parser.error("--two-way requires --engine whisper; sherpa engines are Japanese-only")
+    if args.playback and args.device is not None:
+        parser.error("--playback cannot be used with --device")
 
     if sys.platform == "linux":
         code = _supervise_session(args)
