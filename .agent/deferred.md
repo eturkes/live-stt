@@ -15,7 +15,18 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    mode), 11 (`--playback` in a real call) and a multi-hour soak.
    **Accept:** the user runs `live-smoke.md` and reports; each item lands verified or defective.
 
-2. **Playback leveling across digital silence** — `--playback` hears EXACT zeros whenever nothing
+2. **Untranslated sessions read as transient failures** — `session_report.py` attributes every
+   caption of a session that never translated (`--no-translate`, or `Translation: unavailable` at
+   startup, which writes no transcript marker by design) to `failed` "transient failure, leg
+   recovered" — 22 of the 23 captions of a `--no-translate --playback` run, the last `shutdown`.
+   The transcript carries no TGT and no `--` translation marker, so "leg recovered" claims what no
+   record shows. Tier `data` (the report is re-read by the user).
+   **Accept:** a session whose transcript holds no `TGT` line and no translation marker reports its
+   captions under their own reason (not `failed`, `shutdown` or `disabled`), text and `--json`
+   alike; a session with any TGT keeps today's attribution byte-identical
+   (`tests/test_session_report.py` unchanged and green); the new lock seen red first.
+
+3. **Playback leveling across digital silence** — `--playback` hears EXACT zeros whenever nothing
    plays, and `LeveledVad` admits no window ≤ `VAD_LEVEL_FLOOR_DBFS`, so its 10 s history never
    ages and a quiet talker after a loud one is heard at the loud one's gain 1.0: live, 5 quiet CV
    clips (speech p90 −37..−43 dBFS) between loud ones with 10 s zero gaps, 3 plays each — cv489 lost
@@ -28,7 +39,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    today's shipped arm, confirmed by one `tests/eval_playback_routing.py --e2e probe` and one
    `--e2e pinned` run; the user rules the shape before it ships.
 
-3. **Python 3.15 interpreter** — `.python-version` pins `3.14` while CPython 3.15.1 is the latest
+4. **Python 3.15 interpreter** — `.python-version` pins `3.14` while CPython 3.15.1 is the latest
    release: the wheel-only hard dependencies openvino, openvino-genai, onnxruntime and sherpa-onnx
    publish no cp315 wheel at their latest releases.
    **Accept:** every package in `uv.lock` resolves a cp315 wheel → `.python-version` 3.15, `.venv`
@@ -36,7 +47,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    byte-identical rebuild, the full gate green under the accelerator prelude with zero skips,
    retention CER 0.0532 re-derived on the NPU.
 
-4. **Export recipe at the latest transformers and Python** — `models/README.md`'s whisper-ja-760M
+5. **Export recipe at the latest transformers and Python** — `models/README.md`'s whisper-ja-760M
    export pins `transformers==4.57.6` in a Python 3.13 venv. optimum-intel 2.2.0 caps
    `transformers<5.6`, and the newest it admits, 5.5.4, exports a model whose retention hypothesis
    differs from the shipped weights' by one inserted `。` (CER 0.0532 either way). Under Python 3.14
