@@ -107,16 +107,19 @@ paths:
   `tests/test_playback.py`. **REFUSED: libpulse `@DEFAULT_MONITOR@`** — the host's pipewire-pulse
   resolves it to `target.object` = the default sink OF THE MOMENT (probed live: `stream.capture.sink
   = "true"` + the Speaker sink pinned), so the plug-in would silence it, and it is a second capture
-  backend. **Unverified (L-004):** the host's PipeWire 1.6.9 / WirePlumber 0.5.17, a real call,
-  Bluetooth outputs (`live-smoke.md` item 11).
+  backend. **Unverified (L-004):** the host's PipeWire 1.6.9 / WirePlumber 0.5.18 (its
+  `libpipewire-0.3.so.0.1609.0` / `libwireplumber-0.5.so.0.518.0`), a real call, Bluetooth outputs
+  (`live-smoke.md` item 11).
 - **Digital silence in playback freezes `LeveledVad`'s history.** A monitor carries EXACT zeros
   whenever nothing plays; a window ≤ `VAD_LEVEL_FLOOR_DBFS` is never admitted, so the 10 s history
   holds the last loud talker indefinitely and the gain stays 1.0 for a quiet one. Measured,
   14 CV clips (7 loud pinned −11..−24 dBFS speech p90, the 5 quiet −37..−43 the old zero-pad
   probe hit + its 2 loud controls), 10 s of zeros between clips, real `live-stt --playback` on
-  the NPU, 3 plays each: every loud clip clean; cv489 lost whole (3/3), cv894 lost `先月` (3/3),
-  cv904 gained a `はい。` line (3/3); **0 captions in all 42 gaps** — the residue hallucination
-  the zero-pad probe recorded did not reproduce. Offline replica (`.scratch/playback/silence_ab.py`:
+  the NPU, 3 plays each: every loud clip kept its captions and gained none (ordinary ASR errors;
+  cv_paused dropped `午後` on 1 of 3 plays); cv489 lost whole (3/3), cv894 lost `先月` (3/3),
+  cv904 gained a `はい。` line (3/3); **no caption later than 4 s past any clip's end** (`gaps.py`
+  attributes at whole-second stamps, so a caption inside a tail is charged to its clip) — the
+  residue hallucination the zero-pad probe recorded did not reproduce. Offline replica (`.scratch/playback/silence_ab.py`:
   clip → 44.1 kHz soxr VHQ → zeros → `Resampler` → real worker) reproduces those three verdicts
   exactly; arms, CER over 277 chars: shipped 0.2599 · −60 dBFS floor on the stream 0.2671 · floor on
   silero's copy before leveling 0.2238 (all three quiet clips recovered — the floor ages the

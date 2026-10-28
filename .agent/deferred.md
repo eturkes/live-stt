@@ -19,7 +19,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    plays, and `LeveledVad` admits no window ≤ `VAD_LEVEL_FLOOR_DBFS`, so its 10 s history never
    ages and a quiet talker after a loud one is heard at the loud one's gain 1.0: live, 5 quiet CV
    clips (speech p90 −37..−43 dBFS) between loud ones with 10 s zero gaps, 3 plays each — cv489 lost
-   whole, cv894 lost `先月`, cv904 gained `はい。`; loud clips clean, 0 gap captions. Every arm tried
+   whole, cv894 lost `先月`, cv904 gained `はい。`; loud clips kept every caption, none landing past a clip's 4 s tail. Every arm tried
    trades quiet against loud (`asr-pipeline.md`); `LeveledVad` is a user ruling (10-09) ⇒ the fix
    needs the user's ruling first. Tier `kernel` (decode-quality mechanism, no downstream re-check).
    **Accept:** the replica (`.scratch/playback/silence_ab.py`: the 14 clips → 44.1 kHz → 10 s zero
