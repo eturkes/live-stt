@@ -28,9 +28,13 @@ HARDWARE = {
 DEFAULT = {"name": "default", "max_input_channels": 64, "default_samplerate": 44100.0}
 
 
-def _run_session(monkeypatch, tmp_path, devices, **flags) -> dict[str, Any]:
-    """run_session over a fake PortAudio holding `devices`, one block, no models."""
-    seen: dict[str, Any] = {"loaded": False, "blocks": 0}
+def _run_session(monkeypatch, tmp_path, devices, seen=None, **flags) -> dict[str, Any]:
+    """run_session over a fake PortAudio holding `devices`, one block, no models.
+
+    `seen` is the caller's: a session that exits still leaves what it reached there.
+    """
+    seen = {} if seen is None else seen
+    seen.update(loaded=False, blocks=0)
 
     def query_devices(device=None, kind=None):
         if device is None and kind is None:
@@ -127,21 +131,16 @@ def test_a_mic_session_leaves_the_capture_property_unset(monkeypatch, tmp_path, 
 def test_playback_without_the_pipewire_input_fails_before_any_model_loads(
     monkeypatch, tmp_path, capsys, devices
 ):
+    seen: dict[str, Any] = {}
     with pytest.raises(SystemExit) as exit_info:
-        _run_session(monkeypatch, tmp_path, devices, playback=True)
+        _run_session(monkeypatch, tmp_path, devices, seen, playback=True)
 
     assert exit_info.value.code == 1
+    assert seen["loaded"] is False
+    assert "stream" not in seen
     err = capsys.readouterr().err
     assert "--playback needs PipeWire" in err
     assert "pipewire" in err
-
-
-def test_playback_fails_before_the_model_loads(monkeypatch, tmp_path):
-    loaded = []
-    monkeypatch.setattr(live_stt, "load_recognizer", lambda *_a: loaded.append(1))
-    with pytest.raises(SystemExit):
-        _run_session(monkeypatch, tmp_path, [HARDWARE], playback=True)
-    assert loaded == []
 
 
 def _parse(monkeypatch, *argv):
