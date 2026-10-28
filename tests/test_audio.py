@@ -434,6 +434,10 @@ def test_the_recording_is_readable_before_close_and_round_trips(tmp_path):
     assert np.max(np.abs(loaded - expected)) <= 0.5 / 32768
 
 
+def _no_translator(*_args, **_kwargs):
+    raise AssertionError("run_session built a translation leg under --no-translate")
+
+
 def _run_session_with_fake_mic(
     monkeypatch, tmp_path, blocks, rate=SAMPLE_RATE, caption=None, session_dir=None, **flags
 ):
@@ -472,6 +476,8 @@ def _run_session_with_fake_mic(
                 state.request_stop()  # every callback has landed; the drain follows
 
     monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+    # --no-translate builds no leg; a regression that built one must fail here, not reach codex.
+    monkeypatch.setattr(live_stt, "CodexTranslator", _no_translator)
     monkeypatch.setattr(live_stt, "TRANSCRIPT_DIR", session_dir or tmp_path)
     monkeypatch.setattr(live_stt, "load_recognizer", lambda *_a: object())
     monkeypatch.setattr(live_stt, "make_vad", lambda: (None, 512))

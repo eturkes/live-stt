@@ -303,6 +303,10 @@ def test_one_way_preflight_keeps_lid_optional(monkeypatch, routing_models, langu
     assert live_stt.check_models("whisper") is None
 
 
+def _no_translator(*_args, **_kwargs):
+    raise AssertionError("run_session built a translation leg under --no-translate")
+
+
 @pytest.mark.parametrize("two_way", [False, True], ids=["one-way", "two-way"])
 def test_run_session_passes_its_two_way_flag_to_the_loader(monkeypatch, tmp_path, two_way):
     seen = []
@@ -345,6 +349,8 @@ def test_run_session_passes_its_two_way_flag_to_the_loader(monkeypatch, tmp_path
     monkeypatch.setattr(live_stt, "load_recognizer", load_recognizer)
     monkeypatch.setattr(live_stt, "make_vad", lambda: (None, 512))
     monkeypatch.setattr(live_stt, "LanguageDetector", lambda *_a, **_k: object())
+    # --no-translate builds no leg; a regression that built one must fail here, not reach codex.
+    monkeypatch.setattr(live_stt, "CodexTranslator", _no_translator)
     monkeypatch.setattr(live_stt, "worker", worker)
     monkeypatch.setattr(live_stt, "meter", meter)
     monkeypatch.setattr(live_stt, "_install_signal_handlers", lambda _state: None)
