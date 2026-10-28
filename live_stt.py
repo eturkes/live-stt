@@ -2765,7 +2765,7 @@ async def run_session(args):
             print(
                 f"Error: --playback needs PipeWire. PortAudio lists no "
                 f"'{PLAYBACK_DEVICE}' input device. Install the PipeWire ALSA plugin "
-                "(pipewire-alsa), then check with --list-devices.",
+                "(pipewire-alsa). Then make sure that --list-devices shows it.",
                 file=sys.stderr,
             )
             sys.exit(1)
