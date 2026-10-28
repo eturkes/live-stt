@@ -276,6 +276,11 @@ Detail → `.claude/rules/`, which each `D-###` names.
   - Blocked upstream: optimum-intel caps transformers below 5.6, and the optimum export stack fails
     under Python 3.14; accept → `.agent/deferred.md` → *Export recipe at the latest transformers
     and Python*.
+- [ ] **5** Ruling-tag lock reports every dead anchor
+  - The lock stops at its first dead anchor, hiding the rest until the next run; accept →
+    `.agent/deferred.md` → *Ruling-tag lock reports every dead anchor*.
+- [ ] **6** Queue rows declare their tier
+  - Three open rows carry no tier; accept → `.agent/deferred.md` → *Queue rows declare their tier*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

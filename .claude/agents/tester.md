@@ -1,6 +1,6 @@
 ---
 name: tester
-description: "Diff-blind test author from a source other than the code: a committed kernel contract, `Intent` + `Decisions` (acceptance), or shipped behavior observed from outside (characterization) → suite in its own worktree + reference implementation as differential oracle when the contract is a pure function."
+description: "Diff-blind test author from a committed kernel contract, `Intent` + `Decisions` (acceptance), or shipped behavior observed from outside (characterization) → suite in its own worktree + reference implementation as differential oracle when the contract is a pure function."
 color: yellow
 ---
 

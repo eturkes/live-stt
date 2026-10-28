@@ -135,11 +135,11 @@ accelerator's `env.sh` (its path = machine-specific, in the user-level instructi
 `uv run live-stt` alone cleans its own session child (`_session_env`), so there only `env.sh`
 matters, container-side. Failure modes + the accelerator's shape: `openvino-accel.md`.
 
-Template ruling: "Project files stay portable: repo-relative paths, nothing machine-specific" →
-**ADAPTED** (user rulings: a personal tool, portability no goal) — **law cites machine-environment
-facts by scope, never by path**: the farm dir, device-selection law, the GenAI builds and the
-farm's upkeep live in the user-level instruction file and the OpenVINO doc it links, so law and
-evaluator docstrings name that file. Two pointers outside the repo stand as written: codex's own
+Template ruling: "Project files stay portable: repo-relative paths; machine-bound facts →
+`CLAUDE.local.md`" → **ADAPTED** (user rulings: a personal tool, portability no goal) — **law cites
+machine-environment facts by scope, never by path**: the farm dir, device-selection law, the GenAI
+builds and the farm's upkeep live in the user-level instruction file and the OpenVINO doc it links,
+in place of a `CLAUDE.local.md`, so law and evaluator docstrings name that file. Two pointers outside the repo stand as written: codex's own
 state paths (`~/.codex/…`, where codex keeps them on every machine) and `.envrc`'s `/run/host/*`
 layer test, since a venv path-bakes the tree path it was built at.
 

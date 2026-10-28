@@ -53,3 +53,22 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    `tests/eval_asr_screen.py --arms fleurs,retention --device NPU` (private `OPENVINO_CACHE_DIR`),
    decodes every hypothesis byte-identically to the shipped weights; any differing hypothesis → a
    re-export ruling for the user with the D-016 JA legs re-measured.
+
+5. **Ruling-tag lock reports every dead anchor** — `tests/test_law_consistency.py`'s
+   `test_every_template_ruling_keys_on_a_live_template_anchor` asserts inside its per-file loop, so a
+   template refresh that kills anchors in two rules files names only the first: the refresh that
+   reworded the closing-diff review and portability clauses failed on `assurance-posture.md` alone,
+   `toolchain.md`'s dead anchor surfacing only through a scratch run of the test's own regexes. Each
+   hidden anchor costs one more gate run to discover. Tier `kernel` (a gate lock; nothing downstream
+   re-checks it).
+   **Accept:** one run of the lock names every broken opener, stray verdict, short anchor and dead
+   anchor across all `.claude/rules/` files — a dead anchor planted in two files at once, both named
+   in one failure — and each of the four firings still fires alone on its own planted input (L-022).
+
+6. **Queue rows declare their tier** — `assurance-posture.md` makes a unit's queue row its acceptance
+   contract, "its tier declared there", and `CLAUDE.md`'s `Session flow` keys a MAINTAIN unit's
+   teammate depth and advisor bar on that tier; three open rows carry none, so a session funding one
+   opens without the depth decision. Tier `docs` (queue prose; a consistency pass re-checks it).
+   **Accept:** every open row in this file declares `Tier kernel|data|docs` with the reason that
+   decides it (where a defect is re-checked, at what cost); a user-only row states its tier or that
+   none applies.

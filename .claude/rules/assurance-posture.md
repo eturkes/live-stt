@@ -100,7 +100,7 @@ Retired — never reintroduce:
 mandate (user ruling) — `scientist` and `reviewer` included, each dispatched per its fit. A brief
 whose teammate runs whisper names that teammate as the NPU holder (`toolchain.md`: two compiles on
 one cache corrupt it). Template ruling: "a MAINTAIN request's closing diff → one `reviewer` covering
-every lens, where needed" → **ADAPTED** — where a diff earns review (a fit per case, never a repo
+every lens" → **ADAPTED** — where a diff earns review (a fit per case, never a repo
 mandate; user ruling), the `reviewer` runs inside the unit that authored it rather than over the
 request's closing diff, at the template's count. The lenses = `CLAUDE.md`'s code diff lenses
 (`Engineering`) for code, plus correctness/spec, claim soundness, guarantee-vs-claim gaps,
