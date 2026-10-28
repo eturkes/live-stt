@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import types
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -108,6 +109,16 @@ def test_playback_opens_the_pipewire_device_on_the_default_output_monitor(
     out = capsys.readouterr().out
     assert "Playback: the default output, through pipewire @ 44100 Hz" in out
     assert "Mic:" not in out
+
+
+def test_the_readme_shows_the_playback_banner_the_session_prints(monkeypatch, tmp_path, capsys):
+    """L-021: a literal the README duplicates from the code stays in sync with it."""
+    _run_session(monkeypatch, tmp_path, [HARDWARE, PIPEWIRE, DEFAULT], playback=True)
+    (banner,) = [
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("Playback:")
+    ]
+    readme = (Path(live_stt.__file__).resolve().parent / "README.md").read_text(encoding="utf-8")
+    assert banner in readme.splitlines()
 
 
 def test_a_mic_session_leaves_the_capture_property_unset(monkeypatch, tmp_path, capsys):
