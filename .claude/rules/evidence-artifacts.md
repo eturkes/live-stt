@@ -6,9 +6,10 @@ paths:
 
 # Evidence artifacts — corpora, traces, evaluators
 
-Fast locks run in the gate. **The twelve `eval_*.py` scripts are ON-DEMAND and never gate steps**: six
-need gitignored weights, a corpus or the real translator plus minutes of compute, so run one when a
-decode change raises an accuracy question. `eval_latency.py`, `eval_two_way_settled.py`,
+Fast locks run in the gate. **The fourteen `eval_*.py` scripts are ON-DEMAND and never gate steps**:
+seven need gitignored weights, a corpus or the real translator plus minutes of compute, so run one
+when a decode change raises an accuracy question; `eval_playback_routing.py` needs sudo and the
+PipeWire tools instead. `eval_latency.py`, `eval_two_way_settled.py`,
 `eval_term_census.py`, `eval_en_pairing.py` (default mode) and `eval_lag.py` need none of that,
 because they replay committed traces — a fresh clone runs them in under a second each.
 
@@ -241,6 +242,25 @@ because they replay committed traces — a fresh clone runs them in under a seco
   9-11 (the newly-caught one being the 9-character loop that escaped bound 8), 29 at 13-21, 30 at
   22+; session 1 inferring a 3-strike degrade at last TGT n=194, session 6 reading
   `codex app-server exited` off the log at 14:38:49.
+- `eval_playback_routing.py` — `--playback`'s routing on a private PipeWire + WirePlumber +
+  pipewire-pulse graph (temp `XDG_RUNTIME_DIR`, WirePlumber's hardware monitors off, no D-Bus),
+  every ALSA-opening process in a mount namespace with `/dev/snd` an empty tmpfs ⇒ no audio
+  hardware and not the user's graph. Arms through production's own `playback_device` +
+  `PLAYBACK_STREAM_PROPS`: `control` (no property → the virtual mic), `monitor` (→ `sink_a`'s
+  monitor, a 440 Hz tone at 8000/32768 read back at that peak), `follow` (default → `sink_b`
+  mid-stream, the links move); exit 1 on a miss. **Firing:** `PLAYBACK_STREAM_PROPS = "{ }"`
+  from a `cp` snapshot → monitor, follow and peak MISS, rc=1. `--e2e pinned|probe` runs the real
+  `live-stt --playback --no-translate` (accelerator prelude) over one half of
+  `eval_playback_silence.py`'s clips, 3 rounds, 10 s of silence after each, the default moved to
+  `sink_b` after round 1 — per-play captions + S/D/I, the captions past a clip's 4 s tail, and
+  the link switch; whole-second transcript stamps, so the tail attribution is coarse.
+- `eval_playback_silence.py` — the same 14 clips (7 CV8 rows: the quiet five the old zero-pad
+  probe hit + its two loud controls, then the 7 pinned replay clips) as one playback-shaped
+  stream: 44.1 kHz by soxr VHQ, 3 s lead + 10 s of exact zeros between clips, the shipped
+  `Resampler` in 256-frame blocks, the real worker; arms Z (shipped) · N (−60 dBFS floor on the
+  stream, seed 7) · V / W (that floor on silero's copy before / after leveling, seed 8).
+  Report-only; inputs fail closed on `INPUT_SHA256`. It reproduced the scratch replica every
+  `asr-pipeline.md` cell came from byte for byte (56 per-clip lines + 4 totals).
 - `test_gate.py` locks `gate.py`'s step inventory with one seeded defect per blocking step, in a
   throwaway tree, plus the secret scan's real-tree scope, which that throwaway tree cannot see
   shrink (`gate.md`).
@@ -400,6 +420,9 @@ uv run python tests/build_lag_trace.py [--check]        # rebuild that trace fro
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)
 uv run python tests/eval_cer.py                         # 2-engine CER + RTF baseline (models + corpus)
 uv run python tests/eval_retention.py [--device D]      # retention CER on the shipped NPU/VAC path
+uv run python tests/eval_playback_routing.py [--e2e pinned|probe] [--json]  # --playback routing, no hw
+                                                        # (--e2e probe: + the soundfile/pyarrow pins)
+uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 python tests/eval_playback_silence.py [--arms ZNVW]
 uv run --with pykakasi==2.3.0 python tests/eval_asr_screen.py --model DIR --device D [--arms A]  # GPU screen
 uv run python tests/build_caption_trace.py              # caption stream over all six sections, ~8 min
 uv run python tests/build_retention_probe.py            # rebuild the pause-free retention probe

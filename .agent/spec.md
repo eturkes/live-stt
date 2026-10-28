@@ -46,10 +46,12 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
   [--source-lang L | --two-way]`.
-- `tests/` — fast locks (`uv run pytest -q`) + twelve on-demand evaluators, inventory and per-file
+- `tests/` — fast locks (`uv run pytest -q`) + fourteen on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_asr_screen.py` (the GPU-mode recogniser screen),
-  `eval_translate_repeat.py` need weights, a corpus or the real translator;
+  `eval_playback_silence.py` (playback's digital-silence arms), `eval_translate_repeat.py` need
+  weights, a corpus or the real translator; `eval_playback_routing.py` drives `--playback` against
+  a private PipeWire graph (sudo + PipeWire tools, no audio hardware);
   `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py`, `eval_en_pairing.py` and
   `eval_lag.py` replay committed traces and run in under a second in a fresh clone;
   `eval_anchor_scenarios.py` scripts decode runs over committed caption text in ~7 s. Each runs as

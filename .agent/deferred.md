@@ -22,12 +22,11 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    whole, cv894 lost `先月`, cv904 gained `はい。`; loud clips kept every caption, none landing past a clip's 4 s tail. Every arm tried
    trades quiet against loud (`asr-pipeline.md`); `LeveledVad` is a user ruling (10-09) ⇒ the fix
    needs the user's ruling first. Tier `kernel` (decode-quality mechanism, no downstream re-check).
-   **Accept:** the replica (`.scratch/playback/silence_ab.py`: the 14 clips → 44.1 kHz → 10 s zero
-   gaps → `Resampler` → real worker, NPU) lands as a committed `tests/eval_playback_silence.py`
-   reproducing the shipped verdicts above; a playback-mode-only change (mic path byte-identical by
-   construction: the replay goldens and retention CER 0.0532 unmoved) recovers cv489, cv894 and
-   cv904 with no loud clip losing a character against the shipped arm, confirmed by one real
-   `live-stt --playback` run on the private PipeWire stack; the user rules the shape before it ships.
+   **Accept:** a playback-mode-only change (mic path byte-identical by construction: the replay
+   goldens and retention CER 0.0532 unmoved) recovers cv489, cv894 and cv904 in
+   `tests/eval_playback_silence.py`'s shipped arm with no loud clip losing a character against
+   today's shipped arm, confirmed by one `tests/eval_playback_routing.py --e2e probe` and one
+   `--e2e pinned` run; the user rules the shape before it ships.
 
 3. **Python 3.15 interpreter** — `.python-version` pins `3.14` while CPython 3.15.1 is the latest
    release: the wheel-only hard dependencies openvino, openvino-genai, onnxruntime and sherpa-onnx

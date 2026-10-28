@@ -87,20 +87,20 @@ paths:
   empty on disk; locked by an independent reopen after every block). Always `TRANSCRIPT_DIR`, never beside `-o`,
   which APPENDS across runs where a WAV cannot. Lock: `test_save_audio_records_every_captured_block`
   (fake mic through the real `run_session`).
-- **`--playback` captures the default OUTPUT through the mic's own PortAudio path (user request
-  10-28: a Zoom call).** `playback_device` picks PortAudio's EXACT-name `PLAYBACK_DEVICE`=`pipewire`
+- **`--playback` captures the default OUTPUT through the mic's own PortAudio path (user request:
+  a Zoom call).** `playback_device` picks PortAudio's EXACT-name `PLAYBACK_DEVICE`=`pipewire`
   input (PipeWire's ALSA plugin PCM; a substring match collides — `default` is the same plugin and
   its description says PipeWire), and `run_session` sets `PIPEWIRE_ALSA`=`PLAYBACK_STREAM_PROPS`
   before `import sounddevice`: `pcm_pipewire.c` (1.6.9) reads it at every PCM open and copies it
   into the `pw_stream` props. `stream.capture.sink=true` with NO target ⇒ WirePlumber links the
   stream to the default sink's monitor and RE-LINKS it when the default moves — this laptop's
   Speaker and Headphones are separate sof_sdw sinks, so a headphone plug-in mid-call is that move.
-  Proof, private PipeWire 1.4.2 / WirePlumber 0.5.8 in a mount namespace with `/dev/snd` hidden
-  (no hardware reached; `.scratch/playback/`), two null sinks + a virtual mic: PortAudio lists
-  exactly `pipewire` + `default`; no property → linked to the default SOURCE (negative control);
-  property → `sink_a:monitor_*`, a 440 Hz tone at 8000/32768 read back at peak 0.244;
-  `pactl set-default-sink sink_b` → the links moved to `sink_b:monitor_*`, the real
-  `live-stt --playback` NPU session included, its captions continuing on clips played into b.
+  Proof = `tests/eval_playback_routing.py` (`evidence-artifacts.md`) on the container's PipeWire
+  1.4.2 / WirePlumber 0.5.8, no hardware reached: PortAudio lists exactly `pipewire` + `default`;
+  no property → linked to the default SOURCE (negative control); property → `sink_a:monitor_*`, a
+  440 Hz tone at 8000/32768 read back at peak 0.2441; default → `sink_b` → the links moved to
+  `sink_b:monitor_*`, the real `live-stt --playback` NPU session included (`--e2e`), its captions
+  continuing on clips played into b.
   Downstream of the callback = the mic path unchanged (`Resampler`, `AudioQueue`, `LeveledVad`,
   `--save-audio`, drain order, `_audio_operation` deadlines). No such device ⇒ `Error: --playback
   needs PipeWire…`, exit 1 before any model loads; `--device` ⇒ parse error. Locks:
@@ -115,13 +115,15 @@ paths:
   holds the last loud talker indefinitely and the gain stays 1.0 for a quiet one. Measured,
   14 CV clips (7 loud pinned −11..−24 dBFS speech p90, the 5 quiet −37..−43 the old zero-pad
   probe hit + its 2 loud controls), 10 s of zeros between clips, real `live-stt --playback` on
-  the NPU, 3 plays each: every loud clip kept its captions and gained none (ordinary ASR errors;
-  cv_paused dropped `午後` on 1 of 3 plays); cv489 lost whole (3/3), cv894 lost `先月` (3/3),
-  cv904 gained a `はい。` line (3/3); **no caption later than 4 s past any clip's end** (`gaps.py`
-  attributes at whole-second stamps, so a caption inside a tail is charged to its clip) — the
-  residue hallucination the zero-pad probe recorded did not reproduce. Offline replica (`.scratch/playback/silence_ab.py`:
-  clip → 44.1 kHz soxr VHQ → zeros → `Resampler` → real worker) reproduces those three verdicts
-  exactly; arms, CER over 277 chars: shipped 0.2599 · −60 dBFS floor on the stream 0.2671 · floor on
+  the NPU (`eval_playback_routing.py --e2e pinned|probe`), 3 plays each, two runs of each set:
+  every loud clip kept its captions and gained none (ordinary ASR errors; cv_paused dropped `午後`
+  on 1 of 3 plays in each run); cv489 lost whole, cv894 lost `先月`, cv904 gained a `はい。` line —
+  3 of 3 plays in both runs; **no caption later than 4 s past any clip's end** (attribution at
+  whole-second stamps, so a caption inside a tail is charged to its clip) — the residue
+  hallucination the zero-pad probe recorded did not reproduce. Live text varies run to run
+  (`パック`/`バック`, the clip a split line lands in); the verdicts held. The offline replica
+  `tests/eval_playback_silence.py` reproduces those three verdicts exactly; arms, CER over 277
+  chars: shipped 0.2599 · −60 dBFS floor on the stream 0.2671 · floor on
   silero's copy before leveling 0.2238 (all three quiet clips recovered — the floor ages the
   history, gain → 16× — but heads cut on 4 loud clips: `cv_long` → `句文を読みました。`) · floor after
   leveling 0.2888 (gain stays 1, cv489 + cv894 empty) ⇒ the GAIN decides, not the residue; every
