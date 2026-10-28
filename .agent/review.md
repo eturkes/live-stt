@@ -15,7 +15,7 @@ compound + risk-ranked (`assurance-posture.md`). Modules: M1 `live_stt.py` · M2
 | R03 | Correctness × M1 CLI | parse contradiction; default off; `--list-devices` + `--playback`; help text vs behavior | reviewer-1 | pass (reviewer-1) |
 | R04 | Cleanup × M1 + M2 | helpers reused (grep first); duplication (test harness vs `test_audio._run_session_with_fake_mic`); dead code; constants placement; comment density per house style | reviewer-1 | pass (reviewer-1) |
 | R05 | Altitude × M1 | env-var mechanism vs a special case on shared infrastructure; the leveling limit queued vs a mechanism fix due now | reviewer-1 | pass (reviewer-1) |
-| R06 | Verification integrity × M2 | red-first + L-022 records in the commit body; fake `sounddevice` fidelity (`query_devices()` shapes, `kind="input"`); a test passing for the wrong reason; gate detection; mic pin credit | reviewer-2 | findings P2-01 major → fixed 9b10138, P2-02 minor → credited (mutmut 3.8.0, rulings by reviewer-2; commit after 7ecb70b); the rulings also exposed the translator hermeticity seam → fixed 7ecb70b |
+| R06 | Verification integrity × M2 | red-first + L-022 records in the commit body; fake `sounddevice` fidelity (`query_devices()` shapes, `kind="input"`); a test passing for the wrong reason; gate detection; mic pin credit | reviewer-2 | findings P2-01 major → fixed 9b10138, P2-02 minor → credited f3b6648 (mutmut 3.8.0, rulings by reviewer-2); the rulings also exposed the translator hermeticity seam → fixed 7ecb70b |
 | R07 | Claim soundness × M3 + code comments | each README / `--help` / comment claim vs behavior + evidence (follows the default "also when it changes", needs PipeWire, Zoom `Same as System`, limitation numbers, one session at a time, every sound reaches the recognizer) | reviewer-2 | finding P2-03 minor → fixed 3e0ccb5 |
 | R08 | Claim soundness × M4 + M5 | law + state claims vs evidence (versions, 42 gaps, CER arms, "proof" vs scratch evidence, agent-covered statements); guarantee-vs-claim gaps | reviewer-2 | finding P2-03 minor + stale host WirePlumber version (MAIN) → fixed 3e0ccb5 |
 | R09 | Spec fit × behavior vs `Intent` + `Decisions` | STT local; NPU default; one-way usable (default OFF); out-of-scope list (multi-mic mixing); D-002 / D-006; `LeveledVad` ruling untouched; the new Decisions entry readable alone | reviewer-3 | pass (reviewer-3) |
@@ -35,7 +35,7 @@ R01, R11, R13 and adjudicated every row against the bytes it cites.
 | id | sev | where | proof | fix |
 | --- | --- | --- | --- | --- |
 | P2-01 | major | `tests/test_playback.py:74` re-patched the spy `:141` set | red witness: one early load, shipped lock green | 9b10138; planted early load → 3 cases red |
-| P2-02 | minor | `tests/test_playback.py:109` mic pin, green at 3fb2dbf, credited by hand-picked L-022 | `assurance-posture.md` "Hand-picked L-022 mutants never credit such a pin" | mutmut 3.8.0: 672 mutants, 420 survivors ruled by reviewer-2 (155 specified → all killed, 265 open recorded); commit after 7ecb70b |
+| P2-02 | minor | `tests/test_playback.py:109` mic pin, green at 3fb2dbf, credited by hand-picked L-022 | `assurance-posture.md` "Hand-picked L-022 mutants never credit such a pin" | mutmut 3.8.0: 672 mutants, 420 survivors ruled by reviewer-2 (155 specified → all killed, 265 open recorded) → f3b6648 |
 | S-T8 | major | 4 fake-session harnesses never stubbed `CodexTranslator` | mutant 154 survived by reaching the real app-server path | 7ecb70b; flip → 11+ cases red |
 | P2-03 | minor | `README.md:90`, `asr-pipeline.md:117`, `deferred.md:22` "loud … correct/clean" | e2e `SRC 7: 元はもう寝ました。`, `SRC 10: 7時です。` | 3e0ccb5 |
 | F31 | minor | L-021 dash + README↔code literal had no gate check | planted em dash + rate drift accepted by all 6 README checks | 9d6f0b3; 6 plants red |
@@ -43,4 +43,4 @@ R01, R11, R13 and adjudicated every row against the bytes it cites.
 | F33 | minor | `spec.md:183` `user request 10-28`, `asr-pipeline.md:91`, `deferred.md:23` | Authoring: omit dates | 265b6a5 + 9f513c8 |
 | F34 | major | `asr-pipeline.md:99,119` cited `.scratch/playback/` | `git ls-tree 9b96e34`: no harness tracked | 265b6a5 |
 | G31 | minor | `README.md:420-421` dead constant names, `:433` "Japanese-only" | scripted table sweep: 2 of 25 absent | 5faa961 (+ lock, red first) |
-| R01-reg | register | `session_report.py:385-408` never-translated run → 22 "leg recovered" | baseline drive over the e2e transcript | queue row 2 (340be4b) |
+| R01-reg | register | `session_report.py:385-408` never-translated run → 22 "leg recovered" | baseline drive over the e2e transcript | queued 340be4b; user: fix now → fixed 396efe5 |

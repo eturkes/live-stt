@@ -122,8 +122,10 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
    between talkers publish nothing. A quiet participant after a loud one losing a caption or its
    head is the measured digital-silence limit (`asr-pipeline.md`), not a capture defect — keep the
    WAV: exact-zero runs between talkers say that regime is live and `replay.py` re-derives it.
-   Agent-covered on a private PipeWire 1.4.2 stack, no hardware: device listing, the monitor link,
-   the default-output switch, 42 plays through the real NPU session.
+   That WAV is also the re-open trigger for `.agent/deferred.md` → *Playback leveling across
+   digital silence*. Agent-covered by `tests/eval_playback_routing.py` on a private PipeWire 1.4.2
+   stack, no hardware: device listing, the monitor link, the default-output switch, and the real
+   NPU session over both clip sets, 21 plays each, run twice.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

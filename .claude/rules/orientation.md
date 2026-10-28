@@ -53,6 +53,11 @@ Rulings on the template's spec layout (detail → `.agent/spec.md` `Decisions`):
   detail → the `.claude/rules/` file each `D-###` names; closed records → `.agent/archive/`;
   incident records → `.agent/postmortems/`.
 
+Template ruling: "omit provenance — dates, verification/discovery events, origin stories" →
+**ADAPTED** (user ruling) — a user ruling keeps its date (`user ruling 10-09`) as its identifier:
+spec and law cite one ruling from several files, and the date is what tells two rulings on one
+subject apart. Every other provenance date stays out, as do discovery events and origin stories.
+
 `D-###` / `L-###` ids anchor a code or test comment to the rule that explains it. They live in these
 rules files, numbering monotonic with gaps where a rule died; keep an id while a citer still names it.
 

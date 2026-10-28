@@ -188,7 +188,8 @@ Detail → `.claude/rules/`, which each `D-###` names.
   output's monitor and re-links it when the default changes (headphones plugged in mid-call);
   everything downstream of the callback is the mic path's. libpulse `@DEFAULT_MONITOR@` is REFUSED:
   it pins the output of the moment. `--device` with it is a parse error; a host without the device
-  fails before any model loads. Mechanism + evidence → `asr-pipeline.md`.
+  fails before any model loads. One session captures one input: mixing the mic into a call stays
+  out of scope (user ruling). Mechanism + evidence → `asr-pipeline.md`.
 - Capture resamples through ONE band-limited soxr stream per session (`Resampler`), drained at stop;
   the per-block linear recipe survives as `linear_resample` for the hash-pinned corpora alone. No
   CER change on 300 clean clips (0.1131 → 0.1113, CI spans 0); shipped as the correctness fix
@@ -265,8 +266,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
     the VAD segment drain and the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9, 10 + 11 stay
     the user's to run.
 - [ ] **2** Playback leveling across digital silence
-  - Needs the user's ruling (`LeveledVad` is a user ruling); accept → `.agent/deferred.md` →
-    *Playback leveling across digital silence*.
+  - Waits on a real call (user ruling): `live-smoke.md` item 11 with `--save-audio` showing
+    exact-zero runs between talkers, then the user's ruling on the shape; accept →
+    `.agent/deferred.md` → *Playback leveling across digital silence*.
 - [ ] **3** Python 3.15 interpreter
   - Blocked upstream: no cp315 wheel for openvino, openvino-genai, onnxruntime, sherpa-onnx;
     accept → `.agent/deferred.md` → *Python 3.15 interpreter*.
