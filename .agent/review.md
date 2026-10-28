@@ -1,6 +1,6 @@
 # Review ledger
 
-## 10-28 `--playback` — code review of `3fb2dbf..9b96e34`
+## `--playback` — code review of `3fb2dbf..9b96e34`
 
 Scope = the request's diff (steered Code review body; request: caption audio playback, e.g. a Zoom
 call). Check set fixed before any reviewer read; rows = lens × module, conformance = lens × clause,

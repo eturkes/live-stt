@@ -182,7 +182,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
   ruling): an update due while more than `VAC_BACKLOG_S`=0.5 s of capture is queued waits for the
   drain, so the cadence stretches to the decode. That pair is the mechanism + fix measured on the
   09-24 capture's drops; shapes, numbers and the `live` backpressure arm → `asr-pipeline.md`.
-- **`--playback` captions what the computer plays** (user request 10-28: a Zoom call), default OFF:
+- **`--playback` captions what the computer plays** (user request: a Zoom call), default OFF:
   PortAudio's exact-name `pipewire` input (PipeWire's ALSA plugin) under
   `PIPEWIRE_ALSA='{ stream.capture.sink=true }'`, no target ⇒ WirePlumber links the default
   output's monitor and re-links it when the default changes (headphones plugged in mid-call);
@@ -265,7 +265,7 @@ Detail → `.claude/rules/`, which each `D-###` names.
     the VAD segment drain and the `--save-log` peak timeline; items 1, 3, 4, 7, 8, 9, 10 + 11 stay
     the user's to run.
 - [ ] **2** Playback leveling across digital silence
-  - Needs the user's ruling (`LeveledVad` is a 10-09 ruling); accept → `.agent/deferred.md` →
+  - Needs the user's ruling (`LeveledVad` is a user ruling); accept → `.agent/deferred.md` →
     *Playback leveling across digital silence*.
 - [ ] **3** Python 3.15 interpreter
   - Blocked upstream: no cp315 wheel for openvino, openvino-genai, onnxruntime, sherpa-onnx;

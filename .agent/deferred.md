@@ -20,7 +20,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    ages and a quiet talker after a loud one is heard at the loud one's gain 1.0: live, 5 quiet CV
    clips (speech p90 −37..−43 dBFS) between loud ones with 10 s zero gaps, 3 plays each — cv489 lost
    whole, cv894 lost `先月`, cv904 gained `はい。`; loud clips kept every caption, none landing past a clip's 4 s tail. Every arm tried
-   trades quiet against loud (`asr-pipeline.md`); `LeveledVad` is a user ruling (10-09) ⇒ the fix
+   trades quiet against loud (`asr-pipeline.md`); `LeveledVad` is a user ruling ⇒ the fix
    needs the user's ruling first. Tier `kernel` (decode-quality mechanism, no downstream re-check).
    **Accept:** a playback-mode-only change (mic path byte-identical by construction: the replay
    goldens and retention CER 0.0532 unmoved) recovers cv489, cv894 and cv904 in
