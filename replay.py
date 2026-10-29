@@ -14,9 +14,10 @@ console-script entry point. Run it directly:
 
     uv run python replay.py path/to.wav [--engine k2v2|parakeet|whisper] [--json]
 
-Clear PYTHONPATH for `--engine whisper` (`env -u PYTHONPATH uv run …`): an
-inherited entry can shadow the installed OpenVINO wheel with a host build that
-cannot execute here.
+Whisper needs both prelude halves, in order: source the accelerator's env.sh
+(the user-level instruction file names it), then source .envrc from the repo root.
+The first supplies the container's driver farm; the second clears PYTHONPATH and
+strips shadowing tarball libraries from LD_LIBRARY_PATH (openvino-accel.md).
 
 Determinism: for a given WAV + sherpa engine, segment boundaries (start, n) and
 transcript text are reproducible (silero VAD + sherpa offline decode are

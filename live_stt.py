@@ -102,9 +102,9 @@ ASR_DEVICE = "NPU"
 ASR_DEVICES = ("NPU", "GPU")
 OPENVINO_CACHE_DIR = MODELS_DIR / "openvino/cache"
 OPENCL_VENDOR_DIRS = (Path("/etc/OpenCL/vendors"), Path("/usr/share/OpenCL/vendors"))
-# Audio the JA pin cannot account for -- English speech, room tone -- makes the
-# decoder emit one unit until it hits the model's 448-token max_length: 13 s of
-# English replays as a 528-character loop at RTF 1.106, above real time. 1.2 is
+# One English clip under the JA pin repeats a unit to the 448-token cap:
+# 13 s replays as a 528-character loop at RTF 1.106, above real time. Synthetic
+# silence/noise/hum reproduce hallucination phrases, not that loop. 1.2 is
 # the knee measured through the shipped VAC path over five trigger variants (both
 # that loop go 550 -> 45 characters, RTF 0.73 -> 0.39; 1.15 leaves the loop
 # intact) and costs 3 substitutions in 1166 characters on the retention probe
@@ -119,8 +119,8 @@ ASR_REPETITION_PENALTY = 1.2
 ASR_LANGUAGE: str = "ja"
 
 # Two-way LID (`--two-way`, default OFF): a standalone ECAPA VoxLingua107 graph on
-# ONNX Runtime CPU hands the ONE resident whisper pipeline an explicit language
-# token per utterance, rather than a second recogniser (asr-pipeline.md). Over the
+# ONNX Runtime CPU picks an explicit token per utterance: ja routes to resident
+# whisper-ja-760M, en to resident turbo (asr-pipeline.md). Over the
 # census's 1,747 utterances (FLEURS cut by the shipped leveled VAD), at 2 s of
 # voiced buffer they accept 1,328 correct / 172 abstain / 0 false of 1,500. Margin
 # is |ja - en| over the RAW 107-way softmax and is never renormalized over the
@@ -261,11 +261,10 @@ CAPTION_REPEAT_UNIT_CHARS = 13
 # Kana + CJK ideographs (incl. extension A) against Latin letters.
 _JAPANESE_RUN = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
 _LATIN_RUN = re.compile(r"[A-Za-z]")
-# A Latin letter is one phoneme where a Japanese character is a whole syllable, so
-# a single loanword outnumbers the kana around it: 1:1 read Discordで送ります。 and
-# HDMIはどう? as English. Over the same 1073 captions the two populations separate
-# cleanly by ratio -- 18 spoken-English captions at ja/(ja+latin) <= 0.15, 6
-# Japanese ones carrying loanwords at >= 0.27 -- and 4 cuts that gap at 0.20.
+# A Latin-script name can outnumber the Japanese around it: 1:1 read
+# Discordで送ります。 and HDMIはどう? as English. Over the same 1073 captions,
+# 17 latin-screened captions have ja/(ja+latin) < 0.16; 6 Japanese captions
+# carrying loanwords have >= 0.27. Ratio 4 cuts that gap at 0.20.
 CAPTION_LATIN_RATIO = 4
 
 # developerInstructions outranks user-message imperatives — the AGENTS.md-in-cwd
@@ -554,7 +553,7 @@ class WhisperEngine:
     """OpenVINO Whisper behind the same `decode(samples) -> str` contract as sherpa."""
 
     def __init__(self, model_dir: Path, device: str = ASR_DEVICE, english_dir: Path | None = None):
-        import openvino_genai  # noqa: PLC0415  -- optional dep; sherpa engines skip it
+        import openvino_genai  # noqa: PLC0415  -- sherpa skips binding initialization
 
         self.device = device
         OPENVINO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -817,7 +816,10 @@ class LanguageDetector:
 
 
 def check_models(engine: str, two_way: bool = False) -> str | None:
-    """Returns an error message if model files are missing, else None."""
+    """Check VAD/LID files + recogniser-directory markers; return an error or None.
+
+    A recogniser marker does not certify its remaining weights or configuration.
+    """
     missing = []
     if not VAD_MODEL.exists():
         missing.append("silero_vad.onnx")
@@ -1128,8 +1130,8 @@ def write_stdout(text):
 def emit_line(tag, seq, text, output_file, *, held=False):
     """Persist + display one numbered event line (tag: "SRC" or "TGT").
 
-    Source and target lines are emitted independently (translation lags ~1 s and
-    may interleave with the next block's source); the shared seq number keeps
+    Source and target lines are emitted independently; a target may interleave
+    with the next block's source. The shared seq number keeps
     pairs unambiguous. File entries are one self-describing line per event.
 
     Persist BEFORE display: the transcript is the artifact that has to survive a
@@ -2295,8 +2297,8 @@ async def _vac_segments(
         """Close the open utterance: flush its tail, then publish what remains."""
         nonlocal processor, pending, published, cut_mark, label, token, marked
         await update(final=True)
-        # 246 of 1,747 census utterances never accept. Withholding them would lose
-        # one caption in seven, so they publish under the held label and say so.
+        # Sub-2 s utterances cannot be scored; longer ones can abstain too.
+        # Acceptance gates the label, never the caption: publish held + marked.
         rest = utterance[published:]
         # A punctuation-only remainder would print as a line of its own; an utterance
         # that published nothing yet keeps the one-line rule whatever it holds.
@@ -2386,11 +2388,12 @@ async def worker(
     on_update=None,
     detector=None,
 ):
-    """Feed VAD and decode concurrently; a None audio sentinel drains both stages.
+    """Drain audio through inline VAC or concurrent sherpa feeder/decode stages.
 
-    ``on_segment`` retains replay's observation-only contract: one call per
-    popped VAD segment as ``(start, n, seg_len, decode_s, text)``, including
-    empty text and reporting internally chunked decode as one merged segment.
+    A None audio sentinel flushes either path. ``on_segment`` observes raw text,
+    not screened/split publication: ``(start, n, seg_len, decode_s, text)``,
+    including empty text. VAC calls once per utterance, sentinel-finalized ones
+    included; sherpa calls once per popped VAD segment, internal chunks merged.
 
     ``on_update`` is the same contract one level down and VAC-only: one call per
     ``StreamingProcessor.process``, in order, as ``(buffer_s, buffer_end_s,

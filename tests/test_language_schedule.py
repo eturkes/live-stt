@@ -22,10 +22,10 @@ Contract, in the order the cases sit below:
   a fresh processor, the utterance audio re-inserted from its start, the accumulated text
   cleared. Unit (3) owns handing the token to `generate()`; nothing here touches
   `ASR_LANGUAGE`.
-- **No caption is ever withheld.** 246 of 1,747 utterances never accept, so an unaccepted one
-  publishes under `held` and its SOURCE line carries the mark `SRC n <!>: text` -- space,
-  `<!>`, colon. The `TGT` line is never marked. `session_report.py` parses that line and
-  counts held utterances; today's `_EVENT` pattern drops it whole.
+- **No caption is ever withheld.** Sub-2 s utterances cannot be scored; longer ones can
+  abstain too. An unaccepted one publishes under `held` and its SOURCE line carries
+  `SRC n <!>: text` -- space, `<!>`, colon. The `TGT` line is never marked.
+  `session_report.py` parses that line and counts held utterances.
 - **`--two-way` is default OFF**, and with the flag absent every path above is today's code.
 
 Weights-free by construction: stub the detector, never load `models/lid/d2-ecapa/`.
