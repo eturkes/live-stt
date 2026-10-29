@@ -6,6 +6,8 @@ paths:
   - "tests/build_*.py"
   - "tests/gen_replay_goldens.py"
   - "tests/test_replay.py"
+  - "tests/test_session_environment.py"
+  - ".envrc"
   - "models/README.md"
 ---
 
@@ -53,6 +55,14 @@ source .envrc                # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
   both prelude halves: `source .envrc` after `env.sh`, from the repo root, whose `$PWD` case also
   picks the venv. `gate.py` clears `PYTHONPATH` itself and runs no whisper step, so the gate needs
   no farm.
+
+`tests/test_session_environment.py` sources the tracked prelude in clean Bash over fixture paths:
+both layer spellings, versioned/unversioned core + TBB, retained farm + unrelated dirs, empty paths,
+and shell-wide versus child-selective `PYTHONPATH` removal. LD results must equal `_session_env` AND
+the fixture's expected survivors, so two identically-broken filters cannot pass. Shipped plants
+break each shell filter, swap its venv or retain `PYTHONPATH`; each reddens, clean twins pass. The
+core-glob plant leaves the existing child-only lock green; the shell lock fails. No driver, native
+library, accelerator prelude or model loads inside this check.
 
 ## Trees, layers, hardware
 
