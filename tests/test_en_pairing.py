@@ -332,6 +332,24 @@ def test_a_turn_trace_that_is_not_this_caption_stream_is_refused(turns: list[dic
         replay(_captions("兵十がきた。", "兵十がくる。"), turns)
 
 
+@pytest.mark.parametrize("corruption", ["reordered", "extra"])
+def test_pairing_replay_refuses_nonidentical_event_sequence(corruption: str):
+    caps = _captions(*["兵十がきた。"] * 4)
+    turns = _turns(caps, PROPER)
+    if corruption == "reordered":
+        turns.reverse()
+    else:
+        turns.append({"idx": 10000, "ja": "別人がきた。", "en": "The visitor was Gon."})
+    with pytest.raises(SystemExit):
+        verdict(caps, turns)
+
+
+def test_pairing_replay_omits_empty_inputs_as_the_live_arm_does():
+    caps = _captions("兵十がきた。", "", "兵十がくる。")
+    turns = _turns([caps[0], caps[2]], PROPER)
+    assert replay(caps, turns)["n_published"] == 2
+
+
 def test_the_committed_run_learns_every_real_name_and_no_pronoun():
     """P-019 + P-020's acceptance, re-derived from the run that measured both.
 

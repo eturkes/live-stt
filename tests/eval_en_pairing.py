@@ -99,10 +99,12 @@ def recorded(turns: list[dict]) -> dict:
 def replay(captions: list[dict], turns: list[dict]) -> dict:
     """Re-derive the trust episodes from a live run's recorded English."""
     by_idx = recorded(turns)
-    for caption in captions:
-        turn = by_idx.get(caption["idx"])
-        if turn is None:
-            raise SystemExit(f"caption {caption['idx']} was never translated in this trace")
+    # The live arm emits no turn for an empty input; every other event stays ordered.
+    observed = [caption for caption in captions if caption["text"]]
+    if [turn["idx"] for turn in turns] != [caption["idx"] for caption in observed]:
+        raise SystemExit("the turn trace does not match the ordered caption indices")
+    for caption in observed:
+        turn = by_idx[caption["idx"]]
         if turn["ja"] != caption["text"]:
             raise SystemExit(
                 f"turn {caption['idx']} was translated from text this trace no longer "

@@ -121,7 +121,12 @@ because they replay committed traces — a fresh clone runs them in under a seco
   whisper-ja-760M swap: the verdicts grade the learner, and 760M hearing 兵十 where turbo heard 標柱
   would reshape every term without testing the learner at all. `--live` puts all 215 committed captions through `SessionContext` + `CodexTranslator` in
   production's order (`observe_ja` → `_translate` → `observe_en`); the default mode re-derives every
-  verdict from the trace offline. **Deviation from production, reported per run:** a leg disabled by
+  verdict from the trace offline. Replay binds the EXACT ordered nonempty input ids + JA bytes;
+  extra/reordered turns refuse before either learner or raw census runs. `test_en_pairing.py` fires
+  those guards with extra/reversed turns (L-022). Live/replay agreement compares renderings on LIVE
+  episodes alone; history keeps paired lease expiries. `live_turns` owns its current translator
+  through `finally`, startup + restart included; cancellation closes it (fake-turn L-022 lock).
+  **Deviation from production, reported per run:** a leg disabled by
   `TRANSLATE_MAX_FAILURES` is restarted against the same context, since this measures the learner and
   not the degradation path — `restarts: 0` = production-identical. The trace is ONE sample of sampled
   model output ⇒ its verdicts are structural, never rates — a per-turn rate, a p90 or a latency
