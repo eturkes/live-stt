@@ -218,6 +218,26 @@ def test_a_mic_session_leaves_the_capture_property_unset(monkeypatch, tmp_path, 
     assert "Mic: default @ 44100 Hz" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "language,two_way,banner",
+    [
+        ("en", False, "Listening... Speak English. Press Ctrl+C to stop."),
+        ("ja", True, "Listening... Speak Japanese or English. Press Ctrl+C to stop."),
+    ],
+    ids=["english-only", "two-way"],
+)
+def test_the_mic_prompt_names_the_languages_the_session_accepts(
+    monkeypatch, tmp_path, capsys, language, two_way, banner
+):
+    monkeypatch.setattr(live_stt, "ASR_LANGUAGE", language)
+    seen = _run_session(monkeypatch, tmp_path, [DEFAULT], two_way=two_way)
+
+    assert seen["stream"]["channels"] == 1
+    assert [
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("Listening")
+    ] == [banner]
+
+
 def test_a_mono_pipewire_input_is_the_playback_device(monkeypatch, tmp_path):
     mono = {**PIPEWIRE, "max_input_channels": 1}
     seen = _run_session(monkeypatch, tmp_path, [HARDWARE, mono], playback=True)

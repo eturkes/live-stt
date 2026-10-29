@@ -2884,6 +2884,10 @@ async def run_session(args):
 
         if playback:
             print("\nListening to the computer's audio... Press Ctrl+C to stop.\n")
+        elif getattr(args, "two_way", False):
+            print("\nListening... Speak Japanese or English. Press Ctrl+C to stop.\n")
+        elif ASR_LANGUAGE == "en":
+            print("\nListening... Speak English. Press Ctrl+C to stop.\n")
         else:
             print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
         print("-" * 60)
