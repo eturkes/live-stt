@@ -1577,7 +1577,7 @@ class CodexTranslator:
         if not self.enabled:
             return
         self.enabled = False
-        logger.error("translation disabled: %s; source-only for the rest of the session", reason)
+        logger.error("translation disabled: %s; source-only while translation is off", reason)
         emit_note(f"translation disabled: {reason}", self.output_file)
 
     def _restore(self, reason: str):

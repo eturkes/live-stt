@@ -49,7 +49,8 @@ _BLOCK_FAIL = re.compile(r"^translation failed \((.*)\); (?:source|JA)-only for 
 # The prefix is optional: sessions predating the `_disable` rewrite logged the
 # bare reason, so a corpus spans both spellings of the same event.
 _DISABLED = re.compile(
-    r"^(?:translation disabled: )?(.*?); (?:source|JA)-only for the rest of the session$"
+    r"^(?:translation disabled: )?(.*?); (?:source|JA)-only "
+    r"(?:while translation is off|for the rest of the session)$"
 )
 _RESTORED = re.compile(r"^translation restored: (.*)$")
 _PEAK = re.compile(r"^backlog peak:(.*)$")

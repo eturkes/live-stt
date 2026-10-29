@@ -1062,3 +1062,30 @@ def test_same_named_transcripts_keep_distinct_caption_identities_in_the_sweep(tm
     result = report(paths)
     assert result["screen"]["sweep"][-1]["caught"] == 2
     assert {s["session"] for s in result["sessions"]} == set(paths)
+
+
+def test_disable_log_names_current_state_and_both_log_grammars_remain_readable(tmp_path, caplog):
+    translator = app.CodexTranslator()
+    translator.enabled = True
+    translator._disable("codex app-server exited")
+    body = next(r.getMessage() for r in caplog.records if "translation disabled:" in r.getMessage())
+    assert "for the rest of the session" not in body
+    assert not translator.enabled
+    for line in [
+        body,
+        "codex app-server exited; source-only for the rest of the session",
+        "codex app-server exited; JA-only for the rest of the session",
+        "translation disabled: codex app-server exited; source-only for the rest of the session",
+        "translation disabled: codex app-server exited; JA-only for the rest of the session",
+    ]:
+        session = _transcript(
+            tmp_path,
+            event("10:00:01", "SRC", 1, CLEAN),
+            event("10:00:03", "TGT", 1, "One."),
+            event("10:00:10", "SRC", 2, CLEAN),
+        )
+        session.events = [sr.LogEvent(datetime(2026, 9, 4, 10, 0, 12), "ERROR", line)]
+        degrade = sr.find_degrade(session)
+        assert degrade is not None
+        assert degrade["reason"] == "codex app-server exited"
+        assert {r["why"] for r in sr.explain_missing(session)} == {sr.DISABLED}

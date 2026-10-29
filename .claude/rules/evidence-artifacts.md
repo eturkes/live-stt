@@ -227,7 +227,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `declined`/`strike`/`disabled`/`untranslated` — no TGT,
   marker or logged translation event in the whole session/`shutdown`/`failed`),
   chronological disable/restore outages (marker/log twins count once; `degrades` names every
-  outage, `degrade` the first), with missing-caption inference bounded by each outage's own last
+  outage, `degrade` the first); disable logs describe the current source-only state, and the
+  parser retains legacy bare/prefixed `source|JA-only for the rest of the session` lines.
+  Missing-caption inference is bounded by each outage's own last
   TGT and next restore; known skips/declines spend no inferred strikes. `read_sessions` splits
   appended runs at each source-number restart (`name#1`, `name#2`, …), while `read_session`
   requires one run. Log markers map successive uses of one path to separate runs and move startup
