@@ -343,8 +343,11 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   two-way, `translator_brief(source)` renders the SAME canonical glossary in the direction asked for
   — `term = rendering` toward English, `rendering = term` toward Japanese — and the reverse brief
   carries PAIRED terms ONLY, the raw `--context` topic line included in that exclusion, an unpaired
-  term having no English key to name it by. Each leg snapshots the brief it started with, so a
-  glossary change rotates the leg whose brief moved and leaves the other leg's thread alone.
+  term having no English key to name it by. `_instructions` only renders; `_new_thread` snapshots
+  the exact sent brief WITH its successful thread id, after the response names one. An RPC error,
+  timeout or missing id keeps both old values, so the next caption retries the unapplied glossary.
+  A glossary change rotates the leg whose brief moved and leaves the other leg's thread alone.
+  Lock: `test_failed_glossary_rotation_retries_the_unapplied_brief` (both directions).
 - **`observe_en` pairs each trusted term with its English spelling, and the pairing is what makes the
   glossary help.** An unpaired list names a term without saying how to write it, and every glossary
   change rotates the codex thread whose own history was holding the spelling ⇒ the unpaired list made

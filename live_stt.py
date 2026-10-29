@@ -1544,7 +1544,7 @@ class CodexTranslator:
         that lacked its turnId), and it is the only channel the glossary rides.
         """
         leg = self._select_leg(source)
-        leg.thread_id = await asyncio.wait_for(self._new_thread(), CODEX_CONTROL_TIMEOUT_S)
+        await asyncio.wait_for(self._new_thread(), CODEX_CONTROL_TIMEOUT_S)
         warmup = "こんにちは。" if leg.source == "ja" else "Hello."
         await asyncio.wait_for(self._turn(warmup), TRANSLATE_TIMEOUT_S)
 
@@ -1688,7 +1688,7 @@ class CodexTranslator:
             logger.error("codex cannot be started; translation stays off for the session")
         return False
 
-    def _instructions(self, leg: "_Leg | None" = None) -> str:
+    def _instructions(self, leg: "_Leg | None" = None, *, brief: str | None = None) -> str:
         """A leg's immutable role plus its direction-rendered session glossary.
 
         The glossary rides developerInstructions rather than the turn text because
@@ -1697,13 +1697,14 @@ class CodexTranslator:
         hardened against. Thread scope is why a changed glossary rotates the thread.
         """
         leg = leg or self._active_leg
-        brief = self.context.translator_brief(leg.source) if self.context else ""
-        leg.brief = brief
+        if brief is None:
+            brief = self.context.translator_brief(leg.source) if self.context else ""
         return f"{leg.instructions}\n\n{brief}" if brief else leg.instructions
 
     async def _new_thread(self, leg: "_Leg | None" = None) -> str:
         """Open one independently addressable thread in the shared app-server."""
         leg = leg or self._active_leg
+        brief = self.context.translator_brief(leg.source) if self.context else ""
         resp = await self._request(
             "thread/start",
             {
@@ -1713,7 +1714,7 @@ class CodexTranslator:
                 "approvalPolicy": "never",
                 "ephemeral": True,
                 "personality": "none",
-                "developerInstructions": self._instructions(leg),
+                "developerInstructions": self._instructions(leg, brief=brief),
                 "serviceTier": TRANSLATE_SERVICE_TIER,
             },
         )
@@ -1726,7 +1727,11 @@ class CodexTranslator:
                 TRANSLATE_SERVICE_TIER,
                 tier,
             )
-        return resp["thread"]["id"] if "thread" in resp else resp["threadId"]
+        thread_id = resp["thread"]["id"] if "thread" in resp else resp["threadId"]
+        # A failed rotation leaves the old thread AND its brief intact, so the
+        # next caption retries. Snapshot what was sent, not context learned while awaiting it.
+        leg.thread_id, leg.brief = thread_id, brief
+        return thread_id
 
     async def _read_loop(self):
         assert self._proc and self._proc.stdout
@@ -1894,7 +1899,7 @@ class CodexTranslator:
             brief = self.context.translator_brief(leg.source) if self.context else ""
             stale = brief != leg.brief
             if stale or (leg.turns and leg.turns % TRANSLATE_ROTATE_TURNS == 0):
-                leg.thread_id = await asyncio.wait_for(self._new_thread(), CODEX_CONTROL_TIMEOUT_S)
+                await asyncio.wait_for(self._new_thread(), CODEX_CONTROL_TIMEOUT_S)
             leg.turns += 1
             translated = await asyncio.wait_for(self._turn(text), TRANSLATE_TIMEOUT_S)
             self._failures = 0

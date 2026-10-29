@@ -263,6 +263,66 @@ def test_replacing_an_unreadable_server_reaps_it_before_spawning(
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("source", ["ja", "en"])
+@pytest.mark.parametrize("failure", ["rpc", "timeout", "missing-id"])
+def test_failed_glossary_rotation_retries_the_unapplied_brief(
+    monkeypatch: pytest.MonkeyPatch, source: str, failure: str
+) -> None:
+    async def scenario() -> None:
+        context = live_stt.SessionContext("ゴン")
+        translator, factory = await _start(monkeypatch, context=context, sources=("ja", "en"))
+        assert await translator._translate("open-reverse", "en")
+        server = factory.servers[0]
+        leg = translator._legs[source]
+        old_thread, old_brief = leg.thread_id, leg.brief
+        other = translator._legs["en" if source == "ja" else "ja"]
+        other_thread = other.thread_id
+        for _ in range(live_stt.CONTEXT_EN_SUPPORT):
+            context.observe_en("ゴンです。", "We met Gon.")
+        current_brief = context.translator_brief(source)
+        assert current_brief != old_brief
+        receive = server.receive
+        fail_next = True
+
+        def fail_one_rotation(message: dict[str, Any]) -> None:
+            nonlocal fail_next
+            if message.get("method") == "thread/start" and fail_next:
+                fail_next = False
+                if failure == "rpc":
+                    server._feed({"id": message["id"], "error": {"message": "temporary"}})
+                elif failure == "missing-id":
+                    server._result(message["id"], {"thread": {}})
+            else:
+                receive(message)
+
+        async def no_wait() -> None:
+            return
+
+        monkeypatch.setattr(server, "receive", fail_one_rotation)
+        monkeypatch.setattr(translator, "_abort_turn", no_wait)
+        control_timeout = live_stt.CODEX_CONTROL_TIMEOUT_S
+        if failure == "timeout":
+            monkeypatch.setattr(live_stt, "CODEX_CONTROL_TIMEOUT_S", 0.01)
+        try:
+            assert await translator._translate("failed-rotation", source) == ""
+            monkeypatch.setattr(live_stt, "CODEX_CONTROL_TIMEOUT_S", control_timeout)
+            assert leg.thread_id == old_thread
+            assert leg.brief == old_brief, "failed rotation acknowledged an unapplied glossary"
+            assert await translator._translate("retry-rotation", source)
+            used = _thread_for_text(factory, "retry-rotation")
+            assert used != old_thread and leg.thread_id == used
+            assert factory.thread_requests[used]["developerInstructions"] == (
+                f"{leg.instructions}\n\n{current_brief}"
+            )
+            assert leg.brief == current_brief
+            assert other.thread_id == other_thread
+            assert translator.enabled and translator._failures == 0
+        finally:
+            await translator.close()
+
+    asyncio.run(scenario())
+
+
 def test_two_way_opens_one_leg_per_direction(monkeypatch: pytest.MonkeyPatch) -> None:
     async def scenario() -> None:
         translator, factory = await _start(monkeypatch, sources=("ja", "en"))

@@ -551,7 +551,7 @@ def test_glossary_rides_developer_instructions_not_the_turn_text():
     instructions = t._instructions()
     assert instructions.startswith(live_stt.TRANSLATOR_INSTRUCTIONS)
     assert "プレドニン" in instructions and "神経内科" in instructions
-    assert t._legs["ja"].brief == ctx.translator_brief()
+    assert t._legs["ja"].brief == ""  # rendering is not a successful thread/start
 
 
 def test_instructions_are_unchanged_without_context():
@@ -571,6 +571,7 @@ def test_new_terms_rotate_the_thread_so_the_glossary_reaches_the_model():
 
         async def fake_new_thread():
             rotations.append(t._instructions())
+            t._legs["ja"].thread_id, t._legs["ja"].brief = "th-2", ctx.translator_brief()
             return "th-2"
 
         async def fake_turn(ja):
