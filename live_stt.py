@@ -1135,9 +1135,10 @@ def emit_line(tag, seq, text, output_file, *, held=False):
     # text: 4 multi-paragraph translations in one 2 h session put 1808 characters
     # onto untimestamped continuation lines that session_report.py drops whole.
     # splitlines(), never str.split(), which folds the full-width U+3000 space real
-    # Japanese captions carry; single-line text passes through untouched.
+    # Japanese captions carry; break-free text passes through untouched. A lone trailing
+    # break also splits to one part, and U+2028/U+2029 are no control the sink strips.
     parts = text.splitlines()
-    body = text if len(parts) <= 1 else " ".join(p for p in (s.strip() for s in parts) if p)
+    body = text if parts == [text] else " ".join(p for p in (s.strip() for s in parts) if p)
     line = f"{tag} {seq}{marker}: {_CONTROL_CHARS.sub('', body)}"
     if output_file:
         ts = datetime.now().astimezone().isoformat(timespec="seconds")

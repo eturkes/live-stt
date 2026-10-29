@@ -140,6 +140,27 @@ def test_one_event_stays_one_line_when_the_text_carries_paragraph_breaks(
     assert screen == ["TGT 9: First half. Second half."]
 
 
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029"])
+def test_a_lone_trailing_unicode_separator_still_collapses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    separator: str,
+) -> None:
+    """`splitlines()` yields ONE part for text ending in its only break, and these two
+    are no C0/C1 control the sink strips, so the line ended a second, empty line."""
+    path = tmp_path / "session.txt"
+    monkeypatch.setattr(app, "_STDOUT_TTY", False)
+    transcript = app.TranscriptFile(path)
+    app.emit_line("SRC", 1, "前" + separator, transcript)
+    transcript.close()
+
+    saved = path.read_text(encoding="utf-8").splitlines()
+    screen = capsys.readouterr().out.splitlines()
+    assert [line.split("] ", 1)[1] for line in saved] == ["SRC 1: 前"]
+    assert screen == ["  SRC 1: 前"]
+
+
 def test_an_ordinary_caption_reaches_the_transcript_byte_for_byte(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
