@@ -255,8 +255,11 @@ def test_failed_control_requests_release_their_pending_slots(monkeypatch, failur
         try:
             for _ in range(3):
                 if failure == "timeout":
+                    rid = t._next_id + 1
+                    request = asyncio.create_task(t._new_thread())
+                    await _await_pending(t, rid)
                     with pytest.raises(TimeoutError):
-                        await asyncio.wait_for(t._new_thread(), 0.01)
+                        await asyncio.wait_for(request, 0)
                 else:
                     with monkeypatch.context() as patch:
                         patch.setattr(proc.stdin, "write", broken_write)

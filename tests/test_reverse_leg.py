@@ -283,6 +283,7 @@ def test_failed_glossary_rotation_retries_the_unapplied_brief(
         assert current_brief != old_brief
         receive = server.receive
         fail_next = True
+        unanswered = asyncio.Event()
 
         def fail_one_rotation(message: dict[str, Any]) -> None:
             nonlocal fail_next
@@ -292,20 +293,28 @@ def test_failed_glossary_rotation_retries_the_unapplied_brief(
                     server._feed({"id": message["id"], "error": {"message": "temporary"}})
                 elif failure == "missing-id":
                     server._result(message["id"], {"thread": {}})
+                else:
+                    unanswered.set()
             else:
                 receive(message)
 
         async def no_wait() -> None:
             return
 
+        new_thread = translator._new_thread
+
+        async def time_out_rotation(leg=None) -> str:
+            request = asyncio.create_task(new_thread(leg))
+            await unanswered.wait()
+            return await asyncio.wait_for(request, 0)
+
         monkeypatch.setattr(server, "receive", fail_one_rotation)
         monkeypatch.setattr(translator, "_abort_turn", no_wait)
-        control_timeout = live_stt.CODEX_CONTROL_TIMEOUT_S
         if failure == "timeout":
-            monkeypatch.setattr(live_stt, "CODEX_CONTROL_TIMEOUT_S", 0.01)
+            monkeypatch.setattr(translator, "_new_thread", time_out_rotation)
         try:
             assert await translator._translate("failed-rotation", source) == ""
-            monkeypatch.setattr(live_stt, "CODEX_CONTROL_TIMEOUT_S", control_timeout)
+            monkeypatch.setattr(translator, "_new_thread", new_thread)
             assert leg.thread_id == old_thread
             assert leg.brief == old_brief, "failed rotation acknowledged an unapplied glossary"
             assert await translator._translate("retry-rotation", source)

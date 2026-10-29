@@ -135,7 +135,10 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   before the fix: ≥12 of 1321 `TGT` lines in the 10-02 session carried another caption's
   translation, all inside DNS-failure / websocket-idle-timeout windows (`~/.codex/logs_2.sqlite`
   on the host). Locks: `tests/test_turn_correlation.py` (tester-1, plus reviewer-1's EOF and
-  reviewer-2's rotation cases).
+  reviewer-2's rotation cases). Timeout scripts expire only AFTER the named reply is collected, or
+  after an intentionally unanswered request is issued; real `wait_for(..., 0)` cancellation raises
+  `TimeoutError` at that event. A 10 ms timer races scheduler load and can erase the very turn id
+  the test checks. Lock: `test_the_turn_timeout_waits_for_its_named_reply` delays the fake reply.
 - **L-033 — validate liveness at the COMMIT point, not only at spawn.** `start()` re-checks
   `_reader_task.done()` / `returncode` immediately before `enabled=True`, so a warm-up health check
   that completes just before the child dies cannot strand later turns over a dead reader.

@@ -146,14 +146,70 @@ async def _result(task: asyncio.Task) -> str | Exception:
 
 
 def _fast_failures(monkeypatch: pytest.MonkeyPatch):
-    sleep = asyncio.sleep
+    sleep, wait_for = asyncio.sleep, asyncio.wait_for
+    deadlines: list[asyncio.Future] = []
 
     async def no_delay(delay, result=None):
         await sleep(0)
         return result
 
+    async def controlled_wait_for(awaitable, timeout=None):
+        if timeout != live_stt.TRANSLATE_TIMEOUT_S:
+            return await wait_for(awaitable, timeout)
+        task = asyncio.ensure_future(awaitable)
+        expired = asyncio.get_running_loop().create_future()
+        deadlines.append(expired)
+        try:
+            await asyncio.wait((task, expired), return_when=asyncio.FIRST_COMPLETED)
+            # Use real wait_for cancellation/TimeoutError, after the scripted event.
+            return await wait_for(task, 0 if expired.done() else None)
+        finally:
+            deadlines.remove(expired)
+            expired.cancel()
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+    async def expire(t, thread=None, turn=None):
+        if thread is not None:
+            for _ in range(1000):
+                await sleep(0)
+                if any(leg.unfinished == (thread, turn) for leg in t._legs.values()):
+                    break
+            else:
+                raise AssertionError("turn/start reply was not collected")
+        assert len(deadlines) == 1
+        deadlines[0].set_result(None)
+
     monkeypatch.setattr(live_stt.asyncio, "sleep", no_delay)
-    monkeypatch.setattr(live_stt, "TRANSLATE_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(live_stt.asyncio, "wait_for", controlled_wait_for)
+    return expire
+
+
+@pytest.mark.parametrize("source", ["ja", "en"])
+def test_the_turn_timeout_waits_for_its_named_reply(source, monkeypatch: pytest.MonkeyPatch):
+    sleep = asyncio.sleep
+    expire = _fast_failures(monkeypatch)
+
+    async def scenario():
+        t, proc, reader_task = _open()
+        task = asyncio.create_task(t._translate("応答の止まった発話。", source))
+        try:
+            await _await_pending(t, 1)
+            await sleep(0.05)  # a delayed fake reply must not lose ownership to a 10 ms timer
+            assert not task.done(), "turn deadline fired before the fake reply was delivered"
+            _, thread = await _answer_turn(t, proc, "delayed-turn")
+            await expire(t, thread, "delayed-turn")
+            assert await _result(task) == ""
+            requests = [json.loads(w) for w in proc.stdin.writes]
+            interrupts = [r["params"] for r in requests if r.get("method") == "turn/interrupt"]
+            assert interrupts == [{"threadId": thread, "turnId": "delayed-turn"}]
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await _stop_reader(reader_task)
+
+    asyncio.run(scenario())
 
 
 def _ids() -> list[tuple[str, str, str, str]]:
@@ -259,9 +315,12 @@ def test_a_named_turn_wakes_on_the_anonymous_eof_sentinel(source):
     asyncio.run(scenario())
 
 
-async def _timeout(t: live_stt.CodexTranslator, proc: _FakeProc, source: str) -> tuple[int, str]:
+async def _timeout(
+    t: live_stt.CodexTranslator, proc: _FakeProc, source: str, expire
+) -> tuple[int, str]:
     task = asyncio.create_task(t._translate("応答の止まった発話。", source))
     rid, thread = await _answer_turn(t, proc, "stalled-turn")
+    await expire(t, thread, "stalled-turn")
     assert await _result(task) == ""
     assert t._failures == 1
     return rid, thread
@@ -272,13 +331,13 @@ async def _timeout(t: live_stt.CodexTranslator, proc: _FakeProc, source: str) ->
 def test_a_timed_out_turn_never_publishes_under_the_next_caption(
     source, arrival, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    _fast_failures(monkeypatch)
+    expire = _fast_failures(monkeypatch)
 
     async def scenario():
         transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
         t, proc, reader_task = _open(transcript)
         try:
-            rid, stale_thread = await _timeout(t, proc, source)
+            rid, stale_thread = await _timeout(t, proc, source, expire)
 
             def late_completion():
                 proc.stdout.feed_data(
@@ -321,12 +380,12 @@ def test_a_timed_out_turn_never_publishes_under_the_next_caption(
 
 @pytest.mark.parametrize("source", ["ja", "en"])
 def test_a_steered_start_fails_the_caption(source, monkeypatch: pytest.MonkeyPatch):
-    _fast_failures(monkeypatch)
+    expire = _fast_failures(monkeypatch)
 
     async def scenario():
         t, proc, reader_task = _open()
         try:
-            rid, thread = await _timeout(t, proc, source)
+            rid, thread = await _timeout(t, proc, source, expire)
             task = asyncio.create_task(t._translate("次の発話です。", source))
             _, _ = await _answer_turn(t, proc, "stalled-turn", rid)
             proc.stdout.feed_data(_note("item/completed", thread, "stalled-turn", "stale"))
@@ -344,7 +403,7 @@ def test_a_steered_start_fails_the_caption(source, monkeypatch: pytest.MonkeyPat
 @pytest.mark.parametrize("source", ["ja", "en"])
 @pytest.mark.parametrize("failure", ["timeout", "error"])
 def test_abort_interrupts_the_unfinished_turn(source, failure, monkeypatch: pytest.MonkeyPatch):
-    _fast_failures(monkeypatch)
+    expire = _fast_failures(monkeypatch)
 
     async def scenario():
         t, proc, reader_task = _open()
@@ -353,6 +412,8 @@ def test_abort_interrupts_the_unfinished_turn(source, failure, monkeypatch: pyte
             _, thread = await _answer_turn(t, proc, "unfinished-turn")
             if failure == "error":
                 proc.stdout.feed_data(_note("error", thread, "unfinished-turn", "failed"))
+            else:
+                await expire(t, thread, "unfinished-turn")
             assert await _result(task) == ""
             requests = [json.loads(w) for w in proc.stdin.writes]
             interrupts = [r["params"] for r in requests if r.get("method") == "turn/interrupt"]
@@ -406,13 +467,14 @@ def test_a_turn_completed_before_the_server_exits_still_publishes(source):
 def test_an_interrupt_names_the_turn_on_its_own_thread(source, monkeypatch: pytest.MonkeyPatch):
     # reviewer-2: a turn that timed out on one thread stays named against that thread when
     # the next caption rotates the leg and its turn/start never answers.
-    _fast_failures(monkeypatch)
+    expire = _fast_failures(monkeypatch)
 
     async def scenario():
         t, proc, reader_task = _open()
         try:
             first = asyncio.create_task(t._translate("応答の止まった発話。", source))
             rid, old_thread = await _answer_turn(t, proc, "old-turn")
+            await expire(t, old_thread, "old-turn")
             assert await _result(first) == ""
             t._legs[source].turns = live_stt.TRANSLATE_ROTATE_TURNS
             second = asyncio.create_task(t._translate("次の発話です。", source))
@@ -420,7 +482,9 @@ def test_an_interrupt_names_the_turn_on_its_own_thread(source, monkeypatch: pyte
                 "thread": {"id": "fresh-thread"},
                 "serviceTier": live_stt.TRANSLATE_SERVICE_TIER,
             }
-            await _answer(t, proc, fresh, rid)
+            thread_request = await _answer(t, proc, fresh, rid)
+            await _await_pending(t, thread_request + 1)  # turn/start deliberately unanswered
+            await expire(t)
             assert await _result(second) == ""
             requests = [json.loads(w) for w in proc.stdin.writes]
             interrupts = [r["params"] for r in requests if r.get("method") == "turn/interrupt"]
