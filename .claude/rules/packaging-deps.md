@@ -4,6 +4,7 @@ paths:
   - ".githooks/pre-commit"
   - "uv.lock"
   - "models/README.md"
+  - "tests/test_packaging.py"
 ---
 
 # Packaging + dependency maintenance
@@ -17,6 +18,13 @@ stale `.venv-npu` tree, making the member list depend on local state.
 `openvino` is a hard dependency, not an extra — plain `uv sync` installs it. `sherpa-onnx` and
 `sherpa-onnx-core` (which carries libonnxruntime) are both pinned deliberately; keep both, since uv once
 skipped the declared sub-dependency. Read `uv.lock` for dependency work alone, through bounded queries.
+
+`tests/test_packaging.py` follows the entry points' AST import closure (function-local backend imports
+included), checks wheel + sdist inclusion and hard runtime declarations, and ships rejected twins:
+missing `streaming.py`, unanchored sdist include, missing `openvino`. Each plant reddens the tracked
+configuration lock; restore → green. Coverage = build configuration, not emitted archives: an
+isolated `uv build --offline` cannot resolve uncached hatchling. No backend import, build download
+or editable-install result stands in for package membership.
 
 **D-007 — pre-commit via `.githooks/` + `core.hooksPath`, not the `pre-commit` framework.** The hook
 is one line (`uv run pytest -q -n 6`, the gate's `PYTEST_WORKERS`, which `test_gate.py` holds
