@@ -139,7 +139,7 @@ class _ScriptedServer:
                     "item/completed",
                     {"item": {"type": "agentMessage", "text": f"translated:{text}"}},
                 )
-                self._note("turn/completed", {})
+                self._note("turn/completed", {"turn": {"status": "completed"}})
         else:
             self._result(rid, {})
 

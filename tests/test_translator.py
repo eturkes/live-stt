@@ -63,6 +63,10 @@ def _rpc_result(rid: int, result: dict) -> bytes:
     return (json.dumps({"id": rid, "result": result}) + "\n").encode()
 
 
+# turn/completed carries the turn and its required status.
+_COMPLETED = {"turn": {"status": "completed"}}
+
+
 def _rpc_note(method: str, params: dict) -> bytes:
     """A JSON-RPC notification line (no id) -> lands in _notes."""
     return (json.dumps({"method": method, "params": params}) + "\n").encode()
@@ -481,7 +485,7 @@ def test_start_refuses_dead_server_after_warmup(monkeypatch):
             # loop drains, so EOF is processed before start() reaches the guard.
             reader.feed_data(_rpc_result(3, {}))
             reader.feed_data(_rpc_note("item/agentMessage/delta", {"delta": "hi"}))
-            reader.feed_data(_rpc_note("turn/completed", {}))
+            reader.feed_data(_rpc_note("turn/completed", _COMPLETED))
             reader.feed_eof()
 
         feeder_task = asyncio.create_task(feeder())
@@ -820,7 +824,7 @@ async def _serve_start(t: live_stt.CodexTranslator, proc: _FakeProc, warmup: boo
     tier = live_stt.TRANSLATE_SERVICE_TIER
     rid = await _answer(t, reader, {"thread": {"id": f"th-{rid}"}, "serviceTier": tier}, rid)
     rid = await _answer(t, reader, {}, rid)  # warm-up turn/start
-    reader.feed_data(_rpc_note("turn/completed" if warmup else "error", {}))
+    reader.feed_data(_rpc_note("turn/completed" if warmup else "error", _COMPLETED))
     return rid
 
 
@@ -860,7 +864,7 @@ def test_an_exited_app_server_is_respawned_and_the_leg_re_enables(tmp_path, monk
         rid = await _answer(t, second.stdout, {}, rid)  # the caption's own turn
         item = {"item": {"type": "agentMessage", "text": "Hello."}}
         second.stdout.feed_data(_rpc_note("item/completed", item))
-        second.stdout.feed_data(_rpc_note("turn/completed", {}))
+        second.stdout.feed_data(_rpc_note("turn/completed", _COMPLETED))
 
         t.submit_sentinel()
         await asyncio.wait_for(run_task, timeout=3.0)
@@ -1109,7 +1113,7 @@ async def _serve_probe(t: live_stt.CodexTranslator, proc: _FakeProc, healthy: bo
     thread = {"thread": {"id": "th-probe"}, "serviceTier": tier}
     rid = await _answer(t, proc.stdout, thread, 0)  # nothing else is pending
     rid = await _answer(t, proc.stdout, {}, rid)  # the probe turn/start
-    proc.stdout.feed_data(_rpc_note("turn/completed" if healthy else "error", {}))
+    proc.stdout.feed_data(_rpc_note("turn/completed" if healthy else "error", _COMPLETED))
     return rid
 
 
@@ -1134,7 +1138,7 @@ def test_a_three_strike_disable_is_probed_on_the_surviving_server(tmp_path, monk
         rid = await _answer(t, proc.stdout, {}, rid)  # the caption's own turn
         item = {"item": {"type": "agentMessage", "text": "Hello."}}
         proc.stdout.feed_data(_rpc_note("item/completed", item))
-        proc.stdout.feed_data(_rpc_note("turn/completed", {}))
+        proc.stdout.feed_data(_rpc_note("turn/completed", _COMPLETED))
 
         t.submit_sentinel()
         await asyncio.wait_for(run_task, timeout=3.0)
@@ -1381,7 +1385,7 @@ def test_a_server_that_dies_between_the_probe_turn_and_the_enable_stays_off(monk
         # One synchronous burst, so _read_loop has certainly processed the EOF
         # before _probe reads liveness: readline() returns a buffered line
         # without yielding (L-022's deterministic async-EOF technique).
-        proc.stdout.feed_data(_rpc_note("turn/completed", {}))
+        proc.stdout.feed_data(_rpc_note("turn/completed", _COMPLETED))
         proc.stdout.feed_eof()
 
         assert await asyncio.wait_for(probe, timeout=3.0) is False

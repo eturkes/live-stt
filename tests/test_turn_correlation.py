@@ -478,3 +478,41 @@ def test_a_turn_that_starts_a_tool_publishes_nothing(event, kind, monkeypatch: p
             assert t._failures == 1
 
     asyncio.run(scenario())
+
+
+# codex reports a failed or interrupted turn on turn/completed itself (`turn.status`, which
+# the protocol requires), so the deltas before it are a partial reply and never a TGT line.
+# `completed` is the positive control.
+@pytest.mark.parametrize("status", ["failed", "interrupted", "completed"])
+def test_only_a_completed_turn_publishes(status, monkeypatch: pytest.MonkeyPatch):
+    sleep = asyncio.sleep
+
+    async def no_delay(delay, result=None):
+        await sleep(0)
+        return result
+
+    monkeypatch.setattr(live_stt.asyncio, "sleep", no_delay)
+    emitted = []
+    monkeypatch.setattr(live_stt, "emit_line", lambda *args, **_: emitted.append(args[:3]))
+
+    async def scenario():
+        t, proc, reader_task = _open()
+        t.queue.put_nowait((1, "自分の発話。", "ja", time.monotonic()))
+        t.queue.put_nowait(None)
+        run = asyncio.create_task(t.run())
+        try:
+            _, thread = await _answer_turn(t, proc, "own-turn")
+            proc.stdout.feed_data(_note("item/agentMessage/delta", thread, "own-turn", "partial"))
+            turn: dict[str, Any] = {"id": "own-turn", "status": status, "items": []}
+            if status == "failed":
+                turn["error"] = {"message": "generation failed"}
+            proc.stdout.feed_data(_rpc_note("turn/completed", {"threadId": thread, "turn": turn}))
+            await asyncio.wait_for(run, timeout=2)
+        finally:
+            await _stop_reader(reader_task)
+        if status == "completed":
+            assert (emitted, t._failures) == ([("TGT", 1, "partial")], 0)
+        else:
+            assert (emitted, t._failures) == ([], 1)
+
+    asyncio.run(scenario())

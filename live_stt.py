@@ -1951,6 +1951,12 @@ class CodexTranslator:
                     final = item.get("text")
             elif method == "turn/completed":
                 leg.unfinished = None
+                # A failed or interrupted turn ends here too, its deltas a partial reply;
+                # the protocol requires `status`, so anything but completed fails closed.
+                turn = params.get("turn") or {}
+                if turn.get("status") != "completed":
+                    error = json.dumps(turn.get("error"))[:300]
+                    raise RuntimeError(f"translation turn {turn.get('status')}: {error}")
                 return (final or "".join(parts)).strip()
             elif method == "error" and not params.get("willRetry"):
                 raise RuntimeError(json.dumps(params.get("error", {}))[:300])
