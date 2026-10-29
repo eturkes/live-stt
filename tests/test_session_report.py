@@ -941,3 +941,35 @@ def test_known_declines_never_spend_inferred_strikes(tmp_path, skip_kind):
     session = report([write(tmp_path, "run", lines)], log, tmp_path)["sessions"][0]
     assert session["degrade"] is None
     assert sr.STRIKE not in reasons(session).values()
+
+
+def test_log_marker_uses_the_written_path_not_just_the_basename(tmp_path):
+    first_path = tmp_path / "morning" / "session.txt"
+    second_path = tmp_path / "afternoon" / "session.txt"
+    for path in (first_path, second_path):
+        path.parent.mkdir()
+    first_path.write_text("[2026-09-04T10:00:20+09:00] SRC 1: 午前の字幕\n", encoding="utf-8")
+    second_path.write_text("[2026-09-04T11:00:20+09:00] SRC 1: 午後の字幕\n", encoding="utf-8")
+    first, second = sr.read_session(str(first_path)), sr.read_session(str(second_path))
+    first_marker = sr.LogEvent(datetime(2026, 9, 4, 10), "INFO", f"session: {first_path}")
+    first_peak = sr.LogEvent(datetime(2026, 9, 4, 10, 0, 10), "INFO", "backlog peak: drop=5")
+    second_marker = sr.LogEvent(datetime(2026, 9, 4, 11), "INFO", f"session: {second_path}")
+
+    sr.attach_logs([first, second], [first_marker, first_peak, second_marker])
+
+    assert first_peak in first.events, (first.events, second.events)
+    assert first_peak not in second.events, (first.events, second.events)
+
+
+def test_an_ambiguous_marker_basename_leaves_its_window_unclaimed(tmp_path):
+    sessions = []
+    for hour, folder in ((10, "morning"), (11, "afternoon")):
+        root = tmp_path / folder
+        root.mkdir()
+        sessions.append(
+            sr.read_session(write(root, "session", [event(f"{hour}:00:20", "SRC", 1, CLEAN)]))
+        )
+    marker = sr.LogEvent(datetime(2026, 9, 4, 10), "INFO", "session: /moved/session.txt")
+    peak = sr.LogEvent(datetime(2026, 9, 4, 10, 0, 10), "INFO", "backlog peak: drop=5")
+    assert sr.attach_logs(sessions, [marker, peak]) == [marker, peak]
+    assert all(not s.events for s in sessions)

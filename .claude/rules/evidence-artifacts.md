@@ -250,7 +250,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `codex app-server exited` fires after the final caption by construction; **the run stamps that
   start itself** — `live_stt.log_session_marker` logs `session: <path>` under L-006's pair gate, so
   a marked log opens the window at the real process start instead of at the first caption, which is
-  what `-o PATH` sessions lost (a free name carries no time), and a marker naming a transcript the
+  what `-o PATH` sessions lost (a free name carries no time). Marker paths resolve against input
+  paths first; a moved/layer-shifted path uses its basename only when unique. Ambiguous markers
+  stay unclaimed. A marker naming a transcript the
   report was not given owns a window with NO session, keeping `--no-save` events off the run before
   it; and **once the leg is
   down, `disabled` outranks the text screen**, since a screen verdict behind a degrade is a

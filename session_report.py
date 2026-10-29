@@ -30,6 +30,7 @@ import statistics
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 import live_stt as app
 
@@ -171,11 +172,20 @@ def attach_logs(sessions: list[Session], events: list[LogEvent]) -> list[LogEven
     a window owned by NO session, so its events stay unclaimed instead of landing
     on the run before it.
     """
-    by_name = {s.name: s for s in sessions}
+    by_path = {Path(s.path).resolve(): s for s in sessions}
+    by_name: dict[str, list[Session]] = {}
+    for s in sessions:
+        by_name.setdefault(s.name, []).append(s)
     marked: list[tuple[datetime, Session | None]] = []
     for e in events:
         if m := _SESSION.match(e.body):
-            owner = by_name.get(m.group(1).rsplit("/", 1)[-1])
+            path = Path(m.group(1))
+            owner = by_path.get(path.resolve())
+            if owner is None:
+                # Moved files and host/container paths still match historically,
+                # but a basename shared by two inputs identifies neither one.
+                matches = by_name.get(path.name, [])
+                owner = matches[0] if len(matches) == 1 else None
             if owner:
                 owner.marker_start = e.at
             marked.append((e.at, owner))
