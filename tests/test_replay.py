@@ -70,6 +70,17 @@ def test_load_wav_passthrough_16k(tmp_path):
     assert a.dtype == np.float32 and len(a) == 16000
 
 
+def test_load_wav_refuses_a_payload_shorter_than_its_header(tmp_path):
+    # A truncated WAV still declares its full frame count, and `readframes` returns what is
+    # there: replayed, it ended early as an ordinary EOF and scored as a complete clip.
+    p = tmp_path / "t.wav"
+    _write_wav(p, np.zeros(16000), 16000)
+    with open(p, "r+b") as f:
+        f.truncate(p.stat().st_size - 3200)
+    with pytest.raises(ValueError, match="truncated"):
+        replay.load_wav_f32_16k(p)
+
+
 def test_load_wav_downmixes_stereo(tmp_path):
     p = tmp_path / "s.wav"
     inter = np.empty(2000)

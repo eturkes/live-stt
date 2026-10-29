@@ -70,7 +70,7 @@ def _recognizer(engine: str, device: str = ASR_DEVICE):
 
 
 def load_wav_f32_16k(path: Path) -> np.ndarray:
-    """Load any PCM WAV as float32 mono at SAMPLE_RATE, via the live resampler.
+    """Load a 16- or 32-bit PCM WAV as float32 mono at SAMPLE_RATE, via the live resampler.
 
     Mirrors the mic path's representation (float32 mono @ 16 kHz) so replayed
     audio enters `worker` exactly as live audio does. Channels are averaged to
@@ -80,7 +80,11 @@ def load_wav_f32_16k(path: Path) -> np.ndarray:
         nchan = w.getnchannels()
         sr = w.getframerate()
         sw = w.getsampwidth()
-        raw = w.readframes(w.getnframes())
+        frames = w.getnframes()
+        raw = w.readframes(frames)
+    # readframes returns what the file holds: a truncated WAV ended early as an ordinary EOF.
+    if len(raw) != frames * nchan * sw:
+        raise ValueError(f"truncated WAV: header declares {frames} frames, payload holds fewer")
     if sw == 2:
         data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
     elif sw == 4:
