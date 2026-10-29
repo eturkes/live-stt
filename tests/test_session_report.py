@@ -1089,3 +1089,29 @@ def test_disable_log_names_current_state_and_both_log_grammars_remain_readable(t
         assert degrade is not None
         assert degrade["reason"] == "codex app-server exited"
         assert {r["why"] for r in sr.explain_missing(session)} == {sr.DISABLED}
+
+
+def test_a_silent_run_in_an_appended_path_does_not_claim_the_next_speaking_run(tmp_path):
+    path = write(
+        tmp_path,
+        "custom",
+        [
+            event("10:00:10", "SRC", 1, CLEAN),
+            event("12:00:10", "SRC", 1, CLEAN),
+        ],
+    )
+    sessions = sr.read_sessions(path)
+    events = read_log(
+        tmp_path,
+        [
+            log_event("10:00:00", f"session: {path}"),
+            log_event("11:00:00", f"session: {path}"),
+            log_event("11:00:05", "backlog peak: drop=7"),
+            log_event("12:00:00", f"session: {path}"),
+            log_event("12:00:05", "backlog peak: drop=3"),
+        ],
+    )
+    unclaimed = sr.attach_logs(sessions, events)
+    assert sessions[1].marker_start == datetime(2026, 9, 4, 12)
+    assert unclaimed == events[1:3]
+    assert [d["drop"] for d in sr.attribute_drops(sessions[1])] == [3]

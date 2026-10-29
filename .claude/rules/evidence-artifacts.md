@@ -232,8 +232,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   Missing-caption inference is bounded by each outage's own last
   TGT and next restore; known skips/declines spend no inferred strikes. `read_sessions` splits
   appended runs at each source-number restart (`name#1`, `name#2`, …), while `read_session`
-  requires one run. Log markers map successive uses of one path to separate runs and move startup
-  notes past their true start; without a marker, a note before the numbering restart stays with
+  requires one run. Each marker's window ends at the next marker, so a silent use of an appended
+  path stays unclaimed rather than borrowing a later speaking run. Markers move startup notes
+  past their true start; without a marker, a note before the numbering restart stays with
   the preceding run. Duplicate basenames from different paths use their input paths as report/sweep
   identities; caption numbers are run-local. `backlog peak:` high-water
   lines and **drop

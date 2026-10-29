@@ -210,27 +210,33 @@ def attach_logs(sessions: list[Session], events: list[LogEvent]) -> list[LogEven
         by_name.setdefault(path.name, set()).add(path)
     marked: list[tuple[datetime, Session | None]] = []
     claimed: set[int] = set()
-    for e in events:
-        if m := _SESSION.match(e.body):
-            path = Path(m.group(1)).resolve()
-            if path not in by_path:
-                # A layer-shifted path can still identify one file, not two
-                # unrelated same-basename inputs. Appended runs share one path.
-                matches = by_name.get(path.name, set())
-                path = next(iter(matches)) if len(matches) == 1 else path
-            candidates = by_path.get(path, [])
-            owner = next(
-                (
-                    s
-                    for s in candidates
-                    if id(s) not in claimed and (s.first_event is None or s.first_event >= e.at)
-                ),
-                None,
-            )
-            if owner:
-                owner.marker_start = e.at
-                claimed.add(id(owner))
-            marked.append((e.at, owner))
+    markers = sorted(
+        [(e, Path(m.group(1)).resolve()) for e in events if (m := _SESSION.match(e.body))],
+        key=lambda row: row[0].at,
+    )
+    for i, (e, path) in enumerate(markers):
+        if path not in by_path:
+            # A layer-shifted path can still identify one file, not two
+            # unrelated same-basename inputs. Appended runs share one path.
+            matches = by_name.get(path.name, set())
+            path = next(iter(matches)) if len(matches) == 1 else path
+        # A silent run still logs a marker. Its window ends at the next marker,
+        # so it cannot borrow the first caption of a later use of the same path.
+        end = markers[i + 1][0].at if i + 1 < len(markers) else None
+        candidates = [(s, s.first_event) for s in by_path.get(path, [])]
+        owner = next(
+            (
+                s
+                for s, first in candidates
+                if id(s) not in claimed
+                and (first is None or (e.at <= first and (end is None or first < end)))
+            ),
+            None,
+        )
+        if owner:
+            owner.marker_start = e.at
+            claimed.add(id(owner))
+        marked.append((e.at, owner))
     # A startup note can precede the new run's first SRC (the split point).
     # Log markers disambiguate it from a prior run's shutdown note.
     for runs in by_path.values():
