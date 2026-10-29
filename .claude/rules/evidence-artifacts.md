@@ -150,6 +150,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
 - `cer_baseline.json` + `eval_cer.py` — model-gated two-engine CER / stressor / RTF evaluator.
   `eval_retention.py` — the shipped path's one agent-rerunnable ACCURACY gate: hash-gates the probe WAV,
   replays it through the whisper/VAC path on an exact-named device, scores with `cer.py` (~4 min warm).
+  It holds the screen/silence harnesses' in-process `/tmp/live-stt-npu.lock` from before recognizer
+  construction through replay, paced or unpaced (`toolchain.md`). `test_eval_retention.py` fakes the
+  lock + constructor/replay, asserts ownership at construction + replay, then closure on success
+  and failure; neutralizing `flock` reddens every arm (L-022).
   `eval_translate_repeat.py` — the producer of `CAPTION_REPEAT_MAX_CHARS`, through the real
   `codex app-server`; probe inputs are literals, so reruns need no artifact. Its translator closes
   in `finally`, including thread-setup failures; `test_translate_repeat.py` reddens with that

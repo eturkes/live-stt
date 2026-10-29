@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import sys
 from pathlib import Path
@@ -55,6 +56,7 @@ from live_stt import ASR_DEVICE, check_device, check_models, load_recognizer  # 
 MANIFEST = TESTS / "retention_probe.json"
 WAV = ROOT / "spike" / "backends" / "cache" / "retention_probe.wav"
 ENGINE = "whisper"
+NPU_LOCK = Path("/tmp/live-stt-npu.lock")  # noqa: S108  (one accelerator holder per box)
 
 
 def _paced(rec, pace: float, stall: bool, catchup: bool) -> dict:
@@ -126,11 +128,13 @@ def score(
         if err:
             raise SystemExit(f"error: {err.splitlines()[0]}")
 
-    rec = load_recognizer(ENGINE, device)
-    if pace is None:
-        report = replay.replay_recognizer(WAV, rec, ENGINE)
-    else:
-        report = _paced(rec, pace, stall, catchup)
+    with NPU_LOCK.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        rec = load_recognizer(ENGINE, device)
+        if pace is None:
+            report = replay.replay_recognizer(WAV, rec, ENGINE)
+        else:
+            report = _paced(rec, pace, stall, catchup)
     # One utterance per committed VAC line; the probe is pause-free, so the
     # transcript is their concatenation in emission order.
     hyp = "".join(s["text"] for s in report["segments"])
