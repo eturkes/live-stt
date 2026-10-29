@@ -184,13 +184,19 @@ class StreamingProcessor:
         if segments:
             # Whisper chunks carry the whitespace `text` stripped (' Hello', ' '), which
             # put every count one character off the audio it named: a cut after ' ABC'
-            # retained D yet counted it trimmed (ABCDDEFG, reviewer-8).
-            first, last = segments[0], segments[-1]
-            segments = [
-                Segment(first.start_s, first.end_s, first.text.lstrip()),
-                *segments[1:],
-            ]
-            segments[-1] = Segment(last.start_s, last.end_s, segments[-1].text.rstrip())
+            # retained D yet counted it trimmed (ABCDDEFG, reviewer-8). The strip runs
+            # through every blank chunk at either end, or [' ', ' ABC', 'D'] re-opened it.
+            segments = list(segments)
+            for i in range(len(segments)):
+                s = segments[i]
+                segments[i] = Segment(s.start_s, s.end_s, s.text.lstrip())
+                if segments[i].text:
+                    break
+            for i in reversed(range(len(segments))):
+                s = segments[i]
+                segments[i] = Segment(s.start_s, s.end_s, s.text.rstrip())
+                if segments[i].text:
+                    break
         retold = self._retold(text)
         if retold:
             text, segments = text[retold:], _behead(segments, retold)

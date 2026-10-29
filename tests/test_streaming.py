@@ -597,3 +597,21 @@ def test_a_cut_after_a_whitespace_led_span_keeps_the_retained_head():
     p.insert_audio(np.zeros(9 * SAMPLE_RATE, dtype=np.float32))
     assert _commits(p, 2) + p.finish() == "ABCDEFG"
     assert p.trims == 1
+
+
+def test_the_outer_whitespace_strip_spans_every_blank_segment():
+    # [' ', ' ABC', 'D'] joins to 'ABCD' only after strip, yet stripping the first span
+    # alone left ' ABC' a character long: the cut after it re-committed D. A trailing
+    # blank span hid the loop's own release behind one whole-text count.
+    spans = [Segment(0.0, 1.0, " "), Segment(1.0, 3.0, " ABC"), Segment(3.0, 9.0, "D")]
+    p = _scripted([("ABCD", spans), ("D", [Segment(0.0, 6.0, "D")])])
+    p.insert_audio(np.zeros(9 * SAMPLE_RATE, dtype=np.float32))
+    assert _commits(p, 2) + p.finish() == "ABCD"
+    assert p.trims == 1 and p.offset_s == 3.0
+    clean, loop = "会議です。", "繰り返し" * 12
+    tail = [Segment(0.0, 0.4, clean), Segment(0.4, 0.9, loop + " "), Segment(0.9, 1.0, " ")]
+    q = _scripted([(clean + loop, tail)])
+    q.insert_audio(np.zeros(SAMPLE_RATE, dtype=np.float32))
+    q.process()
+    assert q.finish() == clean + loop
+    assert q.released == [len(clean), len(loop)]
