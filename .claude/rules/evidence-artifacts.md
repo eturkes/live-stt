@@ -226,7 +226,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   names: captions with no TGT and **why** (`stale` — transcript note or log, de-duplicated/
   `declined`/`strike`/`disabled`/`untranslated` — no TGT,
   marker or logged translation event in the whole session/`shutdown`/`failed`),
-  degrade + restore markers with timestamps, `backlog peak:` high-water lines and **drop
+  chronological disable/restore outages (marker/log twins count once; `degrades` names every
+  outage, `degrade` the first), with missing-caption inference bounded by each outage's own last
+  TGT and next restore; known skips/declines spend no inferred strikes. `backlog peak:` high-water
+  lines and **drop
   attribution** — one row per `backlog peak:` line whose `drop=` grew, carrying the captions that
   bracket it, the publication gap between them, the `skip=` step, and every `caption dropped (…)`
   line inside that gap with its defect, which is the only record a screened caption leaves — caption

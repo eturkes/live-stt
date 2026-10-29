@@ -66,7 +66,7 @@ TWO_WAY = False
 STALE = "stale"  # queue delay made a target misleading beside newer captions
 DECLINED = "declined"  # the caption's own text; the screen refused it
 STRIKE = "strike"  # a failure inside the run that disabled the leg
-DISABLED = "disabled"  # after a permanent degrade, so source-only by design
+DISABLED = "disabled"  # inside a disable/restore outage, so source-only by design
 SHUTDOWN = "shutdown"  # last caption of the session; the drain did not finish
 FAILED = "failed"  # isolated transient failure, leg survived
 # No TGT, no translation marker, no logged translation event: nothing records a leg at all
@@ -219,53 +219,86 @@ def repeat_span_at(text: str, bound: int) -> int:
         app.CAPTION_REPEAT_UNIT_CHARS = original
 
 
-def find_degrade(s: Session) -> dict | None:
-    """When the translation leg died for the rest of the session, and on which mechanism.
-
-    Three sources, strongest first. A `--` marker is the shipped record and names
-    its own reason. A log line is nearly as good. Absent both -- every session
-    saved before the marker existed -- the transcript still shows it: the target stops
-    and never resumes, with more captions behind it than the strike budget.
-    """
-
-    def framed(at: datetime, reason: str, source: str) -> dict:
-        # Only the strike path burns captions on the way down; an EOF kills the
-        # leg between turns, so nothing before it is a strike.
-        return {
-            "at": at,
-            "reason": reason,
-            "source": source,
-            "three_strike": "consecutive failures" in reason,
-        }
-
-    for at, note in s.notes:
-        if note.startswith("translation disabled: "):
-            return framed(at, note.split(": ", 1)[1], "marker")
+def _translation_events(s: Session, kind: str, pattern: re.Pattern) -> list[dict]:
+    """One lifecycle event per marker/log twin; marker evidence wins."""
+    prefix = f"translation {kind}: "
+    out = [
+        {"at": at, "reason": note[len(prefix) :], "source": "marker"}
+        for at, note in s.notes
+        if note.startswith(prefix)
+    ]
+    # Match twins one-for-one: two actual events in one timestamp bucket stay two.
+    unmatched = [(r["at"], r["reason"]) for r in out]
     for e in s.events:
-        if m := _DISABLED.match(e.body):
-            return framed(e.at, m.group(1), "log")
-    if not s.tgt:
-        return None
-    last_tgt = max(s.tgt)
-    trailing = sorted(n for n in s.src if n > last_tgt)
-    if len(trailing) < app.TRANSLATE_MAX_FAILURES:
-        return None  # too short to be the 3-strike path; read as shutdown loss
-    strike_at = s.src[trailing[app.TRANSLATE_MAX_FAILURES - 1]].at
-    return framed(strike_at, f"{app.TRANSLATE_MAX_FAILURES} consecutive failures", "inferred")
+        if m := pattern.match(e.body):
+            key = (e.at, m.group(1))
+            if key in unmatched:
+                unmatched.remove(key)
+            else:
+                out.append({"at": e.at, "reason": m.group(1), "source": "log"})
+    return sorted(out, key=lambda d: d["at"])
 
 
 def find_restores(s: Session) -> list[dict]:
-    out = [
-        {"at": at, "reason": n.split(": ", 1)[1], "source": "marker"}
-        for at, n in s.notes
-        if n.startswith("translation restored: ")
-    ]
-    out += [
-        {"at": e.at, "reason": m.group(1), "source": "log"}
+    return _translation_events(s, "restored", _RESTORED)
+
+
+def _skips(s: Session) -> dict[int, tuple[str, str]]:
+    out = {
+        int(m.group(1)): (STALE if _STALE.match(e.body) else DECLINED, m.group(2))
         for e in s.events
-        if (m := _RESTORED.match(e.body))
-    ]
-    return sorted(out, key=lambda d: d["at"])
+        if (m := _DECLINED.match(e.body))
+    }
+    for _, note in s.notes:
+        if m := re.fullmatch(r"translation skipped \(stale\): (\d+)", note):
+            n = int(m.group(1))
+            if n not in out or out[n][0] != STALE:
+                out[n] = (STALE, "queue delay over TRANSLATE_MAX_STALENESS_S")
+    return out
+
+
+def find_degrades(s: Session) -> list[dict]:
+    """Chronological outages, closed by their next restore; historic inference is explicit.
+
+    Publication precedes translation. The final unpaired source can therefore belong
+    to a disable logged after it. Anchor each outage at its own preceding TGT, not
+    the last TGT of the whole session. Dequeue times are absent: queued losses inside
+    that window remain inferred, unlike the explicit stale/decline evidence.
+    """
+    out = _translation_events(s, "disabled", _DISABLED)
+    restores = find_restores(s)
+    skips = _skips(s)
+    if not out and not restores and s.tgt:
+        trailing = sorted(
+            n for n in s.src if n > max(s.tgt) and n not in skips and not screen(s.src[n].text)
+        )
+        if len(trailing) >= app.TRANSLATE_MAX_FAILURES:
+            out.append(
+                {
+                    "at": s.src[trailing[app.TRANSLATE_MAX_FAILURES - 1]].at,
+                    "reason": f"{app.TRANSLATE_MAX_FAILURES} consecutive failures",
+                    "source": "inferred",
+                }
+            )
+    for d in out:
+        d["restored_at"] = next((r["at"] for r in restores if r["at"] >= d["at"]), None)
+        d["last_tgt"] = max((n for n, c in s.tgt.items() if c.at <= d["at"]), default=0)
+        d["three_strike"] = "consecutive failures" in d["reason"]
+        candidates = sorted(
+            n
+            for n, c in s.src.items()
+            if n > d["last_tgt"]
+            and n not in s.tgt
+            and n not in skips
+            and c.at <= d["at"]
+            and not screen(c.text)
+        )
+        d["strikes"] = set(candidates[: app.TRANSLATE_MAX_FAILURES]) if d["three_strike"] else set()
+    return out
+
+
+def find_degrade(s: Session) -> dict | None:
+    return next(iter(find_degrades(s)), None)
 
 
 def _counter(peak: str, name: str) -> int:
@@ -353,28 +386,12 @@ def attribute_drops(s: Session) -> list[dict]:
     return rows
 
 
-def explain_missing(s: Session) -> list[dict]:
-    """Why each published caption has no target line."""
-    stale = {
-        int(
-            note.removeprefix("translation skipped (stale): ")
-        ): "queue delay over TRANSLATE_MAX_STALENESS_S"
-        for _, note in s.notes
-        if re.fullmatch(r"translation skipped \(stale\): \d+", note)
-    }
-    stale.update({int(m.group(1)): m.group(2) for e in s.events if (m := _STALE.match(e.body))})
-    logged = {int(m.group(1)): m.group(2) for e in s.events if (m := _DECLINED.match(e.body))}
-    degrade = find_degrade(s)
-    last_tgt = max(s.tgt) if s.tgt else 0
+def explain_missing(s: Session, degrades: list[dict] | None = None) -> list[dict]:
+    """Why each published caption has no target line; unlogged causes are inferences."""
+    skips = _skips(s)
+    degrades = find_degrades(s) if degrades is None else degrades
     last_src = max(s.src) if s.src else 0
-    strikes = set()
-    if degrade and degrade["three_strike"]:
-        # Only a caption that reached `_translate` can spend a strike. A stale skip
-        # `continue`s before it and a screen decline never enters the queue, so
-        # counting either here pushes the real third failure out of the run and
-        # mislabels it DISABLED.
-        after = sorted(n for n in s.src if n > last_tgt and n not in stale and n not in logged)
-        strikes = set(after[: app.TRANSLATE_MAX_FAILURES])
+    strikes = {n for d in degrades for n in d["strikes"]}
 
     # `translation failed (<type>)` names the exception a turn died on. Second
     # resolution, so it is matched to the caption it followed, not to an exact
@@ -383,7 +400,7 @@ def explain_missing(s: Session) -> list[dict]:
         (e.at, m.group(1) or "TimeoutError") for e in s.events if (m := _BLOCK_FAIL.match(e.body))
     ]
 
-    untranslated = not (s.tgt or s.notes or stale or logged or failures)
+    untranslated = not (s.tgt or s.notes or skips or failures or degrades)
 
     def failure_near(n: int) -> str | None:
         after = s.src[n].at
@@ -398,16 +415,22 @@ def explain_missing(s: Session) -> list[dict]:
         text = s.src[n].text
         defect = screen(text)
         cause = failure_near(n)
-        # Precedence is causal, not textual. Once the leg is down every caption
-        # lacks a target whatever its text, so a screen verdict there is a
-        # counterfactual and rides `screened_now` instead of explaining the loss.
-        if n in stale:
-            why, detail = STALE, stale[n]
-        elif n in logged:
-            why, detail = DECLINED, logged[n]
+        degrade = next(
+            (
+                d
+                for d in reversed(degrades)
+                if n > d["last_tgt"]
+                and (d["restored_at"] is None or s.src[n].at <= d["restored_at"])
+            ),
+            None,
+        )
+        # Explicit skips outrank interval inference; while the leg is down the
+        # text screen is only a counterfactual, reported separately below.
+        if n in skips:
+            why, detail = skips[n]
         elif n in strikes:
             why, detail = STRIKE, f"failure that spent a strike ({cause or 'cause not logged'})"
-        elif degrade and n > last_tgt:
+        elif degrade:
             why, detail = DISABLED, str(degrade["reason"])
         elif untranslated:
             why, detail = UNTRANSLATED, "no translation on record for the whole session"
@@ -484,8 +507,24 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
 
     per_session = []
     for s in sessions:
-        missing = explain_missing(s)
-        degrade = find_degrade(s)
+        degrades = find_degrades(s)
+        missing = explain_missing(s, degrades)
+        outages = [
+            {
+                "at": d["at"].isoformat(sep=" "),
+                "reason": d["reason"],
+                "source": d["source"],
+                "last_tgt": d["last_tgt"] or None,
+                "source_only_after": sum(
+                    1
+                    for n, c in s.src.items()
+                    if n > d["last_tgt"]
+                    and n not in s.tgt
+                    and (d["restored_at"] is None or c.at <= d["restored_at"])
+                ),
+            }
+            for d in degrades
+        ]
         sl = [x for _, x in lags(s)]
         peaks = [e.body for e in s.events if _PEAK.match(e.body)]
         per_session.append(
@@ -500,17 +539,8 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                     for w in (STALE, DECLINED, STRIKE, DISABLED, UNTRANSLATED, SHUTDOWN, FAILED)
                     if any(r["why"] == w for r in missing)
                 },
-                "degrade": (
-                    None
-                    if not degrade
-                    else {
-                        "at": degrade["at"].isoformat(sep=" "),
-                        "reason": degrade["reason"],
-                        "source": degrade["source"],
-                        "last_tgt": max(s.tgt) if s.tgt else None,
-                        "source_only_after": sum(1 for n in s.src if n > max(s.tgt, default=0)),
-                    }
-                ),
+                "degrade": next(iter(outages), None),
+                "degrades": outages,
                 "restores": [
                     {"at": r["at"].isoformat(sep=" "), "reason": r["reason"], "source": r["source"]}
                     for r in find_restores(s)
@@ -606,8 +636,7 @@ def render(rep: dict) -> str:
             out.append(
                 f"   TGT behind SRC: p50 {g['p50']:.0f}s  p90 {g['p90']:.0f}s  max {g['max']:.0f}s"
             )
-        if p["degrade"]:
-            d = p["degrade"]
+        for d in p["degrades"]:
             out.append(
                 f"   DEGRADE [{d['source']}] {d['at']}  {d['reason']}"
                 f"  (last TGT n={d['last_tgt']}, {d['source_only_after']} source-only after)"
@@ -634,12 +663,17 @@ def render(rep: dict) -> str:
             out.append(f"   no TGT: {summary}")
         # A degrade's tail is one event, not N. Listing every caption behind it
         # buries the handful that each lost their target for their own reason.
-        held = [r for r in p["missing"] if r["why"] == DISABLED]
-        if held:
+        groups: list[list[dict]] = []
+        for row in p["missing"]:
+            if row["why"] == DISABLED:
+                if not groups or row["n"] != groups[-1][-1]["n"] + 1:
+                    groups.append([])
+                groups[-1].append(row)
+        for held in groups:
             screened = sum(1 for r in held if r["screened_now"])
             out.append(
-                f"     n={held[0]['n']}..{held[-1]['n']}  {DISABLED:<9} {len(held)} behind the "
-                f"degrade ({screened} the screen would refuse anyway)"
+                f"     n={held[0]['n']}..{held[-1]['n']}  {DISABLED:<9} {len(held)} inside an "
+                f"outage ({screened} the screen would refuse anyway)"
             )
         for row in p["missing"]:
             if row["why"] == DISABLED:

@@ -290,8 +290,8 @@ uv run python session_report.py --log FILE       # reads only this log, for exam
 The report shows:
 
 - caption and translation totals, per session and overall
-- every caption that has no `TGT` line, and the reason for it
-- the point where translation stopped or came back, with timestamps
+- every caption that has no `TGT` line, with its recorded reason or an inferred cause
+- each point where translation stopped or came back, with timestamps; one event written to both files counts once
 - the backlog high-water marks from the log
 - every increase in the dropped-audio counter, with the captions around it, the gap it fell in, and any caption the screen refused inside that gap
 - caption length and repetition distributions

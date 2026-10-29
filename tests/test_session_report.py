@@ -799,3 +799,145 @@ def test_a_session_without_tgt_but_with_a_degrade_marker_stays_disabled(tmp_path
         ],
     )
     assert set(reasons(report([path])["sessions"][0]).values()) == {sr.DISABLED}
+
+
+def _transcript(tmp_path: Path, *lines: str) -> sr.Session:
+    return sr.read_session(write(tmp_path, "2026-09-04T10-00-00", list(lines)))
+
+
+def test_missing_caption_inside_a_recovered_outage_is_disabled(tmp_path):
+    # An unsuccessful recovery and the following cooldown can discard a caption;
+    # a later caption restores the leg. No caption inside that outage spent a strike.
+    session = _transcript(
+        tmp_path,
+        "[2026-09-04T10:00:01+09:00] SRC 1: 最初の字幕",
+        "[2026-09-04T10:00:03+09:00] TGT 1: The first caption.",
+        "[2026-09-04T10:00:05+09:00] -- translation disabled: codex app-server exited",
+        "[2026-09-04T10:00:10+09:00] SRC 2: 復旧を待つ字幕",
+        "[2026-09-04T10:00:30+09:00] SRC 3: 次の字幕",
+        "[2026-09-04T10:00:35+09:00] -- translation restored: "
+        "codex app-server respawned (attempt 2)",
+        "[2026-09-04T10:00:37+09:00] TGT 3: The next caption.",
+    )
+
+    (missing,) = sr.explain_missing(session)
+
+    assert missing["why"] == sr.DISABLED, missing
+
+
+def test_a_recovered_outage_does_not_own_a_later_shutdown_loss(tmp_path):
+    session = _transcript(
+        tmp_path,
+        "[2026-09-04T10:00:01+09:00] SRC 1: 最初の字幕",
+        "[2026-09-04T10:00:03+09:00] TGT 1: The first caption.",
+        "[2026-09-04T10:00:05+09:00] -- translation disabled: codex app-server exited",
+        "[2026-09-04T10:00:10+09:00] SRC 2: 復旧する字幕",
+        "[2026-09-04T10:00:15+09:00] -- translation restored: "
+        "codex app-server respawned (attempt 1)",
+        "[2026-09-04T10:00:17+09:00] TGT 2: The recovered caption.",
+        "[2026-09-04T10:00:20+09:00] SRC 3: 最後の字幕",
+    )
+
+    (missing,) = sr.explain_missing(session)
+
+    assert missing["why"] == sr.SHUTDOWN, missing
+
+
+def test_one_restore_written_to_both_channels_is_one_report_event(tmp_path):
+    reason = "codex app-server respawned (attempt 1)"
+    session = _transcript(
+        tmp_path,
+        "[2026-09-04T10:00:01+09:00] SRC 1: 字幕",
+        f"[2026-09-04T10:00:10+09:00] -- translation restored: {reason}",
+        "[2026-09-04T10:00:12+09:00] TGT 1: Caption.",
+    )
+    log = tmp_path / "run.log"
+    log.write_text(
+        f"[2026-09-04 10:00:10,000] WARNING translation restored: {reason}\n",
+        encoding="utf-8",
+    )
+    session.events = sr.read_log(str(log))
+
+    restores = sr.build([session], [])["sessions"][0]["restores"]
+
+    assert len(restores) == 1, restores
+
+
+def test_explicit_stale_tail_does_not_infer_a_three_strike_degrade(tmp_path):
+    session = _transcript(
+        tmp_path,
+        "[2026-09-04T10:00:01+09:00] SRC 1: 最初の字幕",
+        "[2026-09-04T10:00:03+09:00] TGT 1: The first caption.",
+        "[2026-09-04T10:00:04+09:00] SRC 2: 次の字幕",
+        "[2026-09-04T10:00:05+09:00] SRC 3: その次の字幕",
+        "[2026-09-04T10:00:06+09:00] SRC 4: 最後の字幕",
+        "[2026-09-04T10:00:22+09:00] -- translation skipped (stale): 2",
+        "[2026-09-04T10:00:22+09:00] -- translation skipped (stale): 3",
+        "[2026-09-04T10:00:22+09:00] -- translation skipped (stale): 4",
+    )
+    for n in (2, 3, 4):
+        session.events.append(
+            sr.LogEvent(
+                datetime(2026, 9, 4, 10, 0, 22),
+                "WARNING",
+                f"caption {n} not translated: queued 16 s, over TRANSLATE_MAX_STALENESS_S",
+            )
+        )
+
+    assert sr.find_degrade(session) is None
+
+
+def test_each_outage_owns_its_strikes_and_ends_at_its_restore(tmp_path):
+    lines = [event("10:00:01", "SRC", 1, CLEAN), event("10:00:03", "TGT", 1, "One.")]
+    for n in range(2, 6):
+        lines.append(event(f"10:00:{n * 5:02}", "SRC", n, CLEAN))
+    lines += [
+        "[2026-09-04T10:00:21+09:00] -- translation disabled: "
+        "3 consecutive failures (TimeoutError)",
+        "[2026-09-04T10:00:31+09:00] -- translation restored: codex app-server probed (attempt 1)",
+        event("10:00:32", "SRC", 6, CLEAN),
+        event("10:00:34", "TGT", 6, "Six."),
+        "[2026-09-04T10:00:35+09:00] -- translation disabled: codex app-server exited",
+        event("10:00:36", "SRC", 7, CLEAN),
+        "[2026-09-04T10:00:40+09:00] -- translation restored: "
+        "codex app-server respawned (attempt 2)",
+        event("10:00:41", "SRC", 8, CLEAN),
+        event("10:00:43", "TGT", 8, "Eight."),
+        event("10:00:44", "SRC", 9, CLEAN),
+    ]
+    session = report([write(tmp_path, "run", lines)])["sessions"][0]
+    assert reasons(session) == {
+        2: sr.STRIKE,
+        3: sr.STRIKE,
+        4: sr.STRIKE,
+        5: sr.DISABLED,
+        7: sr.DISABLED,
+        9: sr.SHUTDOWN,
+    }
+    assert [(d["last_tgt"], d["source_only_after"]) for d in session["degrades"]] == [
+        (1, 4),
+        (6, 1),
+    ]
+    assert session["degrade"] == session["degrades"][0]
+
+
+@pytest.mark.parametrize("skip_kind", ["stale", "declined", "screen"])
+def test_known_declines_never_spend_inferred_strikes(tmp_path, skip_kind):
+    lines = [event("10:00:01", "SRC", 1, CLEAN), event("10:00:03", "TGT", 1, "One.")]
+    for n in range(2, 5):
+        lines.append(event(f"10:00:{n * 5:02}", "SRC", n, LOOP if skip_kind == "screen" else CLEAN))
+        if skip_kind == "stale":
+            lines.append(
+                f"[2026-09-04T10:00:{n * 5 + 1:02}+09:00] -- translation skipped (stale): {n}"
+            )
+    log = (
+        [
+            log_event("10:00:25", f"caption {n} not translated: refused", "WARNING")
+            for n in range(2, 5)
+        ]
+        if skip_kind == "declined"
+        else None
+    )
+    session = report([write(tmp_path, "run", lines)], log, tmp_path)["sessions"][0]
+    assert session["degrade"] is None
+    assert sr.STRIKE not in reasons(session).values()
