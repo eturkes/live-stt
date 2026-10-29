@@ -254,14 +254,18 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `live-stt --playback --no-translate` (accelerator prelude) over one half of
   `eval_playback_silence.py`'s clips, 3 rounds, 10 s of silence after each, the default moved to
   `sink_b` after round 1 — per-play captions + S/D/I, the captions past a clip's 4 s tail, and
-  the link switch; whole-second transcript stamps, so the tail attribution is coarse.
+  the link switch; whole-second transcript stamps, so the tail attribution is coarse. Both playback
+  evaluators align `cer.normalize(reference)` against `cer.normalize(hypothesis)`, preserving raw
+  caption text in their reports. `test_playback_evaluators.py` reaches both scorers with process,
+  model and network boundaries faked; raw operands restore S=2/D=3/I=0 for normalized-equal text
+  and redden both locks (L-022).
 - `eval_playback_silence.py` — the same 14 clips (7 CV8 rows: the quiet five the old zero-pad
   probe hit + its two loud controls, then the 7 pinned replay clips) as one playback-shaped
   stream: 44.1 kHz by soxr VHQ, 3 s lead + 10 s of exact zeros between clips, the shipped
   `Resampler` in 256-frame blocks, the real worker; arms Z (shipped) · N (−60 dBFS floor on the
   stream, seed 7) · V / W (that floor on silero's copy before / after leveling, seed 8).
-  Report-only; inputs fail closed on `INPUT_SHA256`. It reproduced the scratch replica every
-  `asr-pipeline.md` cell came from byte for byte (56 per-clip lines + 4 totals).
+  Report-only; inputs fail closed on `INPUT_SHA256`. CER uses normalized text on both sides;
+  `asr-pipeline.md`'s playback CER cells need re-measurement under that metric.
 - `test_gate.py` locks `gate.py`'s step inventory with one seeded defect per blocking step, in a
   throwaway tree, plus the secret scan's real-tree scope, which that throwaway tree cannot see
   shrink (`gate.md`).

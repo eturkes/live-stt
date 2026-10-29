@@ -159,8 +159,9 @@ def run_arm(arm: str, rec, x441: np.ndarray, spans, refs: dict[str, str]) -> dic
     per_clip, errors, total = {}, 0, 0
     for name, _, _ in spans:
         hyp = "".join(owned[name])
-        s, d, i = align(refs[name], hyp)
-        errors, total = errors + s + d + i, total + len(normalize(refs[name]))
+        ref = normalize(refs[name])
+        s, d, i = align(ref, normalize(hyp))
+        errors, total = errors + s + d + i, total + len(ref)
         per_clip[name] = {"S": s, "D": d, "I": i, "segments": len(owned[name]), "text": hyp}
     return {"cer": round(errors / total, 4), "errors": errors, "N": total, "clips": per_clip,
             "outside": outside}  # fmt: skip

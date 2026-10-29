@@ -48,6 +48,7 @@ TESTS = ROOT / "tests"
 sys.path[:0] = [str(TESTS), str(ROOT)]
 
 import live_stt  # noqa: E402
+from cer import align, normalize  # noqa: E402
 
 TONE_HZ, TONE_PEAK = 440, 8000
 GAP_S, ROUNDS, TAIL_S = 10.0, 3, 4.0
@@ -293,8 +294,6 @@ def _clip_files(graph: Graph, which: str) -> list[tuple[str, Path, str]]:
 
 
 def e2e(graph: Graph, which: str) -> dict:
-    from cer import align  # noqa: PLC0415
-
     clips = _clip_files(graph, which)
     out, pidfile = graph.dir / "e2e", graph.dir / "live-stt.pid"
     out.mkdir()
@@ -341,7 +340,7 @@ def e2e(graph: Graph, which: str) -> dict:
     refs = {name: ref for name, _, ref in clips}
     per_play = []
     for (name, _, _), texts in zip(plays, owned, strict=True):
-        s, d, i = align(refs[name], "".join(texts))
+        s, d, i = align(normalize(refs[name]), normalize("".join(texts)))
         per_play.append({"clip": name, "lines": len(texts), "S": s, "D": d, "I": i,
                          "text": "".join(texts)})  # fmt: skip
     stopped = "Stopped." in (out / "stdout.txt").read_text()
