@@ -511,6 +511,136 @@ def _run_session_with_fake_mic(
     return seen
 
 
+def _session_failure_parts(monkeypatch, tmp_path, *, failure=""):
+    events = []
+
+    class Transcript(live_stt.TranscriptFile):
+        def close(self):
+            events.append("transcript close")
+            super().close()
+            if failure == "transcript":
+                raise OSError("transcript close failed")
+
+    class Recording(live_stt.AudioRecording):
+        def close(self):
+            events.append("recording close")
+            super().close()
+
+    class Translator:
+        dropped_translations = degenerate_captions = stale_translations = 0
+
+        def __init__(self, _context, output_file, **_kwargs):
+            self.output_file = output_file
+            self.done = asyncio.Event()
+
+        async def start(self):
+            events.append("translator start")
+            if failure == "translator start":
+                raise OSError("translator start failed")
+            return True
+
+        async def run(self):
+            await self.done.wait()
+            if failure == "translator":
+                raise OSError("translator drain failed")
+            live_stt.emit_line("TGT", 1, "speech", self.output_file)
+            events.append("translator drained")
+
+        def submit_sentinel(self):
+            events.append("translator sentinel")
+            self.done.set()
+
+        async def close(self):
+            events.append("translator close")
+            if failure == "translator close":
+                raise OSError("translator close failed")
+
+    class InputStream:
+        def __init__(self, callback, **_kwargs):
+            if failure == "opening":
+                raise OSError("audio open failed")
+            self.callback = callback
+
+        def start(self):
+            events.append("stream start")
+            self.callback(np.full((160, 1), 0.25, dtype=np.float32), 160, None, None)
+
+        def stop(self, ignore_errors=True):
+            events.append("stream stop")
+
+        def close(self, ignore_errors=True):
+            events.append("stream close")
+
+    async def worker(_rec, _vad, _window, audio_q, state, output_file, *_args, **_kwargs):
+        while await audio_q.get() is not None:
+            live_stt.emit_line("SRC", 1, "音声", output_file)
+            state.request_stop()
+        events.append("worker drained")
+        if failure == "worker":
+            raise OSError("worker drain failed")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sounddevice",
+        types.SimpleNamespace(
+            InputStream=InputStream,
+            query_devices=lambda *_a, **_k: {"default_samplerate": 16000, "name": "fake"},
+        ),
+    )
+    monkeypatch.setattr(live_stt, "ASR_LANGUAGE", "ja")
+    monkeypatch.setattr(live_stt, "load_recognizer", lambda *_a: object())
+    monkeypatch.setattr(live_stt, "make_vad", lambda: (None, 512))
+    monkeypatch.setattr(live_stt, "TRANSCRIPT_DIR", tmp_path)
+    monkeypatch.setattr(live_stt, "CodexTranslator", Translator)
+    monkeypatch.setattr(live_stt, "TranscriptFile", Transcript)
+    monkeypatch.setattr(live_stt, "AudioRecording", Recording)
+    monkeypatch.setattr(live_stt, "worker", worker)
+    monkeypatch.setattr(live_stt, "_install_signal_handlers", lambda _state: None)
+    args = types.SimpleNamespace(
+        engine="whisper",
+        asr_device="NPU",
+        two_way=False,
+        device=None,
+        output=None,
+        no_save=False,
+        no_translate=False,
+        save_audio=True,
+        save_log=False,
+        context="",
+        playback=False,
+    )
+    keep_session_globals(monkeypatch)
+    return args, events
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["opening", "translator start", "worker", "translator", "translator close", "transcript"],
+)
+def test_session_failure_still_closes_the_translation_leg_and_writers(
+    monkeypatch, tmp_path, failure
+):
+    args, events = _session_failure_parts(monkeypatch, tmp_path, failure=failure)
+
+    with pytest.raises(OSError):
+        asyncio.run(live_stt.run_session(args))
+
+    assert "translator close" in events, events
+    assert "recording close" in events, events
+    assert "transcript close" in events, events
+    if failure in ("worker", "translator", "translator close", "transcript"):
+        assert events.index("stream stop") < events.index("stream close")
+        assert events.index("stream close") < events.index("worker drained")
+        assert events.index("worker drained") < events.index("translator sentinel")
+    if failure == "worker":
+        assert "translator drained" in events, events
+        (transcript,) = tmp_path.glob("*.txt")
+        assert [line.split("] ", 1)[1] for line in transcript.read_text().splitlines()] == [
+            "SRC 1: 音声",
+            "TGT 1: speech",
+        ]
+
+
 def test_save_audio_records_every_captured_block(monkeypatch, tmp_path):
     blocks = [np.full(160, 0.25, dtype=np.float32), np.linspace(-1, 1, 320, dtype=np.float32)]
     seen = _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=True)

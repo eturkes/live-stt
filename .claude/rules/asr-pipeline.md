@@ -756,6 +756,11 @@ Char | kana CER, GPU unless named:
 
 ## Shutdown, streams, meter
 
+- **`run_session` owns cleanup from the first writer acquisition.** Its exit stack closes the
+  translator, recording and transcript independently even if audio open, translator startup or a
+  drain fails. Shutdown stops capture first, sentinels/drains the worker next and the translator
+  last; a worker-drain exception still permits the translator's queued targets to land.
+  Locks: `tests/test_audio.py::test_session_failure_still_closes_the_translation_leg_and_writers`.
 - **Closing the terminal is a shipped shutdown path and cost three separate fixes.** SIGHUP's default
   action is termination, so it must join `(SIGINT, SIGTERM)` or the drain never runs and exactly one
   TGT line dies, the last (SRC flushes as it lands; TGT needs the drain). The drain then executes against

@@ -27,7 +27,7 @@ import unicodedata
 import wave
 from collections import deque
 from collections.abc import Mapping, MutableMapping, Sequence
-from contextlib import contextmanager
+from contextlib import AsyncExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -2808,147 +2808,161 @@ async def run_session(args):
     loop = asyncio.get_running_loop()
     audio_q: asyncio.Queue = AudioQueue()
 
-    stamp = session_stamp()
-    output_path = transcript_path(args, stamp)
-    output_file = TranscriptFile(output_path) if output_path else None
-    if output_path:
-        print(f"Transcript: {output_path}")
-    else:
-        print("Transcript: not saved (--no-save)")
-    recording_path = audio_path(args, stamp)
-    recording = AudioRecording(recording_path) if recording_path else None
-    if recording_path:
-        print(f"Audio: {recording_path}")
-    session_log = log_path(args, stamp)
-    if session_log:
-        print(f"Log: {session_log}")
-        redirect_stderr(session_log)
-    log_session_marker(output_path)
+    meter_task = None
 
-    context = SessionContext(getattr(args, "context", "") or "")
-    if context.seed:
-        print(f"Context: {context.seed}")
-
-    translator = None
-    # TRANSLATOR_INSTRUCTIONS pins the leg to Japanese->English and declares every
-    # turn "one block of transcribed Japanese speech", so English input has no
-    # defined behaviour there. --source-lang en therefore implies transcribe-only
-    # rather than trusting the operator to add --no-translate.
-    if ASR_LANGUAGE != "ja":
-        print(f"Translation: disabled (--source-lang {ASR_LANGUAGE} is transcribe-only)")
-    elif not args.no_translate:
-        if getattr(args, "two_way", False):
-            t = CodexTranslator(context, output_file, sources=("ja", "en"))
-        else:
-            t = CodexTranslator(context, output_file)
-        if await t.start():
-            translator = t
-            print(f"Translation: {TRANSLATE_MODEL} via codex app-server")
-        else:
-            print("Translation: unavailable (source-only, see log)")
-    else:
-        print("Translation: disabled (--no-translate)")
-
-    resampler = Resampler(native_rate)
-
-    def audio_callback(indata, frames, time_info, status):
-        if status:
-            logger.warning("audio: %s", status)
-        # sounddevice always passes a 2-D (frames, channels) array for InputStream.
-        mono = indata[:, 0]
-        # Copy: at the native 16 kHz the resampler passes PortAudio's buffer through,
-        # and the queue defers consumption past the next callback.
-        pcm = resampler(mono).copy()
-        if recording is not None:
-            loop.call_soon_threadsafe(recording.write, pcm)
-        loop.call_soon_threadsafe(enqueue_audio, audio_q, state, pcm)
-
-    _install_signal_handlers(state)
-
-    if playback:
-        print("\nListening to the computer's audio... Press Ctrl+C to stop.\n")
-    else:
-        print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
-    print("-" * 60)
-
-    with _audio_operation(f"opening the {source}"):
-        stream = sd.InputStream(
-            device=device,
-            samplerate=native_rate,
-            channels=1,
-            dtype="float32",
-            blocksize=0,
-            latency="high",
-            callback=audio_callback,
-        )
-
-    meter_task = asyncio.create_task(meter(state, audio_q, translator))
-    worker_task = asyncio.create_task(
-        worker(
-            rec,
-            vad,
-            window,
-            audio_q,
-            state,
-            output_file,
-            translator,
-            context=context,
-            detector=language_detector,
-        )
-    )
-    translator_task = asyncio.create_task(translator.run()) if translator else None
-
-    try:
-        with _audio_operation(f"starting the {source}"):
-            stream.start()
-        await state.stop_event.wait()
-    finally:
-        # Order matters: stop the mic first so the queue stops growing, then
-        # sentinel the worker and let it flush the VAD — a mid-utterance Ctrl+C
-        # still decodes and persists what was already spoken (T1.4 behavior).
-        # The translator drains last so flushed tail blocks still get TGT lines.
-        try:
-            with _audio_operation(f"stopping the {source}"):
-                stream.stop()
-            with _audio_operation(f"closing the {source}"):
-                stream.close()
-        except Exception:  # noqa: S110 -- PortAudio may already be gone at exit
-            pass
-        else:
-            # The filter still holds the stream's last 6-40 ms (probe-dependent at 44.1
-            # kHz HQ). stop() has joined the callback thread, so draining it races
-            # nothing, and one loop turn first lands the blocks already scheduled.
-            await asyncio.sleep(0)
-            tail = resampler.flush()
-            if len(tail):
-                if recording is not None:
-                    recording.write(tail)
-                enqueue_audio(audio_q, state, tail)
-        # worker() may already be dead. A blocking put could then strand
-        # shutdown behind a saturated queue, so land the sentinel with the
-        # established evict-oldest handshake (T8.1).
-        await submit_audio_sentinel(audio_q)
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
-        if translator is not None and translator_task is not None:
-            translator.submit_sentinel()
+    async def finish_meter():
+        if meter_task is not None:
+            meter_task.cancel()
             try:
-                await asyncio.wait_for(translator_task, TRANSLATE_TIMEOUT_S + 5)
-            except (TimeoutError, asyncio.CancelledError):
-                translator_task.cancel()
-            await translator.close()
-        meter_task.cancel()
-        try:
-            await meter_task
-        except (asyncio.CancelledError, Exception):  # noqa: S110 -- awaiting our own cancel
-            pass
-        if output_file:
-            output_file.close()
+                await meter_task
+            except (asyncio.CancelledError, Exception):  # noqa: S110 -- awaiting our own cancel
+                pass
+
+    # Acquisition and drains can fail independently; every acquired owner still closes.
+    async with AsyncExitStack() as cleanup:
+        cleanup.callback(write_stdout, "\n")
+        cleanup.push_async_callback(finish_meter)
+        stamp = session_stamp()
+        output_path = transcript_path(args, stamp)
+        output_file = TranscriptFile(output_path) if output_path else None
+        if output_file is not None:
+            cleanup.callback(output_file.close)
+        if output_path:
+            print(f"Transcript: {output_path}")
+        else:
+            print("Transcript: not saved (--no-save)")
+        recording_path = audio_path(args, stamp)
+        recording = AudioRecording(recording_path) if recording_path else None
         if recording is not None:
-            recording.close()
-        write_stdout("\n")
+            cleanup.callback(recording.close)
+        if recording_path:
+            print(f"Audio: {recording_path}")
+        session_log = log_path(args, stamp)
+        if session_log:
+            print(f"Log: {session_log}")
+            redirect_stderr(session_log)
+        log_session_marker(output_path)
+
+        context = SessionContext(getattr(args, "context", "") or "")
+        if context.seed:
+            print(f"Context: {context.seed}")
+
+        translator = None
+        # TRANSLATOR_INSTRUCTIONS pins the leg to Japanese->English and declares every
+        # turn "one block of transcribed Japanese speech", so English input has no
+        # defined behaviour there. --source-lang en therefore implies transcribe-only
+        # rather than trusting the operator to add --no-translate.
+        if ASR_LANGUAGE != "ja":
+            print(f"Translation: disabled (--source-lang {ASR_LANGUAGE} is transcribe-only)")
+        elif not args.no_translate:
+            if getattr(args, "two_way", False):
+                t = CodexTranslator(context, output_file, sources=("ja", "en"))
+            else:
+                t = CodexTranslator(context, output_file)
+            cleanup.push_async_callback(t.close)
+            if await t.start():
+                translator = t
+                print(f"Translation: {TRANSLATE_MODEL} via codex app-server")
+            else:
+                print("Translation: unavailable (source-only, see log)")
+        else:
+            print("Translation: disabled (--no-translate)")
+
+        resampler = Resampler(native_rate)
+
+        def audio_callback(indata, frames, time_info, status):
+            if status:
+                logger.warning("audio: %s", status)
+            # sounddevice always passes a 2-D (frames, channels) array for InputStream.
+            mono = indata[:, 0]
+            # Copy: at the native 16 kHz the resampler passes PortAudio's buffer through,
+            # and the queue defers consumption past the next callback.
+            pcm = resampler(mono).copy()
+            if recording is not None:
+                loop.call_soon_threadsafe(recording.write, pcm)
+            loop.call_soon_threadsafe(enqueue_audio, audio_q, state, pcm)
+
+        _install_signal_handlers(state)
+
+        if playback:
+            print("\nListening to the computer's audio... Press Ctrl+C to stop.\n")
+        else:
+            print("\nListening... Speak Japanese. Press Ctrl+C to stop.\n")
+        print("-" * 60)
+
+        with _audio_operation(f"opening the {source}"):
+            stream = sd.InputStream(
+                device=device,
+                samplerate=native_rate,
+                channels=1,
+                dtype="float32",
+                blocksize=0,
+                latency="high",
+                callback=audio_callback,
+            )
+
+        worker_task = translator_task = None
+        try:
+            meter_task = asyncio.create_task(meter(state, audio_q, translator))
+            worker_task = asyncio.create_task(
+                worker(
+                    rec,
+                    vad,
+                    window,
+                    audio_q,
+                    state,
+                    output_file,
+                    translator,
+                    context=context,
+                    detector=language_detector,
+                )
+            )
+            translator_task = asyncio.create_task(translator.run()) if translator else None
+
+            with _audio_operation(f"starting the {source}"):
+                stream.start()
+            await state.stop_event.wait()
+        finally:
+            # Order matters: stop the mic first so the queue stops growing, then
+            # sentinel the worker and let it flush the VAD — a mid-utterance Ctrl+C
+            # still decodes and persists what was already spoken (T1.4 behavior).
+            # The translator drains last so flushed tail blocks still get TGT lines.
+            try:
+                try:
+                    with _audio_operation(f"stopping the {source}"):
+                        stream.stop()
+                    with _audio_operation(f"closing the {source}"):
+                        stream.close()
+                except Exception:  # noqa: S110 -- PortAudio may already be gone at exit
+                    pass
+                else:
+                    # The filter still holds the stream's last 6-40 ms (probe-dependent at 44.1
+                    # kHz HQ). stop() has joined the callback thread, so draining it races
+                    # nothing, and one loop turn first lands the blocks already scheduled.
+                    await asyncio.sleep(0)
+                    tail = resampler.flush()
+                    if len(tail):
+                        if recording is not None:
+                            recording.write(tail)
+                        enqueue_audio(audio_q, state, tail)
+            finally:
+                try:
+                    # worker() may already be dead. A blocking put could then strand
+                    # shutdown behind a saturated queue, so land the sentinel with the
+                    # established evict-oldest handshake (T8.1).
+                    if worker_task is not None:
+                        await submit_audio_sentinel(audio_q)
+                        try:
+                            await worker_task
+                        except asyncio.CancelledError:
+                            pass
+                finally:
+                    if translator is not None and translator_task is not None:
+                        translator.submit_sentinel()
+                        try:
+                            await asyncio.wait_for(translator_task, TRANSLATE_TIMEOUT_S + 5)
+                        except (TimeoutError, asyncio.CancelledError):
+                            translator_task.cancel()
 
 
 def _install_signal_handlers(state):
