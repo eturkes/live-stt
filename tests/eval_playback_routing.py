@@ -28,6 +28,7 @@ pactl + paplay (pulseaudio-utils) and pw-link. Exit 1 when an arm misses its exp
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -133,41 +134,51 @@ class Graph:
         return done.stdout
 
     def __enter__(self) -> Graph:
-        (self.dir / "run").mkdir(mode=0o700)
-        conf = self.dir / "cfg" / "wireplumber" / "wireplumber.conf.d"
-        conf.mkdir(parents=True)
-        (conf / "90-no-hardware.conf").write_text(NO_HARDWARE)
-        (self.dir / "state").mkdir()
-        self.stack = subprocess.Popen(  # noqa: S603
-            self.isolated(["sh", "-c", STACK]),
-            env=self.env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        _until(lambda: (self.dir / "run" / "pulse" / "native").exists(), 30, "pipewire-pulse")
-        for name in ("sink_a", "sink_b", "mic_feed"):
-            self.run("pactl", "load-module", "module-null-sink", f"sink_name={name}")
-        self.run(
-            "pactl",
-            "load-module",
-            "module-remap-source",
-            "master=mic_feed.monitor",
-            "source_name=mic_x",
-        )
-        self.run("pactl", "set-default-source", "mic_x")
-        self.default("sink_a")
-        return self
+        try:
+            (self.dir / "run").mkdir(mode=0o700)
+            conf = self.dir / "cfg" / "wireplumber" / "wireplumber.conf.d"
+            conf.mkdir(parents=True)
+            (conf / "90-no-hardware.conf").write_text(NO_HARDWARE)
+            (self.dir / "state").mkdir()
+            self.stack = subprocess.Popen(  # noqa: S603
+                self.isolated(["sh", "-c", STACK]),
+                env=self.env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            _until(lambda: (self.dir / "run" / "pulse" / "native").exists(), 30, "pipewire-pulse")
+            for name in ("sink_a", "sink_b", "mic_feed"):
+                self.run("pactl", "load-module", "module-null-sink", f"sink_name={name}")
+            self.run(
+                "pactl",
+                "load-module",
+                "module-remap-source",
+                "master=mic_feed.monitor",
+                "source_name=mic_x",
+            )
+            self.run("pactl", "set-default-source", "mic_x")
+            self.default("sink_a")
+            return self
+        except BaseException:
+            self.__exit__()
+            raise
 
     def __exit__(self, *_exc) -> None:
         pids = self.dir / "run" / "pids"
-        for pid in pids.read_text().split() if pids.exists() else []:
-            _kill_own(int(pid), signal.SIGTERM, str(self.dir))
-        if self.stack is not None:
-            try:
-                self.stack.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.stack.kill()
-        shutil.rmtree(self.dir, ignore_errors=True)
+        owned = [int(pid) for pid in pids.read_text().split()] if pids.exists() else []
+        try:
+            for pid in owned:
+                _kill_own(pid, signal.SIGTERM, str(self.dir))
+            if self.stack is not None:
+                try:
+                    self.stack.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    for pid in owned:
+                        _kill_own(pid, signal.SIGKILL, str(self.dir))
+                    self.stack.kill()
+                    self.stack.wait(timeout=10)
+        finally:
+            shutil.rmtree(self.dir, ignore_errors=True)
 
     def default(self, sink: str) -> None:
         self.run("pactl", "set-default-sink", sink)
@@ -214,11 +225,41 @@ def _line(proc: subprocess.Popen, timeout_s: float) -> dict:
     return json.loads(proc.stdout.readline())
 
 
-def _probe(graph: Graph, mode: str, hold_s: float) -> subprocess.Popen:
+def _stop(proc: subprocess.Popen, pidfile: Path, marker: str, sig=signal.SIGTERM, timeout=10):
+    def send(sig):
+        if pidfile.exists():
+            _kill_own(int(pidfile.read_text()), sig, marker)
+        else:  # Startup can fail before the namespace writes its user-level PID.
+            proc.send_signal(sig)
+
+    send(sig)
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        send(signal.SIGTERM)
+        try:
+            return proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            send(signal.SIGKILL)
+            proc.kill()
+            return proc.wait(timeout=10)
+
+
+@contextlib.contextmanager
+def _probe(graph: Graph, mode: str, hold_s: float):
     argv = [sys.executable, "-I", __file__, "--probe", mode, str(hold_s)]
-    return subprocess.Popen(  # noqa: S603
-        graph.isolated(argv), env=graph.env, stdout=subprocess.PIPE, text=True
+    pidfile = graph.dir / f"probe-{mode}.pid"
+    proc = subprocess.Popen(  # noqa: S603
+        graph.isolated(argv, pidfile), env=graph.env, stdout=subprocess.PIPE, text=True
     )
+    try:
+        yield proc
+    finally:
+        try:
+            _stop(proc, pidfile, str(graph.dir))
+        finally:
+            if proc.stdout is not None:
+                proc.stdout.close()
 
 
 def tone(path: Path) -> None:
@@ -235,26 +276,26 @@ def tone(path: Path) -> None:
 
 
 def routing(graph: Graph) -> dict:
-    control = _probe(graph, "mic", 3.0)
-    opened = _line(control, 60)
-    control_links = graph.feeding_capture()
-    _line(control, 30)
-    control.wait(timeout=30)
+    with _probe(graph, "mic", 3.0) as control:
+        opened = _line(control, 60)
+        control_links = graph.feeding_capture()
+        _line(control, 30)
+        control.wait(timeout=30)
 
-    monitor = _probe(graph, "playback", 8.0)
-    opened_pb = _line(monitor, 60)
-    monitor_links = graph.feeding_capture()
-    tone(graph.dir / "tone.wav")
-    graph.play(graph.dir / "tone.wav")
-    graph.default("sink_b")
-    want = {"sink_b:monitor_FL", "sink_b:monitor_FR"}
-    try:
-        _until(lambda: graph.feeding_capture() == want, 5, "the links to follow")
-    except RuntimeError:
-        pass
-    follow_links = graph.feeding_capture()
-    peak = _line(monitor, 30)["peak"]
-    monitor.wait(timeout=30)
+    with _probe(graph, "playback", 8.0) as monitor:
+        opened_pb = _line(monitor, 60)
+        monitor_links = graph.feeding_capture()
+        tone(graph.dir / "tone.wav")
+        graph.play(graph.dir / "tone.wav")
+        graph.default("sink_b")
+        want = {"sink_b:monitor_FL", "sink_b:monitor_FR"}
+        try:
+            _until(lambda: graph.feeding_capture() == want, 5, "the links to follow")
+        except RuntimeError:
+            pass
+        follow_links = graph.feeding_capture()
+        peak = _line(monitor, 30)["peak"]
+        monitor.wait(timeout=30)
     graph.default("sink_a")
     arms = {
         "devices": opened["devices"],
@@ -303,25 +344,29 @@ def e2e(graph: Graph, which: str) -> dict:
         app = subprocess.Popen(  # noqa: S603
             graph.isolated(argv, pidfile), env=graph.env, stdout=stdout, stderr=stderr
         )
-        _until(lambda: "Listening" in (out / "stdout.txt").read_text() or app.poll() is not None,
-               600, "live-stt to listen")  # fmt: skip
-        if app.poll() is not None:
-            raise RuntimeError(
-                f"live-stt exited {app.returncode}: {(out / 'stderr.txt').read_text()}"
+        try:
+            _until(
+                lambda: "Listening" in (out / "stdout.txt").read_text() or app.poll() is not None,
+                600,
+                "live-stt to listen",
             )
-        time.sleep(3)
-        links = {"start": sorted(graph.feeding_capture())}
-        plays = []
-        for round_ in range(1, ROUNDS + 1):
-            if round_ == 2:
-                graph.default("sink_b")
-                time.sleep(1)
-                links["switched"] = sorted(graph.feeding_capture())
-            for name, path, _ in clips:
-                plays.append((name, *graph.play(path)))
-                time.sleep(GAP_S)
-        _kill_own(int(pidfile.read_text()), signal.SIGINT, str(graph.dir))
-        code = app.wait(timeout=90)
+            if app.poll() is not None:
+                raise RuntimeError(
+                    f"live-stt exited {app.returncode}: {(out / 'stderr.txt').read_text()}"
+                )
+            time.sleep(3)
+            links = {"start": sorted(graph.feeding_capture())}
+            plays = []
+            for round_ in range(1, ROUNDS + 1):
+                if round_ == 2:
+                    graph.default("sink_b")
+                    time.sleep(1)
+                    links["switched"] = sorted(graph.feeding_capture())
+                for name, path, _ in clips:
+                    plays.append((name, *graph.play(path)))
+                    time.sleep(GAP_S)
+        finally:
+            code = _stop(app, pidfile, str(graph.dir), signal.SIGINT, 90)
     graph.default("sink_a")
     captions = []
     for line in (out / "e2e.txt").read_text(encoding="utf-8").splitlines():

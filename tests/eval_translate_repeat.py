@@ -113,40 +113,43 @@ class Probe:
 async def run(out_path: Path | None) -> None:
     control = controls()
     probe = Probe()
-    await probe.restart()
-    print(f"bound {BOUND_S}s, canary ceiling {CANARY_MAX_S}s\n", flush=True)
+    try:
+        await probe.restart()
+        print(f"bound {BOUND_S}s, canary ceiling {CANARY_MAX_S}s\n", flush=True)
 
-    rows = []
-    for span in SPANS:
-        arms = [("control", "real-speech", control[span])]
-        arms += [("degenerate", unit, degenerate(unit, span)) for unit in UNITS]
-        for arm, unit, ja in arms:
-            seconds, en_chars, status = await probe.turn(ja)
-            canary_s, _, canary_status = await probe.turn(control[60])
-            healthy = canary_status == "ok" and canary_s <= CANARY_MAX_S
-            rows.append(
-                {
-                    "arm": arm,
-                    "unit": unit,
-                    "span": span,
-                    "chars": len(ja),
-                    "seconds": round(seconds, 2),
-                    "en_chars": en_chars,
-                    "status": status,
-                    "canary_s": round(canary_s, 2),
-                    "canary_ok": healthy,
-                }
-            )
-            print(
-                f"{arm:11s} {unit:6s} span={span:4d} {seconds:7.2f}s en={en_chars:5d} "
-                f"{status:8s} canary={canary_s:6.2f}s {'ok' if healthy else 'DIRTY -> restart'}",
-                flush=True,
-            )
-            if not healthy:
-                await probe.restart()
+        rows = []
+        for span in SPANS:
+            arms = [("control", "real-speech", control[span])]
+            arms += [("degenerate", unit, degenerate(unit, span)) for unit in UNITS]
+            for arm, unit, ja in arms:
+                seconds, en_chars, status = await probe.turn(ja)
+                canary_s, _, canary_status = await probe.turn(control[60])
+                healthy = canary_status == "ok" and canary_s <= CANARY_MAX_S
+                rows.append(
+                    {
+                        "arm": arm,
+                        "unit": unit,
+                        "span": span,
+                        "chars": len(ja),
+                        "seconds": round(seconds, 2),
+                        "en_chars": en_chars,
+                        "status": status,
+                        "canary_s": round(canary_s, 2),
+                        "canary_ok": healthy,
+                    }
+                )
+                print(
+                    f"{arm:11s} {unit:6s} span={span:4d} {seconds:7.2f}s en={en_chars:5d} "
+                    f"{status:8s} canary={canary_s:6.2f}s "
+                    f"{'ok' if healthy else 'DIRTY -> restart'}",
+                    flush=True,
+                )
+                if not healthy:
+                    await probe.restart()
 
-    assert probe.translator is not None
-    await probe.translator.close()
+    finally:
+        if probe.translator is not None:
+            await probe.translator.close()
     stalled = [r for r in rows if r["status"] == "STALL"]
     print(
         f"\n{len(rows)} turns, {len(stalled)} stalled, "

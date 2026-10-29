@@ -26,7 +26,7 @@ def hermetic_evaluator(monkeypatch):
             (subprocess, ("Popen", "run", "check_output", "check_call", "call")),
             (urllib.request, ("urlopen", "urlretrieve")),
             (socket, ("socket", "socketpair", "create_connection", "getaddrinfo")),
-            (live_stt, ("load_recognizer", "WhisperEngine", "make_vad")),
+            (live_stt, ("load_recognizer", "WhisperEngine", "make_vad", "CodexTranslator")),
             (replay, ("_recognizer", "replay_wav", "replay_recognizer", "_run_recognizer")),
         ):
             for name in names:

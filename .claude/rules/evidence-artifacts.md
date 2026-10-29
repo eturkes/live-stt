@@ -151,7 +151,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `eval_retention.py` — the shipped path's one agent-rerunnable ACCURACY gate: hash-gates the probe WAV,
   replays it through the whisper/VAC path on an exact-named device, scores with `cer.py` (~4 min warm).
   `eval_translate_repeat.py` — the producer of `CAPTION_REPEAT_MAX_CHARS`, through the real
-  `codex app-server`; probe inputs are literals, so reruns need no artifact.
+  `codex app-server`; probe inputs are literals, so reruns need no artifact. Its translator closes
+  in `finally`, including thread-setup failures; `test_translate_repeat.py` reddens with that
+  cleanup neutralized (L-022).
 - `eval_backpressure.py` + `test_backpressure.py` — the production two-stage worker paced on a virtual
   sample clock with real silero and seconds-bounded queues, only decode cost replaced. Arms: the sherpa
   two-stage path at defect B's own 2 s (`DEFECT_B_HEADROOM_S`, never the shipped 8 s, which a
@@ -258,7 +260,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   evaluators align `cer.normalize(reference)` against `cer.normalize(hypothesis)`, preserving raw
   caption text in their reports. `test_playback_evaluators.py` reaches both scorers with process,
   model and network boundaries faked; raw operands restore S=2/D=3/I=0 for normalized-equal text
-  and redden both locks (L-022).
+  and redden both locks (L-022). Stack acquisition unwinds its own failed `__enter__`; probe and
+  e2e children stop in `finally`, with bounded TERM/KILL escalation + reaping. The same test file
+  fakes setup/output/playback failures and a stop-ignoring child; neutralizing those scopes restores
+  the leaks (L-022).
 - `eval_playback_silence.py` — the same 14 clips (7 CV8 rows: the quiet five the old zero-pad
   probe hit + its two loud controls, then the 7 pinned replay clips) as one playback-shaped
   stream: 44.1 kHz by soxr VHQ, 3 s lead + 10 s of exact zeros between clips, the shipped
