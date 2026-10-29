@@ -6,6 +6,8 @@ paths:
   - "models/README.md"
   - "tests/test_packaging.py"
   - "tests/test_gate.py"
+  - "tests/test_project_config.py"
+  - ".github/dependabot.yml"
 ---
 
 # Packaging + dependency maintenance
@@ -97,3 +99,9 @@ inside `ruff-check`, plus the `secrets` step — so this recipe owns the depende
 history scan alone.
 Dependabot (`.github/dependabot.yml`) raises the same bumps between passes; a grouped PR it opens is
 this recipe's input, never a substitute for running it.
+
+`tests/test_project_config.py` parses that YAML and git's tracked + untracked-unignored `.github/`
+files: uv, project root, weekly schedule, one unrestricted wildcard group, no other GitHub file.
+Shipped rejection twins alter each field, exclude a dependency or add a workflow. Plant monthly in
+the tracked config → the structural lock reds while gate inventory stays green; restore → green.
+The check grades local configuration, never Dependabot's remote operation or equality with law text.
