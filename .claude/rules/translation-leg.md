@@ -2,6 +2,7 @@
 paths:
   - "live_stt.py"
   - "tests/test_translator.py"
+  - "tests/test_codex_config.py"
   - "tests/test_context.py"
   - "tests/test_en_pairing.py"
   - "tests/test_term_census.py"
@@ -18,6 +19,14 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 `thread/start` (one thread per session, `ephemeral`, `sandbox:read-only`, `approvalPolicy:never`,
 `personality:none`) → `turn/start` per block → `agentMessage` deltas → `turn/completed`; quota via
 `account/rateLimits/read`. Sequential turns, so TGT lines keep SRC order.
+
+`tests/test_codex_config.py` observes argv at a fake spawn boundary, both directions' thread/turn
+payloads and the bytes `_write` emits. Every tool-disable key must survive argv serialization;
+thread sandbox/approval/ephemeral/personality/instructions and configured model/effort/tier must
+reach their requests; each wire record ends in exactly one newline. Shipped missing/enabled-key,
+missing/changed-field and broken-framing twins keep the checks non-vacuous. Tracked-code plants
+(remove newline, hard-code wrong model/effort, enable web search) each redden their new lock;
+`cp` restore → green. No real server, account, tool catalog or model latency is exercised.
 
 - **Model `gpt-6-luna` + `effort:low`** — user ruling on release, swapped in for `gpt-5.6-luna`,
   which won the tournament and a clinical re-test: median 1.38 s general / 1.71 s clinical, quality
