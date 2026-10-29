@@ -511,7 +511,7 @@ def _run_session_with_fake_mic(
     return seen
 
 
-def _session_failure_parts(monkeypatch, tmp_path, *, failure=""):
+def _session_failure_parts(monkeypatch, tmp_path, *, failure="", final_stale=False):
     events = []
 
     class Transcript(live_stt.TranscriptFile):
@@ -543,6 +543,9 @@ def _session_failure_parts(monkeypatch, tmp_path, *, failure=""):
             await self.done.wait()
             if failure == "translator":
                 raise OSError("translator drain failed")
+            if final_stale:
+                self.stale_translations += 1
+                events.append("stale translation")
             live_stt.emit_line("TGT", 1, "speech", self.output_file)
             events.append("translator drained")
 
@@ -639,6 +642,24 @@ def test_session_failure_still_closes_the_translation_leg_and_writers(
             "SRC 1: 音声",
             "TGT 1: speech",
         ]
+
+
+@pytest.mark.parametrize("stdout_tty,stderr_tty", [(False, False), (True, False), (False, True)])
+def test_shutdown_keeps_the_translator_drains_final_peak(
+    monkeypatch, tmp_path, stdout_tty, stderr_tty
+):
+    args, events = _session_failure_parts(monkeypatch, tmp_path, final_stale=True)
+    logged = []
+    monkeypatch.setattr(live_stt, "_STDOUT_TTY", stdout_tty)
+    monkeypatch.setattr(live_stt, "_STDERR_TTY", stderr_tty)
+    monkeypatch.setattr(live_stt.logger, "info", lambda msg, *a: logged.append(msg % a))
+
+    asyncio.run(live_stt.run_session(args))
+
+    assert "stale translation" in events
+    peaks = [line for line in logged if line.startswith("backlog peak:")]
+    assert peaks and "tstale=1" in peaks[-1], peaks
+    assert sum("tstale=1" in line for line in peaks) == 1
 
 
 def test_save_audio_records_every_captured_block(monkeypatch, tmp_path):

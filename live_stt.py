@@ -42,9 +42,8 @@ from streaming import Segment, StreamingProcessor
 
 SAMPLE_RATE = 16000  # VAD + recognizer rate; mic native rate is resampled to this
 METER_INTERVAL = 0.1
-# Off a TTY the meter logs high-water counters instead of drawing. A peak only
-# ever grows, so a 1 s sample loses nothing and bounds both the wakeup rate and
-# the worst case line rate of a redirected soak.
+# Off a TTY the meter logs monotonic high-water counters at 1 s intervals.
+# A final post-drain snapshot retains increases after the last tick.
 METER_LOG_INTERVAL = 1.0
 # PortAudio chooses callback block sizes, so a chunk-count cap has no stable
 # duration. Bound captured PCM directly. The VAC path drains nothing while it
@@ -2489,48 +2488,46 @@ def caption_body(settled: str, provisional: str, room: int) -> str:
     return f"{text[: len(text) - tail]}{_DIM}{text[len(text) - tail :]}{_UNDIM}"
 
 
+def _log_backlog_peak(state, audio_q, translator, last):
+    # Log only off a shared terminal: otherwise a moving peak duplicates the
+    # status line into the caption scrollback. High-water counters survive a
+    # sampled depth's drain, and an unchanged/clean snapshot costs no log line.
+    if not (_STDOUT_TTY and _STDERR_TTY):
+        peak = _backlog(
+            getattr(audio_q, "max_queued_samples", 0),
+            state.max_segment_queue_depth,
+            state,
+            translator,
+        )
+        if peak != last:
+            logger.info("backlog peak:%s", peak)
+        return peak
+    return last
+
+
 async def meter(state, audio_q, translator=None):
     # Self-refreshing status line: backlog/drop counters only (each shown when
     # nonzero). _LINE_CLEAR erases the whole line per tick so a shrinking width
     # (e.g. q= clearing) leaves no residue, and block/log output overwrites it.
     last = ""
-    while not state.stopping:
-        if _STDOUT_TTY:
-            live = _backlog(
-                getattr(audio_q, "queued_samples", 0),
-                state.segment_queue_depth,
-                state,
-                translator,
-            )
-            status = f" {live}".rstrip()
-            room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
-            body = caption_body(state.partial, state.provisional, room)
-            write_stdout(f"{_LINE_CLEAR}{status}{'   ' + body if body else ''}")
-        # The counters live on the status line, so wherever that line is not the
-        # reader's they ride the log instead -- as HIGH-WATER marks, which is what
-        # makes it affordable: a peak only grows, so one line per change is a line
-        # per thing the session learned, a clean run costs nothing, and an
-        # instantaneous q= cannot churn a line per tick. Silence here is what left
-        # a 37-minute session's drop counters unrecoverable.
-        # The gate is the stream PAIR, not stdout alone. A log record does not
-        # corrupt the status line -- L-006's _LINE_CLEAR erases it and the meter
-        # redraws below -- it DUPLICATES it, and at METER_INTERVAL cadence a
-        # moving peak would push ten lines a second through the caption
-        # scrollback the status line exists to protect. Off a shared terminal
-        # neither cost applies, so `2> stt.log` now keeps both the live captions
-        # and the drop timeline a soak reads; the old stdout-only gate made those
-        # two exclusive and charged every capture run its whole status line.
-        if not (_STDOUT_TTY and _STDERR_TTY):
-            peak = _backlog(
-                getattr(audio_q, "max_queued_samples", 0),
-                state.max_segment_queue_depth,
-                state,
-                translator,
-            )
-            if peak != last:
-                last = peak
-                logger.info("backlog peak:%s", peak)
-        await asyncio.sleep(METER_INTERVAL if _STDOUT_TTY else METER_LOG_INTERVAL)
+    try:
+        while not state.stopping:
+            if _STDOUT_TTY:
+                live = _backlog(
+                    getattr(audio_q, "queued_samples", 0),
+                    state.segment_queue_depth,
+                    state,
+                    translator,
+                )
+                status = f" {live}".rstrip()
+                room = max(0, (shutil.get_terminal_size().columns - 1) - len(status) - 3)
+                body = caption_body(state.partial, state.provisional, room)
+                write_stdout(f"{_LINE_CLEAR}{status}{'   ' + body if body else ''}")
+            last = _log_backlog_peak(state, audio_q, translator, last)
+            await asyncio.sleep(METER_INTERVAL if _STDOUT_TTY else METER_LOG_INTERVAL)
+    except asyncio.CancelledError:
+        pass
+    return last
 
 
 def _write_session_status(fd: int, phase: str):
@@ -2813,10 +2810,12 @@ async def run_session(args):
     async def finish_meter():
         if meter_task is not None:
             meter_task.cancel()
+            last = ""
             try:
-                await meter_task
+                last = await meter_task
             except (asyncio.CancelledError, Exception):  # noqa: S110 -- awaiting our own cancel
                 pass
+            _log_backlog_peak(state, audio_q, translator, last)
 
     # Acquisition and drains can fail independently; every acquired owner still closes.
     async with AsyncExitStack() as cleanup:

@@ -796,6 +796,9 @@ Char | kana CER, GPU unless named:
   exist only on that status line, so wherever it is not the reader's they move to stderr as
   high-water marks (`backlog peak: …`, logged only when a peak moves, sampled every
   `METER_INTERVAL`=0.1 s while a status line is drawn and `METER_LOG_INTERVAL`=1 s otherwise).
+  After capture, worker and translator drain/close, `finish_meter` samples once more with the
+  meter's last rendered peak: final counter increases survive shutdown without duplicate lines,
+  and a clean run stays silent. Lock: `tests/test_audio.py::test_shutdown_keeps_the_translator_drains_final_peak`.
 - **The peak log gates on the stream PAIR — `not (_STDOUT_TTY and _STDERR_TTY)`, not on stdout alone.**
   A log record does not corrupt the status line: the formatter's `_LINE_CLEAR` erases it in place and
   the meter redraws below. It DUPLICATES it, and a moving peak would push ten lines a second through
