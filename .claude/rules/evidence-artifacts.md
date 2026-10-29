@@ -228,7 +228,12 @@ because they replay committed traces — a fresh clone runs them in under a seco
   marker or logged translation event in the whole session/`shutdown`/`failed`),
   chronological disable/restore outages (marker/log twins count once; `degrades` names every
   outage, `degrade` the first), with missing-caption inference bounded by each outage's own last
-  TGT and next restore; known skips/declines spend no inferred strikes. `backlog peak:` high-water
+  TGT and next restore; known skips/declines spend no inferred strikes. `read_sessions` splits
+  appended runs at each source-number restart (`name#1`, `name#2`, …), while `read_session`
+  requires one run. Log markers map successive uses of one path to separate runs and move startup
+  notes past their true start; without a marker, a note before the numbering restart stays with
+  the preceding run. Duplicate basenames from different paths use their input paths as report/sweep
+  identities; caption numbers are run-local. `backlog peak:` high-water
   lines and **drop
   attribution** — one row per `backlog peak:` line whose `drop=` grew, carrying the captions that
   bracket it, the publication gap between them, the `skip=` step, and every `caption dropped (…)`

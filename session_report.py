@@ -98,10 +98,18 @@ class Session:
     notes: list[tuple[datetime, str]] = field(default_factory=list)
     events: list[LogEvent] = field(default_factory=list)
     marker_start: datetime | None = None  # `session:` in the log, set by attach_logs
+    run: int | None = None  # numbered only when one file contains several runs
 
     @property
     def name(self) -> str:
-        return self.path.rsplit("/", 1)[-1]
+        name = Path(self.path).name
+        return name if self.run is None else f"{name}#{self.run}"
+
+    @property
+    def first_event(self) -> datetime | None:
+        times = [c.at for c in self.src.values()] + [c.at for c in self.tgt.values()]
+        times += [at for at, _ in self.notes]
+        return min(times) if times else None
 
     @property
     def start(self) -> datetime | None:
@@ -116,15 +124,22 @@ class Session:
         """
         if self.marker_start:
             return self.marker_start
-        try:
-            return datetime.strptime(self.name.removesuffix(".txt"), "%Y-%m-%dT%H-%M-%S")
-        except ValueError:
-            times = [c.at for c in self.src.values()] + [c.at for c in self.tgt.values()]
-            return min(times) if times else None
+        if self.run in {None, 1}:
+            try:
+                return datetime.strptime(Path(self.path).stem, "%Y-%m-%dT%H-%M-%S")
+            except ValueError:
+                pass
+        return self.first_event
 
 
-def read_session(path: str) -> Session:
+def read_sessions(path: str) -> list[Session]:
+    """Split an appended transcript where source numbering restarts.
+
+    Each run owns its own source/target number space. Notes before a restart stay
+    with the preceding run unless a log marker establishes the next run's start.
+    """
     s = Session(path=path)
+    sessions = [s]
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.rstrip("\n")
@@ -132,12 +147,26 @@ def read_session(path: str) -> Session:
                 at = datetime.fromisoformat(m.group(1)).replace(tzinfo=None)
                 held = line[m.end(3) : m.start(4)] == " <!>: "
                 cap = Caption(int(m.group(3)), at, m.group(4), held)
-                (s.src if m.group(2) in {"SRC", "JA"} else s.tgt)[cap.n] = cap
+                source = m.group(2) in {"SRC", "JA"}
+                if source and s.src and cap.n <= max(s.src):
+                    s = Session(path=path)
+                    sessions.append(s)
+                (s.src if source else s.tgt)[cap.n] = cap
             elif m := _NOTE.match(line):
                 s.notes.append(
                     (datetime.fromisoformat(m.group(1)).replace(tzinfo=None), m.group(2))
                 )
-    return s
+    if len(sessions) > 1:
+        for i, s in enumerate(sessions, 1):
+            s.run = i
+    return sessions
+
+
+def read_session(path: str) -> Session:
+    sessions = read_sessions(path)
+    if len(sessions) != 1:
+        raise ValueError(f"{path}: multiple runs; use read_sessions()")
+    return sessions[0]
 
 
 def read_log(path: str) -> list[LogEvent]:
@@ -172,24 +201,52 @@ def attach_logs(sessions: list[Session], events: list[LogEvent]) -> list[LogEven
     a window owned by NO session, so its events stay unclaimed instead of landing
     on the run before it.
     """
-    by_path = {Path(s.path).resolve(): s for s in sessions}
-    by_name: dict[str, list[Session]] = {}
+    by_path: dict[Path, list[Session]] = {}
+    by_name: dict[str, set[Path]] = {}
     for s in sessions:
-        by_name.setdefault(s.name, []).append(s)
+        path = Path(s.path).resolve()
+        by_path.setdefault(path, []).append(s)
+        by_name.setdefault(path.name, set()).add(path)
     marked: list[tuple[datetime, Session | None]] = []
+    claimed: set[int] = set()
     for e in events:
         if m := _SESSION.match(e.body):
-            path = Path(m.group(1))
-            owner = by_path.get(path.resolve())
-            if owner is None:
-                # Moved files and host/container paths still match historically,
-                # but a basename shared by two inputs identifies neither one.
-                matches = by_name.get(path.name, [])
-                owner = matches[0] if len(matches) == 1 else None
+            path = Path(m.group(1)).resolve()
+            if path not in by_path:
+                # A layer-shifted path can still identify one file, not two
+                # unrelated same-basename inputs. Appended runs share one path.
+                matches = by_name.get(path.name, set())
+                path = next(iter(matches)) if len(matches) == 1 else path
+            candidates = by_path.get(path, [])
+            owner = next(
+                (
+                    s
+                    for s in candidates
+                    if id(s) not in claimed and (s.first_event is None or s.first_event >= e.at)
+                ),
+                None,
+            )
             if owner:
                 owner.marker_start = e.at
+                claimed.add(id(owner))
             marked.append((e.at, owner))
-    claimed = {id(s) for _, s in marked if s}
+    # A startup note can precede the new run's first SRC (the split point).
+    # Log markers disambiguate it from a prior run's shutdown note.
+    for runs in by_path.values():
+        if len(runs) > 1:
+            notes = [(s, note) for s in runs for note in s.notes]
+            for s in runs:
+                s.notes = []
+            for original, note in notes:
+                owner = next(
+                    (
+                        s
+                        for s in reversed(runs)
+                        if s.marker_start is not None and s.marker_start <= note[0]
+                    ),
+                    original,
+                )
+                owner.notes.append(note)
     started = sorted(
         marked + [(s.start, s) for s in sessions if s.start and id(s) not in claimed],
         key=lambda p: p[0],
@@ -502,7 +559,14 @@ def sweep(caps: list[tuple[str, int, str]], lo: int, hi: int) -> list[dict]:
 
 
 def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
-    caps = [(s.name, c.n, c.text) for s in sessions for c in s.src.values()]
+    names = [s.name for s in sessions]
+    labels = {
+        id(s): s.name
+        if names.count(s.name) == 1
+        else s.path + (f"#{s.run}" if s.run is not None else "")
+        for s in sessions
+    }
+    caps = [(labels[id(s)], c.n, c.text) for s in sessions for c in s.src.values()]
     texts = [t for _, _, t in caps]
     survivors = sorted(((app.repeat_span(t), t) for t in texts if not screen(t)), reverse=True)
     lengths = sorted(len(t) for t in texts)
@@ -539,7 +603,7 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
         peaks = [e.body for e in s.events if _PEAK.match(e.body)]
         per_session.append(
             {
-                "session": s.name,
+                "session": labels[id(s)],
                 "captions": len(s.src),
                 "translated": len(s.tgt),
                 "held": sum(c.held for c in s.src.values()),
@@ -774,7 +838,10 @@ def main() -> int:
         print("no transcripts found", file=sys.stderr)
         return 0
 
-    sessions = sorted((read_session(p) for p in paths), key=lambda s: s.name)
+    sessions = sorted(
+        (s for p in paths for s in read_sessions(p)),
+        key=lambda s: (Path(s.path).name, s.run or 0),
+    )
     # `--save-log` writes beside the transcripts; stt.log is the `2>` recipe's name.
     logs = args.log or sorted(glob.glob("transcripts/*.log")) + glob.glob("stt.log")
     events: list[LogEvent] = []

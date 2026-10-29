@@ -973,3 +973,92 @@ def test_an_ambiguous_marker_basename_leaves_its_window_unclaimed(tmp_path):
     peak = sr.LogEvent(datetime(2026, 9, 4, 10, 0, 10), "INFO", "backlog peak: drop=5")
     assert sr.attach_logs(sessions, [marker, peak]) == [marker, peak]
     assert all(not s.events for s in sessions)
+
+
+def test_append_mode_output_does_not_pair_different_runs(tmp_path, monkeypatch, capsys):
+    # Exercise the real writer twice with the sequence restart a new run uses.
+    moments = iter(
+        datetime.fromisoformat(at)
+        for at in (
+            "2026-09-04T10:00:01+09:00",
+            "2026-09-04T10:00:03+09:00",
+            "2026-09-04T11:00:01+09:00",
+        )
+    )
+
+    class Clock:
+        @staticmethod
+        def now():
+            return next(moments)
+
+    monkeypatch.setattr(app, "datetime", Clock)
+    monkeypatch.setattr(app, "write_stdout", lambda _text: None)
+    monkeypatch.setattr(app, "ASR_LANGUAGE", "ja")
+    monkeypatch.setattr(sr, "TWO_WAY", False)
+    path = tmp_path / "custom.txt"
+    first = app.TranscriptFile(path)
+    app.emit_line("SRC", 1, "最初の実行", first)
+    app.emit_line("TGT", 1, "The first run.", first)
+    first.close()
+    second = app.TranscriptFile(path)
+    app.emit_line("SRC", 1, "次の実行", second)
+    second.close()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["session_report.py", str(path), "--json"])
+
+    assert sr.main() == 0
+    report = json.loads(capsys.readouterr().out)
+
+    assert report["totals"]["captions"] == 2, report["totals"]
+    assert report["totals"]["missing"] == 1, report["totals"]
+    assert report["lag_s"]["max"] >= 0, report["lag_s"]
+
+
+@pytest.mark.parametrize("tags", [("SRC", "TGT"), ("JA", "EN")])
+def test_appended_runs_own_their_log_windows_and_startup_notes(tmp_path, tags):
+    src, tgt = tags
+    path = write(
+        tmp_path,
+        "custom",
+        [
+            event("10:00:10", src, 1, CLEAN),
+            event("10:00:12", tgt, 1, "One."),
+            "[2026-09-04T11:00:02+09:00] -- translation disabled: codex app-server exited",
+            event("11:00:10", src, 1, CLEAN),
+        ],
+    )
+    sessions = sr.read_sessions(path)
+    first_peak = log_event("10:00:05", "backlog peak: drop=2")
+    second_peak = log_event("11:00:05", "backlog peak: drop=3")
+    events = read_log(
+        tmp_path,
+        [
+            log_event("10:00:00", f"session: {path}"),
+            first_peak,
+            log_event("11:00:00", f"session: {path}"),
+            second_peak,
+        ],
+    )
+    assert sr.attach_logs(sessions, events) == []
+    summary = sr.build(sessions, [])
+    assert summary["totals"]["captions"] == 2
+    assert [s["session"] for s in summary["sessions"]] == ["custom.txt#1", "custom.txt#2"]
+    assert [s["drops"][-1]["drop"] for s in summary["sessions"]] == [2, 3]
+    assert sessions[0].notes == []
+    assert len(sessions[1].notes) == 1
+    assert reasons(summary["sessions"][1]) == {1: sr.DISABLED}
+    assert sr.lags(sessions[0]) == [(1, 2.0)]
+    assert sr.lags(sessions[1]) == []
+    with pytest.raises(ValueError, match="multiple runs"):
+        sr.read_session(path)
+
+
+def test_same_named_transcripts_keep_distinct_caption_identities_in_the_sweep(tmp_path):
+    paths = []
+    for folder in ("morning", "afternoon"):
+        root = tmp_path / folder
+        root.mkdir()
+        paths.append(write(root, "session", [event("10:00:01", "SRC", 1, LOOP)]))
+    result = report(paths)
+    assert result["screen"]["sweep"][-1]["caught"] == 2
+    assert {s["session"] for s in result["sessions"]} == set(paths)
