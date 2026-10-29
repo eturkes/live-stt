@@ -48,10 +48,13 @@ because they replay committed traces — a fresh clone runs them in under a seco
   **It regenerates from committed state, and a green run IS the credit**:
   `uv run python tests/build_lid_census.py` re-cuts every buffer with the shipped `make_vad()`,
   re-scores every view through the shipped `LanguageDetector`, and compares bytes; `--clips N` is the
-  bounded form the resource-gated lock rides, `--write` the deliberate rewrite. **A bounded run slices
-  its oracle by UTTERANCE count, never by `len(actual)`** — the second spelling compares a truncated
-  rebuild against its own prefix, so it passes on the regression it exists to catch — and the guard
-  behind it is `corpus_clips` refusing a corpus shorter than the requested clip count. Full mode is
+  bounded form the resource-gated lock rides, `--write` the deliberate rewrite.
+  `lid_census_inputs.json` certifies ordered clip names + pinned WAV hashes + per-clip VAD counts;
+  `--input-map [--write]` alone regenerates it, with no LID scoring and the full cut's bucket order checked.
+  **A bounded run takes its oracle extent from that sidecar ALONE**, never from rebuilt rows or cuts:
+  missing whole trailing utterances and missing final views must both fail, with clean twins green
+  (`test_lid_census.py`, L-022). Requested names/hashes must match; `corpus_clips` refuses a short
+  corpus. Full mode is
   weights-gated, so `test_lid_census.py` reaches it through an INJECTED two-clip corpus and a fake
   detector: without that lock every other lock in the file stays green with `census` replaced by a
   raise. The spike's own

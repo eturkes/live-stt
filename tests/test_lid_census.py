@@ -71,6 +71,24 @@ def test_fixture_schema_and_census() -> None:
     assert builder.ROUND == 6
 
 
+def test_input_map_accounts_for_every_census_utterance() -> None:
+    inputs = json.loads(builder.INPUTS.read_bytes())
+    assert set(inputs) == {"index_sha256", "clips"}
+    assert inputs["index_sha256"] == builder.INDEX_SHA256
+    assert list(inputs["clips"]) == list(builder.LANGUAGES)
+    for language, clips in inputs["clips"].items():
+        names = [clip["clip"] for clip in clips]
+        assert names and names == sorted(set(names))
+        for clip in clips:
+            assert set(clip) == {"clip", "wav_sha256", "utterances"}
+            assert clip["clip"].endswith(".wav")
+            assert len(clip["wav_sha256"]) == 64
+            assert set(clip["wav_sha256"]) <= set("0123456789abcdef")
+            assert type(clip["utterances"]) is int and clip["utterances"] >= 0
+        expected = {row[1] for row in VIEWS if row[0] == language}
+        assert sum(clip["utterances"] for clip in clips) == len(expected)
+
+
 def test_views_follow_canonical_utterance_and_bucket_order() -> None:
     spoken = [row[0] for row in VIEWS]
     utterances = [row[1] for row in VIEWS]
@@ -159,9 +177,38 @@ def injected_corpus(tmp_path, monkeypatch):
     (tmp_path / "lang_map.json").write_text(labels, encoding="utf-8")
     monkeypatch.setattr(live_stt, "LID_MODEL_DIR", tmp_path)
     monkeypatch.setattr(live_stt, "LanguageDetector", FakeDetector)
-    monkeypatch.setattr(builder, "missing_resources", list)
+    monkeypatch.setattr(builder, "missing_resources", lambda **_kwargs: [])
     monkeypatch.setattr(builder, "ROOT", tmp_path)
     monkeypatch.setattr(builder, "OUT", tmp_path / "lid_census.json")
+    inputs = tmp_path / "lid_census_inputs.json"
+    monkeypatch.setattr(builder, "INPUTS", inputs, raising=False)
+    monkeypatch.setattr(
+        builder.corpus, "file_sha256", lambda path: hashlib.sha256(path.name.encode()).hexdigest()
+    )
+    inputs.write_text(
+        json.dumps(
+            {
+                "index_sha256": {
+                    "ja": builder.corpus.EXPECTED_INDEX_SHA256,
+                    "en": builder.corpus.EN_EXPECTED_INDEX_SHA256,
+                },
+                "clips": {
+                    language: [
+                        {
+                            "clip": f"{language}-{index}.wav",
+                            "wav_sha256": hashlib.sha256(
+                                f"{language}-{index}.wav".encode()
+                            ).hexdigest(),
+                            "utterances": 2,
+                        }
+                        for index in range(2)
+                    ]
+                    for language in builder.LANGUAGES
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         builder,
         "corpus_clips",
@@ -214,8 +261,7 @@ def test_full_mode_scores_renders_and_compares_bytes(injected_corpus, capsys) ->
 def test_bounded_mode_rejects_a_rebuild_that_dropped_trailing_rows(
     injected_corpus, monkeypatch
 ) -> None:
-    """A truncated rebuild is a PREFIX of the fixture, so a `len(actual)` oracle compares it
-    against itself and passes. The oracle is sliced by utterance count for exactly this."""
+    """A missing final view must fail against the independently selected clip extent."""
     assert builder.main(["--write"]) == 0
     detector = cast(live_stt.LanguageDetector, FakeDetector())
 
@@ -225,6 +271,70 @@ def test_bounded_mode_rejects_a_rebuild_that_dropped_trailing_rows(
     monkeypatch.setattr(builder, "language_views", lambda *a, **k: full(*a, **k)[:-1])
     with pytest.raises(ValueError, match="differ from the fixture"):
         builder.bounded_check(detector, "ja", 2)
+
+
+def test_bounded_census_rejects_a_whole_missing_last_utterance(
+    injected_corpus, monkeypatch
+) -> None:
+    assert builder.main(["--write"]) == 0
+    detector = cast(live_stt.LanguageDetector, FakeDetector())
+    assert builder.bounded_check(detector, "ja", 2) == (4, 16)
+
+    full = builder.language_views
+    monkeypatch.setattr(
+        builder,
+        "language_views",
+        lambda *args, **kwargs: [row for row in full(*args, **kwargs) if row[1] < 3],
+    )
+    with pytest.raises(ValueError, match="differ from the fixture"):
+        builder.bounded_check(detector, "ja", 2)
+
+
+@pytest.mark.parametrize("corruption", ["index", "name", "hash", "short"])
+def test_bounded_census_refuses_an_input_map_for_other_clips(
+    injected_corpus, monkeypatch, corruption
+) -> None:
+    assert builder.main(["--write"]) == 0
+    detector = cast(live_stt.LanguageDetector, FakeDetector())
+    assert builder.bounded_check(detector, "ja", 2) == (4, 16)
+    inputs = json.loads(builder.INPUTS.read_bytes())
+    rows = inputs["clips"]["ja"]
+    if corruption == "index":
+        inputs["index_sha256"]["ja"] = "f" * 64
+    elif corruption == "name":
+        rows[0]["clip"] = "other.wav"
+    elif corruption == "hash":
+        rows[0]["wav_sha256"] = "f" * 64
+    else:
+        rows.pop()
+    builder.INPUTS.write_text(json.dumps(inputs), encoding="utf-8")
+    with pytest.raises(ValueError, match="(fingerprints|input map)"):
+        builder.bounded_check(detector, "ja", 2)
+
+
+def test_input_map_mode_reproduces_the_cut_without_lid_scoring(
+    injected_corpus, monkeypatch
+) -> None:
+    assert builder.main(["--write"]) == 0
+    census_bytes = injected_corpus.read_bytes()
+    expected = json.loads(builder.INPUTS.read_bytes())
+
+    def unexpected_detector():
+        pytest.fail("input-map mode constructed the LID")
+
+    monkeypatch.setattr(live_stt, "LanguageDetector", unexpected_detector)
+    assert builder.main(["--input-map", "--write"]) == 0
+    written = builder.INPUTS.read_bytes()
+    assert json.loads(written) == expected
+    assert builder.main(["--input-map"]) == 0
+    assert builder.main(["--input-map", "--write"]) == 0
+    assert builder.INPUTS.read_bytes() == written
+    assert injected_corpus.read_bytes() == census_bytes
+
+    full = builder.vad_buffers
+    monkeypatch.setattr(builder, "vad_buffers", lambda pcm: full(pcm)[:-1])
+    assert builder.main(["--input-map", "--write"]) == 1
+    assert builder.INPUTS.read_bytes() == written
 
 
 def test_corpus_clips_sorts_fleurs_and_refuses_a_short_corpus(tmp_path, monkeypatch) -> None:

@@ -34,6 +34,12 @@ a green run IS the byte-identity credit. `--write` is for a deliberate regenerat
     uv run python tests/build_lid_census.py              # full rebuild + byte compare
     uv run python tests/build_lid_census.py --clips 20   # bounded re-derivation
     uv run python tests/build_lid_census.py --write      # rewrite the fixture
+    uv run python tests/build_lid_census.py --input-map --write  # VAD-only clip/count sidecar
+
+`lid_census_inputs.json` pins ordered clip names, WAV hashes and VAD utterance counts.
+Bounded checks select their oracle extent from this sidecar, never the rebuilt output.
+Input-map mode validates the full cut's utterance/bucket order against the existing census;
+it neither constructs the LID nor scores a view.
 """
 
 from __future__ import annotations
@@ -52,12 +58,14 @@ from tests import fetch_real_clips as corpus
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "tests" / "lid_census.json"
+INPUTS = ROOT / "tests" / "lid_census_inputs.json"
 SAMPLE_RATE = 16_000
 PREFIX_SECONDS = (1, 2, 3, 5, 8)
 ROUND = 6
 BOUNDARY_SECONDS = 1
 # Census order: `utterance` numbers every `ja` buffer before the first `en` one.
 LANGUAGES = ("ja", "en")
+INDEX_SHA256 = {"ja": corpus.EXPECTED_INDEX_SHA256, "en": corpus.EN_EXPECTED_INDEX_SHA256}
 VIEW_FIELDS = ["spoken", "utterance", "bucket", "argmax", "argmax_score", "ja", "en"]
 SYNTHETIC_FIELDS = ["id", "seconds", "argmax", "argmax_score", "ja", "en"]
 RUNTIME = "onnxruntime CPUExecutionProvider"
@@ -75,26 +83,24 @@ def corpus_dir(language: str) -> Path:
     return corpus.CACHE / name / "fleurs"
 
 
-def missing_resources() -> list[str]:
-    """Absent inputs, named for a skip reason; empty when the rebuild can run."""
+def missing_resources(*, include_lid: bool = True) -> list[str]:
+    """Absent inputs, named for a skip reason; input-map mode needs no LID weights."""
     paths = [
         live_stt.VAD_MODEL,
-        live_stt.LID_MODEL_DIR / MODEL_NAME,
-        live_stt.LID_MODEL_DIR / "lang_map.json",
         *(corpus_dir(language).parent / "index.jsonl" for language in LANGUAGES),
         *(corpus_dir(language) for language in LANGUAGES),
     ]
+    if include_lid:
+        paths += [live_stt.LID_MODEL_DIR / MODEL_NAME, live_stt.LID_MODEL_DIR / "lang_map.json"]
     return [str(path.relative_to(ROOT)) for path in paths if not path.exists()]
 
 
 def corpus_clips(language: str, limit: int | None = None) -> list[Path]:
     """FLEURS clips of `language` in census order, after an index-fingerprint check."""
     directory = corpus_dir(language).parent
-    expected = corpus.EXPECTED_INDEX_SHA256 if language == "ja" else corpus.EN_EXPECTED_INDEX_SHA256
-    entries = corpus.validate_cached_index(directory, expected)
+    entries = corpus.validate_cached_index(directory, INDEX_SHA256[language])
     clips = sorted(directory / entry["wav"] for entry in entries if entry["source"] == "fleurs")
-    # A short corpus must fail loudly: a bounded check compares only the rows it built, so
-    # silently returning fewer clips than asked would let the whole check pass on a prefix.
+    # Requested clip count is input identity: a shorter cache is incomplete, not a smaller run.
     if limit is not None and len(clips) < limit:
         raise ValueError(f"{language}: asked for {limit} clips, corpus holds {len(clips)}")
     return clips[:limit]
@@ -238,8 +244,7 @@ def render(payload: dict) -> bytes:
 def committed_views(language: str) -> list[list]:
     """The fixture's rows for one language, `utterance` re-localized to 0-based.
 
-    Re-localizing is what lets a bounded run compare: a `--clips N` rebuild numbers `en`
-    from the utterances it actually cut, never from the full corpus's 1,030.
+    A bounded `en` rebuild starts at zero, not after the full Japanese corpus's prefix.
     """
     payload = json.loads(OUT.read_text(encoding="utf-8"))
     rows = [row for row in payload["views"] if row[0] == language]
@@ -249,21 +254,56 @@ def committed_views(language: str) -> list[list]:
     return [[row[0], row[1] - first, *row[2:]] for row in rows]
 
 
+def input_map() -> dict:
+    """Pin clip identities + VAD utterance counts without loading/scoring the LID.
+
+    The full cut's utterance/bucket order must match the existing census, so a dropped
+    buffer cannot become a newly certified bounded oracle.
+    """
+    clips = {}
+    for language in LANGUAGES:
+        records = []
+        views = []
+        utterance = 0
+        for path in corpus_clips(language):
+            buffers = vad_buffers(read_clip(path))
+            records.append(
+                {
+                    "clip": path.name,
+                    "wav_sha256": corpus.file_sha256(path),
+                    "utterances": len(buffers),
+                }
+            )
+            for buffer in buffers:
+                views.extend([language, utterance, bucket] for bucket, _ in bucket_views(buffer))
+                utterance += 1
+        if views != [row[:3] for row in committed_views(language)]:
+            raise ValueError(f"{language}: input-map VAD cut differs from the committed census")
+        clips[language] = records
+    return {"index_sha256": INDEX_SHA256, "clips": clips}
+
+
 def bounded_check(
     detector: live_stt.LanguageDetector, language: str, clips: int
 ) -> tuple[int, int]:
     """`(utterances, views)` once the first `clips` clips reproduce the fixture exactly.
 
-    Raises `ValueError` on any disagreement. The oracle is sliced by UTTERANCE count, never
-    by `len(actual)`: taking the oracle's length from the rebuild is what makes a rebuild
-    that dropped its trailing buffers compare equal to its own prefix, so that spelling
-    passes on exactly the regression the check exists to catch.
+    The committed input map alone selects the oracle extent. A missing whole trailing
+    utterance must not shrink that extent to the same truncated output prefix.
     """
-    actual = language_views(detector, language, clips)
-    if not actual:
-        raise ValueError(f"{language}: the first {clips} clips produced no views")
-    utterances = actual[-1][1] + 1
+    inputs = json.loads(INPUTS.read_text(encoding="utf-8"))
+    if inputs["index_sha256"] != INDEX_SHA256:
+        raise ValueError("input-map corpus index fingerprints differ")
+    selected = inputs["clips"][language][:clips]
+    paths = corpus_clips(language, clips)
+    if len(selected) != clips or [row["clip"] for row in selected] != [p.name for p in paths]:
+        raise ValueError(f"{language}: requested clips differ from the committed input map")
+    for path, row in zip(paths, selected, strict=True):
+        if corpus.file_sha256(path) != row["wav_sha256"]:
+            raise ValueError(f"{language}: {path.name} WAV differs from the committed input map")
+    utterances = sum(row["utterances"] for row in selected)
     expected = [row for row in committed_views(language) if row[1] < utterances]
+    actual = language_views(detector, language, clips)
     if actual != expected:
         raise ValueError(f"{language}: rows from the first {clips} clips differ from the fixture")
     return utterances, len(actual)
@@ -277,17 +317,34 @@ def main(argv: list[str] | None = None) -> int:
         metavar="N",
         help="check only the first N clips of each language",
     )
-    parser.add_argument("--write", action="store_true", help="rewrite the committed fixture")
+    parser.add_argument("--write", action="store_true", help="rewrite the selected artifact")
+    parser.add_argument(
+        "--input-map", action="store_true", help="check/write clip identities + VAD counts; no LID"
+    )
     args = parser.parse_args(argv)
     if args.clips is not None and args.clips < 1:
         parser.error("--clips must be at least 1")
-    if args.clips is not None and args.write:
-        parser.error("--clips and --write are mutually exclusive")
+    if args.clips is not None and (args.write or args.input_map):
+        parser.error("--clips is mutually exclusive with --write and --input-map")
 
-    missing = missing_resources()
+    missing = missing_resources(include_lid=not args.input_map)
     if missing:
         print(f"absent: {', '.join(missing)}", file=sys.stderr)
         return 1
+
+    if args.input_map:
+        try:
+            raw = render(input_map())
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        if args.write:
+            INPUTS.write_bytes(raw)
+        elif not INPUTS.is_file() or INPUTS.read_bytes() != raw:
+            print("error: regenerated input map is not byte-identical", file=sys.stderr)
+            return 1
+        print(f"{INPUTS.relative_to(ROOT)}: {len(raw)} B; input map matches the census cut")
+        return 0
 
     detector = live_stt.LanguageDetector()
     if args.clips is not None:
