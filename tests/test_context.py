@@ -257,6 +257,29 @@ def test_an_ambiguous_turn_is_not_evidence():
     assert ctx.renderings == {}
 
 
+@pytest.mark.parametrize(
+    "key,name",
+    [
+        ("オオガワ", "Ōgawa"),
+        ("イイダ", "Īda"),
+        ("オオガワ", "Ōgawa Īda"),
+        ("オオガワ", "Gon Ōgawa"),
+    ],
+)
+def test_a_mid_sentence_name_with_a_capital_macron_can_pair(key: str, name: str):
+    ctx = SessionContext()
+    _see(ctx, key, CONTEXT_TERM_SUPPORT)
+    for _ in range(CONTEXT_EN_SUPPORT):
+        ctx.observe_en(key, f"{name} was here.")
+        ctx.observe_en(key, f"We met {name.lower()}.")
+    assert ctx.renderings == {}  # sentence position + uppercase evidence still required
+    for _ in range(CONTEXT_EN_SUPPORT - 1):
+        ctx.observe_en(key, f"We met {name}.")
+    assert ctx.renderings == {}
+    ctx.observe_en(key, f"We met {name}.")
+    assert ctx.renderings == {key: name}
+
+
 def test_a_sentence_opening_capital_is_not_a_name():
     ctx = SessionContext()
     _see(ctx, DRUG, CONTEXT_TERM_SUPPORT)

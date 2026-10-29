@@ -353,7 +353,10 @@ Learned from the session's own captions, held in memory, discarded at exit. Lock
   change rotates the codex thread whose own history was holding the spelling ⇒ the unpaired list made
   rendering consistency WORSE than no context at all. Evidence rule: exactly one still-unpaired
   trusted term in the JA and exactly one proper noun in the EN, `CONTEXT_EN_SUPPORT`=2 agreeing turns,
-  where a proper noun is a capitalized run that is not sentence-initial. Measured over three corpora ×
+  where a proper noun is a capitalized run that is not sentence-initial. Its initial shares the word
+  body's Latin alphabet (through `ſ`), so leading `Ō` / `Ī` count like internal macrons; multiword
+  runs keep those initials too. Lock: `test_a_mid_sentence_name_with_a_capital_macron_can_pair`.
+  Measured over three corpora ×
   3 sessions/arm through the real translator: distinct spellings of one recurring proper noun 1/1/1 in
   **9 of 9** paired sessions against 3/5/2 · 1/1/1 · 4/1/1 unpaired; adequacy held at Δ **−0.018**
   [−0.089, +0.050]. A rendering expires with its term's lease, which is what bounds the dict.

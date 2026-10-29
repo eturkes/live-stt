@@ -1228,7 +1228,9 @@ _TERM_RUN = re.compile(r"[ァ-ヺー]{2,}|[一-鿿々]{2,8}|[A-Za-z][A-Za-z0-9_-
 # read as two names in one sentence, so the pairing gate shut).
 _EN_SENTENCE = re.compile(r'(?<=[.!?…])["”’»]*\s+|(?:^|(?<=\s))(?=["“‘])')
 _EN_WORD = re.compile(r"[A-Za-zÀ-ſ'’-]+")
-_EN_NAME = re.compile(r"[A-Z][A-Za-zÀ-ſ'’-]*(?:\s+[A-Z][A-Za-zÀ-ſ'’-]*)*")
+# The initial uses the body's Latin alphabet too: Ōgawa and Īda are capitalized names.
+_EN_UPPER = "".join(c for c in map(chr, range(0x180)) if c.isupper() and _EN_WORD.fullmatch(c))
+_EN_NAME = re.compile(rf"[{_EN_UPPER}][A-Za-zÀ-ſ'’-]*(?:\s+[{_EN_UPPER}][A-Za-zÀ-ſ'’-]*)*")
 _EN_POSSESSIVE = re.compile(r"[’']s$")
 # `_EN_NAME`'s class swallows the apostrophe, so each contraction matches as one token
 # and needs its own entry; the typographic form folds to ASCII before the lookup.
