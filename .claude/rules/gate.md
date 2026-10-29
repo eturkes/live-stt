@@ -120,3 +120,12 @@ keyless bold verdict, the opener restated in prose, an anchor only the user-leve
 the pre-move capitalisation of the prototype clause, and a rules dir yielding no tags. The
 haystack is the repo's own template copies alone, so no anchor rests on a user-level file that
 changes outside the repo.
+
+The same loop validates each rule's optional frontmatter through the existing dev stack's PyYAML
+safe loader + node parser: a delimited mapping, one `paths` sequence, nonempty quoted string globs.
+Construction rejects unsupported tags; nodes preserve quote styles. Bare rules stay valid. Committed
+malformed-YAML, missing-delimiter, wrong-type, empty/unquoted-value, duplicate-paths and unsupported-tag
+plants each fail with their rule's path; bare, flow-list and block-list twins pass. Neutralizing the
+validation call from a `cp` snapshot reddens all fourteen bad-header cases, restored green. Scope
+selection and glob meaning stay judgment; this schema checks syntax, types and the quoted-glob
+convention, not whether a valid pattern names the intended files.

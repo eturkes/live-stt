@@ -29,6 +29,8 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
+from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE = ROOT / ".agent" / "deferred.md"
@@ -149,10 +151,39 @@ def test_open_tasks_pair_every_queue_row_with_its_rank():
         )
 
 
+def _check_rule_frontmatter(path: Path) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return
+    name = path.relative_to(ROOT)
+    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+    assert end is not None, f"{name}: frontmatter needs a closing delimiter"
+    try:
+        frontmatter = "\n".join(lines[1:end])
+        # Construction rejects unsupported tags; nodes retain quote styles.
+        yaml.safe_load(frontmatter)
+        node = yaml.compose(frontmatter, Loader=yaml.SafeLoader)
+    except yaml.YAMLError as exc:
+        raise AssertionError(f"{name}: frontmatter is invalid YAML: {exc}") from exc
+    assert isinstance(node, MappingNode), f"{name}: frontmatter must be a mapping"
+    paths = [v for k, v in node.value if isinstance(k, ScalarNode) and k.value == "paths"]
+    assert len(paths) == 1 and isinstance(paths[0], SequenceNode), (
+        f"{name}: frontmatter needs one paths list"
+    )
+    assert paths[0].value and all(
+        isinstance(p, ScalarNode)
+        and p.tag == "tag:yaml.org,2002:str"
+        and p.value.strip()
+        and p.style in ('"', "'")
+        for p in paths[0].value
+    ), f"{name}: frontmatter paths must be nonempty quoted strings"
+
+
 def test_every_template_ruling_keys_on_a_live_template_anchor():
     haystack = re.sub(r"\s+", " ", "\n".join(p.read_text(encoding="utf-8") for p in TEMPLATE_FILES))
     parsed = 0
     for path in sorted(RULES.glob("*.md")):
+        _check_rule_frontmatter(path)
         name = path.relative_to(ROOT)
         # Squashed: prose wrapping splits a tag, and a quoted clause, across lines.
         text = re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
@@ -297,6 +328,39 @@ def test_intent_quotes_stay_in_the_citing_sentence(law_tree, sentence, misquote)
             test_every_intent_citation_quotes_live_intent_text()
     else:
         test_every_intent_citation_quotes_live_intent_text()
+
+
+@pytest.mark.parametrize(
+    ("header", "invalid"),
+    [
+        ('---\npaths: ["live_stt.py"\n---\n', True),
+        ('---\npaths: ["live_stt.py"]\n', True),
+        ('---\npaths: "live_stt.py"\n---\n', True),
+        ("---\npaths: []\n---\n", True),
+        ("---\npaths: [true]\n---\n", True),
+        ("---\npaths: [live_stt.py]\n---\n", True),
+        ("---\npaths: [null]\n---\n", True),
+        ('---\npaths: [""]\n---\n', True),
+        ('---\nother: ["live_stt.py"]\n---\n', True),
+        ('---\n- "live_stt.py"\n---\n', True),
+        ('---\npaths: ["live_stt.py"]\npaths: ["tests/*"]\n---\n', True),
+        ('---\n!custom {paths: ["live_stt.py"]}\n---\n', True),
+        ('---\npaths: !custom ["live_stt.py"]\n---\n', True),
+        ('---\n!custom paths: ["live_stt.py"]\n---\n', True),
+        ("", False),
+        ('---\npaths: ["live_stt.py", "tests/*"]\n---\n', False),
+        ("---\npaths:\n  - \"live_stt.py\"\n  - 'tests/*'\n---\n", False),
+    ],
+)
+def test_rule_frontmatter_is_validated_before_rulings(law_tree, header, invalid):
+    (RULES / "scoped.md").write_text(
+        header + '\n# Law\n\nTemplate ruling: "contracts + tiers" → **ADAPTED** — test clause.\n'
+    )
+    if invalid:
+        with pytest.raises(AssertionError, match="scoped.md: frontmatter"):
+            test_every_template_ruling_keys_on_a_live_template_anchor()
+    else:
+        test_every_template_ruling_keys_on_a_live_template_anchor()
 
 
 def test_every_intent_citation_quotes_live_intent_text():

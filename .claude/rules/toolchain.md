@@ -51,8 +51,11 @@ owns the exact form, and prose must not restate it — this paragraph would matc
 rank retargets onto the wrong unit; a title survives its unit and reads as live law describing
 queued work that no longer exists.
 
-The fourth locks the ruling tags (`orientation.md`), which a refresh re-reads against the template
-before acting on its words. `_RULING_TAG` owns the form, and prose must not restate the tag's opener
+The fourth validates optional rule frontmatter, then locks ruling tags (`orientation.md`) against
+the template. A scoped rule has delimited YAML mapping frontmatter with one nonempty `paths` list
+of quoted strings; bare rules stay valid. Parsing catches a broken loading boundary before the
+ruling's text can pass independently; selecting the right area stays judgment. A refresh re-reads
+each ruling against the template before acting on its words. `_RULING_TAG` owns the form, and prose must not restate the tag's opener
 — a scanned paragraph would parse as a broken tag. Three things hold in every `.claude/rules/`
 file, on whitespace-squashed text since wrapping splits a quote across lines: each opener parses in
 full, so a near-miss (curly quotes, a missing arrow, an unknown verdict) fails by name instead of
