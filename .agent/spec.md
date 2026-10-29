@@ -283,6 +283,12 @@ Detail → `.claude/rules/`, which each `D-###` names.
     `.agent/deferred.md` → *Ruling-tag lock reports every dead anchor*.
 - [ ] **6** Queue rows declare their tier
   - Three open rows carry no tier; accept → `.agent/deferred.md` → *Queue rows declare their tier*.
+- [ ] **7** Fresh-session baseline re-measured
+  - The attached-set figures unit sizing subtracts predate the set's growth; accept →
+    `.agent/deferred.md` → *Fresh-session baseline re-measured*.
+- [ ] **8** Landed teammate worktrees removed
+  - 45 linked worktrees + their `wt/*` branches outlived their landing; accept →
+    `.agent/deferred.md` → *Landed teammate worktrees removed*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

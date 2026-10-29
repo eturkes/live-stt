@@ -97,7 +97,7 @@ library, accelerator prelude or model loads inside this check.
   to confirm. `make_farm.py` links `intel-accel/npu-compiler/`
   (that .deb's pair, glibc 2.38, loads on both layers) ahead of every other copy and warns once the
   host UMD moves off its `UMD_VERSION`; a driver update re-pins from the new release's .deb. The
-  host's `/usr/lib64` pair carries no rpm owner — hand-placed — and is the user's to keep matched.
+  host's system-library pair carries no rpm owner — hand-placed — and is the user's to keep matched.
 
 ## Placement + benchmarking
 

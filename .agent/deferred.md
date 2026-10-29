@@ -72,3 +72,28 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    **Accept:** every open row in this file declares `Tier kernel|data|docs` with the reason that
    decides it (where a defect is re-checked, at what cost); a user-only row states its tier or that
    none applies.
+
+7. **Fresh-session baseline re-measured** — `assurance-posture.md` records a fresh MAIN session
+   opening at ≈47K over 99.8 KB attached (user-level instruction file 10.9 KB, `CLAUDE.md` 34.8 KB,
+   `.agent/spec.md` 22.3 KB, the three bare rules files 31.9 KB) and orders a re-measure whenever
+   that set moves; the set now reads 12.1 / 35.6 / 24.4 / 33.2 KB (`wc -c`) while the recorded
+   figures still describe the old set, so the baseline a work figure subtracts from a `main=` total
+   is unmeasured for today's set. Tier `docs` (rule prose; the next re-measure re-checks it).
+   **Accept:** the rule's own recipe runs on a clean tree at the repo root — `claude -p "Reply with
+   the single word OK." --output-format stream-json --verbose`, assistant `usage` summed, `wc -c`
+   over the set — and `assurance-posture.md`'s baseline figures equal that run's, command and numbers
+   in the commit body.
+
+8. **Landed teammate worktrees removed** — `git worktree list` holds 45 linked worktrees under
+   `.scratch/worktrees/` past their close, which `CLAUDE.md`'s `Teammates` ends by removing worktrees
+   + branches: `wt/reviewer-1..35` (each tip an ancestor of `main`), `wt/general-purpose-1..9` (every
+   commit patch-equivalent on `main` by `git cherry`, save `d40fdba`, landed conflict-resolved as
+   `37a398f`) and a detached `main-gate` (`d7b329a` ≡ `ee387e4`). 30 reviewer worktrees hold 35
+   untracked review-probe paths alone and no tracked edit: test files under `tests/`, one
+   `.reviewer27/` scratch dir, `reviewer34-neutralize.py`. Tier `data`
+   (the landing proof re-validates each branch at removal, and is the last check: a deleted branch
+   takes its reflog with it).
+   **Accept:** each removal follows its own landing proof (ancestor, `git cherry` all `-`, or the
+   named equivalent) and an inspection of its worktree's untracked files; then `git worktree list`
+   names the primary tree alone, `git branch --list 'wt/*'` prints nothing, and
+   `attempt/p009-audio-time-cut` stays (user ruling, `b906ce0`).
