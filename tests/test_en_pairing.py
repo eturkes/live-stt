@@ -350,6 +350,15 @@ def test_pairing_replay_omits_empty_inputs_as_the_live_arm_does():
     assert replay(caps, turns)["n_published"] == 2
 
 
+def test_pairing_trace_source_names_its_actual_caption_input():
+    trace = json.loads(TURNS.read_text(encoding="utf-8"))
+    source = json.loads(TURNS.with_name(trace["source"]["trace"]).read_text(encoding="utf-8"))
+    expected = [
+        (caption["idx"], caption["text"]) for caption in source["captions"] if caption["text"]
+    ]
+    assert [(turn["idx"], turn["ja"]) for turn in trace["turns"]] == expected
+
+
 def test_the_committed_run_learns_every_real_name_and_no_pronoun():
     """P-019 + P-020's acceptance, re-derived from the run that measured both.
 

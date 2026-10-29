@@ -126,7 +126,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   (`observe_ja` → `_translate` → `observe_en`), one turn per row rather than per settled piece.
   Learner verdicts + turn latency/rotations therefore describe THAT population, never current live
   publication/translation behavior. Default mode re-derives every
-  verdict from the trace offline. Replay binds the EXACT ordered nonempty input ids + JA bytes;
+  verdict from the trace offline. `repair_en_pairing_trace.py` repairs the historical source pointer
+  only, after all ordered JA inputs match the frozen turbo rows; reruns are byte-idempotent.
+  `test_pairing_trace_source_names_its_actual_caption_input` binds metadata to every ordered turn
+  (wrong current-source pointer fires it, L-022). Replay binds the EXACT ordered nonempty input ids + JA bytes;
   extra/reordered turns refuse before either learner or raw census runs. `test_en_pairing.py` fires
   those guards with extra/reversed turns (L-022). Live/replay agreement compares renderings on LIVE
   episodes alone; history keeps paired lease expiries. `live_turns` owns its current translator

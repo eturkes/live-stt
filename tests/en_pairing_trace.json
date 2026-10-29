@@ -1,6 +1,6 @@
 {
  "source": {
-  "trace": "caption_trace.json",
+  "trace": "caption_trace_turbo.json",
   "n_captions": 215
  },
  "run": {
