@@ -16,9 +16,10 @@ paths:
 ## Transport + configuration (D-011)
 
 Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio: `initialize` →
-`thread/start` (one thread per session, `ephemeral`, `sandbox:read-only`, `approvalPolicy:never`,
-`personality:none`) → `turn/start` per block → `agentMessage` deltas → `turn/completed`; quota via
-`account/rateLimits/read`. Sequential turns, so TGT lines keep SRC order.
+`thread/start` (one active thread per direction, `ephemeral`, `sandbox:read-only`,
+`approvalPolicy:never`, `personality:none`) → `turn/start` per published piece → `agentMessage`
+deltas → `turn/completed`; quota via `account/rateLimits/read`. Glossary/cadence rotations replace
+that direction's thread. Sequential turns, so TGT lines keep SRC order.
 
 `tests/test_codex_config.py` observes argv at a fake spawn boundary, both directions' thread/turn
 payloads and the bytes `_write` emits. Every tool-disable key must survive argv serialization;
@@ -208,9 +209,9 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
     `_end_proc()` closes stdin so the child still exits 0 ⇒ detaching orphans nothing.
   - `_restore` mirrors `_disable` into both channels ⇒ `-- translation restored: codex app-server
     probed|respawned (attempt N)`, naming the arm. A transcript carrying only the disable marker
-    reads as source-only from that point while TGT lines resume below it. A recovered leg resets
-    `_failures` (else it is one strike from dying, and the probe arm arrives carrying a FULL count by
-    construction) and `_turns` (else the fresh thread rotates early).
+    reads as source-only from that point while TGT lines resume below it. `_recover` resets
+    `_failures` (else the probe arm arrives one strike from dying) + the repaired `leg.turns`
+    (else its fresh thread rotates early); a respawn clears every leg's thread state.
 - **A caption too stale to be worth translating is published source-only** —
   `TRANSLATE_MAX_STALENESS_S`=15.0, stamped at `submit` and read at DEQUEUE in `run()`, **only after
   the recovery block**. Placement is the whole rule: `run()` is the only thing that drives
@@ -243,9 +244,10 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
 
 ## Live validation — two sessions on a real mic, 26 min and 2 h 14 min
 
-The leg's only mic-side evidence, and what it does and does not settle. Both sessions are committed
-text-free as `tests/lag_sessions.json` (`evidence-artifacts.md`), so every number below re-derives
-from the repo alone: `uv run python tests/eval_lag.py`.
+Two reproducible mic-side samples: `tests/lag_sessions.json` commits them text-free
+(`evidence-artifacts.md`); `uv run python tests/eval_lag.py` re-derives their table + lag counts.
+Further mic evidence lives in `live-smoke.md` items 2 + 5: 533/534 translated over 60 min,
+separate from these two committed lag records.
 
 | session | span | captions | translated | degrade | restore | p50 | p90 | max |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -260,25 +262,30 @@ from the repo alone: `uv run python tests/eval_lag.py`.
   / 1.71 s clinical, the ~0.6 s excess is a property of the TURN, not of one session.
   **Queueing is REFUTED for the MEDIAN in both samples** — 130 of 143 and 602 of 696 captions were
   emitted with no earlier caption's target outstanding and carry that same p50 2 s.
-- **The tail is NOT turn latency. It is one wedge-and-recover cascade, and it is now bounded.**
+- **The long session's extreme tail lies in one wedge-and-recover cascade.**
   Outside captions 297-308, session 2 reads max **15 s** with nothing ≥20 s; those 12 captions hold
   ALL 8 pairs ≥20 s and ALL 5 ≥30 s in the session (42/39/34/34/34/22/26/24/16/12/11/9 s). Three
   turns wedged at `TRANSLATE_TIMEOUT_S`=15 s each (n=294-296, sourced, never translated) spent the
   three strikes; `_disable` fired at 3595 s and `_probe` restored the leg at 3601 s; the captions
   queued across those ~50 s drained afterwards, each landing tens of seconds after the words were
   spoken. Inference, matching the real-server probe: one stall steered the next two captions into
-  itself behind the `turnId`-less interrupt, which is how one wedge spent all three strikes. A
-  successful turn cannot exceed `TRANSLATE_TIMEOUT_S` ⇒ **every lag above 15 s is queue
-  wait by construction**, which is what `TRANSLATE_MAX_STALENESS_S` now cuts. Session 1's own tail is
+  itself behind the `turnId`-less interrupt, which is how one wedge spent all three strikes.
+  **The 15 s staleness policy bounds queue age at dequeue, not SRC→TGT latency.** A later
+  thread rotation adds a `CODEX_CONTROL_TIMEOUT_S` wait; a lazy reverse handshake adds control
+  + warm-up waits before the caption's `TRANSLATE_TIMEOUT_S`. An 8 s rotation + 8 s turn
+  succeeds with zero queue wait at 16 s.
+  Queue-wait attribution describes this recorded cascade, not every lag above 15 s.
+  Session 1's own tail is
   the same shape one order smaller and needs no cascade: its max-lag caption had one ahead of it,
   while its slowest standalone turn took 7 s.
-- **The rotation tax did not surface in either session.** Session 1: 4 turns ≥6 s, **none on a
-  100-turn boundary**, one boundary crossed (turn 101, 4 s). Session 2: 52 turns ≥6 s and **exactly
-  one on a boundary** (caption 101 at 6 s), across 5 crossings whose lags were 6/3/1/1/3 s. Read
-  both as the absence of a visible bump, never as proof the rotation is free — `session_report.py`
-  tags a boundary rather than asserting it, a transcript cannot separate rotation from an ordinary
-  slow turn, and session 2's counter position is itself reconstructed, since `_restore` resets
-  `_turns` and the failed turns' effect on the counter is unrecorded.
+- **The caption-cadence proxy shows no recurring bump in either session.** Session 1: 4 pairs
+  ≥6 s, none at the proxy; one proxy crossed (caption 101, 4 s). Session 2: 52 pairs ≥6 s,
+  exactly one at the proxy (caption 101, 6 s), across 5 crossings with lags 6/3/1/1/3 s.
+  These are caption-number positions, NOT observed rotations: skipped turns + recovery resets
+  break caption-to-turn alignment, and glossary rotations are unrecorded. `session_report.py`
+  exposes `caption_cadence_proxy`, `null` under two-way's independent language counters. A
+  transcript cannot separate a rotation from an ordinary slow turn; `_recover` resets each
+  repaired `leg.turns`, and the failed turns' counter effects are unrecorded.
 - **`_probe` IS live-validated; `_respawn` is not.** The 3-strike arm fired on a real mic and
   restored the leg on attempt 1, 6 s from disable to restore against its 5.5 s bench number, with
   TGT lines resuming below the marker pair. `_respawn` has still never fired outside the bench and
@@ -286,8 +293,8 @@ from the repo alone: `uv run python tests/eval_lag.py`.
 
 ## What the target lag is made of — 300 real turns through the app-server
 
-The bench half of the lag question, run under L-026: 12 committed captions from
-`tests/caption_trace.json` × 5 reps × 5 cumulative arms, arms sequential, reps interleaved, a fresh
+The bench half of the lag question, run under L-026: 12 frozen RAW utterance observations from
+`tests/caption_trace_turbo.json` × 5 reps × 5 cumulative arms, arms sequential, reps interleaved, a fresh
 thread per measured turn for A0-A3, a real-input canary after every measured turn, paired bootstrap
 95 % CIs. 300 valid turns + 300 canaries, 0 auth or quota gates, 1 invalid pair — an A2 measured turn
 timed out, so its canary never ran; it was drained with the real `_abort_turn()`, the server
@@ -322,15 +329,17 @@ interpolated.
   reconstructing fresh A3, 5.419 s reconstructing aged A4, the 6 ms difference being median
   non-additivity rather than a fifth term. No sub-factor inside it was isolated and nothing here says
   which server-side operation owns it.
-- **What this explains about the live sessions, and what it does not.** A4 + emit = 1.549 s = **77 %
-  of the p50 (2 s) BOTH sessions report**, leaving 0.451 s; **55 % of session 1's p90 (4 s)**,
-  leaving 1.782 s, and **31 % of session 2's (5 s)**, leaving 3.451 s. A4 is the honest comparator
-  because session 1 crossed exactly one rotation over 143 captions, so at most 2 of its turns were
-  fresh — but A4 is equally a counterfactual past the shipped 100-turn rotation, which is why both
-  rows are published. **The MAXIMUM is no longer a bench question.** Session 2's 42 s is the
-  wedge-and-recover cascade above — queue wait by construction, which a bench of warm sequential
-  turns cannot reach — and the bound now cuts it. What stays unexplained is the **p90 shoulder**,
-  1.8-3.5 s of it, which fresh A3's own 9.122 s max shows the model can produce on demand with no
+- **What this explains about the live sessions, and what it does not.** A4 p50 + emit = 1.549 s =
+  **77 % of the p50 (2 s) BOTH sessions report**, leaving 0.451 s. A4 p90 + emit = 2.218 s:
+  **55 % of session 1's p90 (4 s)**, leaving 1.782 s; **44 % of session 2's p90 (5 s)**,
+  leaving 2.782 s. These are descriptive comparisons: transcripts record no thread age or
+  rotations. A4 is an aged-thread comparator, also counterfactual past the shipped 100-turn
+  rotation; fresh A3 + aged A4 are both published. **The MAXIMUM is no longer a bench question.**
+  Session 2's 42 s is the
+  recorded wedge-and-recover cascade above, absent from a bench of warm sequential turns.
+  The staleness policy skips old queued captions; it is no end-to-end deadline. What stays
+  unexplained is the **p90 shoulder**, 1.8-2.8 s of it, which fresh A3's own 9.122 s max shows
+  the model can produce on demand with no
   sub-factor isolated.
 
 ## Session context learner (D-015)
