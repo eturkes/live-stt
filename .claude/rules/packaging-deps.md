@@ -7,6 +7,9 @@ paths:
   - "tests/test_packaging.py"
   - "tests/test_gate.py"
   - "tests/test_project_config.py"
+  - "tests/test_corpus.py"
+  - "tests/short_corpus.json"
+  - "tests/en_clips.json"
   - ".github/dependabot.yml"
 ---
 
@@ -70,7 +73,11 @@ rather than the new codex: rerun it against the previous codex release before bl
   since `uv run --with` resolves its overlay against the worktree's own lock — and credits only
   pinned index hashes plus every built file byte-identical. Then take the new manifests, the docs'
   `--with pyarrow==` pins, and re-pin `tests/test_en_corpus.py`'s `short_corpus.json` hash (user
-  ruling: the stamp moved, the content did not).
+  ruling: the stamp moved, the content did not). `test_corpus.py` compares both committed manifests'
+  builder dependency dictionaries to `BUILD_DEPENDENCIES`, without loading decoder packages. A planted
+  numpy `0.0.0` producer pin reddens both; clean twins pass. The shipped pin-only rejection twins
+  fail if that consistency check is neutralized. This is producer/provenance equality, never a
+  rebuild or a content-requalification substitute.
 - `tests/fetch_fleurs_parallel.py` stamps the interpreter's patch version and
   `test_fleurs_parallel.py` holds it equal to the running one ⇒ every Python patch upgrade reddens
   the suite until that script reruns on a fresh cache and rebuilds byte-identically.

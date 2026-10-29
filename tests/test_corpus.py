@@ -14,6 +14,27 @@ import pytest
 from tests import fetch_real_clips as corpus
 
 
+def _assert_builder_manifest(name):
+    manifest = json.loads(Path(__file__).with_name(name).read_text())
+    recorded = manifest["builder"]["dependencies"]
+    assert recorded == corpus.BUILD_DEPENDENCIES, (
+        f"{name} builder dependencies differ from producer: "
+        f"recorded={recorded}, producer={corpus.BUILD_DEPENDENCIES}"
+    )
+
+
+@pytest.mark.parametrize("name", ["short_corpus.json", "en_clips.json"])
+def test_committed_corpus_builder_dependencies_match_the_producer(name):
+    _assert_builder_manifest(name)
+
+
+@pytest.mark.parametrize("name", ["short_corpus.json", "en_clips.json"])
+def test_the_builder_manifest_lock_rejects_pin_only_requalification(name, monkeypatch):
+    monkeypatch.setitem(corpus.BUILD_DEPENDENCIES, "numpy", "0.0.0")
+    with pytest.raises(AssertionError, match=f"{name} builder dependencies differ from producer"):
+        _assert_builder_manifest(name)
+
+
 class _Response(io.BytesIO):
     def __enter__(self):
         return self
