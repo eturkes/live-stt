@@ -99,7 +99,12 @@ prose-keyed row whose clause upstream had long dropped, and one pointer at a clo
 fifth fires on a citation of role tags that Intent no longer carries, restored from a `cp` snapshot:
 the lag bullet of `translation-leg.md` as it stood before Intent took the role grammar quotes the
 two pre-role tags, and it reddens naming both. Prose must not restate that example either, this file
-being scanned too.
+being scanned too. Citation scope crosses semicolons and ends at `.`, `!` or `?` followed by a
+space, outside backticked fragments; punctuation within a fragment stays inside its literal quote.
+Committed seeds put an absent fragment after a semicolon and across an internal period, beside live
+semicolon + separate-sentence twins. Restoring the old delimiter split from a `cp` snapshot reddens
+four controls, restored green. Abbreviations remain lexical sentence boundaries, not a natural-language
+parser; this check decides the explicit backtick citation grammar alone.
 
 The fourth holds the ruling tags. Mutation-proven red, each mutant planted from a `cp` snapshot and
 restored (L-022): a dead anchor, a short anchor (`review`), curly quotes, an unknown verdict, a

@@ -72,7 +72,7 @@ _ANCHOR = re.compile(r'"([^"]+)"')
 # lives in.
 _INTENT_CITATION = "`Intent`"
 _FRAGMENT = re.compile(r"`([^`]+)`")
-_SENTENCE = re.compile(r"(?<=[.;]) ")
+_SENTENCE_TOKEN = re.compile(r"`[^`]+`|[.!?](?= )")
 # Shortest live anchor is 17 chars. A floor keeps a key from resolving on a word like "review",
 # which occurs all over both templates and identifies no clause.
 _ANCHOR_MIN = 12
@@ -102,6 +102,18 @@ def _intent() -> str:
     # The heading rides the haystack, so a citation naming the section resolves on the section.
     spec = SPEC.read_text(encoding="utf-8")
     return "## Intent" + spec.split("## Intent", 1)[1].split("\n## ", 1)[0]
+
+
+def _sentences(text: str) -> list[str]:
+    # Punctuation inside the literal quote cannot end its citation's sentence.
+    start = 0
+    sentences = []
+    for hit in _SENTENCE_TOKEN.finditer(text):
+        if hit.group().startswith("`"):
+            continue
+        sentences.append(text[start : hit.end()])
+        start = hit.end()
+    return [*sentences, text[start:]]
 
 
 def _scanned_files() -> list[Path]:
@@ -267,6 +279,26 @@ def test_queue_link_titles_keep_case_and_punctuation(law_tree, title):
         test_every_queue_link_resolves_to_a_live_row()
 
 
+@pytest.mark.parametrize(
+    ("sentence", "misquote"),
+    [
+        ("`Intent` names `SRC n:`; it also names `REMOVED n:`.", "REMOVED n:"),
+        ("`Intent` names `SRC n:` and `REMOVED. n:`.", "REMOVED. n:"),
+        ("`Intent` names `SRC n:`; it also names `TGT n:`.", ""),
+        ("`Intent` names `SRC n:`. Elsewhere `REMOVED n:`.", ""),
+        ("`Intent` names `SRC n:`! Elsewhere `REMOVED n:`.", ""),
+        ("`Intent` names `SRC n:`? Elsewhere `REMOVED n:`.", ""),
+    ],
+)
+def test_intent_quotes_stay_in_the_citing_sentence(law_tree, sentence, misquote):
+    (law_tree / "README.md").write_text(sentence + "\n")
+    if misquote:
+        with pytest.raises(AssertionError, match=re.escape(misquote)):
+            test_every_intent_citation_quotes_live_intent_text()
+    else:
+        test_every_intent_citation_quotes_live_intent_text()
+
+
 def test_every_intent_citation_quotes_live_intent_text():
     """A citation of `Intent` must quote wording that section actually carries.
 
@@ -282,7 +314,7 @@ def test_every_intent_citation_quotes_live_intent_text():
     misquotes = [
         f"{path.relative_to(ROOT)}: {fragment}"
         for path in [*_scanned_files(), QUEUE]
-        for sentence in _SENTENCE.split(re.sub(r"\s+", " ", path.read_text(encoding="utf-8")))
+        for sentence in _sentences(re.sub(r"\s+", " ", path.read_text(encoding="utf-8")))
         if _INTENT_CITATION in sentence
         for fragment in _FRAGMENT.findall(sentence.split(_INTENT_CITATION, 1)[1])
         if fragment not in intent
