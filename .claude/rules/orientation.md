@@ -16,8 +16,8 @@ codex degrades to source-only — a hard requirement, never a cloud fallback.
 
 ## Files — read one only when the task implicates it
 
-- `live_stt.py` (~1.9 K lines) — the whole app; the constants at its top are the config surface.
-- `streaming.py` — the VAC hypothesis buffer, pure text-in/text-out.
+- `live_stt.py` — the whole app; the constants at its top are the config surface.
+- `streaming.py` — model-independent growing-audio buffer + LocalAgreement-2 policy; injected decoder.
 - `gate.py` — the executable quality gate. `replay.py` — WAV → real `worker` replay (D-014).
   `cer.py` — the shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
 - `tests/` — fast locks, on-demand `eval_*.py` evaluators, committed corpora + traces.
@@ -73,9 +73,9 @@ rules files, numbering monotonic with gaps where a rule died; keep an id while a
   mature guarded code correctly yields almost nothing — record the rejects in `spec.md` instead of
   manufacturing edits against the pink-elephant pull (L-019).
 - D-002 — one file. A further split needs a cohesive one-way subsystem boundary named out loud;
-  `streaming.py` is the one taken, on being pure text-in/text-out with no app config, state or
-  shutdown coupling. The feeder/decoder stages share config, state, replay hooks and shutdown order
-  ⇒ they stay together. Revisit on an actual navigation failure.
+  `streaming.py` owns the audio-buffer/agreement policy behind an injected decoder, with no
+  app config, session state or shutdown coupling. Feeder/decoder stages share config, state,
+  replay hooks + shutdown order ⇒ they stay together. Revisit on an actual navigation failure.
 - A single user preference is state, not an `always` law: record placement and config choices with
   their source, and ask before reversing one (L-008).
 

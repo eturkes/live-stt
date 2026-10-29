@@ -26,8 +26,8 @@ agent-covered**: `test_shipped_path.py` forks a real pty, closes the master, and
 Codex cadence, multi-hour soak, `--playback` against the host's PipeWire and a real call.
 
 **Setup:** models downloaded; `codex` installed on the PATH of the machine running live-stt; `codex
-login` there once for the EN leg (without it: `Translation: unavailable — source-only`, TGT checks N/A). One
-utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
+login` there once for the EN leg (without it: `Translation: unavailable (source-only, see log)`,
+TGT checks N/A). One utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 
 ## Live-mic pass (~5 min)
 
@@ -131,8 +131,8 @@ utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`).
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected
 publishes `SRC n <!>: text` — space, `<!>`, colon, source line only, screen and transcript alike; its
 `TGT n:` stays unmarked and no caption is ever withheld. Read that mark as the held-label signal it is,
-never as a defect: `session_report.py` counts those utterances as `held`, and the short utterances that
-carry it are the ones the detector had under 2 s of audio to judge.
+never as a defect: `session_report.py` counts those utterances as `held`. Buffers under 2 s are
+unscored by the duration gate; longer ones can abstain too.
 
 ## Soak (1-3 h) — watch at start and end
 

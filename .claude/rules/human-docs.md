@@ -35,5 +35,5 @@ for the sherpa pair), so the READMEs point there rather than restating it.
 
 Do not re-add superseded spike reports (D-005). The Gemini-era and metered-backend spike reports plus
 the rejected `codex_ws/AGENTS.md` prompt mechanism were removed at user direction; git history preserves
-them, and the live cloud→local trail is D-009 / D-010 / D-011 plus the roadmap ledger. Record a decision
-in these rules instead.
+them. The cloud→local trail is D-009 / D-010 / D-011 + `.agent/archive/milestones-m1-m14.md`;
+current decisions live in these rules.
