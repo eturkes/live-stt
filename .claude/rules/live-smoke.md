@@ -166,9 +166,10 @@ carry it are the ones the detector had under 2 s of audio to judge.
   Held live over the item-2 session: session child 1,951 → 1,957 MB across 60 min, where an
   undrained VAD segment queue grows ~3.8 MB per speech-minute (`asr-pipeline.md`).
 
-**Run `uv run python session_report.py` after any soak** — it answers every question in this
-section mechanically off the saved transcript and the saved log, so a session stays diagnosable once
-the scrollback is gone; pass `--two-way` for a `--two-way` session, or its English lines read as
+**Run `uv run python session_report.py` after any soak** — it re-derives source/target pairing,
+lag, disable/restore events, backlog peaks + drop attribution from the saved transcript + log.
+Quota, RSS + instantaneous queue clearance remain external live observations. Pass `--two-way`
+for a `--two-way` session, or its English lines read as
 `declined` captions. Run the soak with `--save-log` to give it the counters; the
 status line keeps drawing, so the record costs the soak no screen output — not zero work, which no
 live run has measured (item 2).

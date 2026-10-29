@@ -222,8 +222,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `transcripts/<start>.log` or a `2>` file; a bare run reads `transcripts/*.log` + `stt.log`, user
   ruling). No hardware, no weights, no network, and it imports the shipped
   `repeat_span`/`caption_defect` rather than
-  restating them, so a threshold change moves the report with it. Answers what `live-smoke.md`
-  names: captions with no TGT and **why** (`stale` — transcript note or log, de-duplicated/
+  restating them, so a threshold change moves the report with it. Transcript/log answers =
+  captions with no TGT and **why** (`stale` — transcript note or log, de-duplicated/
   `declined`/`strike`/`disabled`/`untranslated` — no TGT,
   marker or logged translation event in the whole session/`shutdown`/`failed`),
   chronological disable/restore outages (same-reason marker/log twins in the same or adjacent
@@ -244,7 +244,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   line inside that gap with its defect, which is the only record a screened caption leaves — caption
   length + repetition distributions, TGT-behind-SRC lag, and slow turns tagged with whether they sit on
   a `TRANSLATE_ROTATE_TURNS` boundary. `drop=` counts callback BLOCKS, so every drop figure here is
-  blocks. Feeding it a drop timeline costs one flag: the peak log gates on the stream PAIR, so
+  blocks. Quota, RSS + instantaneous queue clearance stay external live observations; the
+  report has no inputs for them. Feeding it a drop timeline costs one flag: the peak log gates on the stream PAIR, so
   `--save-log` (or `2> stt.log`) keeps the status line too (L-006, `asr-pipeline.md`). **A
   transcript records captions, not the flags that produced them**, so the session's language rides
   `--source-lang`, which rebinds `live_stt.ASR_LANGUAGE` before anything is derived: re-running

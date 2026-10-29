@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """Re-derive what a live session did, from the files that session already wrote.
 
-A live run leaves two artifacts: `transcripts/<start>.txt` (numbered source/target lines
-plus `--` markers) and its stderr log (`--save-log` → `transcripts/<start>.log`, or
-whatever `2>` named). Everything else --
-the meter, the scrollback, the counters -- dies with the terminal. So the
-questions a soak actually has to answer (`live-smoke.md`) were answerable only by
-hand-reading, which is how a 47-turn source-only tail sat in one session for weeks
-before anyone named its cause.
+Numbered source/target lines and transcript notes give pairing, lag and
+translation-lifecycle evidence. An optional stderr log adds failures, backlog
+high-water counters and screened-caption drops. Quota, RSS and instantaneous
+queue clearance are not recorded by either input.
 
-This reads those files and answers them mechanically. It needs no hardware, no
-weights and no network, and it imports the SHIPPED screen rather than restating
-it, so a threshold change moves this report with it.
+No hardware, weights or network. The screen is imported from the shipped app,
+so a threshold change moves this report with it.
 
     uv run python session_report.py [TRANSCRIPT ...] [--log FILE ...] [--json]
 
