@@ -141,6 +141,21 @@ def build(device: str) -> dict[str, Any]:
     missing = [str(p.relative_to(ROOT)) for p in paths.values() if not p.is_file()]
     if missing:
         raise FileNotFoundError("missing VAC trace inputs: " + ", ".join(missing))
+    tests = ROOT / "tests"
+    pins = {
+        "stress_long": json.loads((tests / "stressor_clips.json").read_text(encoding="utf-8"))[
+            "stressors"
+        ]["stress_long"]["audio_sha256"],
+        "retention_probe": json.loads((tests / "retention_probe.json").read_text(encoding="utf-8"))[
+            "probe"
+        ]["audio_sha256"],
+    }
+    for clip, path in paths.items():
+        digest = _sha256(path)
+        if digest != pins[clip]:
+            raise RuntimeError(
+                f"{clip}: WAV fingerprint {digest} does not match pinned {pins[clip]}"
+            )
     for check in (check_models("whisper"), check_device("whisper", device)):
         if check:
             raise RuntimeError(check)

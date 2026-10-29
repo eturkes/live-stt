@@ -100,7 +100,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
   cost and hypothesis was charged to the buffer it was measured on — a trim-schedule check, never a
   commit match: commits follow the CURRENT processor (`commit_changes` counts where they differ
   from the recorded run; on turbo's pre-swap trace the boundary anchor changed 1 + 3 there while keeping every trim; the current 760M trace was recorded with it: 0 + 0). 122 KB ⇒
-  read the per-clip summary keys, not `series`. Rebuild needs the NPU + the whisper prelude.
+  read the per-clip summary keys, not `series`. Every WAV hash must match its committed
+  `stressor_clips.json` / `retention_probe.json` pin BEFORE any model/device probe; recording a hash
+  alone certifies nothing. `test_vac_trace.py` injects a mismatched pin for EACH input and checks zero
+  probes, then accepts matching pins; neutralizing the equality fires both cases (L-022).
+  Rebuild needs the NPU + the whisper prelude.
 - `eval_two_way_settled.py` — the same trace under two-way's commit rule, which withholds every commit
   until the LID accepts a label. Four arms over both clips; the table and its refutation live in
   `asr-pipeline.md`. **Its own positive control is the no-withholding arm**, which must reproduce
