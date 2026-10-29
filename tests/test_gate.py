@@ -64,6 +64,54 @@ def test_the_pre_commit_hook_runs_the_gates_worker_count():
     assert lines[-1] == f"exec uv run pytest -q -n {PYTEST_WORKERS}"
 
 
+def _assert_hook_dispatch(tmp_path, source, status):
+    hook = tmp_path / "pre-commit"
+    hook.write_text(source)
+    hook.chmod(0o755)
+    log = tmp_path / "calls"
+    uv = tmp_path / "uv"
+    uv.write_text(
+        '#!/bin/sh\n{ printf "uv\\n"; printf "%s\\n" "$@"; } >> "$HOOK_LOG"\nexit "$HOOK_RC"\n'
+    )
+    uv.chmod(0o755)
+    done = subprocess.run(
+        [str(hook)],
+        cwd=tmp_path,
+        env={"PATH": str(tmp_path), "HOOK_LOG": str(log), "HOOK_RC": str(status)},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    calls = log.read_text().splitlines() if log.exists() else []
+    assert calls == ["uv", "run", "pytest", "-q", "-n", str(PYTEST_WORKERS)], (
+        f"hook did not dispatch exactly one pytest with the gate worker count: {calls}"
+    )
+    assert done.returncode == status, f"hook swallowed pytest exit {status}: {done.returncode}"
+
+
+@pytest.mark.parametrize("status", [0, 29])
+def test_the_pre_commit_hook_executes_pytest_and_propagates_its_status(tmp_path, status):
+    _assert_hook_dispatch(tmp_path, (ROOT / ".githooks" / "pre-commit").read_text(), status)
+
+
+@pytest.mark.parametrize("plant", ["early-exit", "swallow-failure", "wrong-workers", "twice"])
+def test_the_hook_execution_lock_rejects_disabled_or_misrouted_hooks(tmp_path, plant):
+    source = (ROOT / ".githooks" / "pre-commit").read_text()
+    command = f"exec uv run pytest -q -n {PYTEST_WORKERS}"
+    assert source.count(command) == 1
+    if plant == "early-exit":
+        source = source.replace(command, "exit 0\n" + command)
+    elif plant == "swallow-failure":
+        source = source.replace(command, command.removeprefix("exec ") + " || true\nexit 0")
+    elif plant == "wrong-workers":
+        source = source.replace(command, "exec uv run pytest -q -n 1")
+    else:
+        source = source.replace(command, command.removeprefix("exec ") + " || true\n" + command)
+    with pytest.raises(AssertionError, match="hook (did not dispatch|swallowed)"):
+        _assert_hook_dispatch(tmp_path, source, 29)
+
+
 def test_production_pyright_file_list():
     """streaming.py is a production module; leaving it off the list is how it went unchecked."""
     assert PROD_FILES == [

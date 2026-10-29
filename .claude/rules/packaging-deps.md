@@ -5,6 +5,7 @@ paths:
   - "uv.lock"
   - "models/README.md"
   - "tests/test_packaging.py"
+  - "tests/test_gate.py"
 ---
 
 # Packaging + dependency maintenance
@@ -36,6 +37,12 @@ demotion at the unit's closing gate rather than at the commit that introduced it
 through `gate.py --only pytest` would close that, at the cost of replacing pytest's live progress
 with one line printed after the run — the human at the terminal is who the hook reports to, so the
 suite stays.
+
+`test_gate.py` executes a copied hook with a fake `uv` first on PATH: exactly one pytest argv,
+`PYTEST_WORKERS`, success and a planted exit 29 must all survive dispatch. Shipped rejection twins
+cover an earlier `exit 0`, swallowed failure, wrong worker count and a duplicate invocation. An
+earlier exit planted in the tracked hook leaves the old last-line lock green but reddens execution;
+restore → green. No real uv, commit, dependency sync or nested suite runs inside this check.
 
 **L-018 — maintenance-pass recipe.** Inventory = every `uv.lock` package against its PyPI latest
 (`uv tree --outdated --depth 1` hides transitives and any release `requires-python` excludes — it
