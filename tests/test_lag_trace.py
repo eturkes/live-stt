@@ -12,6 +12,38 @@ from typing import Any
 import pytest
 
 import session_report as sr
+from tests import eval_lag
+
+
+def test_staleness_notes_raise_only_intersecting_turns_and_null_targets_stay_abandoned():
+    session = {
+        "pairs": [
+            dict(n=5, src_s=25, tgt_s=27),
+            dict(n=3, src_s=5, tgt_s=None),
+            dict(n=1, src_s=0, tgt_s=2),
+            dict(n=4, src_s=6, tgt_s=20),
+            dict(n=2, src_s=1, tgt_s=12),
+        ],
+        "notes": [{"at_s": 9}, {"at_s": 23}],
+    }
+    rows = eval_lag._staleness_report(session)
+    bounded = next(row for row in rows if row["bound_s"] == 5)
+
+    assert bounded == {
+        "bound_s": 5,
+        "translated": 4,
+        "arithmetic_dropped": 1,
+        "arithmetic_captions": [4],
+        "dropped": 2,
+        "captions": [2, 4],
+        "note_added": [2],
+        "survivors": eval_lag.distribution([2, 2]),
+    }
+    assert eval_lag._backlog_values(session) == {
+        "standalone": [2, 2],
+        "backlogged": [11, 14],
+    }
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACE = ROOT / "tests" / "lag_sessions.json"

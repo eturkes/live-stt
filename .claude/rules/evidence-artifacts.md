@@ -93,7 +93,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   side gets exact. Report-only: `_thin` shipped with a measured residual of baseline-only scripts
   (`asr-pipeline.md`), so a nonzero count is a number to compare, not a failure. ~7 s, no
   weights. **Synthetic by construction: it ranks two processors, and its rates describe no live
-  session.**
+  session.** `test_anchor_scenarios.py` grades authored prefix-only disturbances, mark drops,
+  verdict classes and draw/baseline tally accounting. Plants deleting one unpublished character,
+  doubling the draw tally or relabeling exact output redden those locks; clean twins pass (L-022).
 - `vac_decode_trace.json` (NPU) + `vac_decode_trace_gpu.json` (GPU mode, `--device GPU --out …`;
   `eval_latency.py --trace` reads it; nothing else consumes it) + `build_vac_trace.py` +
   `eval_latency.py` — per-update `(buffer_s, decode_s)`
@@ -114,7 +116,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `eval_latency.py`'s `commit_lag_s` exactly (2.435 / 3.740 / 6.405 over n=299, 2.353 / 3.428 / 6.402
   over n=1202, whisper-ja-760M) — same clock, same per-character placement, same `_quantiles`, so a drift there means
   the replay diverged rather than the rule. The `never accepted` arm forces a path abstention does not
-  take and is an upper bound only.
+  take and is an upper bound only. `test_two_way_settled.py` uses a three-update synthetic clock:
+  acceptance re-dates only the earlier character, held speech releases at the final decode, and
+  no-withholding matches the independent committed arm character-for-character. Ignoring acceptance
+  or adding 1 s to settlement reddens these locks; clean twins pass (L-022).
 - `caption_trace.json` + `build_caption_trace.py` — RAW utterance observations from the real worker's
   `on_segment` hook, before publication screening/splitting: 215 raw rows / 848.350 s on NPU in one
   ~8 min pass. Legacy `captions` / `n_captions` / `idx` = raw rows / their count / observation ids,
@@ -355,7 +360,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   publication times rather than measured in-process; and **no feedback modelled** — a skip moves
   every later turn start, and caption 296 likely reached a 23 s wait before spending the third
   strike, so the shipped bound may prevent the very cascade it is sized on. Sizing evidence, not a
-  prediction.
+  prediction. `test_lag_trace.py` supplies a five-caption synthetic FIFO with one abandoned turn
+  and two notes: only an intersecting note raises its turn, previous targets still bound queue wait,
+  and abandoned work never becomes permanent backlog. Removing the note raise reddens the lock;
+  clean twin passes (L-022).
 
 ## Rules that keep the evidence honest
 
@@ -460,7 +468,12 @@ because they replay committed traces — a fresh clone runs them in under a seco
   re-measures the VAD policy VAC exists to beat (finals-only reads 4.6× inflated). Qualifier:
   `commit_audio_s` moves BACKWARD on 4 of 180 commits of the whisper-ja-760M trace, max 0.609 s
   (turbo's: 6 of 157, max 0.452 s), so those characters are placed at
-  the previous endpoint and their lag is understated by that much.
+  the previous endpoint and their lag is understated by that much. `test_latency.py` grades tiny
+  authored timelines, not these recorded quantiles: midpoint placement, empty-update endpoint,
+  final buffer end, serial decode carry, backward clamp, utterance reset, unplaced commits,
+  provisional span/redraws and empty/singleton/even-sample quantiles. Zero/per-commit-flat lags,
+  the wrong final endpoint, lost carry/clamp, upper-middle median, maximum-as-p90 and full-buffer
+  provisional placement each redden the corresponding lock; clean twins pass (L-022).
 - **L-016 — gitignored bulk corpora stay reachable by a script's runtime `open()`** even where the
   agent must keep them out of context. Construct such a path INSIDE the script rather than naming it on
   a command line, and reach the data through the existing manifests and tooling.
