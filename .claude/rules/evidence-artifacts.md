@@ -242,8 +242,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   attribution** — one row per `backlog peak:` line whose `drop=` grew, carrying the captions that
   bracket it, the publication gap between them, the `skip=` step, and every `caption dropped (…)`
   line inside that gap with its defect, which is the only record a screened caption leaves — caption
-  length + repetition distributions, TGT-behind-SRC lag, and slow turns tagged with whether they sit on
-  a `TRANSLATE_ROTATE_TURNS` boundary. `drop=` counts callback BLOCKS, so every drop figure here is
+  length + repetition distributions, TGT-behind-SRC lag + slow turns carrying
+  `caption_cadence_proxy`: one-way caption-number cadence at period `TRANSLATE_ROTATE_TURNS`, never an
+  observed rotation; `null` under `--two-way`, which has independent per-language counters. Skipped
+  turns + recovery resets break caption-to-turn alignment. `drop=` counts callback BLOCKS, so every drop figure here is
   blocks. Quota, RSS + instantaneous queue clearance stay external live observations; the
   report has no inputs for them. Feeding it a drop timeline costs one flag: the peak log gates on the stream PAIR, so
   `--save-log` (or `2> stt.log`) keeps the status line too (L-006, `asr-pipeline.md`). **A

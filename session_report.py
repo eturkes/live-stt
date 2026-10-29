@@ -643,17 +643,15 @@ def build(sessions: list[Session], unclaimed: list[LogEvent]) -> dict:
                         "max": max(sl),
                     }
                 ),
-                # _translate tests `_turns % TRANSLATE_ROTATE_TURNS` BEFORE the
-                # increment, so the rotation is paid by the 101st turn, not the
-                # 100th: tagging n % 100 made this read the wrong caption and
-                # "0 of 75 slow turns at a boundary" (f398818) constrained nothing.
-                # Limit: n is a caption number, and a declined caption never became
-                # a turn, so the two drift apart by the session's decline count.
+                # Captions do not identify per-leg turn counts or recovery resets.
+                # One-way caption cadence is only a proxy; two-way has no global cadence.
                 "slow_turns": [
                     {
                         "n": n,
                         "lag_s": x,
-                        "at_rotation": n > 1 and (n - 1) % app.TRANSLATE_ROTATE_TURNS == 0,
+                        "caption_cadence_proxy": (
+                            None if TWO_WAY else n > 1 and (n - 1) % app.TRANSLATE_ROTATE_TURNS == 0
+                        ),
                     }
                     for n, x in lags(s)
                     if x >= 6
@@ -767,10 +765,14 @@ def render(rep: dict) -> str:
             out.append(
                 f"     n={row['n']:<4} {row['why']:<9} {row['chars']:>4}ch  {row['detail']}{flag}"
             )
-        rot = [s for s in p["slow_turns"] if s["at_rotation"]]
+        proxies = sum(1 for row in p["slow_turns"] if row["caption_cadence_proxy"])
+        cadence = (
+            "unavailable (--two-way)"
+            if rep["screen"]["source_lang"] == "two-way"
+            else f"matches={proxies} (period {app.TRANSLATE_ROTATE_TURNS})"
+        )
         out.append(
-            f"   slow turns (>=6s): {len(p['slow_turns'])}"
-            f"   at a {app.TRANSLATE_ROTATE_TURNS}-turn boundary: {len(rot)}"
+            f"   slow turns (>=6s): {len(p['slow_turns'])}   caption-number proxy: {cadence}"
         )
         out.append("")
 
@@ -804,8 +806,9 @@ def render(rep: dict) -> str:
             f"p50 {g['p50']:.0f}s p90 {g['p90']:.0f}s max {g['max']:.0f}s"
         )
     out.append(
-        "note: thread rotation is not separable from transcripts alone -- a slow turn is "
-        "reported with whether it sits on a rotation boundary, never asserted as one."
+        "note: caption-number proxies are not observed rotations. Skipped turns and recovery "
+        "resets break caption-to-turn alignment; two-way has independent per-language counters. "
+        "Rotation events are not recorded."
     )
     return "\n".join(out)
 

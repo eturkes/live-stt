@@ -299,6 +299,8 @@ The report shows:
 
 The report does not collect quota, memory use or instantaneous queue state. Check those during the session. A backlog high-water mark does not show whether the queue later cleared.
 
+A slow turn's cadence mark is a caption-number proxy, not a recorded thread rotation. Skipped turns and recovery resets can move the turn count away from caption numbering. Two-way sessions have separate language counters, so their proxy is unavailable. JSON names the field `caption_cadence_proxy`: a Boolean for one-way sessions, `null` for two-way sessions.
+
 If a file contains several appended runs, the report separates them when source numbering restarts. It adds `#1`, `#2` and so on to the session name. A shared filename in different directories appears as its full input path. Keep the log markers to locate each run's start. Without them, a note before a numbering restart stays with the preceding run; the transcript cannot distinguish its shutdown from the next startup.
 
 Add `--json` for machine-readable output. The transcript does not record the flags of the session, so give the report the same language flag that the session used: `--source-lang en` for an English session, or `--two-way` for a two-way session. Without `--two-way`, the report counts the English lines of a two-way session as refused captions. With no saved sessions the report prints `no transcripts found` and exits 0.

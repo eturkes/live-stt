@@ -6,11 +6,12 @@ the suite never reads the gitignored `transcripts/` the tool exists to explain.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -239,19 +240,21 @@ def test_repeat_span_at_restores_the_shipped_bound(monkeypatch):
     assert sr.app.CAPTION_REPEAT_UNIT_CHARS == before
 
 
-def test_the_rotation_boundary_tag_names_the_turn_that_pays_it(tmp_path):
-    """`_translate` tests the cadence BEFORE incrementing `_turns` ⇒ the 101st turn rotates.
-
-    Tagging `n % 100` read the 100th, which is why f398818's "0 of 75 slow turns
-    at a boundary" could not constrain the tax it was quoted against.
-    """
+def test_caption_cadence_is_labelled_as_a_proxy_not_an_observed_rotation(tmp_path, monkeypatch):
+    """The no-skip/no-reset caption-number proxy begins at 101, not 100."""
+    monkeypatch.setattr(sr, "TWO_WAY", False)
     lines = []
     for n, at in ((100, "10:00"), (101, "10:01")):
         lines.append(event(f"{at}:00", "SRC", n, CLEAN))
         lines.append(event(f"{at}:07", "TGT", n, "Hello"))
-    session = report([write(tmp_path, "s", lines)])["sessions"][0]
-    tagged = {t["n"]: t["at_rotation"] for t in session["slow_turns"]}
-    assert tagged == {100: False, 101: True}
+    rep = report([write(tmp_path, "s", lines)])
+    slow = rep["sessions"][0]["slow_turns"]
+    assert all("at_rotation" not in row for row in slow)
+    assert {row["n"]: row["caption_cadence_proxy"] for row in slow} == {100: False, 101: True}
+    rendered = sr.render(rep)
+    assert "caption-number proxy: matches=1 (period 100)" in rendered
+    assert "not observed rotations" in rendered
+    assert "Skipped turns and recovery resets" in rendered
 
 
 def _screen(tmp_path: Path, name: str) -> dict:
@@ -1137,3 +1140,54 @@ def test_lifecycle_twins_can_straddle_a_whole_second_without_merging_attempts(tm
         ("probed (attempt 1)", "marker"),
         ("probed (attempt 2)", "marker"),
     ]
+
+
+def test_two_way_rotation_tag_does_not_claim_a_global_caption_cadence(tmp_path, monkeypatch):
+    monkeypatch.setattr(app, "ASR_LANGUAGE", "ja")
+    monkeypatch.setattr(sr, "TWO_WAY", True)
+    translator = app.CodexTranslator(sources=("ja", "en"))
+    translator.enabled = True
+    for leg in translator._legs.values():
+        leg.thread_id = f"initial-{leg.source}"
+    actual_rotations: list[int] = []
+    current_caption = 0
+
+    async def new_thread():
+        actual_rotations.append(current_caption)
+        return f"rotated-{current_caption}"
+
+    async def turn(_text):
+        return "Translated."
+
+    monkeypatch.setattr(translator, "_new_thread", new_thread)
+    monkeypatch.setattr(translator, "_turn", turn)
+    lines: list[str] = []
+    start = datetime.fromisoformat("2026-09-04T10:00:00+09:00")
+
+    async def scenario():
+        nonlocal current_caption
+        for n in range(1, app.TRANSLATE_ROTATE_TURNS + 2):
+            current_caption = n
+            language = "ja" if n % 2 else "en"
+            text = "日本語の字幕" if language == "ja" else "English speech."
+            translated = await translator._translate(text, language)
+            at = start + timedelta(seconds=10 * n)
+            target_at = at + timedelta(seconds=7)
+            lines.extend(
+                [
+                    f"[{at.isoformat()}] SRC {n}: {text}",
+                    f"[{target_at.isoformat()}] TGT {n}: {translated}",
+                ]
+            )
+
+    asyncio.run(scenario())
+    assert actual_rotations == [], "each direction is below its 101st turn"
+    session = _transcript(tmp_path, *lines)
+    rep = sr.build([session], [])
+    slow = rep["sessions"][0]["slow_turns"]
+    reported_rotations = [row["n"] for row in slow if row.get("at_rotation")]
+
+    assert reported_rotations == actual_rotations, slow[-1]
+    assert all(row["caption_cadence_proxy"] is None for row in slow)
+    assert all("at_rotation" not in row for row in slow)
+    assert "caption-number proxy: unavailable (--two-way)" in sr.render(rep)
