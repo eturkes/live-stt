@@ -289,7 +289,7 @@ def learner(captions: list[dict], english: Callable[[dict, list[str]], str] | No
             1 for i in episode["openings"] if i <= episode["last_sighting"]
         )
         episode["dead_pairing"] = (
-            episode["paired_at"] is not None and episode["expired_at"] is not None
+            episode["paired_at"] is not None and episode["mechanism"] == "lease"
         )
     return {
         "n_published": seq,

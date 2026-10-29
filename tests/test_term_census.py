@@ -169,6 +169,20 @@ def test_capacity_eviction_is_not_reported_as_a_lapsed_lease():
     assert _episodes(caps)["戌山"]["trusted_at"] == 6
 
 
+def test_capacity_eviction_does_not_become_a_dead_pairing():
+    texts = [f"{TERM}がきた。"] * (CONTEXT_TERM_SUPPORT + CONTEXT_EN_SUPPORT)
+    crowd = [f"{character}山" for character in "甲乙丙丁戊己庚辛壬癸子丑"]
+    assert len(crowd) == CONTEXT_MAX_TERMS
+    texts.extend(["、".join(crowd) + "。"] * CONTEXT_TERM_SUPPORT)
+    result = learner(_captions(*texts))
+    episode = next(row for row in result["episodes"] if row["term"] == TERM)
+    assert episode["paired_at"] is not None
+    assert episode["mechanism"] == "eviction"
+    assert episode["published_after"] < CONTEXT_TERM_LEASE
+    assert episode["dead_pairing"] is False
+    assert TERM not in result["dead_pairings"]
+
+
 def test_candidate_floor_moves_only_the_katakana_floor_and_restores_it():
     """An arm must differ from production in the floor and in nothing else (M12.4)."""
     shipped = live_stt._TERM_RUN
