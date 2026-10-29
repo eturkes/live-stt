@@ -156,11 +156,14 @@ async def _produce(
     samples: np.ndarray,
     chunk_samples: int,
     timeline: list[dict[str, int | bool]],
-) -> None:
-    """Arrive one capture block per block-duration of virtual time, then sentinel."""
+) -> int:
+    """Arrive one capture block per block-duration, then sentinel; return rejected samples."""
+    rejected = 0
     for start in range(0, len(samples), chunk_samples):
         chunk = samples[start : start + chunk_samples]
         accepted = enqueue_audio(audio_q, state, chunk)
+        if not accepted:
+            rejected += len(chunk)
         timeline.append(
             {
                 "at_sample": clock.now,
@@ -173,6 +176,7 @@ async def _produce(
         )
         await clock.sleep(len(chunk))
     await submit_audio_sentinel(audio_q)
+    return rejected
 
 
 async def _run_paced(
@@ -183,13 +187,10 @@ async def _run_paced(
 ) -> dict:
     clock = _VirtualClock()
     state = State()
-    audio_q = AudioQueue(headroom_s=headroom_s)
+    audio_q = _WatchedAudioQueue(headroom_s)
     vad, window = make_vad()
     timeline: list[dict[str, int | bool]] = []
     decodes: list[dict[str, int]] = []
-
-    async def produce() -> None:
-        await _produce(clock, audio_q, state, samples, chunk_samples, timeline)
 
     def fake_decode(_rec: object, _samples: np.ndarray) -> str:
         return ""
@@ -212,7 +213,9 @@ async def _run_paced(
         mock.patch.object(loop, "run_in_executor", fake_run_in_executor),
         contextlib.redirect_stdout(io.StringIO()),
     ):
-        producer_task = asyncio.create_task(produce())
+        producer_task = asyncio.create_task(
+            _produce(clock, audio_q, state, samples, chunk_samples, timeline)
+        )
         worker_task = asyncio.create_task(worker(object(), vad, window, audio_q, state, None))
         tasks = (producer_task, worker_task)
         try:
@@ -225,6 +228,7 @@ async def _run_paced(
 
     if state.stopping:
         raise RuntimeError("production worker stopped during paced replay")
+    audio_q.require_complete(len(samples), producer_task.result())
     return {
         "audio_samples": len(samples),
         "audio_s": round(len(samples) / SAMPLE_RATE, 3),
@@ -288,14 +292,37 @@ class _WatchedAudioQueue(AudioQueue):
     ``get_nowait``, which ``AudioQueue`` already relies on for its own accounting.
     """
 
-    def __init__(self, headroom_s: float, on_drain) -> None:
+    def __init__(self, headroom_s: float, on_drain=None) -> None:
         super().__init__(headroom_s=headroom_s)
         self._on_drain = on_drain
+        self.consumed_samples = 0
+        self.consumed_eof = 0
 
     def get_nowait(self):
         item = super().get_nowait()
-        self._on_drain()
+        if self._on_drain is not None:
+            self._on_drain()
         return item
+
+    async def get(self):
+        # Shutdown may evict via get_nowait; only the worker's awaited get consumes PCM.
+        item = await super().get()
+        if item is None:
+            self.consumed_eof += 1
+        else:
+            self.consumed_samples += len(item)
+        return item
+
+    def require_complete(self, supplied: int, rejected: int) -> None:
+        if (
+            self.consumed_samples + rejected != supplied
+            or self.consumed_eof != 1
+            or not self.empty()
+        ):
+            raise RuntimeError(
+                f"incomplete paced replay: consumed {self.consumed_samples} + rejected {rejected}"
+                f" / supplied {supplied} samples; EOF {self.consumed_eof}; queued {self.qsize()}"
+            )
 
 
 class _TraceRecognizer:
@@ -402,6 +429,7 @@ async def _run_vac_paced(
 
     if state.stopping:
         raise RuntimeError("production worker stopped during paced VAC replay")
+    audio_q.require_complete(len(samples), producer_task.result())
     audio_s = len(samples) / SAMPLE_RATE
     decode_s = sum(row["cost_samples"] for row in decodes) / SAMPLE_RATE
     return {

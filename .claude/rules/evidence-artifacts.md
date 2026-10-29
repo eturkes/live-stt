@@ -164,7 +164,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
   stays checkable in a fresh clone. Off the recorded trajectory the trace recogniser replays
   hypotheses by call order against buffers they were not decoded from, so a `forced_trims` count there
   measures the harness, never `_trim`: the `live` arm's one forced trim on `retention_probe` vanishes
-  with the real NPU recogniser in the same virtual-clock run.
+  with the real NPU recogniser in the same virtual-clock run. Both paced arms require consumed PCM
+  samples + rejected samples = supplied samples, exactly one consumed EOF and an empty queue;
+  a sentinel's shutdown eviction is not consumption. `test_eval_backpressure.py` fakes early-returning
+  workers, duplicate EOF and an eviction, paired with completed-empty + rejected-input controls;
+  neutralizing the shared check or its sample/EOF predicates reddens it (L-022).
 - `eval_asr_screen.py` — the recogniser screen behind GPU mode (`asr-pipeline.md` `## GPU mode`):
   one whisper model dir × one exact device through the shipped decode path (`decode_segments` for a
   whole clip, `replay._run_recognizer` = the real worker for VAC), char CER by `cer.py` plus
