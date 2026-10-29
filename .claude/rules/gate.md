@@ -129,3 +129,25 @@ plants each fail with their rule's path; bare, flow-list and block-list twins pa
 validation call from a `cp` snapshot reddens all fourteen bad-header cases, restored green. Scope
 selection and glob meaning stay judgment; this schema checks syntax, types and the quoted-glob
 convention, not whether a valid pattern names the intended files.
+
+## Repository surfaces (`tests/test_law_consistency.py`)
+
+One supplemental lock bundles three stable structural laws under the existing pytest step:
+
+- Git probes a copy of `.gitignore` in a fresh repository with user excludes disabled. Six runtime
+  paths must be ignored; `live_stt.py` + `models/README.md` must stay visible. This avoids walking
+  bulk or traversing a real venv symlink. Committed plants remove the transcript ignore and add an
+  app-source ignore, each beside a clean twin.
+- Git's tracked + untracked-unignored file list contains neither `docs/` nor `.agent/contracts/`.
+  Both retired paths have their own committed plant; deleted files and ignored scratch are outside
+  the candidate set. The check decides those named structures, not whether a future module boundary
+  is cohesive.
+- Python comments + module/class/function docstrings cite only D/L ids present in rule text.
+  Tokenization + AST extraction leave ordinary string data alone. Committed comment + docstring
+  plants cite an absent id; their clean twin cites a live id while carrying the absent spelling as
+  string data. Membership alone cannot decide that an id names the right rule or that a rule still
+  owns its meaning.
+
+Each predicate is neutralized separately from a `cp` snapshot: its two planted cases redden while
+their clean twins stay accepted; restoration is byte-equal and all six plants pass again. These
+checks cover the listed repo surfaces, not every mechanically decidable clause in template prose.

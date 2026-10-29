@@ -36,8 +36,8 @@ python blocks inside `.md`, so a bare version bump moved the step from 39 files 
 repo-owned prose keeps the coverage. **A `python`-tagged block in repo prose is now gate-governed**
 — write it formatted, or tag it `sh`.
 
-`tests/test_law_consistency.py` rides the pytest step and locks the five law invariants a tool can
-decide. Three are the deferral queue's: `.agent/spec.md`'s `Tasks` pairs every `.agent/deferred.md`
+`tests/test_law_consistency.py` rides the pytest step: five law-reference locks + one repository-surface
+lock. Three reference locks are the deferral queue's: `.agent/spec.md`'s `Tasks` pairs every `.agent/deferred.md`
 row with one open `- [ ] **N** Title` row, rank and title verbatim, any other checklist item being a
 rankless `- [x] <sha> Title`, the one `- [ ] RESUME: …` note that `pause.md` | `pause-now.md` write
 and `resume.md` deletes, or the one `- [ ] ROUTE: …` row that `route.md` writes and deletes before its
@@ -77,6 +77,13 @@ in the `## Intent` section; text before the citation names the file rather than 
 citation may name the section. The queue is scanned here and nowhere else in this file, its rows
 being acceptance contracts that cite `Intent` the same way, while the rank and title locks read it as
 their source of truth.
+
+The surface lock probes the shipped `.gitignore` through Git in a fresh tree: venvs, scratch,
+corpus cache, weights and transcripts stay ignored; app source + the model README stay visible.
+Git's tracked + untracked-unignored candidate list carries neither `docs/` nor `.agent/contracts/`.
+Python comments + docstrings cite only D/L ids present in rule text; ordinary string data is not a
+citation. ID membership is mechanical; semantic ownership and new layout choices stay judgment.
+Each subcheck has a planted violation + clean twin (`gate.md`).
 
 **Pin the venv layer in every agent command.** `.venv` = container (agent dev + test), `.venv-host` =
 host (live-mic runtime, lowest latency). A venv path-bakes its layer, so a bare `uv run` from the

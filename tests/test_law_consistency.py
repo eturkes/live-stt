@@ -25,7 +25,11 @@ only keeps a key off a word that identifies nothing.
 
 from __future__ import annotations
 
+import ast
+import io
 import re
+import subprocess
+import tokenize
 from pathlib import Path
 
 import pytest
@@ -78,6 +82,7 @@ _SENTENCE_TOKEN = re.compile(r"`[^`]+`|[.!?](?= )")
 # Shortest live anchor is 17 chars. A floor keeps a key from resolving on a word like "review",
 # which occurs all over both templates and identifies no clause.
 _ANCHOR_MIN = 12
+_CITATION = re.compile(r"\b[DL]-\d{3}\b")
 
 
 def _squash(text: str) -> str:
@@ -235,11 +240,85 @@ def test_no_rank_reference_outside_the_queue():
     assert not offenders, f"name the row, not its moving rank: {offenders}"
 
 
+def _commit_files() -> list[Path]:
+    done = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [Path(p) for p in done.stdout.split("\0") if p and (ROOT / p).is_file()]
+
+
+def _citation_text(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    comments = [
+        t.string
+        for t in tokenize.generate_tokens(io.StringIO(text).readline)
+        if t.type == tokenize.COMMENT
+    ]
+    docstrings = [
+        ast.get_docstring(n) or ""
+        for n in ast.walk(ast.parse(text))
+        if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    return "\n".join([*comments, *docstrings])
+
+
+def test_repository_surfaces_follow_law(tmp_path):
+    # Probe a copy: git's real ignore semantics, independent of local excludes and venv symlinks.
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text((ROOT / ".gitignore").read_text(encoding="utf-8"))
+    bulk = {
+        ".venv/probe",
+        ".venv-host/probe",
+        ".scratch/probe.txt",
+        "spike/backends/cache/probe.wav",
+        "models/probe.bin",
+        "transcripts/probe.txt",
+    }
+    retained = {"live_stt.py", "models/README.md"}
+    done = subprocess.run(
+        ["git", "-c", "core.excludesFile=/dev/null", "check-ignore", "--no-index", "-z", "--stdin"],
+        cwd=tmp_path,
+        input="\0".join(sorted(bulk | retained)) + "\0",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode in (0, 1), done.stderr
+    ignored = set(done.stdout.split("\0")) - {""}
+    assert ignored == bulk, (
+        f"runtime ignores drifted: missing={bulk - ignored}, extra={ignored - bulk}"
+    )
+
+    files = _commit_files()
+    retired = [
+        p.as_posix()
+        for p in files
+        if p.is_relative_to("docs") or p.is_relative_to(".agent/contracts")
+    ]
+    assert not retired, f"retired layout in commit candidates: {retired}"
+    live = set(
+        _CITATION.findall("\n".join(p.read_text(encoding="utf-8") for p in RULES.glob("*.md")))
+    )
+    dead = [
+        f"{p}: {citation}"
+        for p in files
+        if p.suffix == ".py"
+        for citation in sorted(set(_CITATION.findall(_citation_text(ROOT / p))) - live)
+    ]
+    assert not dead, f"unresolved rule citations: {dead}"
+
+
 @pytest.fixture
 def law_tree(tmp_path, monkeypatch):
     (tmp_path / ".agent").mkdir()
     (tmp_path / ".claude" / "rules").mkdir(parents=True)
     (tmp_path / "README.md").write_text("# Readme\n")
+    (tmp_path / ".gitignore").write_text((ROOT / ".gitignore").read_text(encoding="utf-8"))
     (tmp_path / ".agent" / "deferred.md").write_text("# Queue\n\nNo open work.\n")
     (tmp_path / ".agent" / "spec.md").write_text(
         "# Spec\n\n## Intent\n\nUse SRC n: and TGT n:.\n\n## Tasks\n\n"
@@ -253,6 +332,37 @@ def law_tree(tmp_path, monkeypatch):
     ):
         monkeypatch.setitem(globals(), name, value)
     return tmp_path
+
+
+@pytest.mark.parametrize(
+    "plant", ["ignore", "source-ignore", "docs", "contracts", "comment", "docstring"]
+)
+def test_repository_surface_law_rejects_drift(law_tree, plant):
+    subprocess.run(["git", "init", "-q", str(law_tree)], check=True)
+    (RULES / "replay.md").write_text("D-014 — deterministic replay.\n")
+    code = law_tree / "cer.py"
+    code.write_text('# D-014\nmessage = "L-999"\n')
+    test_repository_surfaces_follow_law(law_tree / ".scratch" / "clean")
+    if plant == "ignore":
+        ignore = law_tree / ".gitignore"
+        text = ignore.read_text()
+        assert text.count("\ntranscripts/\n") == 1
+        ignore.write_text(text.replace("\ntranscripts/\n", "\n"))
+        expected = "runtime ignores drifted"
+    elif plant == "source-ignore":
+        with (law_tree / ".gitignore").open("a") as f:
+            f.write("\nlive_stt.py\n")
+        expected = "runtime ignores drifted"
+    elif plant in ("docs", "contracts"):
+        path = law_tree / ("docs/probe.md" if plant == "docs" else ".agent/contracts/probe.md")
+        path.parent.mkdir(parents=True)
+        path.write_text("retired structure\n")
+        expected = "retired layout"
+    else:
+        code.write_text("# L-999\n" if plant == "comment" else '"""L-999"""\n')
+        expected = "unresolved rule citations"
+    with pytest.raises(AssertionError, match=expected):
+        test_repository_surfaces_follow_law(law_tree / ".scratch" / "planted")
 
 
 @pytest.mark.parametrize(
