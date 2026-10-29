@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 QUEUE = ROOT / ".agent" / "deferred.md"
 SPEC = ROOT / ".agent" / "spec.md"
@@ -80,6 +82,18 @@ def _squash(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().casefold()
 
 
+def _queue_rows() -> list[tuple[str, str]]:
+    text = QUEUE.read_text(encoding="utf-8")
+    # Zero rows is a closed queue; a numbered near-miss is unread input, not closure.
+    malformed = [
+        line
+        for line in re.findall(r"^[ \t]*\d+[.)].*$", text, re.MULTILINE)
+        if _QUEUE_ROW.match(line) is None
+    ]
+    assert not malformed, f"malformed queue row: {malformed}"
+    return _QUEUE_ROW.findall(text)
+
+
 def _tasks() -> str:
     return SPEC.read_text(encoding="utf-8").split("\n## Tasks\n", 1)[1].split("\n## ", 1)[0]
 
@@ -95,8 +109,7 @@ def _scanned_files() -> list[Path]:
 
 
 def test_open_tasks_pair_every_queue_row_with_its_rank():
-    queue = _QUEUE_ROW.findall(QUEUE.read_text(encoding="utf-8"))
-    assert queue, "no numbered rows parsed out of the queue"
+    queue = _queue_rows()
     assert [rank for rank, _ in queue] == [str(n) for n in range(1, len(queue) + 1)]
 
     tasks = _tasks()
@@ -160,9 +173,7 @@ def test_every_queue_link_resolves_to_a_live_row():
     exists. Rank references and dead titles are the same hole in two directions, and both are
     decidable.
     """
-    rows = _QUEUE_ROW.findall(QUEUE.read_text(encoding="utf-8"))
-    live = {_squash(title).rstrip(".") for _, title in rows}
-    assert live, "no queue rows parsed"
+    live = {_squash(title).rstrip(".") for _, title in _queue_rows()}
     dead = [
         f"{path.relative_to(ROOT)}: {title.strip()}"
         for path in _scanned_files()
@@ -179,6 +190,59 @@ def test_no_rank_reference_outside_the_queue():
         for hit in _RANK_REFERENCE.findall(path.read_text(encoding="utf-8"))
     ]
     assert not offenders, f"name the row, not its moving rank: {offenders}"
+
+
+@pytest.fixture
+def law_tree(tmp_path, monkeypatch):
+    (tmp_path / ".agent").mkdir()
+    (tmp_path / ".claude" / "rules").mkdir(parents=True)
+    (tmp_path / "README.md").write_text("# Readme\n")
+    (tmp_path / ".agent" / "deferred.md").write_text("# Queue\n\nNo open work.\n")
+    (tmp_path / ".agent" / "spec.md").write_text(
+        "# Spec\n\n## Intent\n\nUse SRC n: and TGT n:.\n\n## Tasks\n\n"
+        "Queue → `.agent/deferred.md`\n\n## Phase\n\nMAINTAIN — tool\n"
+    )
+    for name, value in (
+        ("ROOT", tmp_path),
+        ("SPEC", tmp_path / ".agent" / "spec.md"),
+        ("QUEUE", tmp_path / ".agent" / "deferred.md"),
+        ("RULES", tmp_path / ".claude" / "rules"),
+    ):
+        monkeypatch.setitem(globals(), name, value)
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    "lock",
+    [
+        test_open_tasks_pair_every_queue_row_with_its_rank,
+        test_every_queue_link_resolves_to_a_live_row,
+    ],
+)
+def test_empty_queue_and_tasks_are_consistent(law_tree, lock):
+    lock()
+
+
+@pytest.mark.parametrize("tasks", ["- [ ] **1** Stray", "- [ ] Stray"])
+def test_an_empty_queue_still_rejects_a_stray_open_task(law_tree, tasks):
+    SPEC.write_text(SPEC.read_text().replace("## Tasks\n", f"## Tasks\n\n{tasks}\n"))
+    with pytest.raises(AssertionError):
+        test_open_tasks_pair_every_queue_row_with_its_rank()
+
+
+def test_an_empty_queue_still_rejects_a_dead_link(law_tree):
+    (law_tree / "README.md").write_text("See `.agent/deferred.md` → *Closed*.\n")
+    with pytest.raises(AssertionError, match="Closed"):
+        test_every_queue_link_resolves_to_a_live_row()
+
+
+@pytest.mark.parametrize("row", ["1. **Unclosed", "1. Plain title", " 1. **Indented**"])
+def test_a_malformed_queue_is_not_an_empty_queue(law_tree, row):
+    QUEUE.write_text(f"# Queue\n\n{row}\n")
+    with pytest.raises(AssertionError, match="queue row"):
+        test_open_tasks_pair_every_queue_row_with_its_rank()
+    with pytest.raises(AssertionError, match="queue row"):
+        test_every_queue_link_resolves_to_a_live_row()
 
 
 def test_every_intent_citation_quotes_live_intent_text():

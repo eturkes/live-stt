@@ -81,7 +81,10 @@ ranked resume note and a missing header, with a legal `- [x] <sha>` row and a to
 indented resume note as the positive controls. The two notes, planted from a `cp` snapshot of
 `.agent/spec.md`: a top-level and an indented `- [ ] ROUTE: …` row and one beside a resume note
 pass; a second, ticked, empty, colon-less or ranked ROUTE row stays red, as do a second resume note
-and a stray open row.
+and a stray open row. An empty queue pairs with pointer-only `Tasks`; the two queue readers reject
+numbered malformed rows rather than using nonemptiness as a parse witness. The committed empty-tree
+controls still reject ranked and unranked stray open tasks and a dangling link. Restoring the two
+nonempty assertions from a `cp` snapshot reddens both empty-tree readers; restored, both pass.
 
 The third, the queue-link lock, is mutation-proven red by planting a pointer at *Maintenance +
 security pass*, a row closed long before, into a rules file from a `cp` snapshot (L-022).
