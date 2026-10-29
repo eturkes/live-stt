@@ -3,6 +3,7 @@ paths:
   - "live_stt.py"
   - "streaming.py"
   - "replay.py"
+  - "tests/test_shipped_path.py"
 ---
 
 # ASR pipeline — capture → VAD → VAC → whisper → publication
@@ -360,6 +361,11 @@ paths:
   (兵十 34 → 25 of 38, ごん → 権 ×13) and §02 grew a 16-character repeat
   (`tests/eval_asr_screen.py --arms terms`). So no device takes the list: session context reaches
   the model through the translator glossary alone (`translation-leg.md`), in both modes.
+  `test_shipped_path.py` observes both decode methods, both language/model routes and both devices
+  through fake pipelines: only audio plus qualified decode options pass. Shipped rejection twins
+  add `hotwords`, `initial_prompt`, `prompt` or `prompt_text`. Plant `initial_prompt` in production
+  `generate` → the extended lock reds where the old hotwords-only assertion stayed green;
+  `cp` restore → green. This checks the outgoing channel, never re-measures device capability or CER.
 - **`repetition_penalty` is the ONLY repetition knob that reaches this build.**
   `no_repeat_ngram_size` is accepted and silently ignored (sizes 2/3/4/5/8 return byte-identical text
   on a clip repeating a 5-char unit ~140×); `num_beams=2` raises (`zero_remote_tensor.cpp:259`). The

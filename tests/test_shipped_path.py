@@ -244,13 +244,36 @@ def test_a_warm_cache_survives_the_next_engine(openvino, tmp_path):
     assert len(openvino) == 2
 
 
-@pytest.mark.parametrize("device", ["NPU", "GPU"])
-def test_no_shipped_device_sends_the_term_list(openvino, tmp_path, device):
-    """Term biasing cost whisper-ja-760M accuracy on the GPU, so no device takes it."""
-    engine = live_stt.WhisperEngine(tmp_path / "model", device)
-    engine.decode(np.zeros(SAMPLE_RATE, dtype=np.float32))
+def _assert_unconditioned_decode(call):
+    allowed = {"samples", "language", "task", "return_timestamps", "repetition_penalty"}
+    extra = set(call) - allowed
+    assert not extra, (
+        f"recognizer received a text-conditioning or unqualified option: {sorted(extra)}"
+    )
 
-    assert "hotwords" not in openvino[0].calls[0]
+
+@pytest.mark.parametrize("device", ["NPU", "GPU"])
+@pytest.mark.parametrize("language", ["ja", "en"])
+def test_no_shipped_device_sends_the_term_list(openvino, tmp_path, device, language, monkeypatch):
+    """Both decode methods and model routes stay audio-only on both devices."""
+    monkeypatch.setattr(live_stt, "ASR_LANGUAGE", language)
+    engine = live_stt.WhisperEngine(tmp_path / "model", device, english_dir=tmp_path / "english")
+    samples = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    engine.decode(samples)
+    engine.decode_segments(samples, language=language)
+
+    calls = [call for pipeline in openvino for call in pipeline.calls]
+    assert len(calls) == 2
+    for call in calls:
+        _assert_unconditioned_decode(call)
+
+
+@pytest.mark.parametrize("channel", ["hotwords", "initial_prompt", "prompt", "prompt_text"])
+def test_the_decode_option_lock_rejects_text_conditioning_channels(channel):
+    call = {"samples": np.zeros(1, dtype=np.float32), "language": "<|ja|>", "task": "transcribe"}
+    call[channel] = "previous caption"
+    with pytest.raises(AssertionError, match=channel):
+        _assert_unconditioned_decode(call)
 
 
 def test_decode_asks_for_japanese_transcription_without_timestamps(openvino, tmp_path):
@@ -745,7 +768,8 @@ def test_a_session_term_survives_to_the_translator_but_never_to_the_recognizer(
     run_vac(monkeypatch, engine, ONE_UTTERANCE, context=context)
 
     assert "東京タワー" in context.translator_brief()
-    assert all("hotwords" not in call for call in openvino[0].calls)
+    for call in openvino[0].calls:
+        _assert_unconditioned_decode(call)
 
 
 # --- status line (P5) ---------------------------------------------------------
