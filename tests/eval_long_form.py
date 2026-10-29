@@ -395,9 +395,6 @@ def main() -> None:
         if args.score:
             ref, wav = section["reference"]["text"], ROOT / section["build"]["wav"]
             scores = {engine: score_wav(ref, wav, engine) for engine in ENGINES}
-            for engine, row in scores.items():
-                if not row["hyp"]:
-                    raise RuntimeError(f"{engine} produced an empty transcript for section {n}")
             section["scores"] = scores
         else:
             scores = keep_scores(previous.get("sections", {}).get(f"{n:02d}", {}), section)

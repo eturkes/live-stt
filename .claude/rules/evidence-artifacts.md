@@ -75,8 +75,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   crop stays one continuous span (a hole is unaligned audio, never a splice), so `alignment_check`
   spends the unaligned fraction of the span as budget over the flat 0.10 surface allowance. Sherpa
   scoring is `--score`-only and a section keeps recorded rows while its WAV + reference hashes hold, so
-  acquisition reruns without re-decoding. Downstream consumers resolve their section from the artifact
-  (`source.wav`), never from a constant.
+  acquisition reruns without re-decoding. A completed empty hypothesis stays a score row (D=N);
+  replay failures propagate and preserve the prior manifest (`test_long_form.py`). Restoring the
+  nonempty-text rejection reddens that lock (L-022). Downstream consumers resolve their section
+  from the artifact (`source.wav`), never from a constant.
 - `eval_anchor_scenarios.py` — scripted decode runs through `StreamingProcessor` over the
   committed caption text: 13 scenarios (persistent, one- and two-decode re-spellings, head drops,
   total drops, garbage, each disturbance also on the final decode, and a dropped trailing mark
