@@ -88,13 +88,13 @@ reviewers on the same rows.
 
 | id | lens × module | owner | verdict |
 | --- | --- | --- | --- |
-| B01 | BL × full gate: `gate.py` 8/8, 2 declared skips; under the accelerator prelude 0 skips | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
-| B02 | BL × `live-stt` CLI: `--help`, `--list-devices`, each parse-time error, `--playback` end to end (`tests/eval_playback_routing.py --e2e pinned` + `probe`), mic paths → L-004 list | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
-| B03 | BL × `replay.py`: k2v2, parakeet, whisper NPU + GPU, `--json`; the replay goldens | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
-| B04 | BL × `session_report.py`: bare, `--log`, `--json`, `--source-lang en`, `--two-way` over real transcripts | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
-| B05 | BL × trace evaluators + `build_lag_trace.py --check` (M7a's run commands) | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
-| B06 | BL × hardware evaluators (M7b's run commands, flags per `evidence-artifacts.md`) | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
-| B07 | BL × library + hook entries: `streaming` / `cer` import-and-call smoke; `.githooks/pre-commit`; `uv lock --check` | MAIN | in progress — `.scratch/cr/baseline/summary.tsv` |
+\1 pass — gate 8/8 (1311 pass + 2 declared `absent:` skips); under the prelude 8/8, 1313 pass, 0 skips (both whisper goldens on NPU + GPU) |
+\1 pass — `--help` rc=0; `--list-devices` rc=0 (9 devices); `--two-way --source-lang en`, `--two-way --engine k2v2`, `--playback --device 2` each rc=2 with their error; `--playback` end to end: `eval_playback_routing.py` rc=0, `--e2e pinned` rc=0 (371 s), `--e2e probe` rc=0 (342 s), NPU; mic paths → L-004 list |
+\1 pass — `replay.py long.wav` k2v2 / parakeet / whisper NPU `--json` / whisper GPU `--json`, rc=0 each; `gen_replay_goldens.py` rewrote `tests/replay_goldens.json` byte-identical (26 rows) |
+\1 pass — bare, `--json`, `--log <file>`, `--source-lang en`, `--two-way` over the saved transcripts, rc=0 each (findings C25-*/C28-1 = M3 rows) |
+\1 pass — eval_latency, eval_two_way_settled `--json`, eval_term_census, eval_en_pairing, eval_lag `--json`, eval_anchor_scenarios, build_lag_trace `--check`, rc=0 each; quoted quantiles reproduce |
+\1 pass — eval_backpressure rc=0; eval_retention NPU CER 0.0532 (N=1166 S=23 D=28 I=11) + GPU rc=0; eval_cer PASS (CER cells byte-identical, timing-only rewrite reverted); eval_asr_screen 760M NPU fleurs ja 0.0469/0.0333 en 0.0482 + retention; playback_silence rc=0 (W 0.2888); long_form (default, alignment) rc=0, `long_form.json` byte-identical; translate_repeat rc=0 (25 turns, 3 stalled, 0 dirty) |
+\1 pass — `streaming`/`cer` import-and-call smoke rc=0; `.githooks/pre-commit` rc=0 (1313 pass); `uv lock --check --offline` rc=0 |
 | C01 | CO × M1a | reviewer-1 | reviewer-1: pass |
 | C02 | CU × M1a | reviewer-1 | reviewer-1: pass |
 | C03 | AL × M1a | reviewer-1 | reviewer-1: pass |
@@ -174,12 +174,12 @@ Severity per the reporting reviewer; status = fixed <sha> | assigned <fixer> | u
 | C13-3/C59-1 | major | live_stt.py `_turn`: failed/interrupted `turn/completed` published partial TGT | reviewer-6, reviewer-7, reviewer-25 | fixed e8e7cd5 |
 | C09-1/C61-2 | minor | live_stt.py `emit_line`: lone trailing U+2028/U+2029 kept two logical lines | reviewer-5, reviewer-26 | fixed 4f4b925 |
 | C43-1/C45-1 | minor | tests: CLI/session harnesses leaked ASR_LANGUAGE, PIPEWIRE_ALSA, logger state | reviewer-18, reviewer-19 (+MAIN sweep) | fixed c35328f |
-| C21-1 | major | streaming.py `process`: outer whitespace across blank chunks re-published retained text | reviewer-9, reviewer-10 | fix on wip/streaming-c21; owes NPU retention CER |
+| C21-1 | major | streaming.py `process`: outer whitespace across blank chunks re-published retained text | reviewer-9, reviewer-10 | fixed 13c5bcb |
 | C05-1 | major | `--source-lang en` with a Japanese-only sherpa engine is accepted | reviewer-2, reviewer-25, reviewer-33, MAIN | user ruling (parse-time rejection = CLI change) |
-| C05-1b | major | live_stt.py `_merge_chunk_text` overlap reaches past an empty/short middle chunk | reviewer-3 | MAIN |
-| C29-1 | minor | replay.py `load_wav_f32_16k` accepts a truncated payload | reviewer-12 | MAIN |
-| C47-1 | minor | tests/test_retention_probe.py passes when the WAV is absent (no `absent:` skip) | reviewer-20 | MAIN |
-| C39-1 | minor | tests/test_trim_echo.py C1 cases cannot fail (zero-cut guard masks threshold) | reviewer-16 | MAIN |
+| C05-1b | major | live_stt.py `_merge_chunk_text` overlap reaches past an empty/short middle chunk | reviewer-3 | fixed fe4c056 |
+| C29-1 | minor | replay.py `load_wav_f32_16k` accepts a truncated payload | reviewer-12 | fixed d1cbaab |
+| C47-1 | minor | tests/test_retention_probe.py passes when the WAV is absent (no `absent:` skip) | reviewer-20 | fixed 4d29ce5 |
+| C39-1 | minor | tests/test_trim_echo.py C1 cases cannot fail (zero-cut guard masks threshold) | reviewer-16 | fixed 4d29ce5 |
 | C68-32-1 | minor | queue rows 1/3/4 declare no tier; no lock owns it | reviewer-32 | already queued: deferred row *Queue rows declare their tier* |
 | r6 C13-1 + r7 C13-1 | — | a reader failure (oversized/broken stdout) leaves a live process that _respawn abandons | reviewer-6.md, reviewer-7.md | assigned general-purpose-1 |
 | r6 C13-2 | — | start() cancelled mid-init leaves its detached child alive | reviewer-6.md | assigned general-purpose-1 |
