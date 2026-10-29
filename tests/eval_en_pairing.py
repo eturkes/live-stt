@@ -276,54 +276,58 @@ async def live_turns(captions: list[dict]) -> dict:
     """Translate every caption through the real translator, production's way."""
     context = SessionContext()
     translator = CodexTranslator(context)
-    if not await translator.start():
-        raise SystemExit("codex app-server did not start; run `codex login` first")
-    turns: list[dict] = []
-    restarts = rotations = declined = 0
-    started = time.perf_counter()
-    for caption in captions:
-        ja = caption["text"]
-        if not ja:
-            continue  # production publishes -- and so observes -- nothing else
-        context.observe_ja(ja)
-        span = live_stt.repeat_span(ja)
-        if span >= live_stt.CAPTION_REPEAT_MAX_CHARS:
-            declined += 1  # M13.1's screen, which lives in submit ahead of the queue
-            turns.append({"idx": caption["idx"], "ja": ja, "en": "", "s": 0.0, "declined": True})
-            continue
-        brief = translator._legs["ja"].brief
-        at = time.perf_counter()
-        en = await translator._translate(ja)
-        seconds = time.perf_counter() - at
-        rotated = translator._legs["ja"].brief != brief
-        rotations += rotated
-        if en:
-            context.observe_en(ja, en)
-        turns.append(
-            {
-                "idx": caption["idx"],
-                "ja": ja,
-                "en": en,
-                "s": round(seconds, 2),
-                "rotated": rotated,
-            }
-        )
-        print(
-            f"{caption['idx']:>4} {seconds:6.2f}s {'ROTATE ' if rotated else ''}"
-            f"{en[:88] or '(no translation)'}",
-            flush=True,
-        )
-        if not translator.enabled:
-            # Production would run source-only from here; this measures the learner,
-            # so the leg is rebuilt against the same context and the deviation
-            # is reported rather than smoothed.
-            print(f"  translator disabled after {caption['idx']}; restarting", flush=True)
-            await translator.close()
-            translator = CodexTranslator(context)
-            if not await translator.start():
-                raise SystemExit("codex app-server would not restart mid-replay")
-            restarts += 1
-    await translator.close()
+    try:
+        if not await translator.start():
+            raise SystemExit("codex app-server did not start; run `codex login` first")
+        turns: list[dict] = []
+        restarts = rotations = declined = 0
+        started = time.perf_counter()
+        for caption in captions:
+            ja = caption["text"]
+            if not ja:
+                continue  # production publishes -- and so observes -- nothing else
+            context.observe_ja(ja)
+            span = live_stt.repeat_span(ja)
+            if span >= live_stt.CAPTION_REPEAT_MAX_CHARS:
+                declined += 1  # M13.1's screen, which lives in submit ahead of the queue
+                turns.append(
+                    {"idx": caption["idx"], "ja": ja, "en": "", "s": 0.0, "declined": True}
+                )
+                continue
+            brief = translator._legs["ja"].brief
+            at = time.perf_counter()
+            en = await translator._translate(ja)
+            seconds = time.perf_counter() - at
+            rotated = translator._legs["ja"].brief != brief
+            rotations += rotated
+            if en:
+                context.observe_en(ja, en)
+            turns.append(
+                {
+                    "idx": caption["idx"],
+                    "ja": ja,
+                    "en": en,
+                    "s": round(seconds, 2),
+                    "rotated": rotated,
+                }
+            )
+            print(
+                f"{caption['idx']:>4} {seconds:6.2f}s {'ROTATE ' if rotated else ''}"
+                f"{en[:88] or '(no translation)'}",
+                flush=True,
+            )
+            if not translator.enabled:
+                # Production would run source-only from here; this measures the learner,
+                # so the leg is rebuilt against the same context and the deviation
+                # is reported rather than smoothed.
+                print(f"  translator disabled after {caption['idx']}; restarting", flush=True)
+                await translator.close()
+                translator = CodexTranslator(context)
+                if not await translator.start():
+                    raise SystemExit("codex app-server would not restart mid-replay")
+                restarts += 1
+    finally:
+        await translator.close()
     latencies = sorted(t["s"] for t in turns if t.get("en"))
     # The live loop's own context and a fresh replay of the recorded pairs must
     # agree: they run the same two observers over the same inputs, so a

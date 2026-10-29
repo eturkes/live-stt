@@ -235,6 +235,29 @@ def test_live_pairing_accepts_an_authentic_expired_rendering(monkeypatch: pytest
     assert any(row["dead_pairing"] for row in episodes)
 
 
+def test_live_pairing_closes_its_translator_on_cancellation(monkeypatch: pytest.MonkeyPatch):
+    closed = []
+
+    async def start(self):
+        self.enabled = True
+        self._legs["ja"].thread_id = "pairing-thread"
+        return True
+
+    async def turn(self, _text):
+        raise asyncio.CancelledError
+
+    async def close(self):
+        closed.append(self)
+        self.enabled = False
+
+    monkeypatch.setattr(eval_en_pairing.CodexTranslator, "start", start)
+    monkeypatch.setattr(eval_en_pairing.CodexTranslator, "_turn", turn)
+    monkeypatch.setattr(eval_en_pairing.CodexTranslator, "close", close)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(eval_en_pairing.live_turns(_captions("兵十がきた。")))
+    assert len(closed) == 1
+
+
 def test_english_common_nouns_never_pair_a_key():
     """M12.5's whole mechanism, and the reason its prediction was a refutation.
 
