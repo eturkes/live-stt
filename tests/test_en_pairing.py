@@ -14,6 +14,7 @@ NEIGHBOURS' openings -- interference the best case removes by construction.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from copy import deepcopy
 
@@ -212,6 +213,26 @@ def test_the_report_headline_states_the_verdict_its_own_rows_carry(
         True,
         False,
     ]
+
+
+def test_live_pairing_accepts_an_authentic_expired_rendering(monkeypatch: pytest.MonkeyPatch):
+    async def start(self):
+        self.enabled = True
+        return True
+
+    async def translate(self, _text):
+        return PROPER
+
+    async def close(self):
+        self.enabled = False
+
+    monkeypatch.setattr(eval_en_pairing.CodexTranslator, "start", start)
+    monkeypatch.setattr(eval_en_pairing.CodexTranslator, "_translate", translate)
+    monkeypatch.setattr(eval_en_pairing.CodexTranslator, "close", close)
+    caps = _captions(*["兵十がきた。"] * 4, *["そうですね。"] * CONTEXT_TERM_LEASE)
+    trace = asyncio.run(eval_en_pairing.live_turns(caps))
+    episodes = replay(caps, trace["turns"])["episodes"]
+    assert any(row["dead_pairing"] for row in episodes)
 
 
 def test_english_common_nouns_never_pair_a_key():

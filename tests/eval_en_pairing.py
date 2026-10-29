@@ -329,9 +329,11 @@ async def live_turns(captions: list[dict]) -> dict:
     # agree: they run the same two observers over the same inputs, so a
     # divergence is a harness defect, not a finding.
     derived = learner(captions, lambda caption, unpaired: recorded(turns)[caption["idx"]]["en"])
-    if {e["term"]: e["rendering"] for e in derived["episodes"] if e["rendering"]} != {
-        t: r for t, r in context.renderings.items()
-    } and not restarts:
+    if {
+        e["term"]: e["rendering"]
+        for e in derived["episodes"]
+        if e["rendering"] and e["expired_at"] is None
+    } != {t: r for t, r in context.renderings.items()} and not restarts:
         raise SystemExit("the replay disagrees with the live context; the harness is wrong")
     return {
         "source": {"trace": TRACE.name, "n_captions": len(captions)},
