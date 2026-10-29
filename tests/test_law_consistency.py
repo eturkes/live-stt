@@ -79,7 +79,7 @@ _ANCHOR_MIN = 12
 
 
 def _squash(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().casefold()
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _queue_rows() -> list[tuple[str, str]]:
@@ -132,7 +132,7 @@ def test_open_tasks_pair_every_queue_row_with_its_rank():
     assert [m.group(1) for m in rows] == [rank for rank, _ in queue]
 
     for row, (rank, title) in zip(rows, queue, strict=True):
-        assert _squash(row.group(2)).rstrip(".") == _squash(title).rstrip("."), (
+        assert _squash(row.group(2)) == _squash(title), (
             f"Tasks rank {rank} does not name {title!r}: {row.group(2)!r}"
         )
 
@@ -173,12 +173,12 @@ def test_every_queue_link_resolves_to_a_live_row():
     exists. Rank references and dead titles are the same hole in two directions, and both are
     decidable.
     """
-    live = {_squash(title).rstrip(".") for _, title in _queue_rows()}
+    live = {_squash(title) for _, title in _queue_rows()}
     dead = [
         f"{path.relative_to(ROOT)}: {title.strip()}"
         for path in _scanned_files()
         for title in _QUEUE_LINK.findall(re.sub(r"\s+", " ", path.read_text(encoding="utf-8")))
-        if _squash(title).rstrip(".") not in live
+        if _squash(title) not in live
     ]
     assert not dead, f"law points at queue rows that no longer exist: {dead}"
 
@@ -242,6 +242,28 @@ def test_a_malformed_queue_is_not_an_empty_queue(law_tree, row):
     with pytest.raises(AssertionError, match="queue row"):
         test_open_tasks_pair_every_queue_row_with_its_rank()
     with pytest.raises(AssertionError, match="queue row"):
+        test_every_queue_link_resolves_to_a_live_row()
+
+
+@pytest.mark.parametrize("title", ["a row", "A row."])
+def test_tasks_titles_stay_verbatim(law_tree, title):
+    QUEUE.write_text("1. **A row**\n")
+    spec = SPEC.read_text().replace("## Tasks\n", "## Tasks\n\n- [ ] **1** A row\n")
+    SPEC.write_text(spec)
+    test_open_tasks_pair_every_queue_row_with_its_rank()
+    SPEC.write_text(spec.replace("**1** A row", f"**1** {title}"))
+    with pytest.raises(AssertionError, match="Tasks rank 1 does not name"):
+        test_open_tasks_pair_every_queue_row_with_its_rank()
+
+
+@pytest.mark.parametrize("title", ["a row", "A row."])
+def test_queue_link_titles_keep_case_and_punctuation(law_tree, title):
+    QUEUE.write_text("1. **A row**\n")
+    readme = law_tree / "README.md"
+    readme.write_text("See `.agent/deferred.md` → *A row*.\n")
+    test_every_queue_link_resolves_to_a_live_row()
+    readme.write_text(f"See `.agent/deferred.md` → *{title}*.\n")
+    with pytest.raises(AssertionError, match="law points at queue rows"):
         test_every_queue_link_resolves_to_a_live_row()
 
 

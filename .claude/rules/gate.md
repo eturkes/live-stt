@@ -85,6 +85,10 @@ and a stray open row. An empty queue pairs with pointer-only `Tasks`; the two qu
 numbered malformed rows rather than using nonemptiness as a parse witness. The committed empty-tree
 controls still reject ranked and unranked stray open tasks and a dangling link. Restoring the two
 nonempty assertions from a `cp` snapshot reddens both empty-tree readers; restored, both pass.
+Title matching squashes whitespace alone: case and punctuation stay significant in both Tasks and
+queue links. Committed near-misses change one letter's case or append one period beside an exact
+positive twin; restoring case-folding + trailing-period stripping from a `cp` snapshot reddens all
+four, restored green.
 
 The third, the queue-link lock, is mutation-proven red by planting a pointer at *Maintenance +
 security pass*, a row closed long before, into a rules file from a `cp` snapshot (L-022).
