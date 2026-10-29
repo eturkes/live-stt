@@ -124,10 +124,10 @@ paths:
   hallucination the zero-pad probe recorded did not reproduce. Live text varies run to run
   (`パック`/`バック`, the clip a split line lands in); the verdicts held. The offline replica
   `tests/eval_playback_silence.py` reproduces those three verdicts exactly; arms, CER over 277
-  chars: shipped 0.2599 · −60 dBFS floor on the stream 0.2671 · floor on
-  silero's copy before leveling 0.2238 (all three quiet clips recovered — the floor ages the
+  normalized reference chars (`cer.normalize` on BOTH reference + hypothesis): shipped 0.1588 ·
+  −60 dBFS floor on the stream 0.1661 · floor on silero's copy before leveling 0.1227 (all three quiet clips recovered — the floor ages the
   history, gain → 16× — but heads cut on 4 loud clips: `cv_long` → `句文を読みました。`) · floor after
-  leveling 0.2888 (gain stays 1, cv489 + cv894 empty) ⇒ the GAIN decides, not the residue; every
+  leveling 0.1877 (gain stays 1, cv489 + cv894 empty) ⇒ the GAIN decides, not the residue; every
   candidate trades quiet talkers against loud ones. Shipped unchanged; the fix is queued
   (`.agent/deferred.md` → *Playback leveling across digital silence*). Whether real call audio
   carries exact zeros between talkers is unmeasured.
@@ -414,8 +414,9 @@ paths:
   N=1166, S=36, D=35, I=0 over 8 segments, and the hypothesis text compares byte-identical ⇒ routing
   the token per decode moves the shipped one-way decode by nothing at all. Decode COST is not pinned
   and moved within the known machine-state band (109.42 → 95.26 s total, RTF 0.600 → 0.522).
-- **A wrong language token is CATASTROPHIC in both directions and graceful in neither.** 150 FLEURS
-  clips per language on the shipped NPU whisper, both tokens on the same audio, scored with `cer.py`
+- **A wrong language token was CATASTROPHIC in both directions on turbo.** Historical NPU
+  large-v3-turbo probe, not today's Japanese-tuned 760M: 150 FLEURS clips per language, both
+  tokens on the same audio, scored with `cer.py`
   (`.scratch/en_quality_probe.py`, result `.scratch/en-quality.json`):
 
   | audio | `<\|ja\|>` CER | `<\|en\|>` CER | ref chars | decode p50 |
@@ -423,14 +424,14 @@ paths:
   | JA (`fleurs-ja-`) | **0.0502** | **2.0552** | 7,593 | 0.92 / 0.78 s |
   | EN (`fleurs-en-`) | **0.6710** | **0.0263** | 15,390 | 0.85 / 0.82 s |
 
-  Two things follow. **English is the recogniser's better language** — 0.0263 against 0.0502, so
-  nothing about the EN direction is blocked by decode quality. And a misroute costs **41×** on JA
+  **Turbo's English CER is lower on this sample** — 0.0263 against 0.0502; this does not rank
+  today's different JA/EN models. A misroute costs **41×** on JA
   audio and **26×** on EN audio, the JA row past 1.0 because a wrong token hallucinates insertions
   rather than degrading ⇒ an LID that guesses under uncertainty is worse than one that abstains and
   holds the previous token. The JA row reproduced to the digit across two independent runs, which is
   the determinism this table rests on; decode p50 moved ~20 % between them, the known machine-state
   band.
-- `ASRDecodedResults` fields: `chunks, language, perf_metrics, scores, texts, words`. There is no
+- `ASRDecodedResults` fields: `chunks, languages, perf_metrics, scores, texts, words`. There is no
   `og.WhisperDecodedResults`.
 - **The 0.35-0.42 s fixed decode term is structural in genai 2026.3.1 — three levers are closed at
   the source, not untried.** The feature extractor always pads to 30 s = 3000 mel frames and the NPU
@@ -502,15 +503,19 @@ paths:
   correct, 172 abstentions (11.47 %); the held-out split was not re-derived on that cut (the census
   carries no clip ids). **1 s is refused and no threshold rescues it** — one EN buffer routes to
   `ja` carrying score 0.9822 and margin 0.9822 on both cuts, and 1 s accepts only 918 of 1,746 at
-  all. Retry each later prefix that exists, stop at the first acceptance: first-correct lands at
-  2 s for 1,328 utterances, 3 s for 117, 5 s for 23, 8 s for 3, VAD-final for 30, and **246 of
-  1,747 never accept** (spike cut: 409 of 1,926). Label flips between accepted prefixes of one
+  all. Retry each later prefix that exists, stop at the first acceptance. On the recorded
+  schedule-eligible views: first-correct at 2 s for 1,328 utterances, 3 s for 117, 5 s for 23,
+  8 s for 3, VAD-final for 6; **270 of 1,747 remain held**. This is a sampled-bucket replay,
+  NOT the full runtime held rate: runtime also scores intermediate prefixes absent here.
+  A duration-free counterfactual admitting short finals gives 30 VAD-final + 246 never accepted
+  (spike cut: 409 of 1,926). Label flips between accepted prefixes of one
   utterance are **0** once 1 s is suppressed (0/4,549 adjacent pairs, 0/4,556 across a held
   abstention) ⇒ freezing the first accepted label costs nothing measurable here.
-  **Abstention is the common case on short speech and its fallback is UNPROVEN.** 247 of 1,747
-  VAD-final buffers are shorter than 2 s and the gate accepts only 24 of them, abstaining on
-  90.28 %, so "hold the last accepted label, JA at startup" carries roughly a seventh of utterances
-  (spike cut: a fifth). This corpus cannot score that rule: it holds no bilingual sequence and
+  **Short speech necessarily uses fallback, and that fallback is UNPROVEN.** All 247 of 1,747
+  VAD-final buffers shorter than 2 s stay held: runtime scores none. The pure rule accepts 24 and
+  rejects 223 (90.28 %) if handed those short finals, a counterfactual rather than a runtime rate.
+  "Hold the last accepted label, JA at startup" therefore applies to at least those 247 utterances.
+  This corpus cannot score that rule: it holds no bilingual sequence and
   therefore no switch rate. Holding beats a coin guess only where language persistence exceeds
   50 %, and beats forcing the pairwise winner only where the switch rate among abstentions stays
   under **4.07 %** — forcing those 172 costs 7 false routes.
@@ -684,10 +689,11 @@ Char | kana CER, GPU unless named:
   when unnamed): it guards the JA pin, so a two-way piece decoded under `<|en|>` skips it — keyed
   on `ASR_LANGUAGE`, which `--two-way` leaves at `ja`, it dropped every English caption
   (`test_two_way_publishes_english_decoded_under_en`). The loop rule spans every language.
-- Latin ratio: the 23 latin-dominant live captions split cleanly — 17 true English at ≤0.15
-  Japanese-per-character, 6 Japanese-carrying-loanwords at ≥0.27, nothing between. A 1:1 rule
-  (`latin > japanese`) drops **6 genuine Japanese captions**, because a Latin letter is one phoneme
-  where a Japanese character is a whole syllable, so one loanword outnumbers the kana around it.
+- Latin ratio: the 23 latin-dominant live captions split cleanly — 17 latin-screened at <0.16
+  Japanese share, 6 Japanese-carrying-loanwords at ≥0.27, nothing between; denominator = Japanese
+  characters + Latin letters. The low maximum is 2/13 = 0.153846, not literally ≤0.15. A 1:1 rule
+  (`latin > japanese`) drops **6 genuine Japanese captions**: a Latin-script name can outnumber
+  the Japanese around it.
   `CAPTION_LATIN_RATIO`=4 cuts the gap at 0.20.
 - **Long utterances publish at settled segments (user ruling; supersedes UNCAPPED).** Utterance
   length is unbounded — `VAD_MAX_SPEECH_S`=20 is a soft cap, clean-utterance p99 136-312 characters ≈
@@ -892,7 +898,7 @@ fields mean raw `on_segment` observations (`evidence-artifacts.md`), never publi
   4 renderings / 2 drops with zero reorder. Never quote a taxonomy across those two runs: they are
   independent samples of a sampled translator and they learn different renderings (4 against 3).
 - **`rotations` counts GLOSSARY rotations only** — `eval_en_pairing.py` sets `rotated` from
-  `translator._brief != brief`. Production ALSO rotates on the turn cadence, so this 215-raw-turn sample
+  `translator._legs["ja"].brief != brief`. Production ALSO rotates on the turn cadence, so this 215-raw-turn sample
   rotates **16** times (14 glossary + 2 cadence) and opens 17 threads counting `start()`'s own. The
   cadence arm is deliberately untouched and locked by
   `test_the_turn_cadence_rotation_is_untouched`; read the row's "below 15" against the glossary
@@ -945,10 +951,11 @@ placement and the same `_quantiles` as the commit-lag row above, so its no-withh
 `re-dated` counts characters committed before acceptance and is an UPPER bound on how many moved: one
 whose own clock already runs past the accepting update keeps it. **The last row is an upper bound
 too, never a forecast** — it forces both long-form clips into the held path, which is not what
-abstention does. Abstention concentrates in utterances shorter than 2 s (90.28 % of the 247 finals
-under 2 s never accept), where the final update arrives carrying the whole caption at once and no
-earlier commit is left to withhold. Read that row as the cost of a detector that never accepts on
-long speech, and never as the cost of the 246 held utterances.
+abstention does. All 247 census utterances shorter than 2 s hold under the runtime duration gate;
+their final update carries the whole caption at once, with no earlier commit left to withhold.
+The duration-free rule's 223/247 rejections (90.28 %) do not describe that scheduler. Read the row
+as a never-accepting detector's cost on LONG speech, not the sampled census's 270 held utterances;
+the live held rate remains unmeasured.
 
 ## Real-time cost — the instrument is CARRY (D-016(d))
 
@@ -989,7 +996,7 @@ trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248
   first rung at or above the live/trace ratios 1.42 and 1.64 of ≥ 1 s updates) with the middle update
   charged the measured 3.53 s. On the turbo trace the old code dropped 97 / 1323 blocks there and the
   fix none (queue peak 3.52 / 3.66 s); on the whisper-ja-760M trace the fix drops none, queue peak
-  4.04 / 4.14 s, 0 forced trims. Neither rule alone passes: 8 s without catch-up still dropped 947
+  4.04 / 4.26 s, 0 forced trims. Neither rule alone passes: 8 s without catch-up still dropped 947
   blocks on `retention_probe`, and catch-up at 2 s drops on the stall. The recorded-cost ladder first
   drops at ×6 / ×4 (turbo: ×6 / ×6; ×2.0 / ×1.5 before catch-up). **A `forced_trims=1` on
   `retention_probe` there (turbo trace) is a harness artifact** — off the recorded trajectory the replayed hypotheses no longer match their buffers, so
@@ -1028,7 +1035,7 @@ trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248
   re-derive real-time risk from per-caption sums.
 - Rerun cost varies ~20 % run to run, and the burst is machine state rather than a path property: the
   same clip/section/device at RTF 1.098 (`git show f25cfb5:tests/caption_trace.json`) carries
-  **77.231 s** where turbo's later trace carried 0.000 s (the whisper-ja-760M trace: 0.137 s).
+  **77.231 s** where turbo's later trace carried 0.017 s (the whisper-ja-760M trace: 0.137 s).
 - `drop=` counts backend-sized callback BLOCKS, never samples or speech ⇒ quote blocks, converting
   only with a measured block size. `session_report.py`'s `attribute_drops` places every `backlog
   peak:` drop increase against its bracketing captions, publication gap and screened captions, and
