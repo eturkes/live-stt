@@ -1115,3 +1115,25 @@ def test_a_silent_run_in_an_appended_path_does_not_claim_the_next_speaking_run(t
     assert sessions[1].marker_start == datetime(2026, 9, 4, 12)
     assert unclaimed == events[1:3]
     assert [d["drop"] for d in sr.attribute_drops(sessions[1])] == [3]
+
+
+def test_lifecycle_twins_can_straddle_a_whole_second_without_merging_attempts(tmp_path):
+    session = _transcript(
+        tmp_path,
+        event("10:00:01", "SRC", 1, CLEAN),
+        "[2026-09-04T10:00:11+09:00] -- translation restored: probed (attempt 1)",
+        "[2026-09-04T10:00:13+09:00] -- translation restored: probed (attempt 2)",
+    )
+    session.events = [
+        sr.LogEvent(
+            datetime(2026, 9, 4, 10, 0, 10), "WARNING", "translation restored: probed (attempt 1)"
+        ),
+        sr.LogEvent(
+            datetime(2026, 9, 4, 10, 0, 12), "WARNING", "translation restored: probed (attempt 2)"
+        ),
+    ]
+    restores = sr.find_restores(session)
+    assert [(r["reason"], r["source"]) for r in restores] == [
+        ("probed (attempt 1)", "marker"),
+        ("probed (attempt 2)", "marker"),
+    ]

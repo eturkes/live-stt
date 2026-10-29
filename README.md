@@ -291,7 +291,7 @@ The report shows:
 
 - caption and translation totals, per session and overall
 - every caption that has no `TGT` line, with its recorded reason or an inferred cause
-- each point where translation stopped or came back, with timestamps; one event written to both files counts once
+- each point where translation stopped or came back, with timestamps; a matching transcript note and log line count as one event
 - the backlog high-water marks from the log
 - every increase in the dropped-audio counter, with the captions around it, the gap it fell in, and any caption the screen refused inside that gap
 - caption length and repetition distributions

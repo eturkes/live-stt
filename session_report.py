@@ -301,13 +301,21 @@ def _translation_events(s: Session, kind: str, pattern: re.Pattern) -> list[dict
         for at, note in s.notes
         if note.startswith(prefix)
     ]
-    # Match twins one-for-one: two actual events in one timestamp bucket stay two.
+    # Logging precedes emit_note. Whole-second stamps can put their two writes
+    # in adjacent buckets; match one-for-one so real attempts stay distinct.
     unmatched = [(r["at"], r["reason"]) for r in out]
     for e in s.events:
         if m := pattern.match(e.body):
-            key = (e.at, m.group(1))
-            if key in unmatched:
-                unmatched.remove(key)
+            twin = next(
+                (
+                    i
+                    for i, (at, reason) in enumerate(unmatched)
+                    if reason == m.group(1) and 0 <= (at - e.at).total_seconds() <= 1
+                ),
+                None,
+            )
+            if twin is not None:
+                unmatched.pop(twin)
             else:
                 out.append({"at": e.at, "reason": m.group(1), "source": "log"})
     return sorted(out, key=lambda d: d["at"])
