@@ -836,6 +836,36 @@ async def _live_leg(t: live_stt.CodexTranslator, codex: _Codex) -> _FakeProc:
     return codex.procs[0]
 
 
+@pytest.mark.parametrize("cancel_at", [1, 2, 3])
+def test_cancelling_start_reaps_its_detached_process(monkeypatch, cancel_at):
+    async def scenario():
+        codex = _Codex()
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
+        t = live_stt.CodexTranslator()
+        starter = asyncio.create_task(t.start())
+        proc = await _await_spawn(codex, 1)
+        await _await_pending(t, 1)
+        if cancel_at >= 2:
+            proc.stdout.feed_data(_rpc_result(1, {}))
+            await _await_pending(t, 2)
+        if cancel_at == 3:
+            proc.stdout.feed_data(_rpc_result(2, {"thread": {"id": "thread-1"}}))
+            await _await_pending(t, 3)
+        starter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await starter
+        try:
+            assert proc.stdin.closed, "cancelled start left detached app-server stdin open"
+            assert proc.returncode is not None
+            assert t._reader_task is not None and t._reader_task.done()
+            assert not t.enabled
+            assert not t._closing  # startup cleanup must not consume the shutdown latch
+        finally:
+            await t.close()
+
+    asyncio.run(scenario())
+
+
 async def _kill(t: live_stt.CodexTranslator, proc: _FakeProc):
     """The session-6 death: the app-server exits, leaving nothing to probe."""
     proc.stdout.feed_eof()

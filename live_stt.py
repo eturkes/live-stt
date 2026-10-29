@@ -1509,6 +1509,11 @@ class CodexTranslator:
             )
             self._notify("initialized", {})
             await self._handshake(source)
+        except asyncio.CancelledError:
+            # Startup precedes the session's teardown region; it owns this child
+            # even when Ctrl+C cancels the initialize, thread or warm-up await.
+            await self._end_proc()
+            raise
         except Exception as e:
             logger.warning(
                 "codex app-server init failed (%s); running source-only", failure_cause(e)
