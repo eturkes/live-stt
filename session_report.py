@@ -355,7 +355,14 @@ def attribute_drops(s: Session) -> list[dict]:
 
 def explain_missing(s: Session) -> list[dict]:
     """Why each published caption has no target line."""
-    stale = {int(m.group(1)): m.group(2) for e in s.events if (m := _STALE.match(e.body))}
+    stale = {
+        int(
+            note.removeprefix("translation skipped (stale): ")
+        ): "queue delay over TRANSLATE_MAX_STALENESS_S"
+        for _, note in s.notes
+        if re.fullmatch(r"translation skipped \(stale\): \d+", note)
+    }
+    stale.update({int(m.group(1)): m.group(2) for e in s.events if (m := _STALE.match(e.body))})
     logged = {int(m.group(1)): m.group(2) for e in s.events if (m := _DECLINED.match(e.body))}
     degrade = find_degrade(s)
     last_tgt = max(s.tgt) if s.tgt else 0

@@ -760,6 +760,34 @@ def test_a_session_that_never_translated_reads_as_untranslated(tmp_path):
     assert s["degrade"] is None
 
 
+@pytest.mark.parametrize("with_log", [False, True])
+def test_stale_transcript_note_is_sufficient_without_the_optional_log(tmp_path, with_log):
+    path = write(
+        tmp_path,
+        "2026-09-04T10-00-00",
+        [
+            event("10:00:01", "SRC", 1, CLEAN),
+            "[2026-09-04T10:00:17+09:00] -- translation skipped (stale): 1",
+            event("10:00:20", "SRC", 2, CLEAN),
+            event("10:00:22", "TGT", 2, "The next caption."),
+        ],
+    )
+    log = (
+        [
+            log_event(
+                "10:00:17",
+                "caption 1 not translated: queued 16 s, over TRANSLATE_MAX_STALENESS_S",
+                "WARNING",
+            )
+        ]
+        if with_log
+        else None
+    )
+    session = report([path], log, tmp_path)["sessions"][0]
+    assert reasons(session) == {1: sr.STALE}
+    assert len(session["missing"]) == 1
+
+
 def test_a_session_without_tgt_but_with_a_degrade_marker_stays_disabled(tmp_path):
     path = write(
         tmp_path,
