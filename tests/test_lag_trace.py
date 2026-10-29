@@ -1,4 +1,4 @@
-"""Locks on the committed lag trace (contract: .scratch/row3/CONTRACT-unit1.md)."""
+"""Committed lag-trace locks; contract: .claude/rules/evidence-artifacts.md."""
 
 from __future__ import annotations
 
