@@ -21,7 +21,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
   committed row forward instead of vanishing, so a whisper regeneration on a box with no NPU cannot
   silently delete the committed whisper row. Whisper rows key per device: `whisper` = the shipped
   `ASR_DEVICE`, `whisper@GPU` = GPU mode; each row's `device` must equal its key's, checked before any
-  readiness probe.
+  readiness probe. `test_replay_goldens.py` runs the generator against temporary cells with fake
+  model/device/replay boundaries: missing model, device or WAV retains a prior row, new/available
+  cells refresh, absent unmeasured cells omit, outside-matrix cells drop, repeat runs match bytes.
+  Removing carry-forward or retaining outside-matrix engines reddens all three arms; clean twins
+  pass (L-022). Tracked golden bytes stay untouched.
 - `short_corpus.json` + `fetch_real_clips.py` + `real_clips.json` + `test_corpus.py` — pinned Common
   Voice / FLEURS PCM corpus, compact evidence plus fail-closed locks. The real-recorded clips expose
   engine divergence the synthetic TTS corpus could not: 松井/松居, バック/パック, 午後七時/午後7時.
@@ -84,7 +88,12 @@ because they replay committed traces — a fresh clone runs them in under a seco
   scoring is `--score`-only and a section keeps recorded rows while its WAV + reference hashes hold, so
   acquisition reruns without re-decoding. A completed empty hypothesis stays a score row (D=N);
   replay failures propagate and preserve the prior manifest (`test_long_form.py`). Restoring the
-  nonempty-text rejection reddens that lock (L-022). Downstream consumers resolve their section
+  nonempty-text rejection reddens that lock (L-022). The same file grades `keep_scores` on matching,
+  changed WAV, changed reference and unscored inputs, then drives acquisition with fake sections:
+  identical inputs + unselected sections retain scores, changed inputs lose them, no decode runs,
+  repeat bytes match. Unconditional retention, either ignored hash, bypassed carry-forward or
+  discarded unselected sections reddens the locks; clean twins pass (L-022).
+  Downstream consumers resolve their section
   from the artifact (`source.wav`), never from a constant.
 - `eval_anchor_scenarios.py` — scripted decode runs through `StreamingProcessor` over the
   committed caption text: 13 scenarios (persistent, one- and two-decode re-spellings, head drops,
