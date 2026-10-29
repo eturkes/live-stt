@@ -144,16 +144,18 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
   `TranscriptFile`'s lazy creation. A per-block failure stays stderr-only and names its exception
   TYPE, because `TimeoutError` stringifies to `''` and `%s` alone logged `translation failed ()`.
 - **Recovery is `_recover()`, driven inline from `run()` on the caption that finds the leg down, and
-  `_alive()` picks its arm (M14.2, M14.3).** Both permanent degrades come through one gate, one
-  budget, one backoff and one marker pair; what differs is whether a server survived.
-  - **EOF ⇒ `_respawn`.** Nothing is left to talk to, so `start()` re-runs whole. **4.8 s** measured
-    against a real app-server, next turn at normal cadence.
-  - **3 strikes ⇒ `_probe`**: a fresh thread plus one turn on the SURVIVING process. Measured after
-    three genuine 15 s stalls: probe **5.5 s**, the turns behind it 1.6-2.3 s. Latency is not the
-    argument — respawning a live process is WRONG. `_respawn` drops `_proc` and `start()` overwrites
-    `_reader_task`, leaving the survivor a reader no one owns whose eventual EOF calls `_disable` on
-    a translator that by then holds a healthy leg, and enqueues a wake sentinel into its notes. Only
-    a dead process makes that abandonment safe.
+  `_alive()` picks its arm (M14.2, M14.3).** Both degrades share one gate, budget, backoff and marker
+  pair. Liveness = a running process WITH a working reader, not OS survival alone.
+  - **EOF / broken or oversized stdout ⇒ `_respawn`.** The transport is unusable even if its process
+    survives. `_end_proc` cancels/joins the old reader, closes stdin, waits, then kills/reaps if needed
+    BEFORE `_respawn` clears `_proc` or `start()` replaces either handle. **4.8 s** measured for an EOF
+    respawn against a real app-server, next turn at normal cadence; unreadable-process cleanup is
+    fake-transport verified, not real-server timed.
+  - **3 strikes with usable transport ⇒ `_probe`**: a fresh thread plus one turn on the SAME process.
+    Measured after three genuine 15 s stalls: probe **5.5 s**, the turns behind it 1.6-2.3 s.
+    Abandoning a live reader is WRONG: its eventual EOF can disable the replacement leg and enqueue
+    a wake sentinel into its notes. Preserve a usable pair; retire an unusable pair before replacing
+    either handle. Lock: `test_replacing_an_unreadable_server_reaps_it_before_spawning`.
   - **The probe opens a fresh thread**: a turn there cannot be steered into one the strikes left
     running, and `_new_thread` → `_instructions` → `translator_brief` is the only channel the
     CURRENT glossary rides, on either arm. L-026's "a stalled turn poisons its THREAD" was that

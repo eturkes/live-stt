@@ -1544,12 +1544,12 @@ class CodexTranslator:
         await asyncio.wait_for(self._turn(warmup), TRANSLATE_TIMEOUT_S)
 
     def _alive(self) -> bool:
-        """Is there still a server to talk to? Both the enable guard and the
-        choice between recovery arms turn on this, so it has one definition.
+        """Is the process alive WITH a working reader, so a probe can talk to it?
 
-        Exact rather than approximate: _read_loop reaches no await between the
-        readline that ends it and its own completion, so an EOF has always
-        finished the reader task by the time another coroutine looks.
+        A finished reader can leave its process alive; _respawn must retire both
+        before replacing either handle. _read_loop reaches no await between the
+        readline that ends it and its own completion, so EOF/transport failure
+        has always finished the reader by the time another coroutine looks.
         """
         return (
             self._proc is not None
@@ -1642,15 +1642,11 @@ class CodexTranslator:
         codex, three genuine 15 s stalls apart: the probe costs 5.5 s and the
         turns behind it run at 1.6-2.3 s.
 
-        Respawning here would not merely waste a comparable 4.8 s -- it is
-        WRONG. _respawn drops _proc and start() overwrites _reader_task, so the
-        surviving process keeps a reader no one owns; whenever that orphan
-        finally reaches EOF its cleanup calls _disable on THIS translator, which
-        by then owns a healthy leg, and enqueues a wake sentinel into its notes.
-        Nothing but a dead process makes that abandonment safe, which is exactly
-        what _alive() gates. A wedge that survives the fresh thread costs one
-        turn per attempt inside the shared budget, and a server that dies under
-        the probe hands the next attempt back to _respawn.
+        Keep a usable process and its reader together: abandoning a reader lets
+        its later EOF disable a replacement leg and enqueue a spurious sentinel.
+        _respawn retires an unusable pair before replacing its handles. A wedge
+        that survives the fresh thread costs one turn per attempt inside the
+        shared budget; reader failure hands the next attempt back to _respawn.
         """
         try:
             await self._handshake(source)
@@ -1664,7 +1660,7 @@ class CodexTranslator:
         return True
 
     async def _respawn(self, source: str | None = None) -> bool:
-        """Replace an exited app-server: the EOF path has nothing left to probe.
+        """Retire an unusable app-server before replacing its process and reader.
 
         start() re-runs the whole handshake, which is also what carries the
         CURRENT glossary into the new thread's developerInstructions. Measured
@@ -1672,8 +1668,11 @@ class CodexTranslator:
         runs at normal cadence -- one caption's EN arrives late where the whole
         rest of the session used to arrive not at all.
         """
-        # Clearing the handle is what separates a missing BINARY from a failed
-        # handshake below: start() assigns _proc only once the exec succeeds.
+        # Reader failure is not process death: close/reap the old pair while its
+        # handles still belong to us, before start() can overwrite either one.
+        await self._end_proc()
+        # Clearing the handle separates a missing BINARY from a failed handshake:
+        # start() assigns _proc only once the exec succeeds.
         self._proc = None
         if await self.start(source):
             return True
@@ -2003,6 +2002,7 @@ class CodexTranslator:
         so a failed start() stays retryable."""
         if self._reader_task:
             self._reader_task.cancel()
+            await asyncio.gather(self._reader_task, return_exceptions=True)
         if self._proc and self._proc.returncode is None:
             try:
                 assert self._proc.stdin
@@ -2013,6 +2013,7 @@ class CodexTranslator:
                     self._proc.kill()
                 except ProcessLookupError:
                     pass
+                await self._proc.wait()
 
 
 async def _feed_segments(vad, window, audio_q, segment_q, state):

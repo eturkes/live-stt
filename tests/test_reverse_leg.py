@@ -212,6 +212,57 @@ def test_one_way_opens_exactly_one_leg_and_translates_as_today(
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("failure", ["oversized", "broken"])
+@pytest.mark.parametrize("needs_kill", [False, True])
+def test_replacing_an_unreadable_server_reaps_it_before_spawning(
+    monkeypatch: pytest.MonkeyPatch, failure: str, needs_kill: bool
+) -> None:
+    async def scenario() -> None:
+        translator, factory = await _start(monkeypatch)
+        previous = factory.servers[0].proc
+        reader = translator._reader_task
+        assert reader is not None
+        if failure == "oversized":
+            previous.stdout.feed_data(b"x" * (2**16 + 16))
+        else:
+            previous.stdout.set_exception(OSError("broken output pipe"))
+        await reader
+        assert not translator.enabled
+        assert previous.returncode is None  # losing stdout does not stop the process
+        waits = []
+        wait = previous.wait
+
+        async def wait_for_exit() -> int:
+            waits.append(previous.returncode)
+            if needs_kill and previous.returncode is None:
+                raise TimeoutError
+            return await wait()
+
+        monkeypatch.setattr(previous, "wait", wait_for_exit)
+        spawn = factory.exec
+
+        async def replacement(*args: object, **kwargs: object) -> _ScriptedProc:
+            assert reader.done()
+            assert previous.stdin.closed, "replacement abandoned the previous server"
+            assert previous.returncode is not None
+            assert waits == ([None, -9] if needs_kill else [None])
+            return await spawn(*args, **kwargs)
+
+        monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", replacement)
+        try:
+            assert await translator._recover()
+            assert len(factory.servers) == 2
+            assert await translator._translate("after-replacement")
+            assert translator.enabled
+        finally:
+            await translator.close()
+            previous.stdin.close()
+            await wait()
+        assert all(server.proc.returncode is not None for server in factory.servers)
+
+    asyncio.run(scenario())
+
+
 def test_two_way_opens_one_leg_per_direction(monkeypatch: pytest.MonkeyPatch) -> None:
     async def scenario() -> None:
         translator, factory = await _start(monkeypatch, sources=("ja", "en"))
