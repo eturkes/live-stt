@@ -68,6 +68,10 @@ because they replay committed traces — a fresh clone runs them in under a seco
   speech extents joined by ~10 ms equal-power crossfades (gap-concat leaves clip-edge quiet the VAD
   rightly splits on). Prove continuity honestly — every crossfade-join offset sits inside a cap-OFF VAD
   segment, and cap-ON yields more segments than the cap-OFF control; `n_seg < n_comp` is gameable.
+  `test_stressor.py` checks the committed join/order/count/control record and each engine's preflush;
+  synthetic `[2,8)` cap-off geometry grades inclusive start/exclusive end independently of cap-on
+  segments. False continuity, cap-off count 99, cap-on geometry, a forced cap verdict or ignored
+  preflush each redden its lock; clean twins pass (L-022). Acoustic continuity still needs the builder.
 - `retention_probe.json` + `build_retention_probe.py` + `test_retention_probe.py` — the 182 s pause-free
   state-retention probe (WAV gitignored, model-free locks).
 - `long_form.json` + `eval_long_form.py` — the pinned LibriVox/Kokoro/Aozora narration: all six sections
