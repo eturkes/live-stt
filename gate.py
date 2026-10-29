@@ -89,7 +89,16 @@ SKIP_DECLARATION = "absent: "
 # `SKIPPED [n] path:lineno: reason`, anchored on the line number: a path can hold
 # ": " itself, and splitting on the first one then cuts inside the location.
 _SKIPPED = re.compile(r"^SKIPPED \[(\d+)\] .+?:\d+: (.*)$")
-# The closing tally, which survives everything that suppresses the detail above.
+# Only pytest's complete terminal-statistics record owns the tally; plugin telemetry
+# can contain the same count words after it without reporting any test outcome.
+_OUTCOME = (
+    r"\d+ (?:failed|passed|skipped|deselected|xfailed|xpassed|warnings?|errors?|"
+    r"subtests (?:passed|failed|skipped))"
+)
+_SUMMARY = re.compile(
+    rf"(?:{_OUTCOME}(?:, {_OUTCOME})*|no tests ran) in \d+(?:\.\d+)?s"
+    r"(?: \((?:\d+ days?, )?\d+:\d{2}:\d{2}\))?"
+)
 _TALLY = re.compile(r"\b(\d+) (?:skipped|xfailed|xpassed)\b")
 # Every gate run blocks the critical path, so the suite names where its time goes.
 SLOWEST = 5
@@ -157,10 +166,10 @@ def undeclared_demotions(out: str) -> str | None:
             named += int(hit.group(1)) if hit else 1
             if hit is None or not hit.group(2).startswith(SKIP_DECLARATION):
                 bad.append(line)
-    # The LAST tallying line, not the last line: a plugin trailer printed after it
-    # would otherwise displace the tally and take this backstop with it.
-    tail = next((s for s in reversed(lines) if _TALLY.search(s)), "")
-    tallied = sum(int(n) for n in _TALLY.findall(tail))
+    tail = next((s for s in reversed(lines) if _SUMMARY.fullmatch(s.strip("= "))), None)
+    if tail is None:
+        bad.append("pytest closing tally missing: outcomes unread")
+    tallied = sum(int(n) for n in _TALLY.findall(tail or ""))
     if tallied > named:
         bad.append(f"{tallied} demoted case(s) tallied, {named} named: summary suppressed")
     return "undeclared demotion (assurance-posture.md):\n" + "\n".join(bad) if bad else None

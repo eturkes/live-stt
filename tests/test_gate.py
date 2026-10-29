@@ -337,6 +337,49 @@ def test_a_suppressed_summary_is_caught_by_the_tally(tmp_path):
         assert complaint is not None and "summary suppressed" in complaint, done.stdout
 
 
+@pytest.mark.parametrize(
+    ("output", "rejected"),
+    [
+        ("1 skipped in 0.01s\nplugin reports 0 skipped stale jobs\n", True),
+        (
+            "SKIPPED [1] tests/test_a.py:8: absent: weights\n"
+            "2 skipped in 0.01s\nplugin reports 1 skipped stale jobs\n",
+            True,
+        ),
+        ("2 passed in 0.01s\nplugin reports 8 skipped stale jobs\n", False),
+        (
+            "SKIPPED [1] tests/test_a.py:8: absent: weights\n"
+            "1 skipped in 0.01s\nplugin reports 8 skipped stale jobs\n",
+            False,
+        ),
+        (
+            "SKIPPED [1] tests/test_a.py:8: absent: weights\n"
+            "=== 5 passed, 1 skipped, 2 warnings in 65.01s (0:01:05) ===\n",
+            False,
+        ),
+        ("plugin reports 0 skipped stale jobs\n", True),
+    ],
+)
+def test_only_pytest_terminal_statistics_supply_the_tally(output, rejected):
+    assert (undeclared_demotions(output) is not None) is rejected
+
+
+@pytest.mark.parametrize("suppressed", [False, True])
+def test_a_numeric_plugin_trailer_does_not_replace_real_pytest_statistics(tmp_path, suppressed):
+    _skipping_tree(tmp_path, f"{SKIP_DECLARATION}seeded weights")
+    (tmp_path / "conftest.py").write_text(
+        "def pytest_configure(config):\n"
+        f"    config.option.no_summary = {suppressed!r}\n\n"
+        "def pytest_unconfigure(config):\n"
+        f"    print('plugin cache: {0 if suppressed else 5} skipped stale jobs')\n"
+    )
+    done = gate(tmp_path, "--only", "pytest")
+    assert done.returncode == int(suppressed), done.stdout + done.stderr
+    if suppressed:
+        assert "summary suppressed" in done.stdout
+        assert "gate FAILED: pytest" in done.stdout
+
+
 def test_an_inherited_pytest_addopts_cannot_blind_the_step(tmp_path):
     """`PYTEST_ADDOPTS` reaches pytest past `-o addopts=`, so the step env drops it.
 

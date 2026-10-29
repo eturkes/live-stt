@@ -39,8 +39,15 @@ every seed fires through the parallel runner. It runs `-rsxX` and `gate.py`'s
 owns its effective options, because `--no-summary` and `--runxfail` each empty that input in
 silence:** `-o addopts=` drops project-configured ones, `PYTEST_ADDOPTS` is stripped from the step
 env, and the closing tally is cross-checked against what the summary named, so whatever else
-suppresses the detail turns the step red instead of quiet — the tally is read off the LAST tallying
-line, so a plugin trailer printed after it cannot displace it. **Coverage limits, all three loud or
+suppresses the detail turns the step red instead of quiet. The tally comes from the LAST complete
+pytest terminal-statistics record: outcome counts + duration, optional separators + long-duration
+clock. A count-bearing plugin trailer does not qualify; a missing record fails closed. Committed
+numeric-trailer seeds exercise false-green (hidden detail + a zero-count trailer) and false-red
+(declared skip + inflated trailer) through the real gate, with direct grouped-count + clean twins.
+Restoring substring selection from a `cp` snapshot reddens both real seeds and five direct controls,
+restored green. **Coverage limit:** this is syntax attribution, not authenticated reporter data — a
+plugin forging a whole pytest-statistics record is indistinguishable here. Unknown report formats
+fail closed rather than claiming a clean run. **Other coverage limits, loud or
 out of reach rather than silently green:** the checker reads emitted `SKIPPED`/`XFAIL`/`XPASS`
 lines, so a DELETED case and a demoted tier leave no trace and stay under the approval law alone;
 in-tree pytest configuration outranks it, since a `conftest.py` setting `config.option.runxfail`
