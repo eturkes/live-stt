@@ -2557,9 +2557,8 @@ def _session_process(pid: int):
 def _stop_session(proc: subprocess.Popen) -> list[int]:
     """Bound even the post-SIGKILL wait; include the detached Codex descendant.
 
-    Recheck process start identities before signaling. The main child owns a new
-    process group, but Codex owns another so normal Ctrl+C can drain EN. This
-    Python build does not expose os.pidfd_open, so use /proc start identities.
+    Recheck /proc start identities before signaling. The main child owns a new
+    process group, but Codex owns another so normal Ctrl+C can drain EN.
     """
     parents = {}
     for path in Path("/proc").iterdir():
