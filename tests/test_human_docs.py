@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import live_stt
+from tests.session_globals import keep_session_globals
 
 ROOT = Path(live_stt.__file__).resolve().parent
 DASH = re.compile("[–—]")
@@ -33,6 +34,7 @@ def test_the_readmes_carry_no_en_or_em_dash(doc: str) -> None:
 def test_the_cli_help_carries_no_en_or_em_dash(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["live-stt", "--help"])
     with pytest.raises(SystemExit) as exit_info:
+        keep_session_globals(monkeypatch)
         live_stt.main()
     assert exit_info.value.code == 0
     help_text = capsys.readouterr().out

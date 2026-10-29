@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import live_stt  # noqa: E402
 from streaming import SAMPLE_RATE  # noqa: E402
+from tests.session_globals import keep_session_globals
 from tests.test_streaming import _StubVad  # noqa: E402  (one VAD stub, two drivers)
 
 TRANSCRIPT = "あいうえおかきくけこさしすせそたちつてと"
@@ -1293,6 +1294,7 @@ def run_cli(monkeypatch, *argv):
     monkeypatch.setattr(live_stt, "check_device", check_device)
     monkeypatch.setattr(live_stt, "run_session", run_session)
     monkeypatch.setattr(live_stt, "_supervise_session", lambda args: live_stt._run_cli(args) or 0)
+    keep_session_globals(monkeypatch)
     live_stt.main()
     return seen
 
@@ -1346,6 +1348,7 @@ def test_the_engine_choices_are_listed_in_a_stable_order(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["live-stt", "--help"])
 
     with pytest.raises(SystemExit) as exit_info:
+        keep_session_globals(monkeypatch)
         live_stt.main()
 
     assert exit_info.value.code == 0
@@ -1387,6 +1390,7 @@ def test_a_missing_model_stops_the_run_before_the_session_starts(monkeypatch, ca
     monkeypatch.setattr(live_stt, "_supervise_session", lambda args: live_stt._run_cli(args) or 0)
 
     with pytest.raises(SystemExit) as exit_info:
+        keep_session_globals(monkeypatch)
         live_stt.main()
 
     assert exit_info.value.code == 1

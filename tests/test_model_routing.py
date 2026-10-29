@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import live_stt
+from tests.session_globals import keep_session_globals
 from tests.test_shipped_path import _Chunk, _Result
 from tests.test_shipped_path import model_tree as model_tree
 from tests.test_shipped_path import openvino as openvino
@@ -367,6 +368,7 @@ def test_run_session_passes_its_two_way_flag_to_the_loader(monkeypatch, tmp_path
         context="",
     )
 
+    keep_session_globals(monkeypatch)
     asyncio.run(asyncio.wait_for(live_stt.run_session(args), 3.0))
 
     assert seen == [("whisper", "GPU", two_way)]

@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 import live_stt
+from tests.session_globals import keep_session_globals
 
 PIPEWIRE = {"name": "pipewire", "max_input_channels": 64, "default_samplerate": 44100.0}
 HARDWARE = {
@@ -178,6 +179,7 @@ def _run_session(
             **flags,
         }
     )
+    keep_session_globals(monkeypatch)
     asyncio.run(live_stt.run_session(args))
     return seen
 
@@ -279,6 +281,7 @@ def _parse(monkeypatch, *argv):
 
     monkeypatch.setattr(live_stt, "_supervise_session", supervise)
     monkeypatch.setattr(live_stt, "_run_cli", supervise)
+    keep_session_globals(monkeypatch)
     live_stt.main()
     return seen["args"]
 

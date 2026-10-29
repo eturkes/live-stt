@@ -44,6 +44,7 @@ import numpy as np
 import pytest
 
 import live_stt
+from tests.session_globals import keep_session_globals
 
 CENSUS = json.loads((Path(__file__).parent / "lid_census.json").read_text(encoding="utf-8"))
 VIEWS = [dict(zip(CENSUS["view_fields"], values, strict=True)) for values in CENSUS["views"]]
@@ -65,6 +66,7 @@ def parse_cli(monkeypatch, *argv):
         return 0
 
     monkeypatch.setattr(live_stt, "_supervise_session", supervise)
+    keep_session_globals(monkeypatch)
     live_stt.main()
     return seen["args"]
 
@@ -92,6 +94,7 @@ def run_cli_to_session(monkeypatch, *argv):
     monkeypatch.setattr(live_stt, "LanguageDetector", FakeDetector)
     monkeypatch.setattr(live_stt, "run_session", run_session)
     monkeypatch.setattr(live_stt, "_supervise_session", supervise)
+    keep_session_globals(monkeypatch)
     live_stt.main()
     seen["detectors"] = detectors
     return seen
@@ -118,6 +121,7 @@ def detector_constructions_before_device_probe(monkeypatch, two_way: bool) -> in
     args = SimpleNamespace(engine="whisper", asr_device="CPU", device=None, two_way=two_way)
 
     with pytest.raises(ReachedDeviceProbe):
+        keep_session_globals(monkeypatch)
         asyncio.run(live_stt.run_session(args))
     return constructions
 
@@ -350,6 +354,7 @@ def test_check_models_preflights_the_lid_weights_under_two_way(
     monkeypatch.setattr(live_stt, "_supervise_session", supervise)
 
     with pytest.raises(SystemExit) as exit_info:
+        keep_session_globals(monkeypatch)
         live_stt.main()
 
     assert exit_info.value.code == 1
@@ -375,6 +380,7 @@ def test_check_models_ignores_the_lid_weights_without_two_way(
     monkeypatch.setattr(live_stt, "check_device", lambda *_args: None)
     monkeypatch.setattr(live_stt, "run_session", run_session)
     monkeypatch.setattr(live_stt, "_supervise_session", supervise)
+    keep_session_globals(monkeypatch)
     live_stt.main()
 
     assert reached_session is True

@@ -42,6 +42,7 @@ from live_stt import (
     submit_audio_sentinel,
     transcript_path,
 )
+from tests.session_globals import keep_session_globals
 
 
 def test_module_import_keeps_audio_backend_lazy():
@@ -496,6 +497,7 @@ def _run_session_with_fake_mic(
             **flags,
         }
     )
+    keep_session_globals(monkeypatch)
     asyncio.run(live_stt.run_session(args))
     return seen
 
