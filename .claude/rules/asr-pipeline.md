@@ -925,7 +925,7 @@ pause-free) is the demanding clip; `stress_long` (44.7 s) reads within ~0.1 s on
 Two-way commits nothing until the LID accepts a label, which cannot happen before `LID_MIN_SECONDS`
 of voiced buffer exists. **The queue row's premise is REFUTED for the shipped case: that hold moves
 time-to-SETTLED by nothing.** LocalAgreement-2 already commits almost nothing on update 1, so at the
-2.0 s gate both clips read their published numbers unchanged and 12 characters in total are re-dated.
+2.0 s gate both clips read their published numbers unchanged; no character commits before acceptance.
 Time-to-FIRST-GLIMPSE is untouched in every arm — the dim tail renders upstream of the commit rule.
 The evaluator replays `vac_decode_trace.json` on the same virtual clock, the same per-character
 placement and the same `_quantiles` as the commit-lag row above, so its no-withholding arm reproduces
@@ -934,8 +934,8 @@ placement and the same `_quantiles` as the commit-lag row above, so its no-withh
 | arm | `stress_long` p50/p90/max | `retention_probe` p50/p90/max | re-dated |
 | --- | --- | --- | --- |
 | one-way, no withholding | 2.435 / 3.740 / 6.405 | 2.353 / 3.428 / 6.402 | 0 / 0 |
-| accepted at the 2.0 s gate | 2.435 / 3.740 / 6.405 | 2.353 / 3.428 / 6.402 | 2 / 10 |
-| abstained once, accepted at 3.0 s | 2.439 / 3.740 / 6.405 | 2.398 / 3.506 / 6.402 | 36 / 177 |
+| accepted at the 2.0 s gate | 2.435 / 3.740 / 6.405 | 2.353 / 3.428 / 6.402 | 0 / 0 |
+| abstained once, accepted at 3.0 s | 2.439 / 3.740 / 6.405 | 2.398 / 3.506 / 6.402 | 2 / 47 |
 | never accepted (held label) | 11.641 / 21.591 / 24.744 | 13.151 / 24.559 / 33.464 | 270 / 1080 |
 
 `re-dated` counts characters committed before acceptance and is an UPPER bound on how many moved: one

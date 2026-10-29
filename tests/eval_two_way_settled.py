@@ -5,7 +5,7 @@ Two-way publishes nothing until the LID accepts a label, which cannot happen bef
 `LID_MIN_SECONDS` of voiced buffer exists. The queue row assumed that withholding the
 first commit shifts settled text later. It does not, on either committed clip:
 LocalAgreement-2 already commits almost nothing on update 1, so at the 2.0 s gate the
-shift is ZERO and 12 characters across both clips are re-dated at all (13 on turbo's trace).
+shift is ZERO and no characters across either clip commit before acceptance.
 
 Same virtual clock, same per-character placement and the same `_quantiles` as
 `eval_latency.py`'s commit-lag arm, so the no-withholding arm reproduces that stage's
@@ -65,15 +65,19 @@ def clip_lags(clip: dict, withhold: bool, gate_s: float = GATE_S) -> tuple[list[
         # The accepting update is known before any of this utterance is charged, so run
         # the same clock forward to find it: a withheld character cannot settle earlier.
         accept_at = None
+        accept_index = 0
         if withhold:
             wall = now
-            for row in rows:
+            beginning = rows[0]["buffer_end_s"] - rows[0]["buffer_s"]
+            for index, row in enumerate(rows):
                 wall = max(wall, row["buffer_end_s"]) + row["decode_s"]
-                if row["buffer_s"] >= gate_s or row["final"]:
+                # Production scores the untrimmed prefix and freezes its first label.
+                if row["buffer_end_s"] - beginning >= gate_s or row["final"]:
                     accept_at = wall
+                    accept_index = index
                     break
         start = None
-        for row in rows:
+        for index, row in enumerate(rows):
             now = max(now, row["buffer_end_s"]) + row["decode_s"]
             if start is None:
                 start = float(row["buffer_end_s"]) - float(row["buffer_s"])
@@ -83,7 +87,7 @@ def clip_lags(clip: dict, withhold: bool, gate_s: float = GATE_S) -> tuple[list[
             if not text or end is None:
                 continue
             settled = now
-            if withhold and accept_at is not None and row["buffer_s"] < gate_s and not row["final"]:
+            if accept_at is not None and index < accept_index:
                 settled = max(now, accept_at)
                 held_chars += len(text)
             span = max(end, since) - since
