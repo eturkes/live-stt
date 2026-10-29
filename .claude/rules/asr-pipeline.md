@@ -406,10 +406,10 @@ paths:
     binding order load-bearing: building the replacement first freezes it on the token the rebuild
     exists to abandon, which reverts the whole switch to `ja, ja, ja, ja` with no error anywhere.
   **Every in-repo stand-in for `decode_segments` accepts that keyword, and a wrapper over the real
-  method forwards it.** Two of them are invisible to the gate and fail only when someone reaches for
-  them — `tests/eval_backpressure.py`'s trace recognizer, whose VAC arm is corpus-gated, and
-  `tests/build_vac_trace.py`'s recording wrapper, which regenerates `vac_decode_trace.json` on the
-  NPU. Widen those with the rest.
+  method forwards it.** `tests/eval_backpressure.py`'s trace recognizer is exercised through its
+  corpus-gated VAC arm. `tests/build_vac_trace.py`'s recording wrapper has a hermetic token-forwarding
+  lock in `test_vac_trace.py`: remove `language=language` and the fake recogniser sees `None`
+  instead of `en` (L-022 plant); real content/timing regeneration still needs the NPU.
   Retention CER re-derived on the NPU across the change: **0.060891938250428816 before and after**,
   N=1166, S=36, D=35, I=0 over 8 segments, and the hypothesis text compares byte-identical ⇒ routing
   the token per decode moves the shipped one-way decode by nothing at all. Decode COST is not pinned
