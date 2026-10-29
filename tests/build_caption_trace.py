@@ -1,40 +1,35 @@
 #!/usr/bin/env python3
-"""Record the shipped path's caption stream over the pinned narration (M12.1, M12.3).
+"""Record raw utterance observations over the pinned narration.
 
-Replays every pinned 「ごん狐」 section through the real VAC path -- silero opening
-a LocalAgreement-2 buffer, the Japanese recogniser whisper-ja-760M int8 on the requested
-OpenVINO device -- and writes one row per PUBLISHED caption to `caption_trace.json`,
-numbered continuously across the six sections.
+Each pinned 「ごん狐」 section runs through the real VAC worker on whisper-ja-760M
+int8. `replay.replay_recognizer` observes `on_segment`: ONE RAW utterance, before
+publication screening/splitting, not the numbered SRC stream. Legacy schema names
+`captions` / `n_captions` / `idx` mean raw observations / their count / observation ids;
+ids are continuous across sections, never published line numbers. A screened utterance
+remains here and a trimmed utterance can publish several lines for one raw row.
 
-**One decode per section, one session downstream.** Nothing on the shipped path
-carries state from one utterance to the next: D-016(c) deleted prev-text
-conditioning and the NPU refuses prompts outright, so section k cannot decode
-differently for what preceded it and six replays yield the captions one
-continuous run would. The state that DOES span the story is the learner's, and it
-lives downstream in `eval_term_census.py`, which reads `captions` as the one
-stream its `idx` numbers. That is what makes `CONTEXT_TERM_LEASE`=60 segments
-reachable at all -- one section yields ~67 captions, the whole story ~200.
+Each section starts a fresh VAD. The recogniser has no cross-utterance text state,
+but `LeveledVad` keeps level history; independent section replay equals a continuous
+cut only where gain remains 1.0, as measured on this pinned loud narration, not on
+arbitrary quiet audio. `eval_term_census.py` keeps one learner across all raw rows.
+Its result describes these raw inputs, not today's screened publication stream.
+`eval_en_pairing.py` similarly samples one translation turn per frozen turbo raw row;
+it does not reproduce today's settled-piece translation turns.
 
-The trace is what makes M12 affordable. Session context never reaches the
-recogniser (`live_stt.ASR_DEVICE`'s comment), so the caption stream is
-arm-independent, one NPU pass serves every downstream arm, and each of those arms
-is a CPU-only offline replay of this file (`eval_term_census.py` is the first).
+No context reaches the recogniser, so one raw trace serves every downstream arm.
 Traces recorded while that channel existed carry `run.hotwords_reachable`, false
-in every committed one; nothing reads it.
+in every committed one; nothing reads it. Raw text + VAD boundaries reproduce across
+NPU runs on these inputs; decode cost does not.
 
-On-demand, never a gate step: it needs the gitignored weights, the gitignored
-narration WAVs, and ~14 min of accelerator time for the whole story.
-`<intel-accel>` = the NPU driver farm dir the user-level instruction file names.
+On-demand, never a gate step: gitignored weights + narration WAVs, ~8 min on NPU.
+`<intel-accel>` = the driver farm the user-level instruction file names.
 
     source <intel-accel>/env.sh && source .envrc && \
         uv run python tests/build_caption_trace.py [--device NPU]
 
-Every WAV is content-checked against `long_form.json` before ANY of them is
-decoded, so a stale cache fails in seconds rather than six sections in, and every
-caption stays bound to the pinned input. Placement is an exact-target inference,
-not a device readback, for the reason `eval_retention.py` records:
-`openvino_genai.WhisperPipeline` wraps its compiled model without exposing it,
-and `check_device` admits exact names only.
+Every WAV is hash-checked against `long_form.json` BEFORE any decoder loads.
+Placement is exact-target inference: `WhisperPipeline` exposes no compiled model
+for device readback, and `check_device` admits exact names only.
 """
 
 from __future__ import annotations
@@ -86,7 +81,7 @@ def pinned_wavs() -> dict[str, tuple[dict, Path, str]]:
 
 
 def build(device: str) -> dict:
-    """Decode every pinned section on `device` and return the continuous trace."""
+    """Decode every pinned section on `device` and return the raw-utterance trace."""
     checked = pinned_wavs()
     for err in (check_models(ENGINE), check_device(ENGINE, device)):
         if err:
@@ -113,7 +108,7 @@ def build(device: str) -> dict:
             "wav": section["build"]["wav"],
             "wav_sha256": digest,
             "audio_s": report["audio_s"],
-            # Caption times stay section-local, exactly as decoded; this is the
+            # Raw utterance times stay section-local, exactly as decoded; this is the
             # offset that places them on the continuous timeline.
             "offset_s": offset_s,
             "first_idx": first,
@@ -125,7 +120,7 @@ def build(device: str) -> dict:
         }
         offset_s += report["audio_s"]
         print(
-            f"  {key} {section['chapter']}: {report['n_segments']} captions, "
+            f"  {key} {section['chapter']}: {report['n_segments']} raw utterances, "
             f"audio={report['audio_s']:.3f}s decode={report['total_decode_s']:.1f}s "
             f"rtf={report['overall_rtf']:.3f}",
             flush=True,
@@ -165,7 +160,7 @@ def main() -> None:
     OUT.write_text(json.dumps(trace, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     run = trace["run"]
     print(
-        f"wrote {OUT.relative_to(ROOT)}: {run['n_captions']} captions "
+        f"wrote {OUT.relative_to(ROOT)}: {run['n_captions']} raw utterances "
         f"({run['n_nonempty']} non-empty) over {len(trace['sections'])} sections on "
         f"{run['requested_device']}, audio={trace['source']['audio_s']:.3f}s "
         f"decode={run['total_decode_s']:.1f}s rtf={run['overall_rtf']:.3f}"

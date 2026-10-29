@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scripted decode runs through StreamingProcessor: exact output per re-spelling scenario.
 
-Each script grows one utterance from the committed narration captions by 2-6 characters per
+Each script grows one utterance from the committed raw narration utterances by 2-6 characters per
 decode, then disturbs it the way Whisper re-decodes a buffer: re-spells part of the published
 text (persistently, for one decode or two), drops its head, drops everything published,
 returns unrelated text, or drops the mark the published text ends in. The truth is the utterance

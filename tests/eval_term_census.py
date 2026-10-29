@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Census the shipped path's caption stream for what the learner keys on (M12.1, M12.3).
+"""Census the frozen raw-utterance stream for what the learner keys on (M12.1, M12.3).
 
 D-015's `observe_en` keys a learned English spelling on the JA string the
 RECOGNISER produced, so the key is a hypothesis, not the name. Two questions
 follow and this answers both from `caption_trace_turbo.json` (turbo's frozen
-stream) alone -- no model, no
+raw utterances) alone -- no model, no
 accelerator, no audio, under a second -- the way `eval_latency.py` derives
 caption lag, so a fresh clone can rerun it:
 
@@ -34,8 +34,8 @@ caption stream alone, so the screen below finds every candidate offline and a
 translator arm is needed only to confirm one.
 
 Support is counted by replaying the captions through a real `SessionContext`,
-which is production's whole learner: nothing feeds terms back to the recogniser,
-so every sighting the trace holds is evidence there too.
+not a learner clone. Each raw row is one observation here; publication can screen
+or split it, so the census is not a count of current SRC lines or live learner inputs.
 """
 
 from __future__ import annotations
@@ -491,7 +491,7 @@ def main() -> None:
     )
     print(
         f"  trust episodes={len(lea['episodes'])} "
-        f"(lease={lea['lease']} published captions, pairing needs {lea['en_support']} openings)"
+        f"(lease={lea['lease']} nonempty input rows, pairing needs {lea['en_support']} openings)"
     )
     print(
         f"    {'term':<10} {'trusted@':>8} {'sight':>5} {'last@':>5} {'after':>5} "
@@ -516,7 +516,7 @@ def main() -> None:
                 f"    {episode['term']}  paired@{episode['paired_at']}  "
                 f"expired@{episode['expired_at']} ({episode['mechanism']}), "
                 f"{episode['sightings_after_paired']} sightings used the rendering, "
-                f"{episode['published_after']} published captions after its last sighting"
+                f"{episode['published_after']} nonempty input rows after its last sighting"
             )
     if "floor" in result:
         _print_floor(result["floor"])

@@ -322,7 +322,7 @@ def _carry_at(captions, scale: float) -> float:
 def test_long_form_decode_duty_holds_real_time_with_a_scale_ladder_reserve():
     """Margin, not a point reading -- decode cost varies ~20 % run to run (D-016).
 
-    Measured carry is 0.137 s over 215 captions (whisper-ja-760M; turbo's read
+    Measured carry is 0.137 s over 215 raw utterances (whisper-ja-760M; turbo's read
     0.017 s), so the queue empties inside every utterance and its peak is a single
     update decode -- which this trace does not record and the per-update trace
     measures at 1.003/1.107 s. The load-bearing number is the knee: carry reaches

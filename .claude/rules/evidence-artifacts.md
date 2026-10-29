@@ -108,19 +108,24 @@ because they replay committed traces — a fresh clone runs them in under a seco
   over n=1202, whisper-ja-760M) — same clock, same per-character placement, same `_quantiles`, so a drift there means
   the replay diverged rather than the rule. The `never accepted` arm forces a path abstention does not
   take and is an upper bound only.
-- `caption_trace.json` + `build_caption_trace.py` — the shipped path's caption stream over the whole
-  pinned narration, every section hash-checked before any of it is decoded: 215 captions / 848.350 s on
-  NPU in one ~8 min pass, numbered continuously, `sections[k].offset_s` placing section-local times on
-  the continuous timeline. One decode per section is faithful because nothing on the shipped path
-  carries state between utterances. **Caption text + VAD boundaries reproduce byte-identically across
-  NPU runs; decode cost does not** — that determinism is what lets every downstream arm replay this
-  file instead of paying for an accelerator run. A caption's `decode_s` is a per-utterance SUM, so read
-  real-time risk as carry (`asr-pipeline.md`).
-- `en_pairing_trace.json` + `eval_en_pairing.py` + `test_en_pairing.py` — what a REAL translator hands
-  the learner. Its caption input is `caption_trace_turbo.json`, turbo's stream frozen at the
-  whisper-ja-760M swap: the verdicts grade the learner, and 760M hearing 兵十 where turbo heard 標柱
-  would reshape every term without testing the learner at all. `--live` puts all 215 committed captions through `SessionContext` + `CodexTranslator` in
-  production's order (`observe_ja` → `_translate` → `observe_en`); the default mode re-derives every
+- `caption_trace.json` + `build_caption_trace.py` — RAW utterance observations from the real worker's
+  `on_segment` hook, before publication screening/splitting: 215 raw rows / 848.350 s on NPU in one
+  ~8 min pass. Legacy `captions` / `n_captions` / `idx` = raw rows / their count / observation ids,
+  never published SRC lines. A screened utterance remains; several settled pieces can share one raw
+  row. Every section is hash-checked before any decode; `sections[k].offset_s` places section-local
+  times on a concatenated timeline. Each section resets VAD history. The recogniser has no cross-turn
+  text state, but `LeveledVad` DOES carry levels: section replay equals a continuous cut only where
+  gain stays 1.0, as measured on this pinned loud corpus, not on arbitrary quiet inputs.
+  **Raw text + VAD boundaries reproduce byte-identically across NPU runs; decode cost does not.**
+  Raw `decode_s` sums one utterance's decodes; carry models that raw workload (`asr-pipeline.md`).
+- `en_pairing_trace.json` + `eval_en_pairing.py` + `test_en_pairing.py` — a REAL translator's sample
+  over FROZEN RAW utterances, not today's screened/split publication stream. Input =
+  `caption_trace_turbo.json`, frozen at the whisper-ja-760M swap: the verdicts grade the learner,
+  and 760M hearing 兵十 where turbo heard 標柱 would reshape every term without testing it.
+  `--live` puts all 215 raw rows through `SessionContext` + `CodexTranslator` in observer order
+  (`observe_ja` → `_translate` → `observe_en`), one turn per row rather than per settled piece.
+  Learner verdicts + turn latency/rotations therefore describe THAT population, never current live
+  publication/translation behavior. Default mode re-derives every
   verdict from the trace offline. Replay binds the EXACT ordered nonempty input ids + JA bytes;
   extra/reordered turns refuse before either learner or raw census runs. `test_en_pairing.py` fires
   those guards with extra/reversed turns (L-022). Live/replay agreement compares renderings on LIVE
@@ -128,7 +133,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   through `finally`, startup + restart included; cancellation closes it (fake-turn L-022 lock).
   **Deviation from production, reported per run:** a leg disabled by
   `TRANSLATE_MAX_FAILURES` is restarted against the same context, since this measures the learner and
-  not the degradation path — `restarts: 0` = production-identical. The trace is ONE sample of sampled
+  not the degradation path — `restarts: 0` = no restart deviation, NOT publication fidelity.
+  The trace is ONE sample of sampled
   model output ⇒ its verdicts are structural, never rates — a per-turn rate, a p90 or a latency
   ranking read off it describes that sample and binds nothing.
   **Rendering consistency is measured on the RAW stream, never off `renderings`.** `SessionContext`
@@ -171,8 +177,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   sequential-decode regression need not overflow), the VAC arm on recorded real NPU costs
   (`max_segment_depth == 0`), the `SCALE_LADDER` margin, the `live` arm (the live machine state:
   `LIVE_COST_SCALE` plus one `LIVE_STALL_S` span, `asr-pipeline.md`), and the carry arm over
-  `caption_trace.json` — which needs no corpus and no skip, so the shipped path's real-time reserve
-  stays checkable in a fresh clone. Off the recorded trajectory the trace recogniser replays
+  `caption_trace.json` — no corpus and no skip, so its RAW-utterance workload reserve stays
+  checkable in a fresh clone, not a publication timing/caption-count claim. Off the recorded trajectory the trace recogniser replays
   hypotheses by call order against buffers they were not decoded from, so a `forced_trims` count there
   measures the harness, never `_trim`: the `live` arm's one forced trim on `retention_probe` vanishes
   with the real NPU recogniser in the same virtual-clock run. Both paced arms require consumed PCM
@@ -467,7 +473,7 @@ uv run python tests/eval_playback_routing.py [--e2e pinned|probe] [--json]  # --
                                                         # (--e2e probe: + the soundfile/pyarrow pins)
 uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 python tests/eval_playback_silence.py [--arms ZNVW]
 uv run --with pykakasi==2.3.0 python tests/eval_asr_screen.py --model DIR --device D [--arms A]  # GPU screen
-uv run python tests/build_caption_trace.py              # caption stream over all six sections, ~8 min
+uv run python tests/build_caption_trace.py              # raw utterances over all six sections, ~8 min
 uv run python tests/build_retention_probe.py            # rebuild the pause-free retention probe
 uv run python tests/gen_replay_goldens.py               # regenerate goldens after a pipeline change
 uv run python tests/eval_translate_repeat.py [--json F] # what repetition stalls a real turn (~15 min)

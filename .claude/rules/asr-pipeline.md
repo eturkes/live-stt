@@ -838,6 +838,10 @@ Char | kana CER, GPU unless named:
 Every figure re-derives from `vac_decode_trace.json` (whisper-ja-760M, the lower-cost of two NPU
 recordings) + `en_pairing_trace.json` in under a second, no hardware. `retention_probe` (182 s
 pause-free) is the demanding clip; `stress_long` (44.7 s) reads within ~0.1 s on most rows.
+**Translation figures below are historical sampled turns over 215 frozen RAW turbo utterances**,
+not today's screened/split SRC turns. Observer order is real, input granularity differs; latency,
+rotation + learner results describe that sample alone. `caption_trace*.json`'s legacy `captions`
+fields mean raw `on_segment` observations (`evidence-artifacts.md`), never published line counts.
 
 | stage | p50 | p90 | max | what it is |
 | --- | --- | --- | --- | --- |
@@ -847,7 +851,7 @@ pause-free) is the demanding clip; `stress_long` (44.7 s) reads within ~0.1 s on
 | redraw bound | 1.646 | 4.208 | 7.844 | upper bound: every redraw of a slot recharged as a fresh wait |
 | publication | 1.222 | 1.414 | 1.414 | speech end → the LAST `SRC n:` = `VAD_MIN_SILENCE_S` + final decode |
 | voice → SRC | 5.670 | 8.508 | 10.294 | voice → the character's numbered line (one-line rule: 13.151 / 24.559 / 33.464) |
-| translate turn | 2.170 | 4.310 | 6.340 | `SRC n:` → `TGT n:` (steady 2.140, rotating 4.695) |
+| sampled raw-utterance translate turn | 2.170 | 4.310 | 6.340 | `_translate` duration, not current `SRC` → `TGT` (steady 2.140, rotating 4.695) |
 
 - **Decode cost is `0.501 s fixed + 5.66 ms/char`** (`stress_long`: 0.552 + 3.78; turbo read 0.417 +
   7.15). The fixed term is Whisper's encoder over a 30 s window — whisper-ja-760M keeps turbo's
@@ -876,19 +880,19 @@ pause-free) is the demanding clip; `stress_long` (44.7 s) reads within ~0.1 s on
   Every candidate below 0.75 s needs the fixed 0.35 s term cut first — on the NPU. On the GPU the
   fixed term is 0.16-0.20 s and 0.5 s runs at work rate ~0.6, yet it is REFUSED on accuracy
   (`## GPU mode`): the cadence question there is settled by CER, not by decode cost.
-- Translation is **2.170 s p50, not the ~1 s the tournament's 1.38 s implied** — that figure was a
-  bare turn, this one is production order over 215 captions.
+- Translation on the frozen RAW-utterance sample is **2.170 s p50**, not the tournament's bare-turn
+  1.38 s: real observer order over 215 raw inputs, not current publication-sized turns.
 - **The rotation tax is CUT.** `translator_brief()` renders the glossary in content order
   (longest-first, then lexical) instead of `terms()` recency order, so a brief changes only when its
   CONTENT does. Reorder-only rotations are gone **by construction, not by sampling** — the lock is
   `test_the_brief_is_a_pure_function_of_glossary_content`. Two figures, and they answer different
   questions: **replayed over one fixed trace, old code → new code reads 40 → 13** brief changes, all
   27 removed being reorder-only and the 8 adds / 2 drops / 3 renderings kept — that is the
-  like-for-like number. **End to end, two live runs read 39 → 14**, the new run's 14 being 8 adds /
+  like-for-like number. **Two sampled raw-utterance translator runs read 39 → 14**, the new run's 14 being 8 adds /
   4 renderings / 2 drops with zero reorder. Never quote a taxonomy across those two runs: they are
   independent samples of a sampled translator and they learn different renderings (4 against 3).
 - **`rotations` counts GLOSSARY rotations only** — `eval_en_pairing.py` sets `rotated` from
-  `translator._brief != brief`. Production ALSO rotates on the turn cadence, so a 215-caption session
+  `translator._brief != brief`. Production ALSO rotates on the turn cadence, so this 215-raw-turn sample
   rotates **16** times (14 glossary + 2 cadence) and opens 17 threads counting `start()`'s own. The
   cadence arm is deliberately untouched and locked by
   `test_the_turn_cadence_rotation_is_untouched`; read the row's "below 15" against the glossary
@@ -1009,16 +1013,16 @@ trim rule capping the buffer at 9.252 s (turbo: 0.552/0.645, 0.764/1.006, 11.248
   reads 0.060891938250428816, turbo's shipped figure of the time to the digit.
 - **Aggregate RTF is the wrong instrument** — it shows mean compute below real time and says nothing
   about maximum blockage, which is what the headroom is spent against.
-- **Carry is the cross-utterance instrument:** a caption costing more wall time than its own audio
-  hands the difference to its successor (silence between captions drains further, so ignoring gaps
-  is conservative, and catch-up only lowers a caption's decode sum). Over 215 captions of narration
+- **Carry is the cross-utterance instrument:** an utterance costing more wall time than its own audio
+  hands the difference to its successor (silence between utterances drains further, so ignoring gaps
+  is conservative, and catch-up only lowers an utterance's decode sum). Over 215 RAW narration utterances
   (whisper-ja-760M, `caption_trace.json`) the worst carry is **0.137 s**; carry reaches 2 s at ×1.228
   and the 8 s headroom at **×1.338** — against ×1.541 / ×1.762 on turbo's trace. Read the gap as
   partly machine state: this trace is the lower-cost of two recordings at load average ~6 (decode
   sums 473.9 s and 550.8 s, turbo's quieter run 427.9 s), while a same-conditions VAC replay of
   section 01 put whisper-ja-760M ~10 % FASTER (179.0 s vs 199.5 s). Unresolved; the
   `test_backpressure` ×1.25 reserve lock holds.
-- **A caption's `decode_s` is a SUM of that utterance's update decodes, never one blocking call** —
+- **A raw trace row's `decode_s` is a SUM of its utterance's update decodes, never one blocking call** —
   reading its 6.213 s max (turbo: 7.420 s) against `AUDIO_HEADROOM_S` reports a stall that did not
   happen. Never
   re-derive real-time risk from per-caption sums.

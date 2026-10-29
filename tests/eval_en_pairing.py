@@ -8,7 +8,7 @@ caption carries a proper noun that is not sentence-initial (D-015), and both
 keys that screen flagged are ORDINARY NOUNS in English -- 鼻腔 = "nasal cavity",
 イワシ = "sardine" -- so the pairing they lose may never have existed at all.
 
-This replays the committed 215-caption stream through the REAL production pair,
+This replays the committed 215 raw-utterance rows through the REAL production pair,
 `SessionContext` + `CodexTranslator` over a live `codex app-server`, in
 production's own order (observe_ja -> _translate -> observe_en), and reports what
 each trust episode acquires from real English.
@@ -39,7 +39,9 @@ rate. One deviation from production is recorded per run: a translator disabled b
 TRANSLATE_MAX_FAILURES is restarted against the same `SessionContext` rather than
 running source-only for the rest of the replay, because this measures the learner and
 not the degradation path (`tests/test_translator.py` owns that). A run reporting
-`restarts: 0` is production-identical.
+`restarts: 0` uses no such recovery deviation. Inputs remain historical RAW
+utterances: one turn each, not the current publication-split/screened translation
+stream. Its latency/rotation figures describe that sample, not current live turns.
 """
 
 from __future__ import annotations
@@ -66,7 +68,7 @@ from live_stt import (  # noqa: E402
 )
 from tests.eval_term_census import learner, pinned_sections  # noqa: E402
 
-# The learner's input is a FIXED caption stream: turbo's, frozen when whisper-ja-760M replaced
+# The learner's input is a FIXED raw-utterance stream: turbo's, frozen when whisper-ja-760M replaced
 # it, because these verdicts grade the learner, not the recogniser (760M hears 兵十 where turbo
 # heard 標柱, which reshapes every term below without saying anything about the learner).
 TRACE = TESTS / "caption_trace_turbo.json"
@@ -81,7 +83,7 @@ CONTROL = "ゴン"
 
 
 def caption_stream() -> list[dict]:
-    """The committed captions, hash-gated against the pinned corpus."""
+    """The committed raw utterance rows, hash-gated against the pinned corpus."""
     trace = json.loads(TRACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     pinned_sections(manifest, trace)  # refuses a trace decoded from another WAV
@@ -370,8 +372,8 @@ async def live_turns(captions: list[dict]) -> dict:
 def report(result: dict, run: dict | None) -> None:
     if run:
         print(
-            f"{run['n_turns']} captions: {run['n_translated']} translated, {run['n_empty']} "
-            f"failed, {run['n_declined']} declined as repetition (M13.1), "
+            f"{run['n_turns']} raw-utterance turns: {run['n_translated']} translated, "
+            f"{run['n_empty']} failed, {run['n_declined']} declined as repetition (M13.1), "
             f"{run['rotations']} thread rotations, {run['restarts']} restarts, "
             f"{run['wall_s']:.0f}s wall"
         )
