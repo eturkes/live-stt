@@ -107,7 +107,10 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
 
 - A >64 KiB line, a broken transport, or EOF routes into cleanup that enqueues one `{method:error}`
   sentinel onto `_notes`, so a turn parked mid-collect raises at once instead of waiting out
-  `TRANSLATE_TIMEOUT_S`. The enabled→disabled flip logs once. `submit` counts backlog evictions into
+  `TRANSLATE_TIMEOUT_S`. `_request` releases its pending id in `finally`, including timeout,
+  cancellation and write failure: later successful traffic need not ever answer the abandoned RPC.
+  Late responses without a pending id are ignored. Lock: `test_failed_control_requests_release_their_pending_slots`.
+  The enabled→disabled flip logs once. `submit` counts backlog evictions into
   `dropped_translations` (meter `tdrop=`; `TRANSLATE_QUEUE_MAX`=50, drop-oldest).
 - **A turn collects only its own notes, and an abort interrupts the turn it names.** Every
   thread's notifications share one stdout, and codex 0.159.2 names their owner: `threadId` +

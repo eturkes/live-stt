@@ -240,6 +240,48 @@ def test_read_loop_input_boundary_degrades(trigger):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("failure", ["timeout", "write"])
+def test_failed_control_requests_release_their_pending_slots(monkeypatch, failure):
+    async def scenario():
+        reader = asyncio.StreamReader()
+        proc = _FakeProc(reader)
+        t = live_stt.CodexTranslator()
+        t._proc = proc  # type: ignore[assignment]
+        t._reader_task = asyncio.create_task(t._read_loop())
+
+        def broken_write(_data):
+            raise OSError("closed pipe")
+
+        try:
+            for _ in range(3):
+                if failure == "timeout":
+                    with pytest.raises(TimeoutError):
+                        await asyncio.wait_for(t._new_thread(), 0.01)
+                else:
+                    with monkeypatch.context() as patch:
+                        patch.setattr(proc.stdin, "write", broken_write)
+                        with pytest.raises(OSError, match="closed pipe"):
+                            await t._new_thread()
+            # Unanswered requests must not survive independent successful traffic.
+            fresh = asyncio.create_task(t._new_thread())
+            await _await_pending(t, 4)
+            reader.feed_data(
+                _rpc_result(
+                    4,
+                    {
+                        "thread": {"id": "fresh"},
+                        "serviceTier": live_stt.TRANSLATE_SERVICE_TIER,
+                    },
+                )
+            )
+            assert await asyncio.wait_for(fresh, 3) == "fresh"
+            assert t._pending == {}, "failed RPC futures remain retained after later success"
+        finally:
+            await t.close()
+
+    asyncio.run(scenario())
+
+
 def test_turn_wakes_on_eof_under_timeout():
     # T8.3: codex dies after turn/start resolves but before turn/completed, so
     # the turn is parked on _notes.get() with no pending request to fail. The

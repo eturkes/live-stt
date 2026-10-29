@@ -1792,8 +1792,12 @@ class CodexTranslator:
         rid = self._next_id
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[rid] = fut
-        self._write({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
-        return await fut
+        try:
+            self._write({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+            return await fut
+        finally:
+            # A timed-out request may never get a response, even if later turns succeed.
+            self._pending.pop(rid, None)
 
     def _notify(self, method: str, params=None):
         self._write({"jsonrpc": "2.0", "method": method, "params": params})
