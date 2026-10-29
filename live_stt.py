@@ -733,15 +733,21 @@ def _split_decode_segment(samples: np.ndarray) -> tuple[np.ndarray, ...]:
 
 
 def _merge_chunk_text(parts: list[str]) -> str:
-    """Join chunk transcripts, removing only credible exact audio-overlap text."""
-    out = ""
+    """Join chunk transcripts, removing only credible exact audio-overlap text.
+
+    A view shares audio with its neighbours alone, so the evidence is the previous chunk's
+    own contribution: matched against all of `out`, an empty or short middle decode let a
+    phrase from older audio delete the same phrase spoken again.
+    """
+    out = last = ""
     for text in parts:
-        max_overlap = min(_DECODE_MERGE_MAX_CHARS, len(out), len(text))
+        max_overlap = min(_DECODE_MERGE_MAX_CHARS, len(last), len(text))
         overlap = next(
-            (n for n in range(max_overlap, 1, -1) if out.endswith(text[:n])),
+            (n for n in range(max_overlap, 1, -1) if last.endswith(text[:n])),
             0,
         )
-        out += text[overlap:]
+        last = text[overlap:]
+        out += last
     return out
 
 

@@ -261,6 +261,15 @@ def test_merge_chunk_text_removes_only_plausible_exact_overlap():
     assert _merge_chunk_text(["そのまま"]) == "そのまま"
 
 
+def test_merge_chunk_text_takes_overlap_evidence_from_the_adjacent_chunk_alone():
+    # Views overlap only their neighbours' audio: an empty or short middle decode left the
+    # accumulated text's tail from older audio, and the match there deleted real speech.
+    assert _merge_chunk_text(["会議室", "", "会議室へ移動します"]) == "会議室会議室へ移動します"
+    assert _merge_chunk_text(["会議", "室", "会議室へ移動します"]) == "会議室会議室へ移動します"
+    assert _merge_chunk_text(["空が青い", "", "青いです"]) == "空が青い青いです"
+    assert _merge_chunk_text(["前の文", "空が青い", "青いです"]) == "前の文空が青いです"  # control
+
+
 # --- emit_line ---
 
 
