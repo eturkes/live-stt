@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from itertools import pairwise
 from pathlib import Path
 
@@ -99,8 +100,16 @@ def test_probe_geometry_reference_and_continuity():
 
 
 def test_cached_probe_hash_when_present():
-    if CACHE_WAV.exists():
-        assert (
-            hashlib.sha256(CACHE_WAV.read_bytes()).hexdigest()
-            == RETENTION_PROBE["probe"]["audio_sha256"]
-        )
+    if not CACHE_WAV.exists():
+        pytest.skip(f"absent: {CACHE_WAV.name} (gitignored; build_retention_probe.py rebuilds it)")
+    assert (
+        hashlib.sha256(CACHE_WAV.read_bytes()).hexdigest()
+        == RETENTION_PROBE["probe"]["audio_sha256"]
+    )
+
+
+def test_a_missing_probe_wav_declares_its_skip(monkeypatch, tmp_path):
+    # A bare `if exists` passed with no WAV: a fresh clone read an unchecked hash as green.
+    monkeypatch.setattr(sys.modules[__name__], "CACHE_WAV", tmp_path / "retention_probe.wav")
+    with pytest.raises(pytest.skip.Exception, match="^absent: "):
+        test_cached_probe_hash_when_present()

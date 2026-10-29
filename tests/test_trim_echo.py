@@ -162,6 +162,17 @@ def test_c1_at_or_below_trim_threshold_never_probes(samples: int):
     assert result.text == "前段確認確認"
 
 
+@pytest.mark.parametrize("samples", [4 * SAMPLE_RATE, 8 * SAMPLE_RATE - 1, 8 * SAMPLE_RATE])
+def test_c1_a_valid_cut_at_or_below_trim_threshold_never_probes(samples: int):
+    # The zero-cut spans above are refused by `_echo`'s own cut guard whatever the buffer
+    # length, so with the threshold predicates removed they stayed green (reviewer-16).
+    result = _once(
+        [(0.0, 1.0, "前段確認"), (1.0, samples / SAMPLE_RATE, "確認")], "前段", samples=samples
+    )
+    assert len(result.calls) == 1
+    assert result.text == "前段確認確認"
+
+
 @pytest.mark.parametrize("text", ["", "確認確認", "前段確認確認続き"])
 def test_c2_one_segment_never_probes(text: str):
     result = _once([(0.0, 9.0, text)], "前段")
