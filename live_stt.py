@@ -4,11 +4,12 @@
 no API keys); translation rides the Codex subscription via a persistent
 `codex app-server` (D-011), degrading to source-only when unavailable.
 
-Japanese appears on the status line while the speaker is still talking, as the
-streaming policy settles each piece (~2.5 s behind the voice). A numbered `SRC n:`
-line lands each time settled text leaves the streaming buffer and once more when
-the utterance ends; its `TGT n:` line follows when that translation turn completes
-(~2.5 s), so pairs stay unambiguous even when the next line lands first.
+Japanese appears on the status line while the speaker is still talking. On the
+measured NPU clip, the first dim preview trails the voice by a median of 1.2 s;
+settled text trails it by a median of 2.4 s. A numbered `SRC n:` line lands each
+time settled text leaves the streaming buffer and once more when the utterance
+ends. Its `TGT n:` line follows when the translation turn completes. Shared
+numbers keep pairs unambiguous even when the next source line lands first.
 """
 
 import argparse
@@ -881,7 +882,11 @@ def check_device(engine: str, device: str = ASR_DEVICE) -> str | None:
     try:
         import openvino  # noqa: PLC0415  -- only the OpenVINO engines pay this import
     except ImportError as exc:  # pragma: no cover - the wheel is a hard dependency
-        return f"OpenVINO is not importable: {exc}"
+        return (
+            f"OpenVINO is not importable: {exc}\n"
+            "Run uv sync --locked. If PYTHONPATH or LD_LIBRARY_PATH names another "
+            "OpenVINO build, remove those entries. See README.md."
+        )
     try:
         openvino.Core().get_property(device, "FULL_DEVICE_NAME")
     except RuntimeError as exc:

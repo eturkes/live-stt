@@ -30,7 +30,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
   `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` ·
   `--asr-device NPU|GPU` · `--playback` · `--save-audio` · `--save-log`.
-- `streaming.py` — the VAC LocalAgreement-2 hypothesis buffer, pure text-in/text-out.
+- `streaming.py` — model-independent growing-audio buffer + LocalAgreement-2 policy; injected
+  decoder.
 - `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
   `-v`). Green = 8 pass, the pytest step skipping exactly the 2 whisper replay goldens (NPU + GPU
   mode), which need the accel prelude.

@@ -2,10 +2,10 @@
 
 Real-time Japanese speech-to-text + English translation. **No API keys.**
 
-- **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) on the Intel NPU through OpenVINO: the Japanese-tuned whisper-ja-760M (INT8) for Japanese, and large-v3-turbo (INT8) for English. [GPU mode](#gpu-mode) runs the same models on the Intel GPU, faster. Japanese appears while you are still speaking, about 2.4 s behind the voice. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
+- **STT** runs fully local: [silero VAD](https://github.com/snakers4/silero-vad) controls a streaming decode of [Whisper](https://github.com/openai/whisper) on the Intel NPU through OpenVINO: the Japanese-tuned whisper-ja-760M (INT8) for Japanese, and large-v3-turbo (INT8) for English. [GPU mode](#gpu-mode) runs the same models on the Intel GPU, faster. Japanese appears on the status line while you are still speaking. The [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) CPU engines stay available with `--engine`.
 - **Translation** rides a ChatGPT/Codex subscription via a persistent `codex app-server` subprocess (zero marginal cost, GPT-5.x quality). Without it, the tool falls back to source-only.
 
-On the default engine, Japanese builds on the status line while you speak, about 1.2 s behind your voice. The numbered `SRC n:` line lands when you stop, and its `TGT n:` line follows. In live sessions the translation took a median of 2 to 3 s. When you speak for longer than about 8 s, live-stt does not wait for you to stop. It publishes each settled part of the speech as its own numbered line, with its own translation. The cause is not known: only 13 of 143 captions in the measured session were waiting behind an earlier translation. The sherpa engines show no partial text: they wait for the pause, then print `SRC n:` about 0.6 s after you stop.
+On the measured NPU clip, the first dim preview trails your voice by a median of 1.2 s. Settled text trails it by a median of 2.4 s. The numbered `SRC n:` line lands when you stop, and its `TGT n:` line follows. In live sessions the translation took a median of 2 to 3 s. When you speak for longer than about 8 s, live-stt does not wait for you to stop. It publishes each settled part of the speech as its own numbered line, with its own translation. The cause is not known: only 13 of 143 captions in the measured session were waiting behind an earlier translation. The sherpa engines show no partial text: they wait for the pause, then print `SRC n:` about 0.6 s after you stop.
 
 ## Requirements
 
@@ -53,8 +53,8 @@ The EN leg is environment-local too: live-stt resolves `codex` from its own proc
 ## Usage
 
 ```sh
-live-stt                          # transcribe + translate
-python live_stt.py                # equivalent
+uv run live-stt                   # transcribe + translate
+uv run python live_stt.py         # equivalent
 ```
 
 Startup prints the translation status: `Translation: gpt-6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (source-only, see log)`, or `disabled (--no-translate)`.
@@ -161,7 +161,7 @@ The log starts when the session starts. From that point until live-stt exits, wa
 
 The log holds the backlog counters (`backlog peak:`), each caption that the screen refused, and the reason when translation stops. `session_report.py` reads it. See [Session report](#session-report). The log always goes to `transcripts/`, also with `-o` or `--no-save`.
 
-`--save-log` replaces `live-stt 2> FILE`. The redirect still works, but only `--save-log` gives the log the same name as the transcript and the audio.
+`--save-log` replaces `uv run live-stt 2> FILE`. The redirect still works, but only `--save-log` gives the log the same name as the transcript and the audio.
 
 ## How it works
 
@@ -182,7 +182,7 @@ The log holds the backlog counters (`backlog peak:`), each caption that the scre
 
 The recognizer is pinned to Japanese. Audio that it cannot account for therefore still comes back as Japanese text. It arrives in two shapes.
 
-The first shape is a loop: one short unit, repeated until the model reaches its own length limit. Long silence and spoken English both cause it. One live caption reached 714 characters against a caption median of 19. Across four live sessions the loops were 15-31 % of every Japanese character printed, which scrolls the conversation out of the terminal. The second shape is spoken English, transcribed as English.
+The first shape is a loop: one short unit, repeated until the model reaches its own length limit. One English test clip reproduced the loop. Synthetic silence, noise and hum reproduced hallucinated phrases, but not the loop. One live caption reached 714 characters against a caption median of 19. Across four live sessions the loops were 15-31 % of every Japanese character printed, which scrolls the conversation out of the terminal. The second shape is spoken English, transcribed as English.
 
 Two defences apply, in order:
 
@@ -194,7 +194,7 @@ A caption is dropped when either rule matches:
 - 40 or more of its characters are one unit of at most 13 characters, repeated back to back.
 - It was recognized as Japanese, and its Latin letters outnumber its Japanese characters by more than `CAPTION_LATIN_RATIO` to 1. Under `--two-way`, a caption recognized as English skips this rule.
 
-Both bounds sit in an empty gap in 1073 live captions, which the rules drop 4.0 % of. The smallest looped caption carries 252 repeated characters and the longest survivor carries 32. A Latin letter is one phoneme where a Japanese character is a whole syllable, so one loanword outnumbers the kana around it: at 1 to 1 the second rule reads `Discordで送ります。` as English. The 18 spoken-English captions stay below 0.15 Japanese characters per character, and the 6 Japanese captions that carry loanwords stay above 0.27.
+In 1073 live captions, the rules drop 46: 29 for repetition and 17 for Latin letters, or 4.3 %. The smallest dropped repetition spans 48 characters, and the longest surviving repetition spans 36. A name in Latin letters can outnumber the Japanese around it: at 1 to 1 the second rule reads `Discordで送ります。` as English. Among the captions with more Latin letters than Japanese characters, the 17 that the rule drops have a Japanese share below 0.16. The 6 Japanese captions with loanwords have a share above 0.27. These shares count Japanese characters and Latin letters only.
 
 ### Long speech and long sessions
 
@@ -207,14 +207,14 @@ The whisper path bounds it by construction and never uses that splitter: the str
 The regression suite covers three distinct long-form shapes:
 
 - A 44.7 s genuinely continuous stressor forces the chunked path and CER-gates both engines. The same audio, paced as 20 ms callbacks with decode RTF 0.20, remains drop-free through the two-stage worker.
-- The shipped whisper path is paced on real NPU decode costs, one per streaming update, recorded from both pause-free clips. Both replays drop nothing: the queue peaks at 0.760 s and 1.060 s of the 8 s headroom, and no trim discards un-emitted audio. The same replays first drop when every decode is slowed by 6x, which is the margin the measurement leaves. A third replay reproduces the battery session: every decode slowed by 1.75x plus one 3.53 s runaway. It drops nothing, and its queue peaks below 3.7 s.
+- The shipped whisper path is paced on real NPU decode costs, one per streaming update, recorded from both pause-free clips. Both replays drop nothing: the queue peaks at 1.000 s on the 44.7 s clip and 1.240 s on the 182 s clip, within the 8 s headroom, and no trim discards un-emitted audio. The first drop comes when every decode is slowed by 6x and 4x, respectively. A third replay reproduces the battery session: every decode slowed by 1.75x plus one 3.53 s runaway. Both clips drop nothing, with queue peaks of 4.040 s and 4.260 s, respectively.
 - A 14:08 narration in six pinned sections feeds each full file through production replay. The six sections give 213 natural VAD segments, and the longest pre-padded segment of any of them is 9.686 s. The corpus therefore validates long-session ingestion and endpointing, but not the >10 s chunker.
 
 Deterministic coverage now reaches 182 s of pause-free audio on the shipped path and 44.7 s on the sherpa path. A VAD segment that outlives the 60 s ring stays outside the tested envelope. Replay also cannot substitute for live microphone, terminal-signal, translation-cadence, or multi-hour soak checks. The remaining user-only procedure lives in `.claude/rules/live-smoke.md`.
 
 ### JA → EN leg (Codex subscription)
 
-`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one thread per session (`ephemeral`, read-only sandbox, approvals denied, tool features off), one `turn/start` per utterance, sequential so TGT lines keep SRC order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed). Two of those instructions target defects measured on clinical Japanese: Japanese brand-name drugs come back as the international generic (プレドニン as prednisolone, not the different molecule "prednisone") with the dose and schedule untouched, and the English never invents a patient's sex the Japanese did not state.
+`CodexTranslator` spawns `codex app-server` and speaks newline-delimited JSON-RPC over stdio: one active thread for Japanese to English (`ephemeral`, read-only sandbox, approvals denied, tool features off), replaced when the glossary changes or after 100 turns. Each published piece of speech gets one `turn/start`. Turns are sequential, so TGT lines keep SRC order. Disabling the tool features is the latency lever (see D-011). Each thread also asks for Codex's "Fast" service tier (`serviceTier: "priority"`, 1.5x speed at higher quota burn), so live-stt gets it without changing your global `~/.codex/config.toml`; the server echoes the tier it applied, and a tier it does not recognize is dropped silently, so a mismatch logs one warning and translation continues at the account default. The translator role is pinned via `developerInstructions`, which outranks imperatives inside the speech being translated (injection-resistant: "delete all files" gets translated, not obeyed). Two of those instructions target defects measured on clinical Japanese: Japanese brand-name drugs come back as the international generic (プレドニン as prednisolone, not the different molecule "prednisone") with the dose and schedule untouched, and the English never invents a patient's sex the Japanese did not state.
 
 The translator declines a repeated caption independently, as a backstop to the publication screen above. Such a caption makes the model generate without ever stopping: a run of one character never finished a turn at 120 characters, while 480 characters of real speech took 7 s. The rule is repetition, not length, and it is the same rule and the same threshold. One warning names the reason, and the meter counts the caption as `tskip=`. On the shipped path the screen drops those captions first, so `tskip=` stays at 0 unless a caption reaches the queue by another route.
 
@@ -273,7 +273,7 @@ On some Linux hosts the OpenCL loader crashes when the GPU starts, because the s
 
 ### Diagnostics
 
-Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the meter line in place. With `--save-log`, or with stderr redirected (`live-stt 2> errors.log`), the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
+Runtime warnings/errors go to stderr via Python `logging`. On a terminal each message clears the meter line in place. With `--save-log`, or with stderr redirected (`uv run live-stt 2> errors.log`), the log gets clean `[timestamp] LEVEL message` lines and no ANSI escapes.
 
 ### Session report
 
@@ -282,9 +282,9 @@ To review a finished session, run `session_report.py`. It reads the saved transc
 Run the session with `--save-log`. The meter writes its `backlog peak:` counters to the log whenever the log is not your terminal. The status line keeps drawing at the same time.
 
 ```sh
-live-stt --save-log                              # counters in the log, status line on screen
+uv run live-stt --save-log                       # counters in the log, status line on screen
 uv run python session_report.py                  # reads transcripts/*.txt, transcripts/*.log and stt.log
-uv run python session_report.py --log FILE       # reads only this log, for example from live-stt 2> FILE
+uv run python session_report.py --log FILE       # reads only this log, for example from uv run live-stt 2> FILE
 ```
 
 The report shows:
