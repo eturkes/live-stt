@@ -65,7 +65,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 - `README.md` — the user doc; it, `models/README.md` and the CLI strings in `live_stt.py` are the
   human-facing set (`human-docs.md`).
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
-  `polish-register.md`, `phase-history.md`, plus four evidence records.
+  `polish-register.md`, `phase-history.md`, the closed review ledgers `review-*.md`, plus four
+  evidence records.
 - [Audio-hang post-mortem](postmortems/2026-09-11-audio-driver-hang.md) — SoundWire kernel Oops,
   Linux session containment, regression evidence, and the successful user-run live check.
 
