@@ -181,73 +181,82 @@ Severity per the reporting reviewer; status = fixed <sha> | assigned <fixer> | u
 | C47-1 | minor | tests/test_retention_probe.py passes when the WAV is absent (no `absent:` skip) | reviewer-20 | fixed 4d29ce5 |
 | C39-1 | minor | tests/test_trim_echo.py C1 cases cannot fail (zero-cut guard masks threshold) | reviewer-16 | fixed 4d29ce5 |
 | C68-32-1 | minor | queue rows 1/3/4 declare no tier; no lock owns it | reviewer-32 | already queued: deferred row *Queue rows declare their tier* |
-| r6 C13-1 + r7 C13-1 | — | a reader failure (oversized/broken stdout) leaves a live process that _respawn abandons | reviewer-6.md, reviewer-7.md | assigned general-purpose-1 |
-| r6 C13-2 | — | start() cancelled mid-init leaves its detached child alive | reviewer-6.md | assigned general-purpose-1 |
-| r6 C13-4 + r7 C13-2 | — | a failed glossary rotation commits leg.brief before thread/start succeeds | reviewer-6.md, reviewer-7.md | assigned general-purpose-1 |
-| r7 C13-4 | — | _EN_NAME capital initial [A-Z] vs the À-ſ body: macron-capital names never pair | reviewer-7.md | assigned general-purpose-1 |
-| r6 C14-1 | — | cancelled requests stay in _pending | reviewer-6.md | assigned general-purpose-1 |
-| lifecycle wording: r6 C16-1, r7 C16-1, r1 C04-2, r24 C55-1, r24 C57-2 | — | comments, the disable log line and README call the recoverable 3-strike degrade permanent; session_report.py's _DISABLED parser must keep reading old AND new log lines | reviewer-6/7/1/24.md | assigned general-purpose-1 |
-| r8 C17-1 + r7 R7-1 | — | run_session cleanup does not enclose acquisition (translator started before the try) or a failed drain | reviewer-8.md, reviewer-7.md Register | assigned general-purpose-2 |
-| r8 C17-2 | — | a failed stop bypasses stream close — FIRST verify the fake's fidelity: the installed sounddevice stop()/close() default ignore_errors=True (P/.venv/lib/python3.14/site-packages/sounddevice.py:1132-1171), so retire it if no real raise reaches run_session | reviewer-8.md | assigned general-purpose-2 |
-| r8 C17-3 | — | _supervise_session skips _stop_session on an ordinary child exit; a detached descendant survives | reviewer-8.md | assigned general-purpose-2 |
-| r8 C17-4 | — | shutdown cancels the meter before the final counters, so the last backlog peak can be absent | reviewer-8.md | assigned general-purpose-2 |
-| r8 C20-1 | — | cleanup's runtime-capability rationale (pidfd) is false | reviewer-8.md | assigned general-purpose-2 |
-| r24 C57-1 | — | --source-lang en / --two-way still print 'Speak Japanese': print exactly `Listening... Speak English. Press Ctrl+C to stop.` (en) and `Listening... Speak Japanese or English. Press Ctrl+C to stop.` (--two-way); README in sync | reviewer-24.md | assigned general-purpose-2 |
-| r11 C25-1 | — | recovery epochs collapse to a permanent global tail | reviewer-11.md | assigned general-purpose-3 |
-| r11 C25-2 | — | durable `-- translation skipped (stale): n` notes ignored without the optional log | reviewer-11.md | assigned general-purpose-3 |
-| r11 C25-3 | — | one restore written to both channels is reported twice | reviewer-11.md | assigned general-purpose-3 |
-| r11 C25-4 | — | an `-o` file appending several runs merges them (numbers collide, targets pair across runs): split runs where SRC numbering restarts, or refuse — smallest root-cause fix | reviewer-11.md | assigned general-purpose-3 |
-| r11 C25-5 | — | basename-only session-marker lookup assigns one run's log to another path | reviewer-11.md | assigned general-purpose-3 |
-| r11 C28-1 | — | the rotation tag is a caption-number proxy asserted as a boundary (wrong under --two-way) | reviewer-11.md | assigned general-purpose-3 |
-| r28 C63-3 | — | law/docs promise session_report answers soak questions it gets no input for (quota, RSS): fix the claim | reviewer-28.md | assigned general-purpose-3 |
-| r21 C49-1 | — | eval_two_way_settled re-dated counts post-trim commits after acceptance; refresh the asr-pipeline.md two-way table cells it prints | reviewer-21.md | assigned general-purpose-4 |
-| r21 C49-2 | — | eval_en_pairing live_turns rejects a genuine paired-then-expired rendering | reviewer-21.md | assigned general-purpose-4 |
-| r21 C49-3 | — | eval_en_pairing live: cancellation bypasses translator.close | reviewer-21.md | assigned general-purpose-4 |
-| r17/r21 C49-4 | — | eval_term_census dead_pairing ignores mechanism (capacity eviction counted) | reviewer-21.md, reviewer-17.md Register | assigned general-purpose-4 |
-| r21 C50-1 | — | en-pairing replay does not bind the ordered turn ids | reviewer-21.md | assigned general-purpose-4 |
-| r23 C53-1 + r30 C65-3 | — | build_caption_trace + law call replay's raw per-utterance hook rows the PUBLISHED caption stream: re-scope label/claims (or capture publication) — no regeneration on hardware; text + builder only | reviewer-23.md, reviewer-30.md | assigned general-purpose-4 |
-| r23 C53-2 + r30 C65-2 + r21 Register | — | en_pairing_trace.json names caption_trace.json, actual input caption_trace_turbo.json: one idempotent repair script, rerun to byte-identical | reviewer-23.md, reviewer-30.md | assigned general-purpose-4 |
-| r23 C54-1 + r20 Register | — | bounded LID census oracle extent derives from the rebuild | reviewer-23.md | assigned general-purpose-4 |
-| r23 C54-2 | — | build_vac_trace records input hashes instead of validating them before any decode | reviewer-23.md | assigned general-purpose-4 |
-| r27 C68-27-2 | — | build_vac_trace recording adapter's language forwarding lacks a hermetic lock | reviewer-27.md | assigned general-purpose-4 |
-| r20 Register | — | tests/test_lag_trace.py:1 points at .scratch/row3/CONTRACT-unit1.md | reviewer-20.md | assigned general-purpose-4 |
-| r22 C51-1 (+ r12/r13 Register) | — | playback evaluators pass raw text to cer.align (no normalize) | reviewer-22.md | assigned general-purpose-5 |
-| r22 C51-2 | — | routing benchmark fails to unwind started processes on errors | reviewer-22.md | assigned general-purpose-5 |
-| r22 C52-1 | — | paced replay accepts unread audio / unconsumed EOF as complete (L-025) | reviewer-22.md | assigned general-purpose-5 |
-| r22 C52-2 | — | eval_retention compiles outside the common NPU lock | reviewer-22.md | assigned general-purpose-5 |
-| r22 C52-3 | — | eval_long_form --score treats a completed empty decode as an incomplete run (L-025: score D=N) | reviewer-22.md | assigned general-purpose-5 |
-| r14 C33-1 | — | an empty queue cannot close green in the law locks | reviewer-14.md | assigned general-purpose-6 |
-| r14 C33-2 + r15 C33-2 | — | the Intent-quote lock splits on '; ', so a quote after a semicolon escapes | reviewer-14.md, reviewer-15.md | assigned general-purpose-6 |
-| r14 C33-3 + r15 C33-1 | — | undeclared_demotions reads any count-bearing trailer as the closing tally (false green + false red) | reviewer-14.md, reviewer-15.md | assigned general-purpose-6 |
-| r14 C33-4 | — | verbatim Tasks pairing silently casefolds / strips title bytes | reviewer-14.md | assigned general-purpose-6 |
-| r32 C68-2 | — | `.claude/rules/` paths: frontmatter validity has no gate check | reviewer-32.md | assigned general-purpose-6 |
-| r32 C68-3 | — | mechanically decidable ignore/layout/citation laws lack committed checks — wire what is proportional, report the rest as needs-MAIN | reviewer-32.md | assigned general-purpose-6 |
-| r31 C68-1 | — | packaging semantics unchecked: wheel only-include vs the import closure, sdist root-anchored includes | reviewer-31.md | assigned general-purpose-7 |
-| r31 C68-2 | — | the hook lock reads its text, not its execution | reviewer-31.md | assigned general-purpose-7 |
-| r31 C68-3 + r30 C68-4 | — | .envrc OpenVINO filtering vs live_stt._session_env unchecked on the shell side | reviewer-31.md, reviewer-30.md | assigned general-purpose-7 |
-| r31 C68-4 | — | dependabot config contract unchecked (structural, never prose-equals-config) | reviewer-31.md | assigned general-purpose-7 |
-| r31 C68-5 | — | BUILD_DEPENDENCIES vs committed manifest provenance unchecked | reviewer-31.md | assigned general-purpose-7 |
-| r29 C68-1 | — | deterministic outgoing RPC/config policies (_CODEX_CONFIG keys, thread/start params) have no firing check | reviewer-29.md | assigned general-purpose-7 |
-| r27 C68-27-1 | — | the recogniser-conditioning guard covers hotwords, not initial_prompt | reviewer-27.md | assigned general-purpose-7 |
-| r31 R31-3 + r33 R33-1 | — | .github/dependabot.yml:3 says the hook runs the same gate; it runs pytest alone | reviewer-31.md, reviewer-33.md | assigned general-purpose-7 |
-| r28 C68-1 + r30 C68-3 | — | eval_latency / eval_two_way_settled estimator math and pure evaluator controls have no synthetic-oracle gate test | reviewer-28.md, reviewer-30.md | assigned general-purpose-8 |
-| r30 C68-1 | — | stressor continuity record bypasses its fast locks | reviewer-30.md | assigned general-purpose-8 |
-| r30 C68-2 | — | generators' prior-evidence preservation (golden carry-forward, long-form score retention) has no hermetic lock | reviewer-30.md | assigned general-purpose-8 |
-| r1 C04-1 + r2 Register + r3 Register | — | LID constants comment: ONE resident pipeline | reviewer-1.md | assigned general-purpose-9 |
-| r1 C04-3 | — | repetition comment names room tone as a loop trigger | reviewer-1.md | assigned general-purpose-9 |
-| r1 C04-4 | — | latin-ratio comment 18 vs law 17 — re-derive which is right from the committed record before editing | reviewer-1.md | assigned general-purpose-9 |
-| r2 C08-1 | — | openvino_genai import comment calls a hard dependency optional | reviewer-2.md | assigned general-purpose-9 |
-| r2 C08-2 | — | check_models docstring claims missing-file detection; it checks markers | reviewer-2.md | assigned general-purpose-9 |
-| r4 C12-1 + r5 C12-1 | — | worker docstring describes the sherpa branch as universal | reviewer-4.md | assigned general-purpose-9 |
-| r4 C12-2 | — | emit_line docstring states the ~1 s target as measured | reviewer-4.md | assigned general-purpose-9 |
-| r12 C32-1 + MAIN-1 | — | replay.py docstring: 'Load any PCM WAV' (16/32 only); module docstring tells whisper runs to clear PYTHONPATH alone (law: both prelude halves, openvino-accel.md) | reviewer-12.md | assigned general-purpose-9 |
-| r24 C55-2..C55-5, C57-3, C57-4, C58-1 | — | README numbers/latency labels/usage, --help latency text, OpenVINO import error remedy, Artifacts' streaming.py contract | reviewer-24.md | assigned general-purpose-9 |
-| r27 C62-1..C62-3 | — | asr-pipeline.md whisper/LID claims | reviewer-27.md | assigned general-purpose-9 |
-| r28 C63-1 + r21 Register, C63-2, C63-4, C63-5 | — | rotation identifier, live-smoke banner, turbo carry, LID held-label numbers (re-derive from tests/lid_census.json under the shipped schedule; the code comment quoting 246 too) | reviewer-28.md | assigned general-purpose-9 |
-| r29 C64-1..C64-3 | — | translation-leg.md claims | reviewer-29.md | assigned general-purpose-9 |
-| r30 C65-1 | — | caption-replay state-free justification | reviewer-30.md | assigned general-purpose-9 |
-| r32 C67-1 + r24 C58-1 | — | orientation.md source map (~1.9 K lines; streaming boundary) | reviewer-32.md | assigned general-purpose-9 |
-| r31 R31-2 | — | human-docs.md 'roadmap ledger' names no file | reviewer-31.md | assigned general-purpose-9 |
+| r6 C13-1 + r7 C13-1 | — | a reader failure (oversized/broken stdout) leaves a live process that _respawn abandons | reviewer-6.md, reviewer-7.md | fixed f8bfcb1 |
+| r6 C13-2 | — | start() cancelled mid-init leaves its detached child alive | reviewer-6.md | fixed 1481cb2 |
+| r6 C13-4 + r7 C13-2 | — | a failed glossary rotation commits leg.brief before thread/start succeeds | reviewer-6.md, reviewer-7.md | fixed db3f9c9 |
+| r7 C13-4 | — | _EN_NAME capital initial [A-Z] vs the À-ſ body: macron-capital names never pair | reviewer-7.md | fixed 3863389 |
+| r6 C14-1 | — | cancelled requests stay in _pending | reviewer-6.md | fixed 2722f90 |
+| lifecycle wording: r6 C16-1, r7 C16-1, r1 C04-2, r24 C55-1, r24 C57-2 | — | comments, the disable log line and README call the recoverable 3-strike degrade permanent; session_report.py's _DISABLED parser must keep reading old AND new log lines | reviewer-6/7/1/24.md | fixed b0cf419 (comments/README) + 07c4e07 log line (general-purpose-3, C57-2) |
+| r8 C17-1 + r7 R7-1 | — | run_session cleanup does not enclose acquisition (translator started before the try) or a failed drain | reviewer-8.md, reviewer-7.md Register | fixed f0eafb3 |
+| r8 C17-2 | — | a failed stop bypasses stream close — FIRST verify the fake's fidelity: the installed sounddevice stop()/close() default ignore_errors=True (P/.venv/lib/python3.14/site-packages/sounddevice.py:1132-1171), so retire it if no real raise reaches run_session | reviewer-8.md | retired (unfaithful fake: real stop ignores PortAudio errors by default) |
+| r8 C17-3 | — | _supervise_session skips _stop_session on an ordinary child exit; a detached descendant survives | reviewer-8.md | retired (MAIN ruling: disproportionate; register) |
+| r8 C17-4 | — | shutdown cancels the meter before the final counters, so the last backlog peak can be absent | reviewer-8.md | fixed 46db2a8 |
+| r8 C20-1 | — | cleanup's runtime-capability rationale (pidfd) is false | reviewer-8.md | fixed 3148b98 |
+| r24 C57-1 | — | --source-lang en / --two-way still print 'Speak Japanese': print exactly `Listening... Speak English. Press Ctrl+C to stop.` (en) and `Listening... Speak Japanese or English. Press Ctrl+C to stop.` (--two-way); README in sync | reviewer-24.md | fixed 78bea6f |
+| r11 C25-1 | — | recovery epochs collapse to a permanent global tail | reviewer-11.md | fixed a7b439f |
+| r11 C25-2 | — | durable `-- translation skipped (stale): n` notes ignored without the optional log | reviewer-11.md | fixed 0718549 |
+| r11 C25-3 | — | one restore written to both channels is reported twice | reviewer-11.md | fixed a7b439f |
+| r11 C25-4 | — | an `-o` file appending several runs merges them (numbers collide, targets pair across runs): split runs where SRC numbering restarts, or refuse — smallest root-cause fix | reviewer-11.md | fixed c1812aa |
+| r11 C25-5 | — | basename-only session-marker lookup assigns one run's log to another path | reviewer-11.md | fixed 99b6104 |
+| r11 C28-1 | — | the rotation tag is a caption-number proxy asserted as a boundary (wrong under --two-way) | reviewer-11.md | fixed 7056fb5 |
+| r28 C63-3 | — | law/docs promise session_report answers soak questions it gets no input for (quota, RSS): fix the claim | reviewer-28.md | fixed 9761da9 |
+| r21 C49-1 | — | eval_two_way_settled re-dated counts post-trim commits after acceptance; refresh the asr-pipeline.md two-way table cells it prints | reviewer-21.md | fixed 0973a58 |
+| r21 C49-2 | — | eval_en_pairing live_turns rejects a genuine paired-then-expired rendering | reviewer-21.md | fixed 73d5566 |
+| r21 C49-3 | — | eval_en_pairing live: cancellation bypasses translator.close | reviewer-21.md | fixed 304ec62 |
+| r17/r21 C49-4 | — | eval_term_census dead_pairing ignores mechanism (capacity eviction counted) | reviewer-21.md, reviewer-17.md Register | fixed 5d41b31 |
+| r21 C50-1 | — | en-pairing replay does not bind the ordered turn ids | reviewer-21.md | fixed 93aacca |
+| r23 C53-1 + r30 C65-3 | — | build_caption_trace + law call replay's raw per-utterance hook rows the PUBLISHED caption stream: re-scope label/claims (or capture publication) — no regeneration on hardware; text + builder only | reviewer-23.md, reviewer-30.md | fixed 37a398f |
+| r23 C53-2 + r30 C65-2 + r21 Register | — | en_pairing_trace.json names caption_trace.json, actual input caption_trace_turbo.json: one idempotent repair script, rerun to byte-identical | reviewer-23.md, reviewer-30.md | fixed 83550e2 |
+| r23 C54-1 + r20 Register | — | bounded LID census oracle extent derives from the rebuild | reviewer-23.md | fixed 564312f |
+| r23 C54-2 | — | build_vac_trace records input hashes instead of validating them before any decode | reviewer-23.md | fixed 37d704b |
+| r27 C68-27-2 | — | build_vac_trace recording adapter's language forwarding lacks a hermetic lock | reviewer-27.md | fixed c47febc |
+| r20 Register | — | tests/test_lag_trace.py:1 points at .scratch/row3/CONTRACT-unit1.md | reviewer-20.md | fixed df3a2fd |
+| r22 C51-1 (+ r12/r13 Register) | — | playback evaluators pass raw text to cer.align (no normalize) | reviewer-22.md | fixed 8d8605e |
+| r22 C51-2 | — | routing benchmark fails to unwind started processes on errors | reviewer-22.md | fixed 90e1420 |
+| r22 C52-1 | — | paced replay accepts unread audio / unconsumed EOF as complete (L-025) | reviewer-22.md | fixed b7698b8 |
+| r22 C52-2 | — | eval_retention compiles outside the common NPU lock | reviewer-22.md | fixed 91fcb24 |
+| r22 C52-3 | — | eval_long_form --score treats a completed empty decode as an incomplete run (L-025: score D=N) | reviewer-22.md | fixed 9936753 |
+| r14 C33-1 | — | an empty queue cannot close green in the law locks | reviewer-14.md | fixed 6e8f4cf |
+| r14 C33-2 + r15 C33-2 | — | the Intent-quote lock splits on '; ', so a quote after a semicolon escapes | reviewer-14.md, reviewer-15.md | fixed a8ee6e5 |
+| r14 C33-3 + r15 C33-1 | — | undeclared_demotions reads any count-bearing trailer as the closing tally (false green + false red) | reviewer-14.md, reviewer-15.md | fixed b76af98 |
+| r14 C33-4 | — | verbatim Tasks pairing silently casefolds / strips title bytes | reviewer-14.md | fixed 0d4d5d3 |
+| r32 C68-2 | — | `.claude/rules/` paths: frontmatter validity has no gate check | reviewer-32.md | fixed d6228e8 |
+| r32 C68-3 | — | mechanically decidable ignore/layout/citation laws lack committed checks — wire what is proportional, report the rest as needs-MAIN | reviewer-32.md | fixed 438f106 |
+| r31 C68-1 | — | packaging semantics unchecked: wheel only-include vs the import closure, sdist root-anchored includes | reviewer-31.md | fixed b6cd82a |
+| r31 C68-2 | — | the hook lock reads its text, not its execution | reviewer-31.md | fixed c5db9fa |
+| r31 C68-3 + r30 C68-4 | — | .envrc OpenVINO filtering vs live_stt._session_env unchecked on the shell side | reviewer-31.md, reviewer-30.md | fixed a322177 |
+| r31 C68-4 | — | dependabot config contract unchecked (structural, never prose-equals-config) | reviewer-31.md | fixed 6d44906 |
+| r31 C68-5 | — | BUILD_DEPENDENCIES vs committed manifest provenance unchecked | reviewer-31.md | fixed 8ce4fcd |
+| r29 C68-1 | — | deterministic outgoing RPC/config policies (_CODEX_CONFIG keys, thread/start params) have no firing check | reviewer-29.md | fixed e3c7263 |
+| r27 C68-27-1 | — | the recogniser-conditioning guard covers hotwords, not initial_prompt | reviewer-27.md | fixed 2f71e54 |
+| r31 R31-3 + r33 R33-1 | — | .github/dependabot.yml:3 says the hook runs the same gate; it runs pytest alone | reviewer-31.md, reviewer-33.md | fixed 6d44906 |
+| r28 C68-1 + r30 C68-3 | — | eval_latency / eval_two_way_settled estimator math and pure evaluator controls have no synthetic-oracle gate test | reviewer-28.md, reviewer-30.md | fixed 89cad6b |
+| r30 C68-1 | — | stressor continuity record bypasses its fast locks | reviewer-30.md | fixed 6a8c1ee |
+| r30 C68-2 | — | generators' prior-evidence preservation (golden carry-forward, long-form score retention) has no hermetic lock | reviewer-30.md | fixed 7d61324 |
+| r1 C04-1 + r2 Register + r3 Register | — | LID constants comment: ONE resident pipeline | reviewer-1.md | fixed 85f8627 |
+| r1 C04-3 | — | repetition comment names room tone as a loop trigger | reviewer-1.md | fixed 85f8627 |
+| r1 C04-4 | — | latin-ratio comment 18 vs law 17 — re-derive which is right from the committed record before editing | reviewer-1.md | fixed 85f8627 |
+| r2 C08-1 | — | openvino_genai import comment calls a hard dependency optional | reviewer-2.md | fixed 85f8627 |
+| r2 C08-2 | — | check_models docstring claims missing-file detection; it checks markers | reviewer-2.md | fixed 85f8627 |
+| r4 C12-1 + r5 C12-1 | — | worker docstring describes the sherpa branch as universal | reviewer-4.md | fixed 85f8627 |
+| r4 C12-2 | — | emit_line docstring states the ~1 s target as measured | reviewer-4.md | fixed 85f8627 |
+| r12 C32-1 + MAIN-1 | — | replay.py docstring: 'Load any PCM WAV' (16/32 only); module docstring tells whisper runs to clear PYTHONPATH alone (law: both prelude halves, openvino-accel.md) | reviewer-12.md | fixed 85f8627 |
+| r24 C55-2..C55-5, C57-3, C57-4, C58-1 | — | README numbers/latency labels/usage, --help latency text, OpenVINO import error remedy, Artifacts' streaming.py contract | reviewer-24.md | fixed 5da5055 |
+| r27 C62-1..C62-3 | — | asr-pipeline.md whisper/LID claims | reviewer-27.md | fixed 0d6fef6 |
+| r28 C63-1 + r21 Register, C63-2, C63-4, C63-5 | — | rotation identifier, live-smoke banner, turbo carry, LID held-label numbers (re-derive from tests/lid_census.json under the shipped schedule; the code comment quoting 246 too) | reviewer-28.md | fixed 339a47a + 0d6fef6 |
+| r29 C64-1..C64-3 | — | translation-leg.md claims | reviewer-29.md | fixed 9295451 |
+| r30 C65-1 | — | caption-replay state-free justification | reviewer-30.md | retired (fixed upstream 37a398f) |
+| r32 C67-1 + r24 C58-1 | — | orientation.md source map (~1.9 K lines; streaming boundary) | reviewer-32.md | fixed 339a47a |
+| r31 R31-2 | — | human-docs.md 'roadmap ledger' names no file | reviewer-31.md | fixed 339a47a |
+
+Kernel fix re-review (one round, acceptance checks alone): reviewer-34 on the translator merge
+(f8bfcb1^..b0cf419) 8/8 pass; reviewer-35 on the gate/law-lock merge (6e8f4cf^..438f106) 7/7 pass.
+Hardware after merge (MAIN): playback silence under the normalized metric Z 0.1588 / N 0.1661 /
+V 0.1227 / W 0.1877 over 277 (law cells updated); `--e2e pinned` 30 captions + `probe` 23, none past
+a clip's tail (drives the restructured `run_session`); retention NPU 0.0532 (S23 D28 I11) through the
+shared NPU lock. Retired: C17-2 (unfaithful fake: sounddevice stop/close ignore errors), C17-3 (MAIN
+ruling: wedged detached helper after an abnormal child exit = robustness aimed at unpredictable use).
+New conformance pins carry plant proofs; their mutation-tool credit awaits the user (closing question).
 
 ### Clause inventory (CF)
 
