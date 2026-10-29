@@ -27,9 +27,10 @@ Contract, in the order the cases sit below:
   changed brief rotates the leg whose brief moved and leaves the other leg's thread alone;
   so does `TRANSLATE_ROTATE_TURNS`, counted per leg.
 - **Degrade scope follows ownership.** An app-server EOF disables BOTH directions and a
-  respawn recreates a thread for each; a poisoned or stalled turn replaces ONLY its own
-  direction's thread. `enabled`, the failure count, the recovery budget and the backoff stay
-  session-scoped, there being one app-server behind both directions. On any failure the
+  respawn reopens the arriving direction, the other reopening lazily on its next turn;
+  a poisoned or stalled turn replaces ONLY its own direction's thread. `enabled`, the failure
+  count, the recovery budget and the backoff stay session-scoped: one app-server owns both.
+  On any failure the
   transcript stays source-only -- no `TGT` line is published for a turn that did not return.
 
 Weights-free and network-free by construction: drive the shipped `CodexTranslator` against a

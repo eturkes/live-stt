@@ -222,8 +222,9 @@ Degradation, in order:
 
 - codex CLI missing / init fails → session runs source-only from the start.
 - A caption that repeats one short unit for 40 characters or more → not translated, and no failure is counted.
-- A turn exceeds 15 s → it's aborted and skipped; 3 consecutive failures → source-only for the rest of the session.
-- The app-server exits → the next caption starts a new one, which costs that caption about 5 s. A failed attempt doubles the wait before the next one. After 5 attempts, or if `codex` cannot be started at all, the session stays source-only.
+- A turn exceeds 15 s → it is aborted and skipped. After 3 consecutive failures, translation stops. The next caption probes a fresh thread on the same app-server.
+- The app-server exits or its output pipe fails → the next caption closes it and starts a new one.
+- A successful probe or new-server handshake costs that caption about 5 s. Closing an unresponsive server can add 5 s before it is killed. A failed attempt doubles the wait before the next one. They share a budget of 5 attempts for the session. Once translation is off and no attempt remains, the session stays source-only. If `codex` cannot be started at all, recovery ends at once.
 - Backlog over 50 utterances → oldest dropped.
 - The thread is rotated every 100 turns to keep the cached prompt prefix small.
 

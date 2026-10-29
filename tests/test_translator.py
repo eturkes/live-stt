@@ -2,7 +2,7 @@
 
 The happy-path live turn needs a real `codex app-server` + auth and stays a
 user smoke (L-004). What is locked here is the failure surface a refactor can
-silently break: 3-strike session disable, backlog eviction, the `_read_loop`
+silently break: three-strike disable, backlog eviction, the `_read_loop`
 dispatch/EOF branches plus its oversized-line/broken-transport guard (the sole
 non-local input boundary, T6-hardened), the transcript marker + named cause that
 make a degrade diagnosable afterwards, M13.1's degeneracy screen, and the
@@ -372,9 +372,7 @@ def test_graceful_close_enqueues_no_sentinel():
 
 
 def test_eof_logs_once_and_disables(caplog):
-    # T8.5: an EOF in an idle gap was the one silent, permanent degradation
-    # (startup and 3-strike both log). The cleanup must log exactly one error
-    # and flip enabled off.
+    # T8.5: an idle-gap EOF must log exactly one enabled->disabled transition.
     async def scenario():
         reader = asyncio.StreamReader()
         t = live_stt.CodexTranslator()
@@ -431,8 +429,8 @@ def test_the_three_strike_degrade_marks_the_transcript_once(tmp_path):
 
 
 def test_the_eof_degrade_marks_the_transcript_once(tmp_path):
-    # The other permanent path: codex dies in an idle gap. Feeding EOF twice
-    # proves the marker tracks the enabled->disabled TRANSITION rather than the
+    # EOF disables an idle leg too. Feeding EOF twice proves the marker tracks
+    # the enabled->disabled TRANSITION rather than the
     # event, so a second cleanup pass cannot re-mark a session already degraded.
     async def scenario():
         transcript = live_stt.TranscriptFile(tmp_path / "session.txt")
@@ -1132,8 +1130,8 @@ def test_close_stops_recovery(monkeypatch):
 
 
 def test_the_respawned_leg_starts_with_a_clean_strike_count(monkeypatch):
-    # A leg that died carrying strikes would be one failure from a permanent
-    # disable the moment it came back, and a carried turn count rotates the fresh
+    # Carrying strikes makes a recovered leg one failure from disabling again;
+    # a carried turn count rotates the fresh
     # thread before it has served TRANSLATE_ROTATE_TURNS turns. A new process and
     # a new thread start their own counters.
     async def scenario():
@@ -1234,10 +1232,9 @@ def test_recovery_routes_on_the_surviving_process_not_on_the_trigger(monkeypatch
     # M14.3(b). One entry point, two arms, and _alive() is the whole
     # discriminator -- which is what keeps the second trigger from growing a
     # second mechanism with its own budget, backoff and markers to keep in step.
-    # Routing the live process to _respawn would not merely cost a comparable
-    # 4.8 s: it drops _proc and overwrites _reader_task, leaving the surviving
-    # server a reader no one owns, whose eventual EOF disables the healthy leg
-    # this very recovery just produced.
+    # Preserve the usable pair on the probe arm. An unusable pair must be retired
+    # before respawn replaces either handle; abandoning a reader lets its later
+    # EOF disable the replacement leg.
     async def scenario():
         codex = _Codex()
         monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)
@@ -1360,10 +1357,9 @@ def test_a_wedged_app_server_costs_a_bounded_number_of_probes(monkeypatch):
 def test_the_probed_leg_starts_with_a_clean_strike_count(monkeypatch):
     # M14.3(d). The probe arm reaches recovery carrying a FULL strike count by
     # construction -- three consecutive failures are what disabled the leg -- so
-    # without the reset the very next failure would disable it again, permanently
-    # this time in all but name, and each probe would cost a whole cooldown to
-    # buy one caption. The fresh thread wants its own turn count for the same
-    # reason a respawned one does: a carried count rotates it early.
+    # without the reset the very next failure would disable it again, and each
+    # probe would cost a whole cooldown to buy one caption. The fresh thread wants
+    # its own turn count too: a carried count rotates it early.
     async def scenario():
         codex = _Codex()
         monkeypatch.setattr(live_stt.asyncio, "create_subprocess_exec", codex.exec)

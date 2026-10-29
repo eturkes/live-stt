@@ -187,8 +187,8 @@ Persistent `codex app-server` subprocess, newline-delimited JSON-RPC over stdio:
     lock: the drain window between them is the one place `run()` is alive with recovery armed, and a
     respawn there would spend a handshake on a session that is ending. `start()`'s own failure path
     calls `_end_proc()`, never `close()`, or one failed attempt would latch the rest off. Cancellation
-    during initialize, thread start or warm-up also joins/reaps the detached child, then re-raises:
-    startup precedes the session's teardown region. Lock: `test_cancelling_start_reaps_its_detached_process`.
+    during initialize, thread start or warm-up also joins/reaps the detached child before re-raising,
+    independently of caller cleanup. Lock: `test_cancelling_start_reaps_its_detached_process`.
   - **The app-server spawns `start_new_session=True`, OUT of the terminal's process group.** Ctrl+C
     signals the whole foreground group, so a same-group child dies before the drain reaches the last
     caption and that caption's target is lost — the shape in 4 of 7 saved sessions, the last logging

@@ -228,7 +228,7 @@ TRANSLATE_EFFORT = "low"
 TRANSLATE_SERVICE_TIER = "priority"
 TRANSLATE_TIMEOUT_S = 15.0
 CODEX_CONTROL_TIMEOUT_S = 10  # initialize + thread/start; turns use TRANSLATE_TIMEOUT_S
-TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> source-only for the session
+TRANSLATE_MAX_FAILURES = 3  # consecutive failures -> disable, then bounded recovery
 TRANSLATE_MAX_RECOVERIES = 5  # bounded revivals of a disabled leg, per session
 TRANSLATE_RECOVERY_WAIT_S = 5.0  # cooldown after a failed recovery; doubles each time
 TRANSLATE_ROTATE_TURNS = 100  # fresh thread cadence (history grows ~30 tok/turn)
@@ -1438,9 +1438,9 @@ class CodexTranslator:
     """Source→target translation over one persistent `codex app-server` (D-011).
 
     Newline-delimited JSON-RPC 2.0 on stdio; one immutable thread per direction,
-    one sequential turn per block (ordering guarantee). Any failure degrades to
-    source-only: per-block on transient errors, for the whole session after
-    TRANSLATE_MAX_FAILURES consecutive ones or if startup fails.
+    one sequential turn per block (ordering guarantee). Transient failures make
+    that block source-only; EOF or TRANSLATE_MAX_FAILURES consecutive failures
+    disable translation until bounded recovery succeeds. Startup failure stays source-only.
     """
 
     def __init__(
@@ -1450,7 +1450,7 @@ class CodexTranslator:
         sources: tuple[str, ...] | None = None,
     ):
         self.context = context
-        self.output_file = output_file  # TGT lines + the one degrade marker
+        self.output_file = output_file  # TGT lines + degradation/recovery markers
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
         self._next_id = 0
@@ -1512,8 +1512,8 @@ class CodexTranslator:
             self._notify("initialized", {})
             await self._handshake(source)
         except asyncio.CancelledError:
-            # Startup precedes the session's teardown region; it owns this child
-            # even when Ctrl+C cancels the initialize, thread or warm-up await.
+            # Startup owns its detached child even when Ctrl+C cancels an await;
+            # join it before cancellation returns, independent of caller cleanup.
             await self._end_proc()
             raise
         except Exception as e:
@@ -1566,10 +1566,10 @@ class CodexTranslator:
         )
 
     def _disable(self, reason: str):
-        """End the translation leg for the rest of the session, once, in both channels.
+        """Disable translation once per transition, recording both channels.
 
-        Every permanent degrade lands here so the marker cannot double-write or
-        go missing on a new path. Startup failure deliberately routes elsewhere:
+        Bounded recovery may restore the leg. Both disable paths land here so the
+        marker cannot double-write or go missing. Startup failure routes elsewhere:
         it has no marker to write, because nothing has been transcribed yet and
         TranscriptFile creates its file on the first write, so a marker there
         would leave a file behind every silent session.
@@ -1597,13 +1597,11 @@ class CodexTranslator:
     async def _recover(self, source: str | None = None) -> bool:
         """Bring a disabled leg back, on one bounded backoff (M14.2, M14.3).
 
-        Both permanent degrades come through here and the surviving process is
-        what tells them apart: an EOF leaves nothing to talk to, so recovery is a
-        new subprocess (~4.8 s measured), while TRANSLATE_MAX_FAILURES turn
-        failures leave the server running, so recovery is one turn on it -- and
-        respawning there would throw away a healthy app-server. One gate, one
-        budget and one backoff, so a leg that keeps dying stops costing captions
-        their latency whichever way it dies.
+        Both disable paths share one gate, budget and backoff. An unusable
+        process/reader pair is retired then replaced (~4.8 s measured on EOF);
+        a usable server is requalified on a fresh thread instead of thrown away
+        (~5.5 s after three strikes). A leg that stays broken eventually stops
+        costing arriving captions another recovery's latency.
         """
         if not self._recoverable() or time.monotonic() < self._recover_at:
             return False
@@ -1816,10 +1814,9 @@ class CodexTranslator:
         span = repeat_span(text)
         if span >= CAPTION_REPEAT_MAX_CHARS:
             # The model never terminates on this input, so translating it would
-            # cost TRANSLATE_TIMEOUT_S and one of TRANSLATE_MAX_FAILURES strikes;
-            # three such captions in a row took a whole session permanently
-            # source-only. Declining ahead of the queue is what keeps _failures
-            # untouched by construction. The source line still prints and is still
+            # cost TRANSLATE_TIMEOUT_S and one of TRANSLATE_MAX_FAILURES strikes.
+            # Declining ahead of the queue keeps _failures untouched by construction.
+            # The source line still prints and is still
             # saved — the caption is evidence of what was heard.
             self.degenerate_captions += 1
             logger.warning(
