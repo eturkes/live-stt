@@ -10,7 +10,8 @@ need the prelude below — and **zero** from a shell holding the prelude, where 
 and run on the NPU and GPU inside the pytest step (it clears `PYTHONPATH` alone); anything more
 skipping means absent weights or corpus. Each check's mechanics, coverage limits and
 firing record live in `gate.md`, which loads with the check's files. Every run prints each step's
-wall-clock and the suite's five slowest tests, since each run blocks the critical path.
+verdict + wall-clock and the suite's five slowest tests, and appends one row per step to the step
+ledger (below).
 
 **Fast gate (iteration) = the steps + tests the change reaches, launched as parallel calls:**
 `uv run --no-sync python -m pytest -q --ff <test files the change reaches>`
@@ -19,10 +20,35 @@ wall-clock and the suite's five slowest tests, since each run blocks the critica
 `ruff-format` for Python or Markdown, `pyright` / `pyright-tests` for production / test code,
 `secrets` for new files, `spec-lint` for `.agent/spec.md`. The full gate runs before every commit.
 
+Template ruling: "The full gate runs once per unit, on its commit, in the background" →
+**ADAPTED** (user ruling 11-04) — the full gate runs in the foreground on the unit's final working
+tree, then the commit takes that tree whole (`git add -A`), so the ledger's `tree` for that run
+equals the commit's `HEAD^{tree}` — the check that the commit is the tree the gate graded. Measured
+32.7-37.9 s, of which the pytest step is 19.5-22.7 s, the suite the hook already runs at commit;
+and `gate.py` reads the working tree: a background run beside MAIN's edits grades a moving tree,
+and a detached gate worktree is machinery those seconds do not buy, so a red is fixed before the
+commit exists. Re-open once the full gate passes ~2 min.
+
+**Every step run appends one row to the step ledger `gate-ledger.tsv`** (gitignored; `date tree step
+seconds verdict class`) = the record of which steps buy signal. `tree` = the git tree of what
+`git add -A` would commit, hashed through a scratch index, so a row names exactly the tree it
+graded. Rows land at a repository's top level alone, so seed trees keep none. A red lands with class
+`?` and is classified on the spot — `gate.py --classify product|gate|flake|planted [--only STEP]` —
+before its rerun counts: `flake` = red → green on an unchanged tree, and a `gate` or `flake` red is
+a gate bug whose fix is queued as the next unit. Every run lists the ledger's unclassified reds
+first. Nothing yet refuses a rerun past one (`.agent/deferred.md` → *Gate refuses a rerun past an
+unclassified red*).
+
+Template ruling: "Campaign tier = scheduled CI + time-boxed runs at a unit's or phase's close" →
+**ADAPTED** — CI is retired (below), so the campaign tier is its time-boxed half alone: the
+on-demand evaluators (`evidence-artifacts.md`), long scenario sweeps
+(`eval_anchor_scenarios.py --scripts N`) and mutation-tool sweeps, run at the close of a unit whose
+change they reach, each finding pinned as an example in the pytest step.
+
 **Every skip declares itself, because pytest exits 0 on a skipped case.** A resource gate opens its
 reason with `absent: ` and keeps its case live, while a bare `pytest.mark.skip`, an `xfail` or an
 `xpass` fails the step. That is what a demotion is, and a demotion earns a `.agent/deferred.md` row
-and the user's approval first (`assurance-posture.md`). The gate also names its skips in `-v` output,
+first, carrying its reason and the check that restores it (`assurance-posture.md`). The gate also names its skips in `-v` output,
 so `green` reports them rather than leaving the count to prose — which is where the invariant sat
 while any new skip rode green.
 
@@ -145,11 +171,14 @@ accelerator's `env.sh` (its path = machine-specific, in the user-level instructi
 `uv run live-stt` alone cleans its own session child (`_session_env`), so there only `env.sh`
 matters, container-side. Failure modes + the accelerator's shape: `openvino-accel.md`.
 
-Template ruling: "Project files stay portable: repo-relative paths; machine-bound facts →
-`CLAUDE.local.md`" → **ADAPTED** (user rulings: a personal tool, portability no goal) — **law cites
+Template ruling: "`CLAUDE.local.md` (gitignored) = this project's facts true on this machine alone"
+→ **ADAPTED** (user rulings: a personal tool for one known machine) — this product's hardware
+facts, timings and local quirks ARE its law, the bar being one known user on one known machine, so
+they stay committed in these rules files and no `CLAUDE.local.md` exists. **Law cites
 machine-environment facts by scope, never by path**: the farm dir, device-selection law, the GenAI
 builds and the farm's upkeep live in the user-level instruction file and the OpenVINO doc it links,
-in place of a `CLAUDE.local.md`, so law and evaluator docstrings name that file. Two pointers outside the repo stand as written: codex's own
+so law and evaluator docstrings name that file. The repo is public, so private facts (hosts, key
+paths, data locations) stay out of it. Two pointers outside the repo stand as written: codex's own
 state paths (`~/.codex/…`, where codex keeps them on every machine) and `.envrc`'s `/run/host/*`
 layer test, since a venv path-bakes the tree path it was built at.
 

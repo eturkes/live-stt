@@ -49,7 +49,7 @@ restored green. **Coverage limit:** this is syntax attribution, not authenticate
 plugin forging a whole pytest-statistics record is indistinguishable here. Unknown report formats
 fail closed rather than claiming a clean run. **Other coverage limits, loud or
 out of reach rather than silently green:** the checker reads emitted `SKIPPED`/`XFAIL`/`XPASS`
-lines, so a DELETED case and a demoted tier leave no trace and stay under the approval law alone;
+lines, so a DELETED case and a demoted tier leave no trace and stay under the row law alone;
 in-tree pytest configuration outranks it, since a `conftest.py` setting `config.option.runxfail`
 reconfigures pytest itself and this repo ships no conftest at all; and a directory named with a
 `:<digits>: ` inside it false-REDS a declared skip, pytest's `location: reason` line being genuinely
@@ -60,6 +60,19 @@ seeds a misformatted block and demands `gate FAILED: ruff-format`, and
 `test_the_upstream_files_stay_out_of_the_format_step` copies production's own `pyproject.toml` into
 the tree, so the carve-out under test is the shipped one, with a `doc.md` twin as the positive
 control against an exclusion that swallowed every `.md`.
+
+**The step ledger** (`toolchain.md` owns the law). `Ledger.append` writes one row per step run
+under an exclusive `flock`, the header once on an empty file, so the fast gate's parallel `--only`
+runs serialize; `open_ledger` hashes a bare `git add -A` into a scratch copy of the index — an
+`:(exclude)` pathspec naming the gitignored ledger makes `git add` exit 1 once the ledger exists —
+and returns None off a repository's top level.
+`test_each_step_run_lands_a_ledger_row_naming_the_tree_it_graded`'s oracle is a real commit's
+`HEAD^{tree}` after two reds and a pass, then `--classify` with and without `--only`;
+`test_a_tree_below_or_outside_a_repository_keeps_no_ledger` holds the top-level rule. Neutralized
+from a `cp` snapshot of `gate.py`, each reddens its lock and restores green: no append, the prefix
+check dropped, `--classify` ignoring `--only`, the hash taken from the staged index, no header, no
+red listing. **Coverage limit:** nothing refuses a rerun past an unclassified red, and a row is
+written after its step ends, so a killed run leaves its step unrecorded.
 
 Each step prints its wall-clock and the run its total; the pytest step runs `--durations=5` and
 `slowest_tests` prints that block on a green run (`-v` and a failure print the whole output).
@@ -134,10 +147,12 @@ convention, not whether a valid pattern names the intended files.
 
 One supplemental lock bundles three stable structural laws under the existing pytest step:
 
-- Git probes a copy of `.gitignore` in a fresh repository with user excludes disabled. Six runtime
-  paths must be ignored; `live_stt.py` + `models/README.md` must stay visible. This avoids walking
-  bulk or traversing a real venv symlink. Committed plants remove the transcript ignore and add an
-  app-source ignore, each beside a clean twin.
+- Git probes a copy of `.gitignore` in a fresh repository with user excludes disabled. Seven runtime
+  paths must be ignored, the step ledger among them; `live_stt.py` + `models/README.md` must stay
+  visible. This avoids walking bulk or traversing a real venv symlink. Committed plants remove the
+  transcript ignore and add an app-source ignore, each beside a clean twin; dropping the ledger's
+  ignore from a `cp` snapshot of `.gitignore` reddens it (`missing={'gate-ledger.tsv'}`), restored
+  byte-equal.
 - Git's tracked + untracked-unignored file list contains neither `docs/` nor `.agent/contracts/`.
   Both retired paths have their own committed plant; deleted files and ignored scratch are outside
   the candidate set. The check decides those named structures, not whether a future module boundary

@@ -278,6 +278,7 @@ def test_repository_surfaces_follow_law(tmp_path):
         "spike/backends/cache/probe.wav",
         "models/probe.bin",
         "transcripts/probe.txt",
+        "gate-ledger.tsv",
     }
     retained = {"live_stt.py", "models/README.md"}
     done = subprocess.run(

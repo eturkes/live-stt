@@ -384,8 +384,8 @@ because they replay committed traces — a fresh clone runs them in under a seco
   weights, corpus or accelerator, and the reason carries that prefix so `gate.py` can tell a live
   case from a demotion — a bare `pytest.mark.skip` or any xfail fails the pytest step
   (`assurance-posture.md`). Write the prefix into the `skipif` reason or the `pytest.skip()` call
-  when adding a gate; demoting a real case needs a `.agent/deferred.md` row and the user's approval
-  first.
+  when adding a gate; demoting a real case needs a `.agent/deferred.md` row first, carrying its
+  reason and the check that restores it.
 - **The goldens and traces ARE contract-owned expected output, not a table smuggled past a contract.**
   `replay_goldens.json` is D-014's characterization snapshot and the committed traces are recorded
   measurements, so both answer "did the output change" for a contract that owns them. What

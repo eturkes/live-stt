@@ -29,24 +29,30 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 
 - `live_stt.py` — the app; the constants at its top are the whole config surface.
   `uv run live-stt` · `uv run live-stt --list-devices` · `--engine k2v2|parakeet` ·
-  `--asr-device NPU|GPU` · `--playback` · `--save-audio` · `--save-log`.
+  `--asr-device NPU|GPU` · `--playback` · `--save-audio` · `--save-log`. Smoke, no mic:
+  `--list-devices` → rc 0 + the device table; `--two-way --source-lang en` → rc 2,
+  `live-stt: error: --two-way cannot be used with --source-lang`; `python -c "import live_stt"` →
+  rc 0. Mic + terminal paths → `live-smoke.md` (L-004).
 - `streaming.py` — model-independent growing-audio buffer + LocalAgreement-2 policy; injected
   decoder.
 - `gate.py` — THE gate, 8 blocking steps, hermetic. `uv run --no-sync python gate.py` (`--only NAME`,
   `-v`). Green = 8 pass, the pytest step skipping exactly the 2 whisper replay goldens (NPU + GPU
-  mode), which need the accel prelude.
+  mode), which need the accel prelude. Each step run appends a row to the gitignored
+  `gate-ledger.tsv`; `--classify product|gate|flake|planted` labels its reds (`toolchain.md`).
 - `.agent/spec-lint` — this file's shape check, a template copy that a refresh replaces whole; the
   gate's `spec-lint` step runs it.
 - `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--asr-device D] [--json]`; goldens in
-  `tests/replay_goldens.json`.
+  `tests/replay_goldens.json`. Smoke = the two whisper replay goldens under the accel prelude (the
+  gate's pytest step); a fresh clone holds no WAV to replay.
 - `cer.py` — shared `normalize`/`alignment`/`align` scoring primitive, pure stdlib.
 - `session_report.py` — what a live session did, re-derived from `transcripts/*.txt` + the stderr
   log (`--save-log` → `transcripts/<start>.log`, or `2> stt.log`; both keep the status line, and a
   bare run reads `transcripts/*.log` + `stt.log`); no hardware, weights or network,
   and it imports the shipped screen rather than restating it. Answers include drop attribution, one
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
-  [--source-lang L | --two-way]`.
+  [--source-lang L | --two-way]`. Smoke: a bare run → rc 0, `N sessions, … captions` over the
+  saved transcripts.
 - `tests/` — fast locks (`uv run pytest -q`) + fourteen on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_asr_screen.py` (the GPU-mode recogniser screen),
@@ -234,6 +240,12 @@ Detail → `.claude/rules/`, which each `D-###` names.
   `.claude/agents/`): each override is a ruling tag in the rules file owning its subject, keyed on
   the clause it overrides, which a refresh re-reads before acting on the template's words
   (`orientation.md`); `assurance-posture.md` owns the assurance ones.
+- **The full gate runs before the commit, not behind it** (user ruling 11-04): foreground on the
+  unit's final tree, the commit taking that tree whole, so `gate-ledger.tsv`'s `tree` for that run
+  equals `HEAD^{tree}`; re-open once the gate passes ~2 min (`toolchain.md`). **Test form binds
+  forward** (user ruling 11-04): a new contract predicate gets a seeded property test, and no fuzz
+  target exists until the repo writes its own parser, decoder or native code
+  (`assurance-posture.md`).
 - MAINTAIN has no phase close ⇒ each request session is its own (user ruling): the commit closing a
   funded row deletes it from `.agent/deferred.md` and from `Tasks` together, and a `- [x] <sha>` row
   lives only between the commits of one session. Every open `Tasks` row is one queue row, rank and
@@ -289,6 +301,13 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **8** Landed teammate worktrees removed
   - 45 linked worktrees + their `wt/*` branches outlived their landing; accept →
     `.agent/deferred.md` → *Landed teammate worktrees removed*.
+- [ ] **9** Control-char screen and JSON-RPC reader property tests
+  - The two room-text sites carry example locks alone, and a non-object JSON line escapes
+    `_read_loop`; accept → `.agent/deferred.md` → *Control-char screen and JSON-RPC reader property
+    tests*.
+- [ ] **10** Gate refuses a rerun past an unclassified red
+  - The step ledger lists unclassified reds but refuses no rerun; accept → `.agent/deferred.md` →
+    *Gate refuses a rerun past an unclassified red*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

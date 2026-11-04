@@ -46,3 +46,6 @@ CLAUDE.local.md
 # OS
 .DS_Store
 Thumbs.db
+
+# Gate step ledger: one row per step run, the local record of which steps buy signal (gate.py)
+gate-ledger.tsv

@@ -15,11 +15,13 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from gate import (
+    LEDGER,
     PROD_FILES,
     PYTEST_WORKERS,
     SKIP_DECLARATION,
@@ -298,7 +300,7 @@ def test_blocking_step_failure_fails_the_gate(step, tmp_path):
 
 
 def test_a_green_run_prints_each_wall_clock_and_the_slowest_tests(tmp_path):
-    """Every run blocks the critical path, so a green run still says where its time went."""
+    """The suite dominates the gate's wall-clock, so a green run still says where it went."""
     (tmp_path / "pyproject.toml").write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_seed.py").write_text(
@@ -314,6 +316,69 @@ def test_a_green_run_prints_each_wall_clock_and_the_slowest_tests(tmp_path):
         assert re.search(f"^{line}$", done.stdout, re.MULTILINE), done.stdout
 
 
+def _ledger(tree: Path) -> list[list[str]]:
+    header, *rows = (tree / LEDGER).read_text().splitlines()
+    assert header.split("\t") == ["date", "tree", "step", "seconds", "verdict", "class"]
+    return [row.split("\t") for row in rows]
+
+
+def test_each_step_run_lands_a_ledger_row_naming_the_tree_it_graded(tmp_path):
+    """The ledger records which steps buy signal; each red is classified on the spot.
+
+    The tree oracle is a real commit of the graded tree: a row must name what
+    `git add -A` + commit carries, untracked files included, so a commit's tree can be
+    matched against the run that gated it.
+    """
+    tree = git_tree(tmp_path)
+    with (tree / ".gitignore").open("a") as f:
+        f.write(f"{LEDGER}\n")  # as the shipped .gitignore does
+    seed(tree, "ruff-check")
+    assert "gate FAILED: ruff-check" in gate(tree, "--only", "ruff-check").stdout
+    assert "gate FAILED: spec-lint" in gate(tree, "--only", "spec-lint").stdout
+    third = gate(tree, "--only", "ruff-format")
+    assert third.returncode == 0, third.stdout + third.stderr
+    listed = [s for s in third.stdout.splitlines() if s.startswith("unclassified red: ")]
+    assert [s.split()[3] for s in listed] == ["ruff-check", "spec-lint"], third.stdout
+    subprocess.run(["git", "add", "-A"], cwd=tree, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        + ["commit", "--no-verify", "-qm", "seed"],
+        cwd=tree,
+        check=True,
+    )
+    graded = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"], cwd=tree, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    rows = _ledger(tree)
+    assert [(r[1], r[2], r[4], r[5]) for r in rows] == [
+        (graded, "ruff-check", "FAIL", "?"),
+        (graded, "spec-lint", "FAIL", "?"),
+        (graded, "ruff-format", "pass", "-"),
+    ]
+    for row in rows:
+        datetime.fromisoformat(row[0])
+        assert re.fullmatch(r"\d+\.\d", row[3]), row
+
+    one = gate(tree, "--classify", "product", "--only", "spec-lint")
+    assert "classified product: 1 red(s)" in one.stdout, one.stdout + one.stderr
+    assert "classified planted: 1 red(s)" in gate(tree, "--classify", "planted").stdout
+    assert [r[5] for r in _ledger(tree)] == ["planted", "product", "-"]
+    assert "unclassified red" not in gate(tree, "--only", "ruff-format").stdout
+
+
+def test_a_tree_below_or_outside_a_repository_keeps_no_ledger(tmp_path):
+    """A seed tree's rows and tree hash would describe the repository around it."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    seed(outside, "ruff-check")
+    assert "gate FAILED: ruff-check" in gate(outside, "--only", "ruff-check").stdout
+    below = git_tree(tmp_path / "repo") / "ignored" / "seed"
+    below.mkdir(parents=True)
+    seed(below, "ruff-check")
+    assert "gate FAILED: ruff-check" in gate(below, "--only", "ruff-check").stdout
+    assert not list(tmp_path.rglob(LEDGER))
+
+
 def _skipping_tree(tmp: Path, marker: str, addopts: str = "", subdir: str = "tests") -> None:
     """A throwaway suite whose one case skips for `marker`, carrying its own testpaths."""
     ini = '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
@@ -327,8 +392,8 @@ def _skipping_tree(tmp: Path, marker: str, addopts: str = "", subdir: str = "tes
 def test_an_undeclared_skip_fails_the_pytest_step(tmp_path):
     """pytest exits 0 on a skipped case, so this defect is invisible to the step itself.
 
-    A demotion earns a `.agent/deferred.md` row and the user's approval first;
-    the gate is what refuses one that arrived without them.
+    A demotion earns a `.agent/deferred.md` row first, carrying its reason and the
+    check that restores it; the gate is what refuses one that arrived without it.
     """
     _skipping_tree(tmp_path, "flaky")
     done = gate(tmp_path, "--only", "pytest")

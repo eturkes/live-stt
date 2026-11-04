@@ -31,11 +31,12 @@ things verification integrity fixes locally:
   the commit body. Hand-picked L-022 mutants never credit such a pin. Each survivor takes a ruling
   against the unit's queue row from someone other than the test's author — a `reviewer` inside the
   unit, or the user.
-- Template ruling: "a threshold, case or gate changes only in a unit I approve" → **ADAPTED** —
-  **the grading check is FIXED for the unit running under it.** The funded `.agent/deferred.md` row
-  is the approval, so a threshold, case or gate moves only where that row's acceptance names the
-  move, and the change records the original check's firing. A mid-unit wish to move one is a question
-  for the user. The graders this holds: the `replay.py` goldens, `gate.py`'s step inventory,
+- Template ruling: "a threshold, case or gate changes only in its own unit" → **ADAPTED** —
+  **the grading check is FIXED for the unit running under it.** Its own unit = a funded
+  `.agent/deferred.md` row whose acceptance names the move, so a threshold, case or gate moves only
+  there, the commit body carrying the evidence that the check errs against the contract plus the
+  original check's firing. A mid-unit wish to move one becomes that row, its evidence written in at
+  deferral time; funding it is the user's call. The graders this holds: the `replay.py` goldens, `gate.py`'s step inventory,
   `test_backpressure.py`'s `AUDIO_HEADROOM_S` and `SEGMENT_QUEUE_MAX` bounds, the
   `CAPTION_REPEAT_*` locks, the retention CER 0.0532 (whisper-ja-760M; turbo read 0.0609) a decode change must re-derive, and every
   `eval_*.py` threshold that exits or raises — `eval_cer.py`'s `MAX_CER` 0.15 and
@@ -46,10 +47,21 @@ things verification integrity fixes locally:
   demotion unless a resource is absent, and `gate.py` decides which** — a resource gate opens its
   reason with `absent: ` and keeps its case live with no row, an xfail fails outright
   (`toolchain.md`). Writing that prefix is the declaration itself, not an L-032 escape; the escape
-  is a demotion, and that is exactly the moment the queue row and the user's approval are owed. A
-  deleted case and a demoted tier leave no trace the gate reads ⇒ both stay under the approval law
-  alone. `green` names the checks run AND passed, with skipped, not-run and missing ones named or
+  is a demotion, and that is exactly the moment its queue row is owed, first: its reason + the check
+  that restores it. A deleted case and a demoted tier leave no trace the gate reads ⇒ both stay
+  under that row law alone. `green` names the checks run AND passed, with skipped, not-run and missing ones named or
   `none`.
+
+Template ruling: "Test form: each contract predicate over the input domain" + "also a
+coverage-guided fuzz target" → **ADAPTED** (user ruling 11-04) — forward-binding: a contract
+predicate a unit writes from now on gets a property-based test, its generator seed fixed in the test
+so a red reruns from committed state; the suite's seeded `random.Random` generators with oracles
+stand as written. No fuzz target exists, because the repo writes no parser, decoder, deserializer
+or native code: room audio, the untrusted input (D-017), reaches repo code as stdlib-parsed JSON
+(`CodexTranslator._read_loop`), stdlib `wave` frames (`replay.py`) and typed text through the
+`_CONTROL_CHARS` sinks — typed logic a property test covers. The fuzz half binds the first unit that
+writes its own parser, decoder or native code. The two untrusted-input sites' property tests =
+`.agent/deferred.md` → *Control-char screen and JSON-RPC reader property tests*.
 
 **L-004 — mic and real-terminal paths are agent-unverifiable.** No mic, no interactive TTY here. A
 change touching `sd.InputStream`, `audio_callback`, real-time latency, Ctrl+C or multi-hour behaviour
@@ -99,10 +111,11 @@ Retired — never reintroduce:
 `CLAUDE.md`'s `Teammates` + the `.claude/agents/` roles own the fits; this repo adds no teammate
 mandate (user ruling) — `scientist` and `reviewer` included, each dispatched per its fit. A brief
 whose teammate runs whisper names that teammate as the NPU holder (`toolchain.md`: two compiles on
-one cache corrupt it). Template ruling: "a MAINTAIN request's closing diff → one `reviewer` covering
-every lens" → **ADAPTED** — where a diff earns review (a fit per case, never a repo
-mandate; user ruling), the `reviewer` runs inside the unit that authored it rather than over the
-request's closing diff, at the template's count. The lenses = `CLAUDE.md`'s code diff lenses
+one cache corrupt it). Template ruling: "a MAINTAIN request's closing diff reaching `kernel` code, a
+public interface or persisted data → one `reviewer` covering every lens" → **ADAPTED** — where a
+diff earns review (a fit per case, never a repo mandate, that trigger included; user ruling), the
+`reviewer` runs inside the unit that authored it rather than over the request's closing diff, at
+the template's count. The lenses = `CLAUDE.md`'s code diff lenses
 (`Engineering`) for code, plus correctness/spec, claim soundness, guarantee-vs-claim gaps,
 verification integrity and `CLAUDE.md` conformance.
 

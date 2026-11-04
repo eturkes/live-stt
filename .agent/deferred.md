@@ -97,3 +97,30 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    named equivalent) and an inspection of its worktree's untracked files; then `git worktree list`
    names the primary tree alone, `git branch --list 'wt/*'` prints nothing, and
    `attempt/p009-audio-time-cut` stays (user ruling, `b906ce0`).
+
+9. **Control-char screen and JSON-RPC reader property tests** — `assurance-posture.md`'s test-form
+   ruling (user ruling 11-04) gives new contract predicates property-based tests, and the two sites
+   where room audio's text meets repo code carry example locks alone: `tests/test_line_grammar.py`
+   for the `_CONTROL_CHARS` sinks, `tests/test_translator.py` for `CodexTranslator._read_loop`.
+   The reader assumes every JSON line is an object: its dispatch expression raises `TypeError` on a
+   non-object line (`123`, `null`), which escapes the loop instead of being skipped (the expression
+   evaluated alone, the loop unrun). Tier `kernel` (the terminal-injection guard, D-017; nothing
+   downstream re-checks a sink).
+   **Accept:** property-based tests, generator seed fixed in the test, drive arbitrary text through
+   `emit_line`, `caption_body` and `drop_caption` — no C0/DEL/C1 character reaches a sink beyond
+   `_DIM`/`_UNDIM`, and control-free text passes byte-identical — and arbitrary lines through
+   `_read_loop` — a malformed or non-object line is skipped, a well-formed response still resolves
+   its pending request, EOF still runs the cleanup; each property seen red by L-022 neutralization
+   of the guard it covers.
+
+10. **Gate refuses a rerun past an unclassified red** — `toolchain.md`'s step ledger lists the
+    unclassified reds at every run's start, yet nothing stops a rerun to green past one, which is
+    how `CLAUDE.md`'s `Execution` says a red gets buried. A refusal forces rulings of its own — the
+    flake probe reruns an unchanged tree by definition, parallel `--only` runs share one ledger, and
+    `tests/test_gate.py` reruns the gate inside one seed tree — so the refresh that built the ledger
+    left it out. Tier `kernel` (a gate lock; nothing downstream re-checks it).
+    **Accept:** a gate run on a tree that differs from an unclassified red's exits non-zero before
+    any step, naming that red and the `--classify` command; a rerun on the red's own tree runs, and
+    a green there classifies the red `flake` by itself; parallel `--only` runs never lose or
+    interleave a row; every `tests/test_gate.py` seed still reddens; each firing on its planted
+    input (L-022).

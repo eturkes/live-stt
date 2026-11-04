@@ -355,7 +355,7 @@ uv run pytest                                 # just the test suite
 git config --local core.hooksPath .githooks   # one-time: enable pre-commit hook
 ```
 
-`gate.py` owns the exact step set, so the gate cannot be shortened by describing it differently. Every step is fast and hermetic: it needs no weights, no accelerator, and no network. Run one step with `--only NAME`.
+`gate.py` owns the exact step set, so the gate cannot be shortened by describing it differently. Every step is fast and hermetic: it needs no weights, no accelerator, and no network. Run one step with `--only NAME`. Each run adds one row per step to `gate-ledger.tsv`, a local file that Git ignores. When a step fails, label its row with `uv run python gate.py --classify CLASS`, where `CLASS` is `product`, `gate`, `flake` or `planted`.
 
 Core tests cover audio primitives, the streaming buffer, the two-stage worker, shutdown, and translation degradation without a network or mic. Replay's model-gated golden cases skip cleanly when local weights, the accelerator, or corpus files are absent.
 

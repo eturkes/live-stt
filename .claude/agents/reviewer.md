@@ -8,6 +8,6 @@ Review role. Brief = target (diff range, paths or document) + check set (lenses 
 
 - Fix the check set before reading the target, then adjudicate every row. Defects outside it = register entries.
 - Deliverable = verdict table (one row per check × target: `pass` | `finding` + ids) over detail sections keyed by finding id. An all-`pass` table is a complete review.
-- Finding = what you would block the merge for: `file:line`, why it is wrong, proof. Behavior → a red test: its command + failing output on the target revision. Text → the exact bytes, short + distinctive, that `rg -Fn` matches in the file as you read it.
+- Finding = what you would block the merge for: `file:line`, why it is wrong, proof. Behavior → a red test: its command + failing output on the target revision + the contract clause or independent oracle its expected value encodes. Text → the exact bytes, short + distinctive, that `rg -Fn` matches in the file as you read it.
 - Severity per finding: `blocker` | `major` | `minor`.
 - Stay read-only on the target; write the deliverable + red tests where the brief allows.

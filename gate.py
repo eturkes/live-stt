@@ -23,18 +23,25 @@ accuracy question, not on every commit.
 Every step runs with `PYTHONPATH` cleared: an inherited entry can shadow the
 installed OpenVINO wheel with a host build that cannot execute here, which
 surfaces as a confusing `AxisSet` ImportError rather than a missing module.
+
+Every step run appends one row to the gitignored `gate-ledger.tsv`, the record of
+which steps buy signal; `--classify` labels its reds (`toolchain.md`).
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from itertools import takewhile
 
 PROD_FILES = ["live_stt.py", "replay.py", "cer.py", "streaming.py", "session_report.py"]
@@ -79,8 +86,8 @@ SCAN_SKIP_DIRS = frozenset(
 # `--runxfail` from either source blinds the skip check below.
 ENV = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTEST_ADDOPTS")}
 # A case that skips or xfails is a demotion unless a resource is absent, and a
-# demotion needs a queue row and the user's approval first
-# (`assurance-posture.md`). So the pytest step DECLARES its skips: a resource
+# demotion needs a queue row first, carrying its reason and the check that restores
+# it (`assurance-posture.md`). So the pytest step DECLARES its skips: a resource
 # gate opens its reason with this prefix and keeps its case live, while a bare
 # `pytest.mark.skip` or any xfail fails the step. Prose carried the invariant
 # before -- "a green run reports exactly one skip" -- and prose cannot fail, so
@@ -100,12 +107,89 @@ _SUMMARY = re.compile(
     r"(?: \((?:\d+ days?, )?\d+:\d{2}:\d{2}\))?"
 )
 _TALLY = re.compile(r"\b(\d+) (?:skipped|xfailed|xpassed)\b")
-# Every gate run blocks the critical path, so the suite names where its time goes.
+# The suite dominates the gate's wall-clock, so a run names where that time goes.
 SLOWEST = 5
 # pytest-xdist workers. Serial, the suite took ~39 s on this 8-core host; 3/4/6 workers read
 # 23-30 / 23-27 / 22-23 s interleaved under load 8, and 8 workers stretched the LID census lock
 # (4 ONNX threads of its own, the suite's floor) from 5 s to 15 s.
 PYTEST_WORKERS = 6
+# Gitignored, one row per step run. A red lands unclassified (`?`) and is labeled on
+# the spot with one of CLASSES; a pass carries `-`.
+LEDGER = "gate-ledger.tsv"
+LEDGER_HEADER = "date\ttree\tstep\tseconds\tverdict\tclass\n"
+CLASSES = ("product", "gate", "flake", "planted")
+
+
+@dataclass(frozen=True)
+class Ledger:
+    """One run's rows: every step shares the run's start and the tree it graded."""
+
+    date: str
+    tree: str
+
+    def append(self, step: str, seconds: float, ok: bool) -> None:
+        verdict, label = ("pass", "-") if ok else ("FAIL", "?")
+        with open(LEDGER, "a", encoding="utf-8") as f:
+            # The fast gate launches parallel `--only` runs, each appending.
+            fcntl.flock(f, fcntl.LOCK_EX)
+            if os.fstat(f.fileno()).st_size == 0:
+                f.write(LEDGER_HEADER)
+            f.write(f"{self.date}\t{self.tree}\t{step}\t{seconds:.1f}\t{verdict}\t{label}\n")
+
+
+def open_ledger() -> Ledger | None:
+    """The run's ledger, kept at a repository's top level alone.
+
+    `tree` = what `git add -A` would commit (tracked + untracked-unignored), hashed
+    through a scratch copy of the index, so a row names exactly the tree it graded and
+    a commit's `HEAD^{tree}` can be matched against it. Below the top level -- a seed
+    tree under an ignored directory -- the rows and the hash would both describe the
+    repository around the seed; outside any repository there is no tree to name.
+    """
+    where = subprocess.run(
+        ["git", "rev-parse", "--show-prefix", "--git-path", "index"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    prefix, index = (where.stdout.splitlines() + ["", ""])[:2]
+    if where.returncode != 0 or prefix:
+        return None
+    with tempfile.TemporaryDirectory() as scratch:
+        env = {**ENV, "GIT_INDEX_FILE": os.path.join(scratch, "index")}
+        if os.path.exists(index):
+            # The real index's stat cache spares rehashing every unchanged file.
+            shutil.copyfile(index, env["GIT_INDEX_FILE"])
+        for argv in (["git", "add", "-A"], ["git", "write-tree"]):
+            hashed = subprocess.run(argv, capture_output=True, text=True, env=env, check=False)
+            if hashed.returncode != 0:
+                break
+    if hashed.returncode != 0:
+        print(f"{LEDGER}: tree hash failed, run unrecorded: {hashed.stderr.strip()}", flush=True)
+        return None
+    return Ledger(datetime.now().astimezone().isoformat(timespec="seconds"), hashed.stdout.strip())
+
+
+def ledger_rows() -> list[list[str]]:
+    try:
+        with open(LEDGER, encoding="utf-8") as f:
+            return [line.rstrip("\n").split("\t") for line in f][1:]
+    except FileNotFoundError:
+        return []
+
+
+def classify(label: str, step: str | None) -> int:
+    """Label every unclassified red, or `step`'s alone; returns how many."""
+    with open(LEDGER, "r+", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        rows = [line.rstrip("\n").split("\t") for line in f]
+        hits = [r for r in rows[1:] if r[-1] == "?" and step in (None, r[2])]
+        for row in hits:
+            row[-1] = label
+        f.seek(0)
+        f.write("".join("\t".join(r) + "\n" for r in rows))
+        f.truncate()
+    return len(hits)
 
 
 def scan_files() -> list[str]:
@@ -230,12 +314,14 @@ def steps() -> list[Step]:
     ]
 
 
-def run(step: Step, verbose: bool) -> bool:
+def run(step: Step, verbose: bool, ledger: Ledger | None = None) -> bool:
     start = time.perf_counter()
     done = subprocess.run(step.argv, capture_output=True, text=True, env=ENV, check=False)
     elapsed = time.perf_counter() - start
     complaint = step.check(done.stdout) if step.check and done.returncode == 0 else None
     ok = done.returncode == 0 and complaint is None
+    if ledger:
+        ledger.append(step.name, elapsed, ok)
     label = "pass" if ok else "FAIL"
     if not step.blocking:
         label += " (non-blocking)"
@@ -255,14 +341,36 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Run the project quality gate.")
     ap.add_argument("--only", choices=names, help="Run one step instead of all of them.")
     ap.add_argument("-v", "--verbose", action="store_true", help="Print output of every step.")
+    ap.add_argument(
+        "--classify",
+        choices=CLASSES,
+        help=f"Label {LEDGER}'s unclassified reds (with --only, that step's alone), then exit.",
+    )
     args = ap.parse_args()
 
+    if args.classify:
+        if not os.path.exists(LEDGER):
+            print(f"no {LEDGER} here", flush=True)
+            return 1
+        print(f"classified {args.classify}: {classify(args.classify, args.only)} red(s)")
+        return 0
+    hint = f"classify: gate.py --classify {'|'.join(CLASSES)} [--only STEP]"
+    ledger = open_ledger()
+    if ledger:
+        # A rerun counts once its red sits classified (`toolchain.md`); list what does not.
+        reds = [r for r in ledger_rows() if r[-1] == "?"]
+        for row in reds:
+            print(f"unclassified red: {row[0]} {row[2]} @ {row[1][:12]}", flush=True)
+        if reds:
+            print(hint, flush=True)
     selected = [s for s in steps() if args.only is None or s.name == args.only]
     start = time.perf_counter()
-    failed = [s.name for s in selected if not run(s, args.verbose) and s.blocking]
+    failed = [s.name for s in selected if not run(s, args.verbose, ledger) and s.blocking]
     total = f"{time.perf_counter() - start:.1f}s"
     if failed:
         print(f"gate FAILED: {', '.join(failed)} ({total})", flush=True)
+        if ledger:
+            print(hint, flush=True)
         return 1
     print(f"gate passed: {len(selected)} steps ({total})", flush=True)
     return 0
