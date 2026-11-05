@@ -124,3 +124,16 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
     a green there classifies the red `flake` by itself; parallel `--only` runs never lose or
     interleave a row; every `tests/test_gate.py` seed still reddens; each firing on its planted
     input (L-022).
+
+11. **Translator prompt payload accounted** — every translation turn sends ~10.5K input tokens
+    (`tests/eval_translator_ab.py` screen, luna:low JA→EN p50 10,533 in / 10,240 cached; terra
+    ~10.9K), where `translation-leg.md` prices a turn at ≈180 in, the caption alone. Suspects: codex's
+    base instructions and the catalog-owned tool schemas config cannot remove (`apply_patch`, the MCP
+    readers, `collaboration.*`). The ~5.4 s fresh-thread bare-turn residual and the ~1.5 s warm turn
+    stay unattributed, and a prompt the server must still read is the one untested lever on both.
+    Tier `data` (a measurement; a config change it motivates = its own row).
+    **Accept:** one turn's request under `RUST_LOG=trace` accounted to the token by component (base
+    instructions, tool schemas, `developerInstructions`, history, caption), the ≈180 figure restated
+    against it, and each component a config or thread option can remove measured for latency
+    through `tests/eval_translator_ab.py` (control vs trimmed arm), or recorded unremovable with
+    its reason.

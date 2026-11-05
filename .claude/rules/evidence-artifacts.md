@@ -6,8 +6,8 @@ paths:
 
 # Evidence artifacts — corpora, traces, evaluators
 
-Fast locks run in the gate. **The fourteen `eval_*.py` scripts are ON-DEMAND and never gate steps**:
-seven need gitignored weights, a corpus or the real translator plus minutes of compute, so run one
+Fast locks run in the gate. **The fifteen `eval_*.py` scripts are ON-DEMAND and never gate steps**:
+eight need gitignored weights, a corpus or the real translator plus minutes of compute, so run one
 when a decode change raises an accuracy question; `eval_playback_routing.py` needs sudo and the
 PipeWire tools instead. `eval_latency.py`, `eval_two_way_settled.py`,
 `eval_term_census.py`, `eval_en_pairing.py` (default mode) and `eval_lag.py` need none of that,
@@ -199,6 +199,18 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `codex app-server`; probe inputs are literals, so reruns need no artifact. Its translator closes
   in `finally`, including thread-setup failures; `test_translate_repeat.py` reddens with that
   cleanup neutralized (L-022).
+  `eval_translator_ab.py` — the translation leg's model × effort LATENCY screen through real
+  `CodexTranslator`s, one app-server per `MODEL:EFFORT` arm, control first; committed inputs
+  (`caption_trace.json` [40:100] JA→EN primary, `en_pairing_trace.json` [40:80] EN→JA guardrail).
+  Design = scientist-1's appraisal: Williams-balanced arm order per block (seeded), both legs
+  warmed by `_handshake`, a wiretap on `_request` proving each arm's model/effort/tier reached the
+  wire and the tier echoed, per-turn token usage, failed vs no-attempt turns, paired median + p90
+  difference with iid, Bonferroni and moving-block (4, 8) bootstrap CIs, and `verdict()` = the
+  rule frozen before its first run. **One process per arm = one session per arm**: a `faster`
+  verdict is a screen; a swap needs a fresh-client finalist-vs-control rerun + a blind quality
+  audit. `test_translator_ab.py` — neutralizing the constant pinning, the Williams rotation, the
+  `finally` close, the EN handshake or the control-side failure filter each reddens a lock
+  (L-022).
 - `eval_backpressure.py` + `test_backpressure.py` — the production two-stage worker paced on a virtual
   sample clock with real silero and seconds-bounded queues, only decode cost replaced. Arms: the sherpa
   two-stage path at defect B's own 2 s (`DEFECT_B_HEADROOM_S`, never the shipped 8 s, which a
@@ -323,8 +335,11 @@ because they replay committed traces — a fresh clone runs them in under a seco
   `live-stt --playback --no-translate` (accelerator prelude) over one half of
   `eval_playback_silence.py`'s clips, 3 rounds, 10 s of silence after each, the default moved to
   `sink_b` after round 1 — per-play captions + S/D/I, the captions past a clip's 4 s tail, and
-  the link switch; whole-second transcript stamps, so the tail attribution is coarse. Both playback
-  evaluators align `cer.normalize(reference)` against `cer.normalize(hypothesis)`, preserving raw
+  the link switch; `--asr-device` passes through, and `--e2e two-way` = the pinned set with JFK's
+  English (`JFK_SHA256`-pinned download) inserted after `cv_long`, under `--two-way`, adding a
+  `routed` pass (every play captioned below CER `ROUTED_CER`=0.5, a misroute reading 0.67-2.06);
+  every set reports the session's last `backlog peak:` line (`backlog_peak`, its worst backlog);
+  whole-second transcript stamps, so the tail attribution is coarse. Both playback evaluators align `cer.normalize(reference)` against `cer.normalize(hypothesis)`, preserving raw
   caption text in their reports. `test_playback_evaluators.py` reaches both scorers with process,
   model and network boundaries faked; raw operands restore S=2/D=3/I=0 for normalized-equal text
   and redden both locks (L-022). Stack acquisition unwinds its own failed `__enter__`; probe and
@@ -505,14 +520,16 @@ uv run python tests/build_lag_trace.py [--check]        # rebuild that trace fro
 uv run python tests/eval_backpressure.py                # virtual-clock bounded/drop-free (silero+corpus)
 uv run python tests/eval_cer.py                         # 2-engine CER + RTF baseline (models + corpus)
 uv run python tests/eval_retention.py [--device D]      # retention CER on the shipped NPU/VAC path
-uv run python tests/eval_playback_routing.py [--e2e pinned|probe] [--json]  # --playback routing, no hw
-                                                        # (--e2e probe: + the soundfile/pyarrow pins)
+uv run python tests/eval_playback_routing.py [--e2e pinned|probe|two-way] [--asr-device D] [--json]
+                                                        # --playback routing, no hw (--e2e probe:
+                                                        # + soundfile/pyarrow pins; two-way: soundfile)
 uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 python tests/eval_playback_silence.py [--arms ZNVW]
 uv run --with pykakasi==2.3.0 python tests/eval_asr_screen.py --model DIR --device D [--arms A]  # GPU screen
 uv run python tests/build_caption_trace.py              # raw utterances over all six sections, ~8 min
 uv run python tests/build_retention_probe.py            # rebuild the pause-free retention probe
 uv run python tests/gen_replay_goldens.py               # regenerate goldens after a pipeline change
 uv run python tests/eval_translate_repeat.py [--json F] # what repetition stalls a real turn (~15 min)
+uv run python tests/eval_translator_ab.py [--arms M:E ..] [--json F]  # model × effort latency (~20 min)
 uv run --with soundfile python tests/eval_long_form.py [--sections 1,3] [--score]
 uv run --with soundfile==0.14.0 --with pyarrow==26.0.0 python tests/fetch_real_clips.py
 ```

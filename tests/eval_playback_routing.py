@@ -13,22 +13,26 @@ Arms (each a fresh PortAudio process opening the device the way `run_session` do
   monitor  the property: it links to sink_a's monitor, and a 440 Hz tone at 8000/32768 played
            into the default sink reads back at that peak
   follow   the default sink moves to sink_b mid-stream: the links follow
-  --e2e SET  the real `live-stt --playback --no-translate` (whisper: source the accelerator
-           prelude first) over SET = pinned | probe (`eval_playback_silence.py`'s two halves),
-           ROUNDS rounds, GAP_S of silence after each clip, the default moved to sink_b after
-           round 1: per-clip captions and the captions landing past a clip's TAIL_S.
+  --e2e SET  the real `live-stt --playback --no-translate --asr-device DEVICE` (whisper: source
+           the accelerator prelude first) over SET = pinned | probe (`eval_playback_silence.py`'s
+           two halves) | two-way (pinned with JFK's English inside, under `--two-way`), ROUNDS
+           rounds, GAP_S of silence after each clip, the default moved to sink_b after round 1:
+           per-clip captions and the captions landing past a clip's TAIL_S.
 
 Needs sudo, unshare, setpriv, pipewire, wireplumber, pipewire-pulse, pipewire-alsa,
 pactl + paplay (pulseaudio-utils) and pw-link. Exit 1 when an arm misses its expectation.
 
-  uv run python tests/eval_playback_routing.py [--e2e pinned|probe] [--json]
-  (--e2e probe decodes CV8 rows: add --with soundfile==0.14.0 --with pyarrow==26.0.0)
+  uv run python tests/eval_playback_routing.py [--e2e pinned|probe|two-way] [--asr-device D]
+                                               [--json]
+  (--e2e probe decodes CV8 rows: add --with soundfile==0.14.0 --with pyarrow==26.0.0;
+   --e2e two-way decodes a FLAC: add --with soundfile==0.14.0)
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -40,6 +44,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 import wave
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +58,14 @@ from cer import align, normalize  # noqa: E402
 
 TONE_HZ, TONE_PEAK = 440, 8000
 GAP_S, ROUNDS, TAIL_S = 10.0, 3, 4.0
+ROUTED_CER = 0.5
+# Public domain, 11 s: the English clip asr-pipeline.md's loop repro already names.
+JFK_URL = "https://raw.githubusercontent.com/openai/whisper/main/tests/jfk.flac"
+JFK_SHA256 = "63a4b1e4c1dc655ac70961ffbf518acd249df237e5a0152faae9a4a836949715"
+JFK_REF = (
+    "And so my fellow Americans, ask not what your country can do for you, "
+    "ask what you can do for your country."
+)
 NO_HARDWARE = """wireplumber.profiles = {
   main = {
     monitor.alsa = disabled
@@ -315,12 +328,31 @@ def routing(graph: Graph) -> dict:
     return arms
 
 
+def _fetch_pinned(url: str, sha256: str, dest: Path) -> Path:
+    """Download to dest, refusing bytes whose SHA-256 differs from the pin."""
+    with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 -- pinned https URL
+        payload = response.read()
+    got = hashlib.sha256(payload).hexdigest()
+    if got != sha256:
+        raise RuntimeError(f"{url}: sha256 {got}, pinned {sha256}")
+    dest.write_bytes(payload)
+    return dest
+
+
 def _clip_files(graph: Graph, which: str) -> list[tuple[str, Path, str]]:
     refs = json.loads((TESTS / "real_clips.json").read_text(encoding="utf-8"))
-    if which == "pinned":
+    if which in ("pinned", "two-way"):
         cache = ROOT / "spike" / "backends" / "cache"
         names = ("short", "med", "long", "kana", "xlong", "multi", "paused")
-        return [(f"cv_{n}", cache / f"cv_{n}.wav", refs[f"cv_{n}"]["ja_ref"]) for n in names]
+        out = [(f"cv_{n}", cache / f"cv_{n}.wav", refs[f"cv_{n}"]["ja_ref"]) for n in names]
+        if which == "two-way":  # English between Japanese: both switches, every round
+            import soundfile as sf  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+
+            flac = _fetch_pinned(JFK_URL, JFK_SHA256, graph.dir / "jfk.flac")
+            pcm, rate = sf.read(str(flac), dtype="float32")
+            sf.write(str(graph.dir / "jfk.wav"), pcm, rate, subtype="FLOAT")
+            out.insert(3, ("jfk", graph.dir / "jfk.wav", JFK_REF))
+        return out
     import eval_playback_silence  # noqa: PLC0415 -- probe half: its pinned CV8 rows
     import soundfile as sf  # pyright: ignore[reportMissingImports]  (uv run --with soundfile)
 
@@ -334,12 +366,14 @@ def _clip_files(graph: Graph, which: str) -> list[tuple[str, Path, str]]:
     return out
 
 
-def e2e(graph: Graph, which: str) -> dict:
+def e2e(graph: Graph, which: str, device: str = live_stt.ASR_DEVICE) -> dict:
     clips = _clip_files(graph, which)
     out, pidfile = graph.dir / "e2e", graph.dir / "live-stt.pid"
     out.mkdir()
     argv = [sys.executable, str(ROOT / "live_stt.py"), "--playback", "--no-translate"]
-    argv += ["-o", str(out / "e2e.txt")]
+    argv += ["--asr-device", device, "-o", str(out / "e2e.txt")]
+    if which == "two-way":
+        argv.append("--two-way")
     with (out / "stdout.txt").open("w") as stdout, (out / "stderr.txt").open("w") as stderr:
         app = subprocess.Popen(  # noqa: S603
             graph.isolated(argv, pidfile), env=graph.env, stdout=stdout, stderr=stderr
@@ -389,13 +423,25 @@ def e2e(graph: Graph, which: str) -> dict:
         per_play.append({"clip": name, "lines": len(texts), "S": s, "D": d, "I": i,
                          "text": "".join(texts)})  # fmt: skip
     stopped = "Stopped." in (out / "stdout.txt").read_text()
-    result = {"set": which, "exit": code, "stopped": stopped, "links": links, "plays": per_play,
-              "captions": len(captions), "late": late}  # fmt: skip
+    # The meter's high-water mark (L-006): off a TTY it logs each peak move, so the last
+    # line is the session's worst backlog, `drop=` included once any block was lost.
+    peaks = [ln for ln in (out / "stderr.txt").read_text().splitlines() if "backlog peak: " in ln]
+    peak = peaks[-1].split("backlog peak: ", 1)[1] if peaks else ""
+    result = {"set": which, "device": device, "exit": code, "stopped": stopped, "links": links,
+              "plays": per_play, "captions": len(captions), "late": late,
+              "backlog_peak": peak}  # fmt: skip
     result["pass"] = {
         "exit": code == 0 and stopped,
         "links": links["start"] == ["sink_a:monitor_FL", "sink_a:monitor_FR"]
         and links["switched"] == ["sink_b:monitor_FL", "sink_b:monitor_FR"],
     }
+    if which == "two-way":
+        # A misrouted play decodes under the other token: CER 0.67-2.06 in the turbo probe
+        # (asr-pipeline.md), against ordinary misses well under 0.5 on these clips.
+        result["pass"]["routed"] = all(
+            p["lines"] and (p["S"] + p["D"] + p["I"]) / len(normalize(refs[p["clip"]])) < ROUTED_CER
+            for p in per_play
+        )
     return result
 
 
@@ -404,7 +450,8 @@ def main() -> None:
         probe(sys.argv[2], float(sys.argv[3]))
         return
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
-    ap.add_argument("--e2e", choices=("pinned", "probe"))
+    ap.add_argument("--e2e", choices=("pinned", "probe", "two-way"))
+    ap.add_argument("--asr-device", choices=("NPU", "GPU"), default=live_stt.ASR_DEVICE)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     tools = ("sudo", "unshare", "setpriv", "pipewire", "wireplumber", "pipewire-pulse")
@@ -414,7 +461,7 @@ def main() -> None:
     with Graph() as graph:
         result = {"routing": routing(graph)}
         if args.e2e:
-            result["e2e"] = e2e(graph, args.e2e)
+            result["e2e"] = e2e(graph, args.e2e, args.asr_device)
     passed = all(all(arm["pass"].values()) for arm in result.values())
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=1))
@@ -426,12 +473,16 @@ def main() -> None:
         verdict = "ok" if r["pass"]["peak"] else "MISS"
         print(f"peak     {r['peak']} (tone {TONE_PEAK / 32768:.4f})  {verdict}")
         if e := result.get("e2e"):
-            print(f"e2e {e['set']}: exit {e['exit']}, Stopped. {e['stopped']}, links {e['links']}")
+            print(
+                f"e2e {e['set']} @ {e['device']}: exit {e['exit']}, "
+                f"Stopped. {e['stopped']}, links {e['links']}"
+            )
             for p in e["plays"]:
                 print(
                     f"  {p['clip']:9} {p['lines']} lines S{p['S']} D{p['D']} I{p['I']} {p['text']}"
                 )
             print(f"  captions {e['captions']}, past a clip's {TAIL_S:g} s tail: {e['late']}")
+            print(f"  backlog peak: {e['backlog_peak'] or 'none logged'}")
     sys.exit(0 if passed else 1)
 
 

@@ -113,9 +113,14 @@ TGT checks N/A). One utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`)
    they do in NPU mode. A first GPU run compiles in seconds, not minutes. Run it with no other GPU
    workload on the box: a concurrent GPU benchmark stretches forced decodes 2-7×, turbo's runaway
    span past the 8 s capture headroom (`asr-pipeline.md` `## GPU mode`), so a slow or dropping GPU
-   session is first a contention question.
+   session is first a contention question. A video call shares the GPU (the browser's compositing
+   + video decode, unmeasured): with `--save-log`, a climbing `q=` or any `drop=` → restart in NPU
+   mode, which nothing else on the box contends for. Agent-covered in the container: GPU two-way
+   startup + decode through `--playback` (item 11).
 11. **Audio playback (`--playback`, never met the host or a call)** — on the host, in a Zoom call
-   with the speaker set to `Same as System`, `uv run live-stt --playback --save-audio --save-log`.
+   (speaker `Same as System`) or a Teams call, app or browser (speaker = the system default
+   output), `uv run live-stt --playback --save-audio --save-log`, `--two-way --asr-device GPU` for
+   a bilingual call.
    Pass: startup prints `Playback: the default output, through pipewire @ <rate> Hz …`; the other
    participants' Japanese publishes `SRC n:` lines and `TGT n:` follows; connect headphones (wired:
    Speaker → Headphones sink; Bluetooth: a bluez sink) mid-call and captions continue; the pauses
@@ -125,7 +130,14 @@ TGT checks N/A). One utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`)
    That WAV is also the re-open trigger for `.agent/deferred.md` → *Playback leveling across
    digital silence*. Agent-covered by `tests/eval_playback_routing.py` on a private PipeWire 1.4.2
    stack, no hardware: device listing, the monitor link, the default-output switch, and the real
-   NPU session over both clip sets, 21 plays each, run twice.
+   NPU session over both clip sets, 21 plays each, run twice. **The bilingual GPU form too**
+   (`--e2e two-way --asr-device GPU`, run twice): the real `live-stt --playback --two-way
+   --asr-device GPU --no-translate` over the pinned clips with JFK's English after `cv_long`, 3
+   rounds — every play captioned, JFK in English at S0 D0 I0 in 6 of 6 plays, `cv_kana` after it
+   back in Japanese, 42 captions, none past a tail, the links following the switch,
+   `backlog peak: q=1.52s` with no `drop=`, exit 0. Translation was OFF there: two-way translation
+   under playback rests on the translator screen alone (`translation-leg.md`); the host's PipeWire
+   1.6.9, a browser call app and a real call stay the user's.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

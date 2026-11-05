@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import io
 import shutil
 import signal
 import subprocess
@@ -39,7 +42,14 @@ def test_silence_cer_normalizes_both_operands(monkeypatch):
     assert row["text"] == "aBこんにちは"
 
 
-def test_routing_e2e_normalizes_both_operands(monkeypatch, tmp_path):
+def _fake_e2e(monkeypatch, tmp_path, caption: str, clips: list) -> tuple[routing.Graph, list]:
+    """e2e with every process, sleep and graph boundary faked: (graph, live-stt's argv).
+
+    Play k spans [100 + 10k, 101 + 10k] and the transcript carries `caption` once inside each.
+    """
+    seen: list = []
+    plays = 2 * len(clips)  # ROUNDS = 2
+
     class Graph:
         dir = tmp_path
         env = {}
@@ -55,15 +65,20 @@ def test_routing_e2e_normalizes_both_operands(monkeypatch, tmp_path):
         def default(self, sink):
             self.sink = sink
 
+        played = 0
+
         def play(self, _):
-            return 100.0, 101.0
+            self.played += 1
+            return 90.0 + 10 * self.played, 91.0 + 10 * self.played
 
     def popen(argv, **kw):
+        seen[:] = argv
         kw["stdout"].write("Listening\nStopped.\n")
         kw["stdout"].flush()
+        _stderr_peaks(Path(kw["stderr"].name))
         transcript = Path(argv[argv.index("-o") + 1])
-        stamp = datetime.fromtimestamp(100).isoformat()
-        transcript.write_text(f"[{stamp}] SRC 1: aBこんにちは\n", encoding="utf-8")
+        stamps = (datetime.fromtimestamp(100 + 10 * k).isoformat() for k in range(plays))
+        transcript.write_text("".join(f"[{t}] {caption}\n" for t in stamps), encoding="utf-8")
         return SimpleNamespace(poll=lambda: None, wait=lambda **_: 0, returncode=0)
 
     monkeypatch.setattr(routing.subprocess, "Popen", popen)
@@ -71,14 +86,66 @@ def test_routing_e2e_normalizes_both_operands(monkeypatch, tmp_path):
     monkeypatch.setattr(routing, "_kill_own", lambda *_: None)
     monkeypatch.setattr(routing.time, "sleep", lambda _: None)
     monkeypatch.setattr(routing, "ROUNDS", 2)
-    monkeypatch.setattr(
-        routing, "_clip_files", lambda *_: [("clip", tmp_path / "unused.wav", "Ａ、b こんにちは。")]
-    )
-    result = routing.e2e(cast("routing.Graph", Graph()), "pinned")
+    monkeypatch.setattr(routing, "_clip_files", lambda *_: clips)
+    return cast("routing.Graph", Graph()), seen
+
+
+def test_routing_e2e_normalizes_both_operands(monkeypatch, tmp_path):
+    clips = [("clip", tmp_path / "unused.wav", "Ａ、b こんにちは。")]
+    graph, _ = _fake_e2e(monkeypatch, tmp_path, "SRC 1: aBこんにちは", clips)
+    result = routing.e2e(graph, "pinned")
     assert all(result["pass"].values())
     row = result["plays"][0]
     assert (row["S"], row["D"], row["I"]) == (0, 0, 0), row
     assert row["text"] == "aBこんにちは"
+
+
+@pytest.mark.parametrize(
+    ("which", "device", "two_way"), [("pinned", "NPU", False), ("two-way", "GPU", True)]
+)
+def test_routing_e2e_runs_the_requested_mode(monkeypatch, tmp_path, which, device, two_way):
+    clips = [("clip", tmp_path / "unused.wav", "こんにちは。")]
+    graph, argv = _fake_e2e(monkeypatch, tmp_path, "SRC 1: こんにちは", clips)
+    result = routing.e2e(graph, which, device)
+    assert argv[argv.index("--asr-device") + 1] == device
+    assert ("--two-way" in argv) is two_way
+    assert result["device"] == device and all(result["pass"].values())
+    assert ("routed" in result["pass"]) is two_way
+    assert result["backlog_peak"] == "q=1.75s drop=3"  # the LAST peak line, not the first
+
+
+def _stderr_peaks(stderr_path):
+    stderr_path.write_text(
+        "INFO backlog peak: q=0.03s\nINFO caption dropped (x)\nINFO backlog peak: q=1.75s drop=3\n"
+    )
+
+
+def test_two_way_e2e_fails_a_play_decoded_under_the_other_language(monkeypatch, tmp_path):
+    """JFK's English published as a Japanese hallucination is the misroute the set exists for."""
+    clips = [("jfk", tmp_path / "unused.wav", routing.JFK_REF)]
+    (tmp_path / "a").mkdir(), (tmp_path / "b").mkdir()
+    graph, _ = _fake_e2e(
+        monkeypatch, tmp_path / "a", "SRC 1 <!>: ご視聴ありがとうございました", clips
+    )
+    assert routing.e2e(graph, "two-way", "GPU")["pass"]["routed"] is False
+    graph, _ = _fake_e2e(monkeypatch, tmp_path / "b", f"SRC 1: {routing.JFK_REF}", clips)
+    assert routing.e2e(graph, "two-way", "GPU")["pass"]["routed"] is True
+
+
+def test_a_pinned_download_refuses_other_bytes(monkeypatch, tmp_path):
+    payload = b"fLaC not the pinned clip"
+
+    @contextlib.contextmanager
+    def urlopen(_url, timeout):
+        yield io.BytesIO(payload)
+
+    monkeypatch.setattr(routing.urllib.request, "urlopen", urlopen)
+    dest = tmp_path / "jfk.flac"
+    with pytest.raises(RuntimeError, match="sha256"):
+        routing._fetch_pinned(routing.JFK_URL, routing.JFK_SHA256, dest)
+    assert not dest.exists()
+    good = hashlib.sha256(payload).hexdigest()
+    assert routing._fetch_pinned(routing.JFK_URL, good, dest).read_bytes() == payload
 
 
 def test_private_graph_unwinds_when_setup_fails(monkeypatch, tmp_path):

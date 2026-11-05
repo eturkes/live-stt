@@ -53,12 +53,14 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   row per `backlog peak:` drop increase. `uv run python session_report.py [--log F] [--json]
   [--source-lang L | --two-way]`. Smoke: a bare run → rc 0, `N sessions, … captions` over the
   saved transcripts.
-- `tests/` — fast locks (`uv run pytest -q`) + fourteen on-demand evaluators, inventory and per-file
+- `tests/` — fast locks (`uv run pytest -q`) + fifteen on-demand evaluators, inventory and per-file
   contract in `evidence-artifacts.md`: `eval_cer.py`, `eval_long_form.py`, `eval_backpressure.py`,
   `eval_retention.py`, `eval_asr_screen.py` (the GPU-mode recogniser screen),
-  `eval_playback_silence.py` (playback's digital-silence arms), `eval_translate_repeat.py` need
-  weights, a corpus or the real translator; `eval_playback_routing.py` drives `--playback` against
-  a private PipeWire graph (sudo + PipeWire tools, no audio hardware);
+  `eval_playback_silence.py` (playback's digital-silence arms), `eval_translate_repeat.py`,
+  `eval_translator_ab.py` (the translation leg's model × effort latency screen) need weights, a
+  corpus or the real translator; `eval_playback_routing.py` drives `--playback` against a private
+  PipeWire graph (sudo + PipeWire tools, no audio hardware), `--e2e two-way --asr-device GPU`
+  included;
   `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py`, `eval_en_pairing.py` and
   `eval_lag.py` replay committed traces and run in under a second in a fresh clone;
   `eval_anchor_scenarios.py` scripts decode runs over committed caption text in ~7 s. Each runs as
@@ -308,6 +310,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **10** Gate refuses a rerun past an unclassified red
   - The step ledger lists unclassified reds but refuses no rerun; accept → `.agent/deferred.md` →
     *Gate refuses a rerun past an unclassified red*.
+- [ ] **11** Translator prompt payload accounted
+  - A turn sends ~10.5K input tokens, ~97 % cached, against the ≈180 the rule prices; accept →
+    `.agent/deferred.md` → *Translator prompt payload accounted*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

@@ -44,6 +44,19 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
   Tanaka"). Every other number in this file was measured on 5.6-luna. The superseded Spark default
   ranked last (paired quality −0.486, 11 format violations, a permanent mid-run thread stall in 2 of
   4 attempts).
+- **`gpt-6.1-terra` and effort `none` — screened, NOT adopted** (`tests/eval_translator_ab.py`,
+  codex 0.166.0; 4 arms × 60 JA→EN + 40 EN→JA warm turns, Williams order, 400/400 ok, each arm's
+  model/effort + echoed `priority` checked on the wire). Paired median vs shipped luna:low, JA→EN
+  (p50 1.640 s, primary): terra:low −0.186 s `[-0.280, -0.096]` (Bonferroni `[-0.312, -0.087]`),
+  terra:none −0.157 `[-0.240, -0.005]`, luna:none −0.143 `[-0.221, -0.054]`; EN→JA (p50
+  1.754 s): terra:low −0.068 `[-0.296, +0.091]`, terra:none −0.012 `[-0.301, +0.115]`, luna:none
+  **+0.720 `[+0.392, +0.925]`**. The rule frozen before the run (adjusted CI below 0 AND a gain
+  ≥ 0.2 s) ⇒ no convincing speed win for any arm. Luna spent 0 reasoning tokens at `low` AND `none`
+  on all 100 turns ⇒ luna:none's deltas are not reasoning compute and stay unexplained; one process
+  per arm leaves a session effect open. terra:low reasoned on 9 of 100 turns (max 35 tokens) and
+  holds the run's slowest turn (5.099 s, 0 reasoning). Quality unmeasured: the blind audit gates a
+  winner alone. **The API takes `none` on both models** although `model/list` advertises `low`..`max`;
+  `minimal` is rejected, the error naming `none, low, medium, high, xhigh, max`.
 - **Tool-feature disables in `_CODEX_CONFIG` are THE latency lever.** Re-enabling
   web_search/image/browser/computer/apps re-injects ~15 K tokens/turn: p50 3.15 s → **0.99 s**. Keep
   them off.
@@ -82,9 +95,11 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
   patient's sex the Japanese did not state (12.3 % → **0.9 %** of turns). **The gender line is what
   fixes gender**: the drug-only arm's rise was noise, so shipping the drug line alone would have left
   the defect — attribute a fix to the line that causes it by running one cumulative arm per candidate.
-- Marginal cost ≈180 in + 7-60 out tokens/turn. Luna bills the shared `codex` bucket, so translation
-  competes with ordinary Codex usage (~1,300 turns ≈ 1 pp of the weekly window). Thread grows
-  ~30 tok/turn ⇒ rotate every ~100 turns, costing one ~2.7 s uncached turn.
+- Marginal cost ≈180 in + 7-60 out tokens/turn — the caption alone: the whole turn sends ~10.5K
+  input tokens, ~97 % cached (luna:low JA p50 10,533 in / 10,240 cached), unattributed
+  (`.agent/deferred.md` → *Translator prompt payload accounted*). Luna bills the shared `codex`
+  bucket, so translation competes with ordinary Codex usage (~1,300 turns ≈ 1 pp of the weekly
+  window). Thread grows ~30 tok/turn ⇒ rotate every ~100 turns, costing one ~2.7 s uncached turn.
 - Codex auth is external state (`~/.codex/auth.json` — check existence only, never read). `codex` must
   be on the PATH of the machine RUNNING live-stt; installs and logins are per-machine and user-only, and
   a container login does not carry over.
