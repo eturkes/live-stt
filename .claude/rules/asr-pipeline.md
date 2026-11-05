@@ -626,6 +626,14 @@ Char | kana CER, GPU unless named:
   forbidden with beams); `VAC_CHUNK_S`=0.5 (`--vac-chunk 0.5`) costs reading-level CER on long-form 0.0500 → 0.0608 and
   CV 0.0468 → 0.0525 (retention gains one event); term biasing (`hotwords`) costs accuracy (Device
   bullet above). Re-open only on a new model release or a genai release that changes one of these.
+- **Re-open sweep to 11-05** (researcher-2; MAIN re-read each deciding anchor at its source): no
+  openvino-genai release after 2026.4.1 (PyPI `2026.4.1.0`) ⇒ beam search stays refused; Granite
+  Speech 5.0 2B (10-20) lists Japanese yet documents no timestamps and no OpenVINO architecture
+  (4.1 port FLEURS-ja 6.30 %) ⇒ no route; Qwen-Audio-3.1-ASR ships no public weights.
+  **Haas-ja-v1.0** (third-intelligence, weights 10-22, 615.8M NeMo transducer, Apache-2.0) claims
+  the best open-model CER on asr-ja-bench, SpeechBSD business dialogue included, ahead of Whisper
+  large-v3, with no whisper-ja-760M row, and its runtime "needs Triton and CUDA" ⇒ queued, user
+  ruling 11-05 (`.agent/deferred.md` → *Haas-ja-v1.0 screened on the GPU*).
 - **English: large-v3's whole-clip gain does not survive the live path.** FLEURS-en 150 whole
   clip, char CER: large-v3 0.0211 (0.73 s p50) · turbo 0.0247 (0.30 s) · Qwen 0.0198 (no
   timestamps) · 1.5B 0.0261 · Cohere 0.0292. Through the VAC path (`--arms envac`, same 150

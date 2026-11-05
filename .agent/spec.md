@@ -317,6 +317,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **12** Start-up stall with translation in GPU mode
   - The first utterance waits behind a ~5 s blocking span with translation on (~1.6 s off); accept
     → `.agent/deferred.md` → *Start-up stall with translation in GPU mode*.
+- [ ] **13** Haas-ja-v1.0 screened on the GPU
+  - A post-screen Japanese transducer, CUDA-only today, unproven against 760M; queued (user ruling
+    11-05); accept → `.agent/deferred.md` → *Haas-ja-v1.0 screened on the GPU*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

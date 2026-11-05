@@ -151,3 +151,21 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
     first-play peak within 0.5 s of the no-translation run's on the same harness, or the cause
     recorded unremovable with its reason.
 
+13. **Haas-ja-v1.0 screened on the GPU** — a Japanese ASR model released after the 10-18 GPU screen
+    (`asr-pipeline.md` `## GPU mode`): third-intelligence/Haas-ja-v1.0, 615.8M NeMo transducer
+    (encoder 608.9M, prediction network 3.9M), Apache-2.0, native token timing; its card reports
+    the best open-model CER strict (6.12 % weighted) on asr-ja-bench v1.1, which holds SpeechBSD
+    business dialogue and TEDxJP talks beside read speech, ahead of Whisper large-v3 — no
+    whisper-ja-760M comparison. Its official runtime needs Triton + CUDA (flash-linear-attention
+    in the prediction network) ⇒ no Intel path today. Trained partly on Common Voice 26 ⇒ the CV
+    arm may overlap its training data. Tier `data` (a screen; integrating a winner = its own row).
+    **Re-open (user ruling 11-05: queue for later):** the user funds it, or an OpenVINO / ONNX port
+    of Haas appears.
+    **Accept:** Haas runs on the Arc 140V through OpenVINO (exported encoder + a Triton-free
+    prediction network), reproducing the card's FLEURS subset CER within 0.3 points through its
+    `examples/evaluate_asr_ja_bench.py`; then scored with `tests/eval_asr_screen.py`'s inputs and
+    metrics (fleurs, retention, long_form, cv; char + reading-level CER) against whisper-ja-760M
+    on the GPU, decode cost per update and forced-runaway span recorded; verdict = adopt for GPU
+    mode only on a reading-level win on the continuous-speech legs (retention, long-form) inside
+    the 8 s capture headroom, else refused with its numbers.
+
