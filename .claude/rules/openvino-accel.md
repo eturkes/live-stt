@@ -44,9 +44,11 @@ source .envrc                # from the repo root: PYTHONPATH + LD_LIBRARY_PATH
   `/proc/self/maps` after an NPU decode: every `libopenvino.so*`, `libopenvino_genai.so*`,
   `libopenvino_tokenizers.so` + `libtbb*` path sits under the venv, the NPU compiler loader under
   the farm's pin, correctly outside it.
-- direnv applies `.envrc` in hooked interactive shells ALONE, and the user's shells hook none on
-  either layer ⇒ **the live CLI cleans its own session**: `_session_env` hands the supervised child
-  the environment minus every `PYTHONPATH` entry holding an `openvino/` package and every
+- direnv applies `.envrc` in hooked interactive shells ALONE: the host's interactive zsh hooks it
+  (the current `.envrc` allowed there ⇒ a host `uv run live-stt` picks `.venv-host` unprefixed),
+  while agent Bash and plain bash hook none ⇒ **the live CLI cleans its own session**:
+  `_session_env` hands the supervised child the environment minus every `PYTHONPATH` entry
+  holding an `openvino/` package and every
   `LD_LIBRARY_PATH` entry holding `libopenvino.so*`/`libtbb.so*` — the `.envrc` rule, with the
   farm kept. A container `source env.sh` + `uv run live-stt` therefore reaches the NPU on the
   wheel's genai, and a host `uv run live-stt` needs nothing. It strips entries rather than the
