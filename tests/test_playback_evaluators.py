@@ -42,7 +42,9 @@ def test_silence_cer_normalizes_both_operands(monkeypatch):
     assert row["text"] == "aBこんにちは"
 
 
-def _fake_e2e(monkeypatch, tmp_path, caption: str, clips: list) -> tuple[routing.Graph, list]:
+def _fake_e2e(
+    monkeypatch, tmp_path, caption: str, clips: list, target: str = ""
+) -> tuple[routing.Graph, list]:
     """e2e with every process, sleep and graph boundary faked: (graph, live-stt's argv).
 
     Play k spans [100 + 10k, 101 + 10k] and the transcript carries `caption` once inside each.
@@ -78,7 +80,8 @@ def _fake_e2e(monkeypatch, tmp_path, caption: str, clips: list) -> tuple[routing
         _stderr_peaks(Path(kw["stderr"].name))
         transcript = Path(argv[argv.index("-o") + 1])
         stamps = (datetime.fromtimestamp(100 + 10 * k).isoformat() for k in range(plays))
-        transcript.write_text("".join(f"[{t}] {caption}\n" for t in stamps), encoding="utf-8")
+        lines = [f"[{t}] {caption}\n" + (f"[{t}] {target}\n" if target else "") for t in stamps]
+        transcript.write_text("".join(lines), encoding="utf-8")
         return SimpleNamespace(poll=lambda: None, wait=lambda **_: 0, returncode=0)
 
     monkeypatch.setattr(routing.subprocess, "Popen", popen)
@@ -109,15 +112,34 @@ def test_routing_e2e_runs_the_requested_mode(monkeypatch, tmp_path, which, devic
     result = routing.e2e(graph, which, device)
     assert argv[argv.index("--asr-device") + 1] == device
     assert ("--two-way" in argv) is two_way
+    assert "--no-translate" in argv and "translated" not in result["pass"]
     assert result["device"] == device and all(result["pass"].values())
     assert ("routed" in result["pass"]) is two_way
     assert result["backlog_peak"] == "q=1.75s drop=3"  # the LAST peak line, not the first
+    assert result["backlog_timeline"] == [  # t = seconds from the first play's start
+        [-5.0, "startup", "q=0.03s"],
+        [0.0, "clip#1", "q=1.75s drop=3"],
+    ]
 
 
 def _stderr_peaks(stderr_path):
+    """A startup peak, then one inside the first play (plays start at 100 + 10k, local time)."""
+    at = [datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S,000") for t in (95, 100)]
     stderr_path.write_text(
-        "INFO backlog peak: q=0.03s\nINFO caption dropped (x)\nINFO backlog peak: q=1.75s drop=3\n"
+        f"[{at[0]}] INFO backlog peak: q=0.03s\n[{at[0]}] INFO caption dropped (x)\n"
+        f"[{at[1]}] INFO backlog peak: q=1.75s drop=3\n"
     )
+
+
+def test_translate_keeps_the_leg_on_and_requires_a_target_per_source(monkeypatch, tmp_path):
+    clips = [("clip", tmp_path / "unused.wav", "こんにちは。")]
+    (tmp_path / "a").mkdir(), (tmp_path / "b").mkdir()
+    graph, argv = _fake_e2e(monkeypatch, tmp_path / "a", "SRC 1: こんにちは", clips, "TGT 1: Hi")
+    result = routing.e2e(graph, "two-way", "GPU", translate=True)
+    assert "--no-translate" not in argv
+    assert result["translations"] == result["captions"] == 2 and result["pass"]["translated"]
+    graph, _ = _fake_e2e(monkeypatch, tmp_path / "b", "SRC 1: こんにちは", clips)
+    assert routing.e2e(graph, "two-way", "GPU", translate=True)["pass"]["translated"] is False
 
 
 def test_two_way_e2e_fails_a_play_decoded_under_the_other_language(monkeypatch, tmp_path):

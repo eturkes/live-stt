@@ -340,6 +340,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   English (`JFK_SHA256`-pinned download) inserted after `cv_long`, under `--two-way`, adding a
   `routed` pass (every play captioned below CER `ROUTED_CER`=0.5, a misroute reading 0.67-2.06);
   every set reports the session's last `backlog peak:` line (`backlog_peak`, its worst backlog);
+  `--translate` keeps the codex leg on and adds a `translated` pass (a `TGT` line per `SRC` line);
+  `backlog_timeline` places each peak move against the play it landed in. One tone-arm `peak`
+  MISS (0.2874 for 0.2441) in 8 routing runs, unreproduced in 2 reruns, stays unexplained;
   whole-second transcript stamps, so the tail attribution is coarse. Both playback evaluators align `cer.normalize(reference)` against `cer.normalize(hypothesis)`, preserving raw
   caption text in their reports. `test_playback_evaluators.py` reaches both scorers with process,
   model and network boundaries faked; raw operands restore S=2/D=3/I=0 for normalized-equal text

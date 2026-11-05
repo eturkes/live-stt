@@ -135,9 +135,14 @@ TGT checks N/A). One utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`)
    --asr-device GPU --no-translate` over the pinned clips with JFK's English after `cv_long`, 3
    rounds — every play captioned, JFK in English at S0 D0 I0 in 6 of 6 plays, `cv_kana` after it
    back in Japanese, 42 captions, none past a tail, the links following the switch,
-   `backlog peak: q=1.52s` with no `drop=`, exit 0. Translation was OFF there: two-way translation
-   under playback rests on the translator screen alone (`translation-leg.md`); the host's PipeWire
-   1.6.9, a browser call app and a real call stay the user's.
+   `backlog peak: q=1.52s` with no `drop=`, exit 0. **With `--translate`** (the `gpt-6.1-terra`
+   leg, two runs): 42 of 42 `SRC` lines translated each, every other pass unchanged; the first
+   utterance's blocking span reaches `q=4.79-5.03s` when it starts 3 s after `Listening`, against
+   1.52-1.75 s without translation and 2.09 s after a 30 s quiet lead-in, and no later peak moved
+   past it (a high-water log hides later spans below it), no `drop=` ⇒ codex's work right after
+   its start-up warm-up contends with the first GPU decodes (`.agent/deferred.md` → *Start-up
+   stall with translation in GPU mode*). The host's PipeWire 1.6.9, a browser call app and a real
+   call stay the user's.
 
 **Every `SRC n:` criterion above is the ONE-WAY grammar**, and `--two-way` is default OFF ⇒ no marker
 can appear without the flag. Under it, an utterance whose language was HELD rather than detected

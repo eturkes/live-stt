@@ -13,7 +13,8 @@ Arms (each a fresh PortAudio process opening the device the way `run_session` do
   monitor  the property: it links to sink_a's monitor, and a 440 Hz tone at 8000/32768 played
            into the default sink reads back at that peak
   follow   the default sink moves to sink_b mid-stream: the links follow
-  --e2e SET  the real `live-stt --playback --no-translate --asr-device DEVICE` (whisper: source
+  --e2e SET  the real `live-stt --playback --no-translate --asr-device DEVICE` (`--translate`
+           keeps the codex leg on and requires a TGT line per SRC line; whisper: source
            the accelerator prelude first) over SET = pinned | probe (`eval_playback_silence.py`'s
            two halves) | two-way (pinned with JFK's English inside, under `--two-way`), ROUNDS
            rounds, GAP_S of silence after each clip, the default moved to sink_b after round 1:
@@ -23,7 +24,7 @@ Needs sudo, unshare, setpriv, pipewire, wireplumber, pipewire-pulse, pipewire-al
 pactl + paplay (pulseaudio-utils) and pw-link. Exit 1 when an arm misses its expectation.
 
   uv run python tests/eval_playback_routing.py [--e2e pinned|probe|two-way] [--asr-device D]
-                                               [--json]
+                                               [--translate] [--json]
   (--e2e probe decodes CV8 rows: add --with soundfile==0.14.0 --with pyarrow==26.0.0;
    --e2e two-way decodes a FLAC: add --with soundfile==0.14.0)
 """
@@ -366,11 +367,14 @@ def _clip_files(graph: Graph, which: str) -> list[tuple[str, Path, str]]:
     return out
 
 
-def e2e(graph: Graph, which: str, device: str = live_stt.ASR_DEVICE) -> dict:
+def e2e(
+    graph: Graph, which: str, device: str = live_stt.ASR_DEVICE, translate: bool = False
+) -> dict:
     clips = _clip_files(graph, which)
     out, pidfile = graph.dir / "e2e", graph.dir / "live-stt.pid"
     out.mkdir()
-    argv = [sys.executable, str(ROOT / "live_stt.py"), "--playback", "--no-translate"]
+    argv = [sys.executable, str(ROOT / "live_stt.py"), "--playback"]
+    argv += [] if translate else ["--no-translate"]
     argv += ["--asr-device", device, "-o", str(out / "e2e.txt")]
     if which == "two-way":
         argv.append("--two-way")
@@ -402,11 +406,12 @@ def e2e(graph: Graph, which: str, device: str = live_stt.ASR_DEVICE) -> dict:
         finally:
             code = _stop(app, pidfile, str(graph.dir), signal.SIGINT, 90)
     graph.default("sink_a")
-    captions = []
+    captions, translations = [], 0
     for line in (out / "e2e.txt").read_text(encoding="utf-8").splitlines():
         stamp, rest = line[1:].split("] ", 1)
         if rest.startswith("SRC "):
             captions.append((datetime.fromisoformat(stamp).timestamp(), rest.split(": ", 1)[1]))
+        translations += rest.startswith("TGT ")
     owned: list[list[str]] = [[] for _ in plays]
     late = []
     for t, text in captions:
@@ -427,14 +432,24 @@ def e2e(graph: Graph, which: str, device: str = live_stt.ASR_DEVICE) -> dict:
     # line is the session's worst backlog, `drop=` included once any block was lost.
     peaks = [ln for ln in (out / "stderr.txt").read_text().splitlines() if "backlog peak: " in ln]
     peak = peaks[-1].split("backlog peak: ", 1)[1] if peaks else ""
+    timeline = []  # each peak move, placed against the play it landed in (or before the first)
+    for ln in peaks:
+        stamp = datetime.strptime(ln[1:24], "%Y-%m-%d %H:%M:%S,%f").timestamp()
+        during = [p for p in plays if p[1] <= stamp]
+        where = f"{during[-1][0]}#{len(during)}" if during else "startup"
+        t = round(stamp - plays[0][1], 1) if plays else 0.0
+        timeline.append([t, where, ln.split("backlog peak: ", 1)[1]])
     result = {"set": which, "device": device, "exit": code, "stopped": stopped, "links": links,
               "plays": per_play, "captions": len(captions), "late": late,
-              "backlog_peak": peak}  # fmt: skip
+              "backlog_peak": peak, "backlog_timeline": timeline,
+              "translations": translations}  # fmt: skip
     result["pass"] = {
         "exit": code == 0 and stopped,
         "links": links["start"] == ["sink_a:monitor_FL", "sink_a:monitor_FR"]
         and links["switched"] == ["sink_b:monitor_FL", "sink_b:monitor_FR"],
     }
+    if translate:  # no caption is withheld (two-way) and each one gets its turn
+        result["pass"]["translated"] = translations == len(captions)
     if which == "two-way":
         # A misrouted play decodes under the other token: CER 0.67-2.06 in the turbo probe
         # (asr-pipeline.md), against ordinary misses well under 0.5 on these clips.
@@ -452,6 +467,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--e2e", choices=("pinned", "probe", "two-way"))
     ap.add_argument("--asr-device", choices=("NPU", "GPU"), default=live_stt.ASR_DEVICE)
+    ap.add_argument("--translate", action="store_true", help="e2e with the codex leg on")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     tools = ("sudo", "unshare", "setpriv", "pipewire", "wireplumber", "pipewire-pulse")
@@ -461,7 +477,7 @@ def main() -> None:
     with Graph() as graph:
         result = {"routing": routing(graph)}
         if args.e2e:
-            result["e2e"] = e2e(graph, args.e2e, args.asr_device)
+            result["e2e"] = e2e(graph, args.e2e, args.asr_device, args.translate)
     passed = all(all(arm["pass"].values()) for arm in result.values())
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=1))
@@ -483,6 +499,9 @@ def main() -> None:
                 )
             print(f"  captions {e['captions']}, past a clip's {TAIL_S:g} s tail: {e['late']}")
             print(f"  backlog peak: {e['backlog_peak'] or 'none logged'}")
+            for t, where, text in e["backlog_timeline"]:
+                print(f"    {t:+7.1f} s  {where:12} {text}")
+            print(f"  TGT lines: {e['translations']} of {e['captions']} SRC")
     sys.exit(0 if passed else 1)
 
 

@@ -34,7 +34,7 @@ On the measured NPU clip, the first dim preview trails your voice by a median of
 - ~790 MB of model weights in `models/` for the default engine (one-time
   download, see below). Each sherpa fallback engine adds its own weights, and
   needs `sherpa-onnx` + `sherpa-onnx-core` ≥ 1.13.4.
-- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.157 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-6-luna` (`codex login` / `codex login --device-auth`)
+- *Optional, for translation:* [codex CLI](https://github.com/openai/codex) ≥ 0.166 on the `PATH` of the machine and environment that runs live-stt, authenticated against a ChatGPT plan entitled to `gpt-6.1-terra` (`codex login` / `codex login --device-auth`)
 
 ## Setup
 
@@ -57,7 +57,7 @@ uv run live-stt                   # transcribe + translate
 uv run python live_stt.py         # equivalent
 ```
 
-Startup prints the translation status: `Translation: gpt-6-luna via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (source-only, see log)`, or `disabled (--no-translate)`.
+Startup prints the translation status: `Translation: gpt-6.1-terra via codex app-server` (a ~3 s warm-up turn runs first), `unavailable (source-only, see log)`, or `disabled (--no-translate)`.
 
 ### CLI
 
@@ -256,6 +256,8 @@ live-stt rejects two invocations at parse time:
 
 `--asr-device GPU` runs speech recognition on the Intel GPU instead of the NPU. Use it when live-stt is the only task on the computer. While you speak, the GPU decodes for about 30 % of each second. Expect more power use than in the NPU mode. Power use was not measured. When you expect to do other work at the same time, use the NPU mode.
 
+A video call also uses the GPU, for example to show the camera images of the other people. To caption a call in GPU mode, turn off video where you can, and start live-stt with `--save-log`. If `q=` on the status line keeps growing, or `drop=` appears, stop live-stt and start it again without `--asr-device GPU`. The NPU mode does not share its device with the call.
+
 Both modes use the same models: whisper-ja-760M for Japanese and large-v3-turbo for English. They are equally accurate in both modes. The GPU decodes about 2.3 times faster. Measured on 182 s of pause-free speech (median, GPU against NPU):
 
 | Stage | GPU | NPU |
@@ -420,7 +422,7 @@ Defined at the top of `live_stt.py` (the config surface, no config files by desi
 | `VAC_BACKLOG_S` | 0.5 s | An update waits while more captured audio than this is queued, so slow decodes stretch the update interval |
 | `DECODE_SPLIT_TRIGGER_S` / `_CHUNK_S` | 10 s / 2 s | Protect long offline decodes with overlapped low-energy splits (sherpa engines) |
 | `RING_SECONDS` | 60 | Ring buffer capacity |
-| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-6-luna` / `low` | Codex model+effort |
+| `TRANSLATE_MODEL` / `_EFFORT` | `gpt-6.1-terra` / `low` | Codex model+effort |
 | `TRANSLATE_SERVICE_TIER` | `priority` | Codex "Fast" tier, requested per thread (`"default"` for the standard tier) |
 | `TRANSLATE_TIMEOUT_S` | 15 s | Per-turn cap before abort |
 | `TRANSLATE_MAX_FAILURES` | 3 | Consecutive failures → source-only |

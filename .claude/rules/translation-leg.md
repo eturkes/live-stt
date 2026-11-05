@@ -29,7 +29,9 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
 (remove newline, hard-code wrong model/effort, enable web search) each redden their new lock;
 `cp` restore → green. No real server, account, tool catalog or model latency is exercised.
 
-- **Model `gpt-6-luna` + `effort:low`** — user ruling on release, swapped in for `gpt-5.6-luna`,
+- **Model `gpt-6.1-terra` + `effort:low`** (user ruling 11-05) — swapped in for `gpt-6-luna` on
+  the screen, confirmation and blind audit in the `gpt-6.1-terra` bullet below. History: `gpt-6-luna`
+  (user ruling on release) was swapped in for `gpt-5.6-luna`,
   which won the tournament and a clinical re-test: median 1.38 s general / 1.71 s clinical, quality
   4.83/5, contract 2.00/2, 0 format violations, 0 failed turns. **Effort is near-inert** — ≤+0.06/5
   across low→max for +0.6-1.1 s, and higher effort threw 22.59 s and 15.67 s turns past
@@ -90,7 +92,11 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
   `apply_patch_tool_type` and `multi_agent_version` live in the model catalog, so `apply_patch`, the
   MCP-resource readers (no MCP server configured ⇒ nothing to read), `request_user_input` (a server
   request `_read_loop` denies) and `collaboration.*` stay; a permissive `apply_patch` write was
-  rejected by the `read-only` + `never` policy 2 of 2, nothing written. **`_turn` fails closed on
+  rejected by the `read-only` + `never` policy 2 of 2, nothing written. On 0.166.0 a
+  `gpt-6.1-terra` thread's requests carry tools arrays byte-identical to `gpt-6-luna`'s (SHA-256 of
+  each of the 3 distinct arrays under `RUST_LOG=trace`: `exec`, `request_user_input(_async)`,
+  `wait`, `collaboration` + the agent tools) ⇒ Terra's catalog extras (`clock`,
+  `send_user_message_async`, `node_repl`) never reach a translation thread. **`_turn` fails closed on
   any item outside `_TURN_ITEMS`** (`userMessage`, `agentMessage`, `reasoning`), on `item/started`
   and `item/completed` alike, so a steered tool call costs one strike and never publishes a `TGT`
   line, whatever a later codex adds. A new benign item kind therefore disables the leg after three
@@ -114,13 +120,14 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
   the defect — attribute a fix to the line that causes it by running one cumulative arm per candidate.
 - Marginal cost ≈180 in + 7-60 out tokens/turn — the caption alone: the whole turn sends ~10.5K
   input tokens, ~97 % cached (luna:low JA p50 10,533 in / 10,240 cached), unattributed
-  (`.agent/deferred.md` → *Translator prompt payload accounted*). Luna bills the shared `codex`
-  bucket, so translation competes with ordinary Codex usage (~1,300 turns ≈ 1 pp of the weekly
-  window). Thread grows ~30 tok/turn ⇒ rotate every ~100 turns, costing one ~2.7 s uncached turn.
+  (`.agent/deferred.md` → *Translator prompt payload accounted*). The leg bills the shared `codex`
+  bucket, so translation competes with ordinary Codex usage (measured on 5.6-luna, ~1,300 turns ≈ 1
+  pp of the weekly window). Thread grows ~30 tok/turn ⇒ rotate every ~100 turns, costing one ~2.7 s
+  uncached turn.
 - Codex auth is external state (`~/.codex/auth.json` — check existence only, never read). `codex` must
   be on the PATH of the machine RUNNING live-stt; installs and logins are per-machine and user-only, and
   a container login does not carry over.
-- Revisit the whole choice if Luna latency or entitlement changes, if sustained quota burn on the
+- Revisit the whole choice if the model's latency or entitlement changes, if sustained quota burn on the
   shared bucket contradicts ~0 % window movement, or if a leaner instructions channel is sanctioned.
 - **Two-way (JA↔EN) rides TWO immutable direction-specific threads in the ONE app-server, never a
   bidirectional instruction and never a second process.** The protocol makes threads independently

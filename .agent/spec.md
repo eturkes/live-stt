@@ -59,8 +59,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   `eval_playback_silence.py` (playback's digital-silence arms), `eval_translate_repeat.py`,
   `eval_translator_ab.py` (the translation leg's model × effort latency screen) need weights, a
   corpus or the real translator; `eval_playback_routing.py` drives `--playback` against a private
-  PipeWire graph (sudo + PipeWire tools, no audio hardware), `--e2e two-way --asr-device GPU`
-  included;
+  PipeWire graph (sudo + PipeWire tools, no audio hardware), `--e2e two-way --asr-device GPU
+  --translate` included;
   `eval_latency.py`, `eval_two_way_settled.py`, `eval_term_census.py`, `eval_en_pairing.py` and
   `eval_lag.py` replay committed traces and run in under a second in a fresh clone;
   `eval_anchor_scenarios.py` scripts decode runs over committed caption text in ~7 s. Each runs as
@@ -84,7 +84,8 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
 Detail → `.claude/rules/`, which each `D-###` names.
 
 - **D-009** STT fully local, no API keys. Codex absent or failing ⇒ source-only degrade, never a
-  cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6-luna`.
+  cloud STT fallback. **D-011** translation = persistent `codex app-server`, `gpt-6.1-terra` at `low` (user ruling
+  11-05: JA→EN quality edge, speed unresolved; `translation-leg.md`).
 - **D-016** Whisper int8 on OpenVINO **NPU** is the shipped recogniser — whisper-ja-760M for
   Japanese, large-v3-turbo for English (user ruling after the checkpoint re-open). The recogniser
   takes no term list and the channel is deleted: the NPU rejects `hotwords`, and on the GPU term
@@ -313,6 +314,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
 - [ ] **11** Translator prompt payload accounted
   - A turn sends ~10.5K input tokens, ~97 % cached, against the ≈180 the rule prices; accept →
     `.agent/deferred.md` → *Translator prompt payload accounted*.
+- [ ] **12** Start-up stall with translation in GPU mode
+  - The first utterance waits behind a ~5 s blocking span with translation on (~1.6 s off); accept
+    → `.agent/deferred.md` → *Start-up stall with translation in GPU mode*.
 
 Queue → `.agent/deferred.md`: rank = funding order, acceptance written at deferral time, the funded row = that unit's whole contract; a `steered/maintain.md` Queue body names the rows it funds, and the `auto/maintain.md` Queue body funds every row.
 

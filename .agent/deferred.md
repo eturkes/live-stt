@@ -137,3 +137,17 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
     against it, and each component a config or thread option can remove measured for latency
     through `tests/eval_translator_ab.py` (control vs trimmed arm), or recorded unremovable with
     its reason.
+
+12. **Start-up stall with translation in GPU mode** — `tests/eval_playback_routing.py --e2e
+    two-way --asr-device GPU --translate` puts the first utterance, played 3 s after `Listening`,
+    behind a blocking span of `q=4.79-5.03s` (2 runs) where the same session without translation
+    reads 1.52-1.75 s (2 runs) and a 30 s quiet lead-in reads 2.09 s (1 run): something codex does
+    right after its start-up warm-up turn contends with the first GPU decodes. Inside the 8 s
+    headroom, no `drop=`, start-up only on these runs; root cause unattributed (codex's own CPU, a
+    shared core with the LID or OpenCL, or the warm-up turn's tail). Tier `data` (a measurement; a
+    fix it motivates = its own row).
+    **Accept:** the stall attributed by a discriminating run (e.g. the app-server's CPU over the
+    first 10 s, or the warm-up moved before the GPU compile), then either a change that brings the
+    first-play peak within 0.5 s of the no-translation run's on the same harness, or the cause
+    recorded unremovable with its reason.
+

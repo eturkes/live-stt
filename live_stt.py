@@ -213,12 +213,12 @@ CONTEXT_TERM_MEMORY = 40  # segments a candidate may wait for support before it 
 CONTEXT_TERM_LEASE = 60  # segments a trusted term keeps trust without a fresh sighting
 CONTEXT_EN_SUPPORT = 2  # agreeing turns before a learned English rendering is briefed
 
-# Translation leg (D-011): Luna+low won a 12-config × 1,110-turn tournament on
-# median latency (1.38 s/turn) with quality tied to every higher effort — this
-# task is too easy to spend a reasoning budget on, so raising effort only costs
-# time. gpt-6-luna replaced gpt-5.6-luna at equal warm-turn median (paired
-# -0.06 s, CI spans 0) with a tighter tail (p90 1.98 vs 2.91 s, n=60).
-TRANSLATE_MODEL = "gpt-6-luna"
+# Translation leg (D-011): low effort, because this task is too easy to spend a
+# reasoning budget on — a 12-config tournament tied quality across every effort,
+# so raising it only costs time. gpt-6.1-terra replaced gpt-6-luna on quality:
+# blind JA→EN preference 23 vs 3, mostly by repairing mis-recognised Japanese the
+# Luna leg translated literally; speed unresolved (two sessions: -0.19 s, +0.27 s).
+TRANSLATE_MODEL = "gpt-6.1-terra"
 TRANSLATE_EFFORT = "low"
 # Codex's "Fast" tier (1.5x speed, increased usage) — set per thread so live-stt
 # gets it without touching ~/.codex/config.toml, where the global default stays
