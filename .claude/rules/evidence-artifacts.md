@@ -207,8 +207,9 @@ because they replay committed traces — a fresh clone runs them in under a seco
   wire and the tier echoed, per-turn token usage, failed vs no-attempt turns, paired median + p90
   difference with iid, Bonferroni and moving-block (4, 8) bootstrap CIs, and `verdict()` = the
   rule frozen before its first run. **One process per arm = one session per arm**: a `faster`
-  verdict is a screen; a swap needs a fresh-client finalist-vs-control rerun + a blind quality
-  audit. `test_translator_ab.py` — neutralizing the constant pinning, the Williams rotation, the
+  verdict is a screen; a swap needs a fresh-client finalist-vs-control rerun (`--seed`, `--start`
+  for disjoint inputs) + a blind quality audit — the first such rerun turned a −0.186 s screen
+  gain into +0.273 s (`translation-leg.md`). `test_translator_ab.py` — neutralizing the constant pinning, the Williams rotation, the
   `finally` close, the EN handshake or the control-side failure filter each reddens a lock
   (L-022).
 - `eval_backpressure.py` + `test_backpressure.py` — the production two-stage worker paced on a virtual

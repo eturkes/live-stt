@@ -25,7 +25,7 @@ its arm ineligible. One process per arm = one session per arm: a winner here is
 a screen result, confirmed by a fresh-client finalist-vs-control rerun.
 
     uv run python tests/eval_translator_ab.py [--arms M:E ...] [--ja N] [--en N]
-                                              [--seed S] [--json F]
+                                              [--seed S] [--start I] [--json F]
 """
 
 from __future__ import annotations
@@ -71,13 +71,15 @@ def parse_arm(text: str) -> tuple[str, str]:
     return model, effort
 
 
-def items(ja: int, en: int) -> list[tuple[str, str]]:
-    """(source, text): recogniser captions JA→EN, then their English EN→JA."""
+def items(ja: int, en: int, start: int = START) -> list[tuple[str, str]]:
+    """(source, text): recogniser captions JA→EN, then their English EN→JA, from `start` on."""
     captions = json.loads(CAPTIONS.read_text(encoding="utf-8"))["captions"]
     turns = json.loads(PAIRING.read_text(encoding="utf-8"))["turns"]
-    return [("ja", c["text"]) for c in captions[START : START + ja]] + [
-        ("en", t["en"]) for t in turns[START : START + en]
-    ]
+    picked = [("ja", c["text"]) for c in captions[start : start + ja]]
+    picked += [("en", t["en"]) for t in turns[start : start + en]]
+    if len(picked) != ja + en:
+        raise SystemExit(f"--start {start} leaves {len(picked)} of {ja + en} items")
+    return picked
 
 
 def williams(k: int) -> list[list[int]]:
@@ -347,10 +349,11 @@ def main() -> None:
     parser.add_argument("--ja", type=int, default=60, help="JA→EN items (default 60, primary)")
     parser.add_argument("--en", type=int, default=40, help="EN→JA items (default 40, guardrail)")
     parser.add_argument("--seed", type=int, default=SEED, help="order + startup design seed")
+    parser.add_argument("--start", type=int, default=START, help="first item of both slices")
     parser.add_argument("--json", type=Path, help="write summary + every turn to this path")
     args = parser.parse_args()
     arms = [Arm(name, *parse_arm(name)) for name in args.arms]
-    rows = asyncio.run(run(arms, items(args.ja, args.en), args.seed))
+    rows = asyncio.run(run(arms, items(args.ja, args.en, args.start), args.seed))
     summary = summarize(arms, rows)
     for source in ("ja", "en"):
         if source not in summary:
@@ -375,6 +378,7 @@ def main() -> None:
             "date": datetime.now().isoformat(timespec="seconds"),
             "codex": codex.stdout.strip(),
             "seed": args.seed,
+            "start": args.start,
             "wire": {a.name: a.wire for a in arms},
         }
         payload = {"meta": meta, "arms": args.arms, "summary": summary, "rows": rows}

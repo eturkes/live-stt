@@ -54,8 +54,25 @@ missing/changed-field and broken-framing twins keep the checks non-vacuous. Trac
   ≥ 0.2 s) ⇒ no convincing speed win for any arm. Luna spent 0 reasoning tokens at `low` AND `none`
   on all 100 turns ⇒ luna:none's deltas are not reasoning compute and stay unexplained; one process
   per arm leaves a session effect open. terra:low reasoned on 9 of 100 turns (max 35 tokens) and
-  holds the run's slowest turn (5.099 s, 0 reasoning). Quality unmeasured: the blind audit gates a
-  winner alone. **The API takes `none` on both models** although `model/list` advertises `low`..`max`;
+  holds the run's slowest turn (5.099 s, 0 reasoning). **The confirmation REVERSED the screen**
+  (user: confirm Terra first; fresh app-servers, seed 20261106, inputs disjoint via `--start 100`,
+  100/100 ok per arm): terra:low − luna:low = **+0.273 s `[+0.148, +0.375]`** JA→EN (p50 1.598 vs
+  1.349 s) and **+0.268 s `[+0.096, +0.498]`** EN→JA, plus one two-paragraph reply (luna 0) ⇒
+  the screen's −0.186 s was the session effect one process per arm leaves open: never quote it
+  without this run. Two independent runs disagreeing in sign ⇒ **no latency difference resolved
+  between the two at low**; session-to-session variation (±0.3 s) exceeds it. **Quality, blind
+  (classifier-1 = GPT-6.1-sol, the arms' own family; one rubric, sides shuffled, the confirmation's
+  100 pairs, MAIN re-read every JA row with an error):** JA→EN terra:low preferred 23 vs 3 (34
+  ties, sign test p < 0.001), serious errors 18 vs 39 — by deciding class, meaning 6 vs 0,
+  contract-only (pronoun / quote lines) 14 vs 2, fidelity or fluency 3 vs 1. Terra recovers mis-recognised Japanese where
+  luna translates it literally (`標準が赤い色のところで麦を研いで` → "Hyōjū was washing barley at the
+  well" vs "The standard was grinding wheat where it was red"; `マスサケ` → matsutake vs trout;
+  `なあかすけ` → "Say, Kasuke" vs "said Naakasuke and Heiju"), luna wraps quoted speech in quotes
+  (5) and once invents content; both break the sex line often on the story's fox and man, luna
+  more. EN→JA: 6 vs 5, 29 ties. One story corpus; one T000 example leaked into the reader's brief.
+  A clinical + meeting-English probe (8 JA, 6 EN, authored) read clean on both: prednisolone,
+  loxoprofen, warfarin with doses intact, no Mr./he/she for 田中さん. **The API takes `none` on
+  both models** although `model/list` advertises `low`..`max`;
   `minimal` is rejected, the error naming `none, low, medium, high, xhigh, max`.
 - **Tool-feature disables in `_CODEX_CONFIG` are THE latency lever.** Re-enabling
   web_search/image/browser/computer/apps re-injects ~15 K tokens/turn: p50 3.15 s → **0.99 s**. Keep

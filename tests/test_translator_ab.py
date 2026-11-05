@@ -220,3 +220,7 @@ def test_the_inputs_are_the_committed_story_in_both_directions():
     assert [s for s, _ in work] == ["ja"] * 60 + ["en"] * 40
     assert all(text.strip() for _, text in work)
     assert work[0][1] == "木切れなどがごちゃごちゃ入っていましたが、"
+    later = ab.items(60, 40, start=100)  # the confirmation slice: disjoint inputs
+    assert not {t for _, t in later} & {t for _, t in work}
+    with pytest.raises(SystemExit, match="leaves"):
+        ab.items(60, 40, start=200)  # a slice past the trace end is refused, not shortened
