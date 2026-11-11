@@ -88,7 +88,15 @@ replaces whole (`orientation.md`). Its seed ends a minimal spec on the phase lin
 positive control. Neutralized from a `cp` snapshot of `gate.py`, the step as `true` reddens both
 tests and as `sh -c 'exit 1'` reddens the twin. The pre-refresh `.agent/spec.md` drew 6 findings:
 the Phase line-1 form, 13 Phase history lines, and the three-line `Tasks` pointer (three non-row
-lines plus a last line without the pointer).
+lines plus a last line without the pointer). The template's fence rule skips a fenced block as
+Markdown reads it: a closer repeats the opener's character at least as long, and a backtick line
+whose info string holds a backtick opens nothing. Against the copy before it, on scratch specs
+under gawk and mawk: four defect plants fire on both — the seed's Phase line, a bad Phase line after
+an ordinary closed fence, an unclosed fence swallowing the later sections, and a bad Phase line
+after a backtick line that opens nothing, where the old copy named missing sections instead — and
+three valid twins the old copy reddened pass: a heading-like line inside a four-backtick fence or
+inside a tilde fence that a backtick line cannot close, and valid sections after the backtick line
+that opens nothing.
 
 ## Law locks (`tests/test_law_consistency.py`)
 

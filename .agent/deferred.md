@@ -76,7 +76,7 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
 7. **Fresh-session baseline re-measured** — `assurance-posture.md` records a fresh MAIN session
    opening at ≈47K over 99.8 KB attached (user-level instruction file 10.9 KB, `CLAUDE.md` 34.8 KB,
    `.agent/spec.md` 22.3 KB, the three bare rules files 31.9 KB) and orders a re-measure whenever
-   that set moves; the set now reads 12.1 / 35.6 / 24.4 / 33.2 KB (`wc -c`) while the recorded
+   that set moves; the set now reads 13.3 / 41.9 / 26.9 / 37.0 KB (`wc -c`) while the recorded
    figures still describe the old set, so the baseline a work figure subtracts from a `main=` total
    is unmeasured for today's set. Tier `docs` (rule prose; the next re-measure re-checks it).
    **Accept:** the rule's own recipe runs on a clean tree at the repo root — `claude -p "Reply with

@@ -5,6 +5,7 @@
 # Usage: spec-lint [spec.md] (default .agent/spec.md); AWK overrides the awk binary.
 # rc 0 = clean, 1 = findings on stdout, 2 = unreadable.
 # Portable awk (gawk, mawk, busybox) ⇒ no interval expressions; LC_ALL=C ⇒ `—` = 3 literal bytes.
+# Fenced blocks are skipped as Markdown reads them: a closer repeats the opener's character, at least as long.
 f=${1:-.agent/spec.md}
 [ -r "$f" ] || { echo "spec-lint: cannot read $f" >&2; exit 2; }
 # shellcheck disable=SC2016 # single-quoted = the awk program ⇒ its `$` are awk's; ShellCheck exempts literal `awk`, not `${AWK:-awk}`
@@ -14,8 +15,10 @@ BEGIN { split("Intent Artifacts Decisions Tasks Phase", W, " ")
         PH = "(PROTOTYPE|ITERATE|IMPLEMENT|MAINTAIN) — [^ ]" }
 NR == 1 { sub(/^\357\273\277/, "") }
 { sub(/\r$/, "") }
-/^ ? ? ?(```|~~~)/ { fence = !fence; next }
-fence { next }
+{ t = $0; sub(/^ ? ? ?/, "", t); c = substr(t, 1, 1); fl = 0
+  if (c == "`" || c == "~") while (substr(t, fl + 1, 1) == c) fl++
+  if (fc != "") { if (c == fc && fl >= fn && substr(t, fl + 1) ~ /^[ \t]*$/) fc = ""; next }
+  if (fl >= 3 && (c == "~" || !index(substr(t, fl + 1), "`"))) { fc = c; fn = fl; next } }
 /^## / {
   s = substr($0, 4); sub(/[ \t]+$/, "", s); k++
   if (s != W[k]) bad(NR, "section `" s "`, expected " (k <= 5 ? "`" W[k] "`" : "none after `Phase`"))

@@ -24,7 +24,7 @@ codex degrades to source-only — a hard requirement, never a cloud fallback.
 - `models/` — gitignored weights; `models/README.md` carries the download commands.
 - `transcripts/` — gitignored saved sessions, one file per run, saving ON by default.
 - `README.md` — the user doc; it, `models/README.md` and the CLI strings in `live_stt.py` are the
-  human-facing set (`human-docs.md`).
+  repo's human-facing set (`human-docs.md`).
 - `.agent/spec.md` = Intent · Artifacts · Decisions · Tasks · Phase; the sole attached state,
   imported by `CLAUDE.md` ⇒ it rides every session whole. Every line binds current or future work, so
   each unit prunes what its own close made dead; size is emergent. `.agent/deferred.md` = the
@@ -46,9 +46,12 @@ Rulings on the template's spec layout (detail → `.agent/spec.md` `Decisions`):
   pointer; a `- [x] <sha>` row lives only between one session's commits; a paused session adds its
   one `- [ ] RESUME: …` note, a routing session its one `- [ ] ROUTE: …` row. A session's own step
   checklist lives in `.scratch/tasks.md`; durable progress = commits + the paired rows.
-- Template ruling: "Routed state: `Phase` line 1 = `<PHASE> — <scope>`" → **ADAPTED** at the `Tasks`
-  lock alone — a routed phase's own checklist rows, beside a suspended MAINTAIN's queue rows, fail
-  its 1:1 pairing ⇒ the routing session asks the user how the lock follows before it writes them.
+- Template ruling: "Routed state: `Phase` line 1 = `<PHASE> — <scope>`" + "the closing scope
+  suspended at its next phase over one open `Tasks` row" → **ADAPTED** at the `Tasks` lock alone — a
+  routed phase's own checklist rows, beside a suspended MAINTAIN's queue rows, fail its 1:1 pairing,
+  as does the one row a phase-close route suspends its closing scope over ⇒ the session about to
+  write such a row asks the user how the lock follows before writing it. MAINTAIN has no phase close
+  ⇒ that suspension row first arises at the close of a phase a route out of MAINTAIN opened.
 - Template ruling: "detail → `docs/` or `.agent/archive/`" → **ADAPTED** — no `docs/`: decision
   detail → the `.claude/rules/` file each `D-###` names; closed records → `.agent/archive/`;
   incident records → `.agent/postmortems/`.

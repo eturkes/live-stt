@@ -8,10 +8,11 @@ paths:
 # Human-facing documentation
 
 **L-021 — `CLAUDE.md`'s human register (`Authoring`, Human-facing) applies to human-facing surfaces
-ALONE.** Those surfaces are `README.md`, `models/README.md`, and the user-facing CLI strings in
-`live_stt.py`. Everything else —
-`.agent/*`, `.claude/rules/`, code comments — stays agent-dense, em-dashes
-deliberate. Keep any literal duplicated between code and README in sync.
+ALONE.** Those surfaces are every message to the user (status notes, turn reports, questions, the
+final message) and, in the repo, `README.md`, `models/README.md`, and the user-facing CLI strings
+in `live_stt.py`. Everything else — `.agent/*`, `.claude/rules/`, code comments, teammate briefs +
+reports — stays agent-dense, em-dashes deliberate. Keep any literal duplicated between code and
+README in sync.
 
 **The gate decides the dash rule and two literal sets; the rest of the register is judgment.**
 `tests/test_human_docs.py` fails on an en or em dash in either README, in the rendered `--help`,

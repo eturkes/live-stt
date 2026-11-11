@@ -72,7 +72,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   `uv run python tests/build_lag_trace.py [--check]`.
 - `transcripts/<local-start-time>.txt` — gitignored, one file per run, saving ON by default.
 - `README.md` — the user doc; it, `models/README.md` and the CLI strings in `live_stt.py` are the
-  human-facing set (`human-docs.md`).
+  repo's human-facing set (`human-docs.md`).
 - `.agent/archive/` — the closed record, read on demand: `milestones-m1-m14.md` (M1-M14),
   `polish-register.md`, `phase-history.md`, the closed review ledgers `review-*.md`, plus four
   evidence records.
