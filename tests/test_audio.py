@@ -12,12 +12,12 @@ import stat
 import subprocess
 import sys
 import types
-import wave
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
+import soundfile
 
 import live_stt
 from live_stt import (
@@ -401,19 +401,19 @@ def test_audio_shares_the_default_transcript_stem():
     transcript = transcript_path(_save_args(), stamp)
     audio = audio_path(_save_args(save_audio=True), stamp)
     assert transcript is not None and audio is not None
-    assert (audio.parent, audio.stem, audio.suffix) == (transcript.parent, transcript.stem, ".wav")
+    assert (audio.parent, audio.stem, audio.suffix) == (transcript.parent, transcript.stem, ".opus")
 
 
 def test_audio_stays_in_the_session_directory_whatever_the_transcript_flags(tmp_path):
     stamp = session_stamp()
     for flags in ({"output": str(tmp_path / "x.txt")}, {"no_save": True}):
         assert audio_path(_save_args(save_audio=True, **flags), stamp) == (
-            TRANSCRIPT_DIR / f"{stamp}.wav"
+            TRANSCRIPT_DIR / f"{stamp}.opus"
         )
 
 
 def test_the_recording_defers_creation_to_the_first_block(tmp_path):
-    path = tmp_path / "nested" / "session.wav"
+    path = tmp_path / "nested" / "session.opus"
     recording = AudioRecording(path)
     assert path.parent.is_dir()
     assert not path.exists()
@@ -421,27 +421,86 @@ def test_the_recording_defers_creation_to_the_first_block(tmp_path):
     assert not path.exists()
 
 
-def test_the_recording_is_readable_before_close_and_round_trips(tmp_path):
-    path = tmp_path / "session.wav"
-    blocks = [
-        np.linspace(-1.0, 1.0, 85, dtype=np.float32),
-        np.full(85, 0.25, dtype=np.float32),
-        np.array([1.5, -1.5], dtype=np.float32),  # out-of-range PCM clips, never wraps
-    ]
-    recording = AudioRecording(path)
-    # The header is patched on every write, so a session that dies after ANY block,
-    # the first included, leaves a file every reader accepts at its true length.
-    for written, block in enumerate(blocks, start=1):
-        recording.write(block)
-        with wave.open(str(path), "rb") as w:
-            assert (w.getnchannels(), w.getsampwidth(), w.getframerate()) == (1, 2, SAMPLE_RATE)
-            assert w.getnframes() == sum(len(b) for b in blocks[:written])
-    recording.close()
-    import replay  # noqa: PLC0415 -- the consumer this format exists for
+def _tone(n: int, start: int = 0) -> np.ndarray:
+    t = np.arange(start, start + n) / SAMPLE_RATE
+    return (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
 
-    loaded = replay.load_wav_f32_16k(path)
-    expected = np.clip(np.concatenate(blocks), -1.0, 32767 / 32768)
-    assert np.max(np.abs(loaded - expected)) <= 0.5 / 32768
+
+def test_the_recording_round_trips_every_sample_through_replay(tmp_path):
+    """Seeded property: whatever block sizes capture delivers, the Opus file decodes
+    to exactly as many 16 kHz samples, and the content survives the lossy codec."""
+    rng = np.random.default_rng(11)
+    for case in range(8):
+        sizes = rng.integers(1, 1200, size=int(rng.integers(20, 60)))
+        path = tmp_path / f"session{case}.opus"
+        recording = AudioRecording(path)
+        start = 0
+        for size in sizes:
+            recording.write(_tone(int(size), start))
+            start += int(size)
+        recording.close()
+        import replay  # noqa: PLC0415 -- the consumer this format exists for
+
+        info = soundfile.info(str(path))
+        assert (info.format, info.subtype, info.samplerate, info.channels) == (
+            "OGG", "OPUS", SAMPLE_RATE, 1,
+        )  # fmt: skip
+        loaded = replay.load_audio_f32_16k(path)
+        expected = _tone(start)
+        assert len(loaded) == len(expected), (case, sizes)
+        # Codec look-ahead aside, the waveform is the one written: >= 20 dB SNR.
+        body = slice(SAMPLE_RATE // 50, None)
+        err = loaded[body] - expected[body]
+        assert 10 * np.log10(np.sum(expected[body] ** 2) / np.sum(err**2)) >= 20, case
+
+
+def _sine(freq: float, rate: int, n: int) -> np.ndarray:
+    return (0.2 * np.sin(2 * np.pi * freq * np.arange(n) / rate)).astype(np.float32)
+
+
+def test_replay_reads_an_opus_file_at_any_rate_and_channel_count_as_16k_mono(tmp_path):
+    """Seeded property: `replay.py --help` promises any rate/channels; the reader
+    returns the channel mean at 16 kHz, whatever Opus rate and layout the file holds."""
+    import replay  # noqa: PLC0415
+
+    rng = np.random.default_rng(12)
+    for rate in (8000, 12000, 24000, 48000):
+        for channels in (1, 2):
+            freq = float(rng.uniform(200, 3500))
+            gain = float(rng.uniform(0.2, 0.6))  # stereo: left = gain, right = 2 - gain
+            n = int(rng.integers(rate // 2, 2 * rate))
+            src = _sine(freq, rate, n)
+            if channels == 2:
+                src = np.stack([gain * src, (2 - gain) * src], axis=1)
+            path = tmp_path / f"in{rate}_{channels}.opus"
+            soundfile.write(str(path), src, rate, format="OGG", subtype="OPUS")
+            loaded = replay.load_audio_f32_16k(path)
+            expected = _sine(freq, SAMPLE_RATE, round(n * SAMPLE_RATE / rate))
+            assert loaded.dtype == np.float32 and loaded.ndim == 1, (rate, channels)
+            assert abs(len(loaded) - len(expected)) <= 1, (rate, channels, len(loaded))
+            k = min(len(loaded), len(expected))
+            body = slice(SAMPLE_RATE // 50, k - SAMPLE_RATE // 50)
+            err = loaded[body] - expected[body]
+            snr = 10 * np.log10(np.sum(expected[body] ** 2) / np.sum(err**2))
+            assert snr >= 15, (rate, channels, freq, snr)
+
+
+def test_a_crashed_recording_keeps_all_but_its_last_page(tmp_path):
+    """No close(): the process dies the way a killed session does."""
+    path = tmp_path / "crash.opus"
+    script = (
+        "import os, sys, numpy as np, live_stt\n"
+        "r = live_stt.AudioRecording(__import__('pathlib').Path(sys.argv[1]))\n"
+        "for _ in range(500): r.write(np.full(160, 0.1, dtype=np.float32))\n"
+        "os._exit(0)\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script, str(path)], check=True, cwd=Path(__file__).parents[1]
+    )
+    data, rate = soundfile.read(str(path), dtype="float32")
+    assert rate == SAMPLE_RATE
+    # 5 s written; libsndfile measured 1.03 s unwritten at RECORDING_OPUS_LEVEL.
+    assert 3.5 * SAMPLE_RATE <= len(data) < 5 * SAMPLE_RATE
 
 
 def _no_translator(*_args, **_kwargs):
@@ -666,33 +725,31 @@ def test_save_audio_records_every_captured_block(monkeypatch, tmp_path):
     blocks = [np.full(160, 0.25, dtype=np.float32), np.linspace(-1, 1, 320, dtype=np.float32)]
     seen = _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=True)
     assert len(seen) == len(blocks)  # the recording rides beside the queue, not instead of it
-    (path,) = tmp_path.glob("*.wav")
-    with wave.open(str(path), "rb") as w:
-        frames = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
-    expected = np.clip(np.round(np.concatenate(blocks) * 32768.0), -32768, 32767)
-    assert np.array_equal(frames, expected.astype("<i2"))
+    (path,) = tmp_path.glob("*.opus")
+    assert soundfile.info(str(path)).frames == sum(len(b) for b in blocks)
 
 
-def test_a_44k_session_delivers_its_whole_stream_to_the_worker_and_the_wav(monkeypatch, tmp_path):
+def test_a_44k_session_delivers_its_whole_stream_to_the_worker_and_the_recording(
+    monkeypatch, tmp_path
+):
     """The resampler's filter holds the last 6-40 ms; stopping must drain it.
 
     50 callbacks of 256 frames at 44.1 kHz carry 4644 samples at 16 kHz; without the
-    shutdown flush the worker and the WAV both ended 327 short (reviewer-4's witness).
+    shutdown flush the worker and the recording both ended 327 short (reviewer-4's witness).
     """
     rng = np.random.default_rng(3)
     blocks = [(rng.standard_normal(256) * 0.1).astype(np.float32) for _ in range(50)]
     seen = _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, rate=44100, save_audio=True)
     ideal = round(50 * 256 * SAMPLE_RATE / 44100)
     assert abs(sum(len(chunk) for chunk in seen) - ideal) <= 1
-    (path,) = tmp_path.glob("*.wav")
-    with wave.open(str(path), "rb") as w:
-        assert abs(w.getnframes() - ideal) <= 1
+    (path,) = tmp_path.glob("*.opus")
+    assert abs(soundfile.info(str(path)).frames - ideal) <= 1
 
 
 def test_a_session_without_the_flag_writes_no_audio(monkeypatch, tmp_path):
     blocks = [np.full(160, 0.25, dtype=np.float32)]
     _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=False)
-    assert list(tmp_path.glob("*.wav")) == []
+    assert list(tmp_path.glob("*.opus")) == []
 
 
 # --- opt-in session log (--save-log) ---
@@ -737,9 +794,9 @@ def test_save_log_moves_the_session_stderr_beside_its_audio(monkeypatch, tmp_pat
     blocks = [np.full(160, 0.25, dtype=np.float32)]
     _run_session_with_fake_mic(monkeypatch, tmp_path, blocks, save_audio=True, save_log=True)
     os.write(2, b"after the session\n")
-    (wav,) = tmp_path.glob("*.wav")
+    (audio,) = tmp_path.glob("*.opus")
     (log,) = tmp_path.glob("*.log")
-    assert log.stem == wav.stem
+    assert log.stem == audio.stem
     assert f"Log: {log}" in capsys.readouterr().out.splitlines()
     assert live_stt._STDERR_TTY is False
     lines = log.read_text().splitlines()
@@ -776,9 +833,9 @@ def _mode(path: Path) -> int:
 @pytest.mark.parametrize(
     ("flags", "suffixes"),
     [
-        ({"no_save": False, "save_audio": True, "save_log": True}, {".txt", ".wav", ".log"}),
+        ({"no_save": False, "save_audio": True, "save_log": True}, {".txt", ".opus", ".log"}),
         # Each writer makes the directory when it is the session's first.
-        ({"save_audio": True}, {".wav"}),
+        ({"save_audio": True}, {".opus"}),
         ({"save_log": True}, {".log"}),
     ],
 )

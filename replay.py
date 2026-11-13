@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministic WAV replay through the exact live-stt STT pipeline.
+"""Deterministic audio replay through the exact live-stt STT pipeline.
 
-Feeds a WAV file through `live_stt.worker` — the same VAD + RingBuffer pre-pad
-re-slice the live mic uses — and reports per-segment segmentation, decode
-latency, and transcript. `worker` dispatches on the recogniser, so the engine
+Feeds a WAV or Ogg Opus file (`--save-audio`'s recording) through
+`live_stt.worker` — the same VAD + RingBuffer pre-pad re-slice the live mic
+uses — and reports per-segment segmentation, decode latency, and transcript.
+`worker` dispatches on the recogniser, so the engine
 picks the path: `--engine whisper` drives the shipped VAC path (growing buffer,
 LocalAgreement-2 commits), the sherpa engines drive the VAD-segment path.
 The translation leg is omitted (translator=None): this exercises and
@@ -12,7 +13,7 @@ regression-tests the local STT half only.
 This is a dev/regression tool, not part of the shipped app, so it is not a
 console-script entry point. Run it directly:
 
-    uv run python replay.py path/to.wav [--engine k2v2|parakeet|whisper] [--json]
+    uv run python replay.py path/to.wav|.opus [--engine k2v2|parakeet|whisper] [--json]
 
 Whisper needs both prelude halves, in order: source the accelerator's env.sh
 (the user-level instruction file names it), then source .envrc from the repo root.
@@ -41,6 +42,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
+import soundfile
 
 from live_stt import (
     ASR_DEVICE,
@@ -94,6 +96,17 @@ def load_wav_f32_16k(path: Path) -> np.ndarray:
         raise ValueError(f"unsupported sample width: {sw * 8}-bit (need 16 or 32)")
     if nchan > 1:
         data = data.reshape(-1, nchan).mean(axis=1).astype(np.float32)
+    if sr != SAMPLE_RATE:
+        data = resample(data, sr, SAMPLE_RATE)
+    return np.ascontiguousarray(data, dtype=np.float32)
+
+
+def load_audio_f32_16k(path: Path) -> np.ndarray:
+    """`load_wav_f32_16k` for a `.wav`; anything else (`--save-audio`'s Opus) via libsndfile."""
+    if path.suffix.lower() == ".wav":
+        return load_wav_f32_16k(path)
+    data, sr = soundfile.read(path, dtype="float32", always_2d=True)
+    data = data.mean(axis=1, dtype=np.float32)
     if sr != SAMPLE_RATE:
         data = resample(data, sr, SAMPLE_RATE)
     return np.ascontiguousarray(data, dtype=np.float32)
@@ -168,19 +181,19 @@ def build_report(engine: str, wav: str, samples: np.ndarray, rows: list[dict]) -
 
 
 def replay_recognizer(path, rec, engine: str, on_update=None) -> dict:
-    """Replay a WAV through the worker with an already-loaded recognizer.
+    """Replay a recording through the worker with an already-loaded recognizer.
 
     The real worker() prints its live `SRC n:` lines via emit_line; capture that
     stdout so replay's only output is its own report (keeps --json valid).
     """
-    samples = load_wav_f32_16k(Path(path))
+    samples = load_audio_f32_16k(Path(path))
     with contextlib.redirect_stdout(io.StringIO()):
         rows = asyncio.run(_run_recognizer(samples, rec, on_update))
     return build_report(engine, str(path), samples, rows)
 
 
 def replay_wav(path, engine: str = "k2v2", device: str = ASR_DEVICE) -> dict:
-    """Load a WAV and replay it through the engine-keyed production pipeline.
+    """Load a recording and replay it through the engine-keyed production pipeline.
 
     Default matches the CLI's, not live-stt's: the goldens key on the
     deterministic CPU engines.
@@ -210,7 +223,7 @@ def render(report: dict) -> str:
 
 def main():
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    ap.add_argument("wav", help="Path to a WAV file (any rate/channels; PCM 16/32-bit).")
+    ap.add_argument("wav", help="Path to a WAV (PCM 16/32-bit) or Opus file, any rate/channels.")
     ap.add_argument(
         "--engine",
         choices=sorted(ENGINE_DIRS),
@@ -232,7 +245,7 @@ def main():
 
     path = Path(args.wav)
     if not path.exists():
-        print(f"Error: no such WAV: {path}", file=sys.stderr)
+        print(f"Error: no such file: {path}", file=sys.stderr)
         sys.exit(1)
     # check_device rides with check_models because without it `--engine whisper`
     # on a box with no accel farm reaches openvino_genai and fails with a

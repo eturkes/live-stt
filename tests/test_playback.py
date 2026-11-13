@@ -394,7 +394,7 @@ def test_a_saved_playback_session_names_its_files_by_the_session_stamp(monkeypat
         no_save=False, save_audio=True,
     )  # fmt: skip
     (transcript,) = tmp_path.glob("*.txt")
-    (recording,) = tmp_path.glob("*.wav")
+    (recording,) = tmp_path.glob("*.opus")
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d", transcript.stem)
     assert recording.stem == transcript.stem
     assert "SRC 1: 症例数" in transcript.read_text(encoding="utf-8")

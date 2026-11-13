@@ -71,7 +71,7 @@ Startup prints the translation status: `Translation: gpt-6.1-terra via codex app
 | `--no-translate` | off | Transcribe only (skip Codex translation) |
 | `-o`, `--output FILE` | new file in `transcripts/` | Append lines to this file instead of the session file |
 | `--no-save` | off | Do not save the transcript to disk (conflicts with `-o`) |
-| `--save-audio` | off | Also save the captured audio as a WAV file in `transcripts/`. See [Saved audio](#saved-audio). |
+| `--save-audio` | off | Also save the captured audio as an Opus file in `transcripts/`. See [Saved audio](#saved-audio). |
 | `--save-log` | off | Write warnings and diagnostics to a log file in `transcripts/` instead of to the terminal. See [Saved log](#saved-log). |
 | `--playback` | off | Caption the audio that this computer plays, for example a Zoom call, instead of the microphone. Do not use `--device` with this option. See [Audio playback](#audio-playback). |
 | `--device N` | system default | Input device index (see `--list-devices`) |
@@ -131,21 +131,21 @@ Only your user account can read the session files. live-stt creates `transcripts
 
 ### Saved audio
 
-Use `--save-audio` to keep the captured audio of a session: the microphone, or with `--playback` the audio that the computer plays. live-stt then writes a WAV file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
+Use `--save-audio` to keep the captured audio of a session: the microphone, or with `--playback` the audio that the computer plays. live-stt then writes an Ogg Opus file to `transcripts/`, with the same start-time name as the default transcript, and prints its path at startup:
 
 ```
-Audio: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.wav
+Audio: /home/you/Projects/live-stt/transcripts/2026-08-31T13-40-55.opus
 ```
 
-The file holds 16 kHz mono 16-bit PCM, which is the rate the recognizer uses. It holds all captured audio, including audio that the recognizer had to drop under load. The file uses about 115 MB per hour of session. It is created with the first audio block and stays playable if the session ends abruptly. The audio always goes to `transcripts/`, also with `-o` or `--no-save`, because `-o` appends to an existing file and a WAV file cannot be appended to.
+The file holds 16 kHz mono audio, which is the rate the recognizer uses, compressed with the lossy Opus codec at about 30 kbit/s. It uses about 13 MB per hour of session. Any media player can play it. It holds all captured audio, including audio that the recognizer had to drop under load. It is created with the first audio block. If the session ends abruptly, the file stays playable but loses about its last second. The audio always goes to `transcripts/`, also with `-o` or `--no-save`, because `-o` appends to an existing file and an audio file cannot be appended to.
 
 To replay a saved session through the recognizer offline, use `replay.py`:
 
 ```sh
-uv run python replay.py transcripts/2026-08-31T13-40-55.wav --engine whisper
+uv run python replay.py transcripts/2026-08-31T13-40-55.opus --engine whisper
 ```
 
-The replay does not reproduce the live captions exactly, because the live run timed its decodes against the real clock.
+The replay does not reproduce the live captions exactly, because the live run timed its decodes against the real clock. The Opus codec also changes the audio slightly, so the captions can differ in places even without that timing effect. `replay.py` also reads WAV files.
 
 Speech of other people is in the file too. Get their consent before you save audio of a meeting.
 

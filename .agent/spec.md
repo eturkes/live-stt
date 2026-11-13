@@ -41,7 +41,7 @@ Container work carries `UV_PROJECT_ENVIRONMENT=.venv` (`toolchain.md`).
   `gate-ledger.tsv`; `--classify product|gate|flake|planted` labels its reds (`toolchain.md`).
 - `.agent/spec-lint` — this file's shape check, a template copy that a refresh replaces whole; the
   gate's `spec-lint` step runs it.
-- `replay.py` — WAV → real `worker` replay, the "did the output change" harness (D-014).
+- `replay.py` — WAV/Opus → real `worker` replay, the "did the output change" harness (D-014).
   `uv run python replay.py WAV [--engine E] [--asr-device D] [--json]`; goldens in
   `tests/replay_goldens.json`. Smoke = the two whisper replay goldens under the accel prelude (the
   gate's pytest step); a fresh clone holds no WAV to replay.
@@ -211,9 +211,9 @@ Detail → `.claude/rules/`, which each `D-###` names.
   Gain stays exactly 1.0 on all 21 pinned clips; the FLEURS LID census re-cut under it (user ruling:
   regenerate), 0 false routes at 2 s. A quiet empty room is unmeasured (`live-smoke.md` item 9).
 - Transcripts save by default; `-o PATH` overrides, `--no-save` opts out. `--save-audio` (opt-in)
-  adds the capture WAV `transcripts/<start>.wav` (~115 MB/h), the real-audio input `replay.py` reads.
+  adds the capture recording `transcripts/<start>.opus` (Ogg Opus, ~13 MB/h), the real-audio input `replay.py` reads.
   `--save-log` (opt-in) = the user's `2> transcripts/<start>.log` built in: fd 2 moves to
-  `transcripts/<start>.log` at the session stamp, the `.txt`/`.wav` stem; log-only, never a tee;
+  `transcripts/<start>.log` at the session stamp, the `.txt`/`.opus` stem; log-only, never a tee;
   preflight errors stay on the terminal, and the redirect holds until exit (`asr-pipeline.md`). A bare
   `session_report.py` run reads `transcripts/*.log` (user ruling).
 - Linux live/device entry points isolate the audio session with deadlines and an inherited lock

@@ -58,7 +58,7 @@ predicate a unit writes from now on gets a property-based test, its generator se
 so a red reruns from committed state; the suite's seeded `random.Random` generators with oracles
 stand as written. No fuzz target exists, because the repo writes no parser, decoder, deserializer
 or native code: room audio, the untrusted input (D-017), reaches repo code as stdlib-parsed JSON
-(`CodexTranslator._read_loop`), stdlib `wave` frames (`replay.py`) and typed text through the
+(`CodexTranslator._read_loop`), stdlib `wave` frames + libsndfile-decoded Opus (`replay.py`, a third-party decoder, not repo code) and typed text through the
 `_CONTROL_CHARS` sinks — typed logic a property test covers. The fuzz half binds the first unit that
 writes its own parser, decoder or native code. The two untrusted-input sites' property tests =
 `.agent/deferred.md` → *Control-char screen and JSON-RPC reader property tests*.

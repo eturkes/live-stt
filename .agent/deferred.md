@@ -23,7 +23,8 @@ anywhere else, since a rank retargets onto a different unit the moment an earlie
    trades quiet against loud (`asr-pipeline.md`); `LeveledVad` is a user ruling ⇒ the fix
    needs the user's ruling first. Tier `kernel` (decode-quality mechanism, no downstream re-check).
    **Re-open condition (user ruling):** a real call recorded with `--save-audio` (`live-smoke.md`
-   item 11) holds exact-zero runs between talkers — the regime this row fixes; until then the row
+   item 11) holds digital-silence runs between talkers (exact zeros at capture; ≈ −240 dBFS
+   decoded from the Opus recording) — the regime this row fixes; until then the row
    waits, unfunded.
    **Accept:** a playback-mode-only change (mic path byte-identical by construction: the replay
    goldens and retention CER 0.0532 unmoved) recovers cv489, cv894 and cv904 in

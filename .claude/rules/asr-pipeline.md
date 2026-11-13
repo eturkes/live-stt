@@ -79,14 +79,25 @@ paths:
   and the 300-clip rerun shows 0 in every arm — evidence for that floor, not a proof that no live
   input can open such a segment.
 - **`--save-audio` records at CAPTURE** (`AudioRecording`, opt-in): every resampled block lands in
-  `transcripts/<start>.wav` (16 kHz mono int16, `× 32768` = `replay.load_wav_f32_16k`'s inverse) BEFORE
-  the queue, so blocks backpressure later drops stay on disk — a superset of what the recogniser saw ⇒
+  `transcripts/<start>.opus` (Ogg Opus via `soundfile`/libsndfile, 16 kHz mono,
+  `RECORDING_OPUS_LEVEL`=0.9 → 27-31 kbit/s VBR ≈ 13 MB/h vs WAV's 256 kbit/s ≈ 115 MB/h) BEFORE the
+  queue, so blocks backpressure later drops stay on disk — a superset of what the recogniser saw ⇒
   `replay.py` over it is never the live trajectory (replay never waits on `queued_samples`, so
-  catch-up folds differ). Lazy; `wave.writeframes` re-patches the header per block (5.9 µs per
-  85-sample block) ⇒ a crash leaves a playable file — once the zero-length priming write exists, since
-  wave sizes its header to the FIRST write and skips that write's patch (first block buffered, file
-  empty on disk; locked by an independent reopen after every block). Always `TRANSCRIPT_DIR`, never beside `-o`,
-  which APPENDS across runs where a WAV cannot. Lock: `test_save_audio_records_every_captured_block`
+  catch-up folds differ). Level → rate on live captures: 0.5 → 132, 0.7 → 82, 0.9 → 27-31 kbit/s.
+  Lossy is the user's ask; decode cost measured, whisper-ja-760M NPU, retention probe CER: WAV
+  0.0532, 0.85 → 0.0437, 0.9 → 0.0412, 0.93 → 0.0437, 0.95 → 0.0515; the same probe at −24 dB plus
+  −70 dBFS noise: WAV 0.0472, 0.7 → 0.0506, 0.8 → 0.0455, 0.9 → 0.0446 ⇒ ≤ 0.9 costs no CER, 0.95
+  starts to. A live capture's hypothesis moves ~0.46 vs raw at 0.9, but 1-LSB dither alone moves it
+  0.34 (two dither seeds 0.31 apart) ⇒ that divergence is decode-trajectory sensitivity, not loss.
+  Lazy open; mode `SESSION_FILE_MODE`. Crash cost: libsndfile writes whole Ogg pages, so a killed
+  process leaves a playable file missing its unflushed tail (measured 1.03 s); WAV lost nothing.
+  Opus-decoded digital silence reads ≈ −240 dBFS, not exact zeros — below `VAD_LEVEL_FLOOR_DBFS`, so
+  `LeveledVad` treats it as zeros. Always `TRANSCRIPT_DIR`, never beside `-o`, which APPENDS across
+  runs where an audio file cannot. `replay.load_audio_f32_16k` reads `.wav` through stdlib `wave`,
+  anything else through `soundfile` (channel mean, resampled to 16 kHz). Locks:
+  `test_replay_reads_an_opus_file_at_any_rate_and_channel_count_as_16k_mono` (seeded), `test_the_recording_round_trips_every_sample_through_replay`
+  (seeded: exact length, OGG/OPUS 16 kHz mono, SNR ≥ 20 dB),
+  `test_a_crashed_recording_keeps_all_but_its_last_page`, `test_save_audio_records_every_captured_block`
   (fake mic through the real `run_session`).
 - **`--playback` captures the default OUTPUT through the mic's own PortAudio path (user request:
   a Zoom call).** `playback_device` picks PortAudio's EXACT-name `PLAYBACK_DEVICE`=`pipewire`
@@ -827,7 +838,7 @@ Char | kana CER, GPU unless named:
   the old stdout-only gate made those exclusive and charged every capture run its whole status line.
   `live-smoke.md` item 2 reads the `--save-log` form.
 - **`--save-log` = `2>` from inside the process (`redirect_stderr`).** At the session stamp,
-  `run_session` `dup2`s `transcripts/<stamp>.log` onto fd 2 (the `.txt`/`.wav` stem, whatever `-o`
+  `run_session` `dup2`s `transcripts/<stamp>.log` onto fd 2 (the `.txt`/`.opus` stem, whatever `-o`
   or `--no-save` say) and clears `_STDERR_TTY`, THEN logs the `session:` marker — the clear is what
   opens the pair gate on a shared terminal, so the marker and the `backlog peak:` lines land in the
   file. fd 2, never a logging handler: native writes (sherpa's overflow line, PortAudio) and an

@@ -150,7 +150,7 @@ def test_the_cli_preflights_the_accelerator_before_loading_an_engine(monkeypatch
     assert "Error: whisper: device unavailable" in capsys.readouterr().err
 
 
-def test_the_cli_reports_a_missing_wav_without_probing_the_accelerator(
+def test_the_cli_reports_a_missing_file_without_probing_the_accelerator(
     monkeypatch, tmp_path, capsys
 ):
     """Ordering: the argument check is free, check_device imports OpenVINO."""
@@ -167,7 +167,7 @@ def test_the_cli_reports_a_missing_wav_without_probing_the_accelerator(
         replay.main()
 
     assert exited.value.code == 1
-    assert "no such WAV" in capsys.readouterr().err
+    assert "no such file" in capsys.readouterr().err
 
 
 # ---- models + cached corpus gated: golden regression ----

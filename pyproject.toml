@@ -47,6 +47,9 @@ dependencies = [
     # Live capture's band-limited 44.1 kHz -> 16 kHz stream (`Resampler`); 6.6 us per
     # 256-frame block.
     "soxr>=1.1",
+    # `--save-audio`'s Ogg Opus writer + `replay.py`'s reader; the wheel bundles
+    # libsndfile 1.2.2 built with Opus.
+    "soundfile>=0.13",
 ]
 
 [project.scripts]

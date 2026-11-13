@@ -25,18 +25,18 @@ import subprocess
 import sys
 import time
 import unicodedata
-import wave
 from collections import deque
 from collections.abc import Mapping, MutableMapping, Sequence
 from contextlib import AsyncExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import BinaryIO, SupportsFloat, cast
+from typing import SupportsFloat, cast
 
 import numpy as np
 import onnxruntime as ort
 import sherpa_onnx
+import soundfile
 import soxr
 
 from streaming import Segment, StreamingProcessor
@@ -154,6 +154,9 @@ VAC_BACKLOG_S = 0.5
 # files keep each file's `n` numbering self-consistent, which one shared append
 # log would interleave across runs. -o overrides the path; --no-save opts out.
 TRANSCRIPT_DIR = Path(__file__).resolve().parent / "transcripts"
+# `--save-audio` = Ogg Opus; libsndfile maps this level linearly onto the bitrate
+# (0.5 -> 132, 0.7 -> 82, 0.9 -> 27-31 kbit/s VBR, ~13 MB/h, on live 16 kHz captures).
+RECORDING_OPUS_LEVEL = 0.9
 
 # VAD tuning (T4.1 bench, D-010): 2 s pauses must split utterances, sub-second
 # intra-sentence pauses must not.
@@ -1005,12 +1008,12 @@ def transcript_path(args, stamp):
 
 def audio_path(args, stamp):
     """`--save-audio` lands beside the default transcript whatever `-o` says: `-o`
-    APPENDS across runs, and a WAV cannot, so a shared name would overwrite."""
-    return TRANSCRIPT_DIR / f"{stamp}.wav" if getattr(args, "save_audio", False) else None
+    APPENDS across runs, and a recording cannot, so a shared name would overwrite."""
+    return TRANSCRIPT_DIR / f"{stamp}.opus" if getattr(args, "save_audio", False) else None
 
 
 def log_path(args, stamp):
-    """`--save-log` joins the WAV in the session directory: its `session:` marker
+    """`--save-log` joins the recording in the session directory: its `session:` marker
     names the transcript, so `-o` costs the report nothing."""
     return TRANSCRIPT_DIR / f"{stamp}.log" if getattr(args, "save_log", False) else None
 
@@ -1065,39 +1068,31 @@ class TranscriptFile:
 
 
 class AudioRecording:
-    """Every captured block as 16 kHz mono int16 WAV, created on the first block.
+    """Every captured block as 16 kHz mono Ogg Opus, created on the first block.
 
     Written at CAPTURE, before the queue, so a block backpressure later drops is
     still on disk: the file holds everything the mic delivered, a superset of what
-    the recogniser saw. `wave.writeframes` re-patches the header on every call
-    (5.9 us per 85-sample block, measured), so a crash leaves a playable file.
+    the recogniser saw. Opus, not WAV: int16 PCM costs 115 MB/h, this ~13 MB/h.
+    libsndfile writes whole Ogg pages, so a crash loses the unwritten
+    page (~1 s at this level) and a recording killed inside its first page is
+    unreadable; `close()` writes the rest.
     """
 
     def __init__(self, path: Path):
         self.path = path
-        self._f: BinaryIO | None = None
-        self._w: wave.Wave_write | None = None
+        self._f: soundfile.SoundFile | None = None
         path.parent.mkdir(mode=SESSION_DIR_MODE, parents=True, exist_ok=True)
 
     def write(self, pcm: np.ndarray) -> None:
-        if self._w is None:
+        if self._f is None:
             fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, SESSION_FILE_MODE)
-            self._f = os.fdopen(fd, "wb")
-            self._w = wave.open(self._f, "wb")
-            self._w.setnchannels(1)
-            self._w.setsampwidth(2)
-            self._w.setframerate(SAMPLE_RATE)
-            # Commits a zero-length header: wave sizes its header to the FIRST write and
-            # skips that write's patch, which left the first block buffered and the file
-            # empty on disk until a second one arrived.
-            self._w.writeframes(b"")
-        # x 32768, matching replay.load_wav_f32_16k's / 32768.
-        scaled = np.clip(np.round(pcm * 32768.0), -32768, 32767)
-        self._w.writeframes(scaled.astype("<i2").tobytes())
+            self._f = soundfile.SoundFile(
+                fd, "w", SAMPLE_RATE, 1, format="OGG", subtype="OPUS",
+                compression_level=RECORDING_OPUS_LEVEL,
+            )  # fmt: skip
+        self._f.write(pcm)
 
     def close(self) -> None:
-        if self._w is not None:
-            self._w.close()  # patches the header; a caller-opened file stays open
         if self._f is not None:
             self._f.close()
 
@@ -3081,8 +3076,8 @@ def main():
         "--save-audio",
         action="store_true",
         help=(
-            f"Also save the captured audio as a WAV file in {TRANSCRIPT_DIR.name}/, "
-            "named like the default transcript. It uses about 115 MB per hour."
+            f"Also save the captured audio as an Opus file in {TRANSCRIPT_DIR.name}/, "
+            "named like the default transcript. It uses about 13 MB per hour."
         ),
     )
     parser.add_argument(

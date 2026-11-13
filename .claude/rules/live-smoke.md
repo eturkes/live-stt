@@ -100,7 +100,7 @@ TGT checks N/A). One utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`)
    Pass: the far speech publishes `SRC` lines from the first seconds on; the empty room publishes
    nothing — no `ご視聴ありがとうございました`-family caption, no `caption dropped` burst. The leveled
    copy boosts room tone up to 16× once speech stops, while the two saved sessions hold only 48 s and
-   25 s of whisper-silent gaps; keep the WAV, `replay.py` re-derives either half.
+   25 s of whisper-silent gaps; keep the recording, `replay.py` re-derives either half.
    The item-2 meeting covers the far-speech half at the 10-08 level alone — p90 −34.7 dBFS against
    10-09's −43.8 (512-sample window RMS over windows above −70 dBFS, which reproduces both recorded
    p90s): `SRC 1` 9 s after start. The quiet −44 dBFS shape and the empty room stay unrun.
@@ -126,9 +126,10 @@ TGT checks N/A). One utterance = speech + a ≥0.5 s pause (`VAD_MIN_SILENCE_S`)
    Speaker → Headphones sink; Bluetooth: a bluez sink) mid-call and captions continue; the pauses
    between talkers publish nothing. A quiet participant after a loud one losing a caption or its
    head is the measured digital-silence limit (`asr-pipeline.md`), not a capture defect — keep the
-   WAV: exact-zero runs between talkers say that regime is live and `replay.py` re-derives it.
-   That WAV is also the re-open trigger for `.agent/deferred.md` → *Playback leveling across
-   digital silence*. Agent-covered by `tests/eval_playback_routing.py` on a private PipeWire 1.4.2
+   recording: digital-silence runs between talkers (≈ −240 dBFS once Opus-decoded, below
+   `VAD_LEVEL_FLOOR_DBFS` like the zeros captured) say that regime is live and `replay.py`
+   re-derives it. That recording is also the re-open trigger for `.agent/deferred.md` →
+   *Playback leveling across digital silence*. Agent-covered by `tests/eval_playback_routing.py` on a private PipeWire 1.4.2
    stack, no hardware: device listing, the monitor link, the default-output switch, and the real
    NPU session over both clip sets, 21 plays each, run twice. **The bilingual GPU form too**
    (`--e2e two-way --asr-device GPU`, run twice): the real `live-stt --playback --two-way
